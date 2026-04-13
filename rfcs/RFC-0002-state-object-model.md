@@ -388,3 +388,199 @@ Key behaviors:
 - **Replication.** The `replicas` field ensures durability. The Memory Control Plane (RFC-0004) is responsible for placement; the retention policy declares the requirement.
 
 Retention policy changes are logged as `POLICY_CHANGED` provenance events.
+
+---
+
+## 5. Object Types
+
+Anunix defines six canonical object types. Each type determines how the kernel interprets the payload, what system metadata fields are available, and what kernel-level optimizations are possible. This is a closed set: new types require an RFC amendment. The rationale is that the kernel must understand every type it encounters — an open type registry would reintroduce the "opaque bytes" problem that State Objects exist to solve.
+
+### 5.1 `byte_data`
+
+**Purpose:** Uninterpreted byte sequences. This is the type that maps directly to a POSIX file and serves as the backward-compatibility bridge.
+
+**Payload structure:**
+
+```
+ByteDataPayload {
+    bytes:    uint8[]       // raw byte content
+}
+```
+
+**When to use:** Any data that has no richer representation in the type system, or any data accessed through the POSIX compatibility layer. Examples: binary executables, images, audio files, compressed archives, plain text files, configuration files.
+
+**Kernel behavior:**
+
+- The kernel treats the payload as opaque. It does not parse, validate, or index the content.
+- Storage placement follows default policies (no type-specific optimization).
+- The `schema_uri` field, if present, is treated as a MIME type hint (e.g., `"image/png"`, `"text/plain; charset=utf-8"`). The kernel stores it but does not enforce it.
+- This is the only type for which the kernel makes *no* assumptions about payload content, honoring DG-8 (minimal overhead for simple cases).
+
+**POSIX mapping:** A POSIX `open()` on a path that does not exist creates a `byte_data` object. A POSIX `open()` on an existing object of any type returns a byte-level view of the serialized payload — Section 11 defines the serialization rules.
+
+### 5.2 `structured_data`
+
+**Purpose:** Schema-conformant structured records. This type represents data that has a known, declared structure — the kernel can validate it, index specific fields, and enforce schema compatibility.
+
+**Payload structure:**
+
+```
+StructuredDataPayload {
+    encoding:       enum { JSON, MSGPACK, PROTOBUF, CBOR }
+    schema_digest:  sha256          // hash of the schema document
+    data:           uint8[]         // serialized content in the declared encoding
+}
+```
+
+**When to use:** Configuration objects, API responses, database records, annotation sets, structured logs, any data where the producer and consumer agree on a schema. Examples: a JSON document representing user preferences, a Protobuf-encoded training record, a CBOR-serialized sensor reading.
+
+**Kernel behavior:**
+
+- The `schema_uri` and `schema_version` fields (Section 4.3) are **required** for this type. Creation without them is rejected.
+- The kernel stores a `schema_digest` alongside the payload. If the schema document at `schema_uri` changes without a corresponding `schema_version` bump, the kernel can detect the mismatch.
+- **Validation is deferred by default.** The kernel does not parse and validate every write against the schema (that would violate DG-8). Instead, validation occurs:
+  - On explicit request via `so_validate()` (Section 12).
+  - When an Execution Cell declares a schema requirement in its input contract.
+  - When the object is sealed (Section 10.4).
+- **Field-level access.** For supported encodings (JSON, MSGPACK), the kernel provides a `so_read_field()` syscall that extracts a specific field without the consumer deserializing the entire payload. This enables field-level access policies.
+
+**Relationship to `byte_data`:** A JSON file opened through the POSIX layer is `byte_data`. A JSON document created through the native API with a declared schema is `structured_data`. The difference is the presence of a schema contract — `structured_data` is data the system can reason about; `byte_data` is data it stores but does not interpret.
+
+### 5.3 `embedding`
+
+**Purpose:** Dense numeric vectors produced by embedding models. These are first-class objects because AI-native workloads generate, store, query, and transform embeddings at massive scale, and the kernel can make significant optimization decisions when it understands the payload structure.
+
+**Payload structure:**
+
+```
+EmbeddingPayload {
+    dimensions:     uint32          // vector dimensionality (e.g., 768, 1536)
+    element_type:   enum { FLOAT16, FLOAT32, FLOAT64, INT8, UINT8 }
+    normalized:     bool            // whether the vector is L2-normalized
+    vector:         element_type[]  // the dense vector, length == dimensions
+}
+```
+
+**When to use:** Any vector representation of content produced by an embedding model. Examples: text embeddings from a language model, image embeddings from a vision model, audio embeddings, multi-modal embeddings.
+
+**Kernel behavior:**
+
+- **Placement.** The kernel knows the vector's size and element type, and can place it in memory regions optimized for vector operations (e.g., aligned, contiguous, near the vector index).
+- **Indexing.** The Memory Control Plane (RFC-0004) can register embeddings with a semantic index for nearest-neighbor queries. The kernel facilitates this by exposing dimensionality and normalization status.
+- **Validation.** On creation or write, the kernel verifies that the vector length matches the declared `dimensions` and that the byte count matches `dimensions * sizeof(element_type)`. Mismatches are rejected.
+- **Schema binding.** The `schema_uri` for an embedding identifies the model that produced it (e.g., `"anunix:model/text-embedding-v3"`). This prevents accidental comparison of embeddings from incompatible models — the kernel can warn or reject when two embeddings with different `schema_uri` values are used in the same similarity operation.
+
+**Why not `byte_data`?** Storing embeddings as raw bytes works, but the kernel cannot distinguish them from any other binary blob. It cannot validate dimensionality, optimize placement, or prevent cross-model comparison errors. Making embeddings a distinct type gives the kernel the information it needs to be a useful participant (DG-6).
+
+### 5.4 `graph_node`
+
+**Purpose:** A node in a typed, directed graph. Graph structures appear throughout AI workloads — knowledge graphs, dependency graphs, derivation graphs, ontologies — and representing them as first-class objects enables the kernel to maintain edge integrity, support traversal queries, and enforce graph-level policies.
+
+**Payload structure:**
+
+```
+GraphNodePayload {
+    node_type:      string          // application-defined type label
+    properties:     map<string, Value>  // typed key-value properties
+    edges:          Edge[]          // outgoing directed edges
+}
+
+Edge {
+    label:          string          // relationship type (e.g., "derived_from", "contains")
+    target_oid:     oid             // the State Object this edge points to
+    weight:         float32?        // optional edge weight
+    properties:     map<string, Value>  // optional edge properties
+}
+```
+
+**When to use:** Any entity that participates in a graph of relationships. Examples: a concept node in a knowledge graph, an entity in an ontology, a step in a workflow DAG, a dependency in a package graph.
+
+**Kernel behavior:**
+
+- **Edge integrity.** The kernel verifies that `target_oid` in each edge references an existing State Object. If the target is deleted, the kernel can either remove the dangling edge, mark it as broken, or block the deletion — configurable via the target's retention policy.
+- **Traversal support.** The kernel provides `so_traverse()` (Section 12) for breadth-first and depth-first traversal from a node, with optional filters on edge labels, node types, and depth limits. This is a kernel-level operation because the kernel can optimize it using object placement and pre-fetching.
+- **Graph-level policies.** An access policy on a graph node can propagate to reachable nodes: "if you can read node A, you can read any node reachable via `contains` edges up to depth 3." This enables subgraph-level access control without enumerating every node.
+- **Index participation.** Graph nodes are indexed by `node_type` for type-filtered queries ("all nodes of type `concept` in namespace X").
+
+**Relationship to provenance:** The provenance graph (Section 4.6.1) is conceptually similar but distinct. Provenance edges are kernel-managed and immutable; `graph_node` edges are application-managed and mutable. An application might build a knowledge graph using `graph_node` objects, and each node would also have its own provenance record tracking how and when it was created.
+
+### 5.5 `model_output`
+
+**Purpose:** The result of a model inference operation. AI workloads produce a high volume of model outputs — predictions, classifications, generations, rankings — and these outputs have properties (confidence, model identity, input references) that no other type captures cleanly.
+
+**Payload structure:**
+
+```
+ModelOutputPayload {
+    model_id:       string          // identifier of the model (name + version)
+    model_hash:     sha256?         // hash of the model weights, if available
+    task_type:      string          // e.g., "classification", "generation", "embedding"
+    result:         uint8[]         // the output data (encoding per schema_uri)
+    confidence:     float32?        // model-reported confidence [0.0, 1.0]
+    input_refs:     oid[]           // State Objects that were inputs to inference
+    parameters:     map<string, Value>  // inference parameters (temperature, top_k, etc.)
+    latency_ms:     uint32?         // inference wall-clock time in milliseconds
+}
+```
+
+**When to use:** Any output produced by running a model. Examples: a classification label with confidence, a generated text response, a ranked list of recommendations, an anomaly detection result.
+
+**Kernel behavior:**
+
+- **Confidence-based routing.** The kernel can use the `confidence` field to make decisions: route low-confidence outputs to a human review queue, trigger re-inference with different parameters, or flag objects below a confidence threshold in query results.
+- **Reproducibility tracking.** The combination of `model_id`, `model_hash`, `parameters`, and `input_refs` provides everything needed to re-run the inference. The provenance layer records whether the transformation was marked `reproducible`.
+- **Automatic provenance.** When an Execution Cell produces a `model_output`, the kernel auto-populates the provenance `DERIVED_FROM` event using `input_refs`, and sets `actor_model` from `model_id`. No application intervention is needed.
+- **Lineage queries.** "Show me all outputs produced by model X with confidence below 0.8 in the last 24 hours" is a kernel-level query, combining type, metadata, and provenance filters.
+
+**Why not `structured_data`?** A model output *could* be stored as a generic structured record, but the kernel would lose the ability to reason about confidence, model identity, and input lineage as first-class properties. The `model_output` type makes these properties visible to the kernel without requiring schema-specific parsing.
+
+### 5.6 `execution_trace`
+
+**Purpose:** A structured record of an Execution Cell's run. Traces are the audit trail of computation — what ran, on what inputs, with what resources, producing what outputs, in how much time. They are the bridge between the State Object model and the Execution Cell runtime (RFC-0003).
+
+**Payload structure:**
+
+```
+ExecutionTracePayload {
+    cell_oid:       oid             // the Execution Cell that executed
+    cell_type:      enum { CODE, MODEL, HYBRID }
+    start_time:     datetime
+    end_time:       datetime
+    duration_ms:    uint64
+    exit_status:    enum { SUCCESS, FAILURE, TIMEOUT, CANCELLED }
+    input_oids:     oid[]           // State Objects consumed as input
+    output_oids:    oid[]           // State Objects produced as output
+    resource_usage: ResourceUsage   // CPU, memory, GPU, network consumed
+    error:          string?         // error message if exit_status != SUCCESS
+    log_ref:        oid?            // optional reference to a full log object
+}
+
+ResourceUsage {
+    cpu_ms:         uint64          // CPU time in milliseconds
+    memory_peak:    uint64          // peak memory in bytes
+    gpu_ms:         uint64?         // GPU time in milliseconds
+    gpu_memory_peak: uint64?        // peak GPU memory in bytes
+    network_bytes:  uint64          // network I/O in bytes
+    storage_bytes:  uint64          // storage I/O in bytes
+}
+```
+
+**When to use:** Automatically created by the kernel at the end of every Execution Cell run. Applications do not typically create `execution_trace` objects directly — the kernel does.
+
+**Kernel behavior:**
+
+- **Automatic creation.** The kernel creates an `execution_trace` object when an Execution Cell completes. The cell's Execution Cell definition (RFC-0003) determines whether traces are retained, sampled, or discarded.
+- **Scheduling optimization.** The scheduler (RFC-0005) uses historical traces to predict resource requirements for future cell executions: expected duration, memory footprint, GPU need. This enables better bin-packing and pre-emption decisions.
+- **Debugging support.** Traces link inputs to outputs with full resource accounting. When an output is incorrect, the trace provides the starting point for investigation: what cell ran, what it consumed, and what it produced.
+- **Cost accounting.** Resource usage fields enable per-cell, per-pipeline, and per-user cost attribution without external monitoring tools.
+- **Retention.** Traces are often high-volume and low-value individually. The default retention policy for traces is short TTL (24 hours) with no version history. Applications can override this for critical pipelines.
+
+### 5.7 Type Extension Process
+
+The six canonical types are designed to cover the essential categories of state in AI-native workloads. However, the system must be able to evolve. Adding a new type requires:
+
+1. An RFC amendment specifying the payload structure, kernel behavior, and interaction with existing types.
+2. A demonstration that the new type enables kernel-level optimizations or enforcement that cannot be achieved by using one of the existing types with appropriate metadata.
+3. Implementation in the kernel with backward-compatible storage format changes.
+
+The bar for new types is deliberately high. A rich type system is useful; a proliferating type system is a maintenance burden. If a use case can be served by `structured_data` with an appropriate schema, it should be.
