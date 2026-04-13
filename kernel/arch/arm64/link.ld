@@ -32,6 +32,11 @@ SECTIONS {
     }
     _bss_end = .;
 
+    . = ALIGN(4096);
+    _heap_start = .;
+    . = . + 16M;
+    _heap_end = .;
+
     /DISCARD/ : {
         *(.comment)
         *(.note.*)
