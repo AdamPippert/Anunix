@@ -19,6 +19,7 @@ class EventKind(str, Enum):
     CELL_STATUS_CHANGED = "cell.status_changed"
     CELL_COMPLETED = "cell.completed"
     CELL_FAILED = "cell.failed"
+    CELL_RETRY = "cell.retry"
     MEMORY_ADMITTED = "memory.admitted"
     MEMORY_PROMOTED = "memory.promoted"
     MEMORY_DEMOTED = "memory.demoted"

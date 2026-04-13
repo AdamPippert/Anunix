@@ -19,6 +19,10 @@ chroma_persist_dir = "~/.anunix/chroma"
 max_concurrent_cells = 16
 default_timeout_seconds = 300
 trace_enabled = true
+default_max_retry_attempts = 3
+default_backoff_mode = "exponential"
+default_base_delay_ms = 1000
+default_max_delay_ms = 30000
 
 [routing]
 default_strategy = "local_first"

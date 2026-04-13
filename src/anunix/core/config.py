@@ -29,6 +29,10 @@ class ExecutionConfig(BaseModel):
     max_concurrent_cells: int = 16
     default_timeout_seconds: int = 300
     trace_enabled: bool = True
+    default_max_retry_attempts: int = 3
+    default_backoff_mode: str = "exponential"
+    default_base_delay_ms: int = 1000
+    default_max_delay_ms: int = 30000
 
 
 class RoutingConfig(BaseModel):

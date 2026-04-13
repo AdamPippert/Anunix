@@ -39,6 +39,10 @@ class DecompositionOverflowError(ExecutionError):
     """Cell decomposition exceeded depth or fan-out limits."""
 
 
+class CellRetryExhaustedError(ExecutionError):
+    """Cell has exhausted all retry attempts."""
+
+
 # Routing errors
 class RoutingError(AnunixError):
     """Error related to routing decisions."""
