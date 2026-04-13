@@ -946,3 +946,737 @@ POSIX `stat()` maps to a subset of system metadata:
 | `st_nlink`     | Count of path bindings to this object                    |
 
 Extended attributes (`xattr`) map to user metadata keys. `getxattr("user.myapp.stage")` reads the user metadata key `myapp.stage`. This provides a natural POSIX-compatible path for applications that want to use metadata without native Anunix APIs.
+
+---
+
+## 8. Provenance Queries
+
+Section 4.6.1 defined the provenance record structure. This section specifies how provenance is queried, traversed, and used by other subsystems. Provenance is not just an audit log — it is a queryable graph that the kernel, scheduler, and applications can use to reason about data lineage.
+
+### 8.1 The Provenance Graph
+
+Every `DERIVED_FROM` provenance event creates a directed edge in a system-wide **provenance graph**. The nodes are State Objects; the edges are derivation relationships. This graph is distinct from the `graph_node` object type — provenance edges are kernel-managed and immutable, while `graph_node` edges are application-managed and mutable.
+
+The provenance graph supports three categories of queries:
+
+1. **Ancestry (backward).** "What objects was this object derived from?" Follow `DERIVED_FROM` edges backward.
+2. **Descendants (forward).** "What objects were derived from this object?" Follow `DERIVED_FROM` edges forward.
+3. **Lineage (full path).** "What is the complete chain of transformations from raw input to final output?" Combine ancestry and descendant traversal with execution trace correlation.
+
+### 8.2 Query Operations
+
+#### 8.2.1 Ancestry Query
+
+```
+so_provenance_ancestors(oid, {
+    max_depth:      uint32      // how far back to traverse (default: unlimited)
+    filter_type:    object_type? // only return ancestors of this type
+    include_traces: bool        // include execution_trace objects that produced each edge
+}) → ProvenanceSubgraph
+```
+
+Returns a subgraph of all objects reachable by following `DERIVED_FROM` edges backward from the given `oid`. The result is a DAG (directed acyclic graph) — cycles are impossible because derivation is always from existing objects to new objects.
+
+#### 8.2.2 Descendant Query
+
+```
+so_provenance_descendants(oid, {
+    max_depth:      uint32
+    filter_type:    object_type?
+    include_traces: bool
+}) → ProvenanceSubgraph
+```
+
+Returns all objects that were transitively derived from the given `oid`. This answers questions like "what downstream outputs are affected if I invalidate this dataset?"
+
+#### 8.2.3 Lineage Path
+
+```
+so_provenance_lineage(from_oid, to_oid) → ProvenancePath[]
+```
+
+Returns all derivation paths between two objects. If no path exists, the result is empty. Multiple paths are possible when an object was derived through independent pipelines that share a common ancestor.
+
+### 8.3 Provenance and the Scheduler
+
+The scheduler (RFC-0005) uses provenance in two ways:
+
+- **Dependency pre-fetching.** When a cell declares its input objects, the scheduler can inspect their provenance to predict what *other* objects the cell is likely to need (based on historical patterns from execution traces).
+- **Invalidation cascades.** When an object is mutated, the scheduler can identify downstream objects that may need recomputation by querying descendants. This enables reactive pipeline re-execution.
+
+### 8.4 Provenance Compaction
+
+For long-lived objects with many derivation steps, the provenance graph can become deep. The kernel supports **provenance compaction**: summarizing a chain of derivation steps into a single summary event while preserving the endpoints. Compaction is:
+
+- **Never automatic.** Only triggered by explicit request or by a retention policy rule.
+- **Reversible if detailed records are archived.** The compacted summary includes references to the archived detailed events, which can be restored from the archive tier.
+- **Logged.** Compaction itself is recorded as a provenance event, so the audit trail reflects that summarization occurred.
+
+---
+
+## 9. Access Policy Evaluation
+
+Section 4.6.2 defined the access policy structure. This section specifies how policies are evaluated at runtime — the authorization model that governs every State Object operation.
+
+### 9.1 Capability Tokens
+
+Every Execution Cell receives a **capability token** at creation time. The token is a kernel-signed credential that encodes:
+
+```
+CapabilityToken {
+    cell_oid:           oid             // the cell this token belongs to
+    granted_caps:       Capability[]    // explicitly granted capabilities
+    issuer_cell:        oid             // the cell that spawned this cell
+    issued_at:          timestamp
+    expires_at:         timestamp?      // optional expiration
+    signature:          bytes           // kernel signature (Ed25519)
+}
+
+Capability {
+    resource:           oid | namespace | glob_pattern
+    operations:         Operation[]     // e.g., [read_payload, read_metadata]
+    conditions:         Predicate[]     // e.g., [HAS_CAP("pii_audited")]
+}
+```
+
+Capability tokens are unforgeable — they are signed by the kernel and verified on every access. A cell cannot escalate its own privileges; it can only delegate a subset of its capabilities to child cells.
+
+### 9.2 Evaluation Algorithm
+
+When an Execution Cell attempts an operation on a State Object, the kernel evaluates access as follows:
+
+```
+evaluate_access(cell_token, object, operation):
+    1. If cell_token.cell_oid == object.sys.creator_cell → ALLOW
+       (creator always has full access, unless overridden by policy)
+    
+    2. For each rule in object.access_policy.rules:
+        a. Does rule.operation match the requested operation?
+        b. Does rule.principal match cell_token (by cell_oid, by capability, or by pattern)?
+        c. Do all rule.conditions evaluate to true against cell_token.granted_caps?
+        d. If (a) and (b) and (c): return rule.effect (ALLOW or DENY)
+    
+    3. Check namespace default policy (Section 6.2.1)
+    
+    4. If no rule matched → DENY (default-deny)
+```
+
+Evaluation is short-circuit: the first matching rule wins. Rules are ordered, and the kernel evaluates them top-to-bottom. This follows the principle of least privilege — access is denied unless explicitly granted.
+
+### 9.3 Field-Level Access Control
+
+For `structured_data` and `graph_node` objects, access policies can restrict access at the field level:
+
+```
+AccessRule {
+    principal:      CellMatcher
+    operation:      read_payload
+    fields:         ["name", "email"]       // only these fields are accessible
+    conditions:     [HAS_CAP("pii_reader")]
+    effect:         ALLOW
+}
+```
+
+When a cell with this rule calls `so_read_field("email")`, it succeeds. When it calls `so_read_payload()` (full payload read), the kernel returns only the permitted fields, with other fields redacted. This enables scenarios like "the summarization cell can read the transcript text but not the speaker identity metadata."
+
+### 9.4 Policy Propagation
+
+Access policies can reference other objects' policies:
+
+- **Inherit from parent.** A derived object can inherit its parent's access policy via `policy: INHERIT_FROM(parent_oid)`. Changes to the parent's policy propagate automatically.
+- **Intersect.** An object derived from multiple parents can use `policy: INTERSECT(parent_oids)` — only cells authorized by *all* parent policies can access the derived object.
+- **Union.** `policy: UNION(parent_oids)` grants access if *any* parent policy allows it. This is less restrictive and used when the derived object is less sensitive than its inputs.
+
+Policy propagation is evaluated lazily — the kernel resolves inherited policies at access time, not at creation time. This ensures that policy changes take effect immediately for all objects that inherit from the changed policy.
+
+### 9.5 Audit Trail
+
+Every access evaluation — whether allowed or denied — can be recorded. The recording level is configurable per object:
+
+| Level     | Records                                        |
+|-----------|------------------------------------------------|
+| `none`    | No access logging                              |
+| `denied`  | Only denied access attempts                    |
+| `write`   | Denied attempts + successful writes and deletes|
+| `all`     | Every access evaluation                        |
+
+The default level for new objects is `write`. High-traffic read-heavy objects (like shared embeddings) should use `denied` or `none` to avoid provenance log bloat. Objects under regulatory compliance should use `all`.
+
+---
+
+## 10. Object Lifecycle
+
+A State Object moves through a defined sequence of states from creation to deletion. The kernel enforces the lifecycle — applications cannot skip states or violate transitions.
+
+### 10.1 Lifecycle States
+
+```
+┌──────────┐      ┌──────────┐      ┌──────────┐      ┌──────────┐
+│ CREATING │─────→│  ACTIVE  │─────→│  SEALED  │─────→│ EXPIRED  │
+└──────────┘      └──────────┘      └──────────┘      └──────────┘
+                       │                  │                  │
+                       │                  │                  ▼
+                       │                  │            ┌──────────┐
+                       └──────────────────┴───────────→│ DELETED  │
+                                                       └──────────┘
+                                                            │
+                                                            ▼
+                                                       ┌──────────┐
+                                                       │TOMBSTONE │
+                                                       └──────────┘
+```
+
+| State      | Description                                                       | Payload mutable | Metadata mutable | Governance mutable |
+|------------|-------------------------------------------------------------------|-----------------|------------------|--------------------|
+| `CREATING` | Object is being constructed. Not yet visible to other cells.      | Yes             | Yes              | Yes                |
+| `ACTIVE`   | Normal operational state. Fully visible and accessible.           | Yes             | Yes              | Yes (by policy)    |
+| `SEALED`   | Payload is frozen. Object is immutable except for metadata.       | No              | Yes              | Limited            |
+| `EXPIRED`  | TTL has elapsed. Object is inaccessible but not yet reclaimed.    | No              | No               | No                 |
+| `DELETED`  | Object has been explicitly deleted or garbage collected.          | N/A             | N/A              | N/A                |
+| `TOMBSTONE`| Minimal record retained for dangling reference detection.         | N/A             | N/A              | N/A                |
+
+### 10.2 Creation
+
+Object creation is atomic. A cell initiates creation via `so_create()` (Section 12), and the object transitions through `CREATING` → `ACTIVE` as a single kernel operation. No other cell can observe the `CREATING` state.
+
+During creation, the kernel:
+
+1. Allocates a new `oid` (UUIDv7).
+2. Sets `version` to 1.
+3. Validates the `object_type` and, for types that require it, the `schema_uri` and `schema_version`.
+4. Writes the initial payload.
+5. Computes `content_hash`.
+6. Sets system metadata (`sys.created_at`, `sys.size_bytes`, `sys.creator_cell`, etc.).
+7. Applies the specified access policy, or the namespace default.
+8. Applies the specified retention policy, or the namespace default.
+9. Records a `CREATED` provenance event.
+10. If the creation is a derivation (input objects were specified), records a `DERIVED_FROM` provenance event and populates `sys.parent_oids`.
+11. Binds the object to a path in the specified namespace (optional — objects can exist without path bindings).
+12. Transitions to `ACTIVE`.
+
+If any step fails, the entire creation is rolled back. No partial State Objects exist.
+
+### 10.3 Mutation
+
+While in the `ACTIVE` state, a cell with write access can modify the object's payload, user metadata, or governance sections (subject to policy).
+
+Each mutation:
+
+1. Acquires a write lock on the object. Only one writer is permitted at a time; concurrent writers are serialized. (Readers are not blocked — the kernel uses copy-on-write for version snapshots.)
+2. Applies the change.
+3. Increments the `version`.
+4. Recomputes `content_hash` (for payload changes).
+5. Updates `sys.modified_at`.
+6. Records a `MUTATED` provenance event.
+7. If the retention policy retains historical versions, snapshots the previous version before applying the change.
+8. Releases the write lock.
+
+**Batch mutation.** For performance, the kernel supports `so_mutate_batch()` which applies multiple changes as a single version increment. This avoids per-field version inflation when updating many metadata keys.
+
+### 10.4 Sealing
+
+Sealing transitions an object from `ACTIVE` to `SEALED`. A sealed object's payload is permanently frozen — no further writes are accepted. Sealing is a one-way operation; it cannot be reversed.
+
+```
+so_seal(oid) → Result<(), Error>
+```
+
+Sealing triggers:
+
+1. **Validation.** For `structured_data` objects, the kernel validates the payload against the declared schema. If validation fails, the seal is rejected and the object remains `ACTIVE`.
+2. **Content hash finalization.** The `content_hash` becomes a permanent integrity guarantee.
+3. **Provenance event.** A `SEALED` event is recorded.
+4. **Optional notification.** Cells that have registered interest in this object (via `so_watch()`) are notified of the seal.
+
+**When to seal:**
+
+- Model checkpoints that should never be modified after training.
+- Compliance-sensitive records that must be tamper-evident.
+- Published artifacts that downstream consumers depend on — sealing guarantees the content hash will not change.
+- Any object where immutability is a correctness requirement, not just a convention.
+
+### 10.5 Expiration and Garbage Collection
+
+When an object's TTL (Section 4.6.3) elapses, the kernel transitions it to `EXPIRED`:
+
+1. The object becomes inaccessible. Any access attempt returns `ERR_EXPIRED` with the object's tombstone metadata.
+2. Path bindings to the object are marked stale (Section 6.3).
+3. The object is queued for garbage collection.
+
+**Garbage collection** runs asynchronously. The collector:
+
+1. Verifies that no `deletion_hold` is set.
+2. Checks for objects that reference this object in `sys.parent_oids` or `graph_node` edges. If downstream objects exist:
+   - If the edge policy is `CASCADE`, those objects are also expired.
+   - If the edge policy is `WARN`, the collector logs a warning but proceeds.
+   - If the edge policy is `BLOCK`, the collector skips this object and retries later.
+3. Reclaims the payload storage.
+4. Transitions to `DELETED`, then to `TOMBSTONE`.
+
+### 10.6 Explicit Deletion
+
+A cell with `delete` permission can explicitly delete an `ACTIVE` or `SEALED` object:
+
+```
+so_delete(oid, { force: bool }) → Result<(), Error>
+```
+
+- Without `force`, the kernel checks for downstream references (same algorithm as garbage collection) and rejects the deletion if the edge policy is `BLOCK`.
+- With `force`, the kernel deletes unconditionally. Downstream references become dangling; the tombstone record allows them to be detected.
+- Deletion of an object under `deletion_hold` is rejected regardless of `force`. The hold must be lifted first.
+
+### 10.7 Tombstones
+
+A tombstone is a minimal record that persists after deletion:
+
+```
+Tombstone {
+    oid:            oid             // the deleted object's ID
+    object_type:    object_type     // what kind of object it was
+    created_at:     timestamp       // when it was created
+    deleted_at:     timestamp       // when it was deleted
+    deleted_by:     oid             // the cell that deleted it
+    reason:         string?         // optional deletion reason
+    ttl:            duration        // how long the tombstone persists (default: 30 days)
+}
+```
+
+Tombstones serve two purposes:
+
+1. **Dangling reference detection.** When an object tries to follow an OID reference to a deleted object, the tombstone provides context ("this object was deleted on date X by cell Y") rather than a bare "not found" error.
+2. **Audit compliance.** Tombstones prove that an object existed and was deleted, which may be required for regulatory purposes (e.g., proving that personal data was removed within the required timeframe).
+
+---
+
+## 11. POSIX Compatibility Mapping
+
+Anunix must run existing POSIX programs without modification. This section defines how POSIX file system operations map to State Object operations, what semantic information is preserved or lost in the translation, and where the compatibility boundary lies.
+
+### 11.1 Design Principle
+
+The POSIX compatibility layer is a **lossy projection**. State Objects carry more information than POSIX files. When a POSIX program accesses a State Object, it sees a simplified view — the payload as a byte stream, metadata as `stat` fields and extended attributes. When a POSIX program creates or modifies data, the layer creates State Objects with default types and minimal governance.
+
+The projection is lossy in one direction only: POSIX → State Object always works (with defaults applied), but State Object → POSIX may discard information. This is acceptable because POSIX programs cannot use the discarded information anyway.
+
+### 11.2 File System Operations
+
+| POSIX call         | State Object equivalent                                                    |
+|--------------------|---------------------------------------------------------------------------|
+| `open(path, O_RDONLY)` | Resolve path in `posix` namespace → `so_open(oid, READ)`             |
+| `open(path, O_WRONLY \| O_CREAT)` | Create `byte_data` object → bind to path → `so_open(oid, WRITE)` |
+| `read(fd, buf, n)` | `so_read_payload(handle, offset, n)`                                      |
+| `write(fd, buf, n)` | `so_write_payload(handle, offset, n)`                                    |
+| `close(fd)`         | `so_close(handle)`                                                       |
+| `lseek(fd, off, whence)` | Adjust the handle's internal offset (no State Object operation)    |
+| `stat(path)`        | Resolve path → read system metadata (see Section 7.6 for field mapping)  |
+| `fstat(fd)`          | Read system metadata via open handle                                    |
+| `unlink(path)`      | Remove path binding; if no other bindings, mark object for GC            |
+| `rename(old, new)`  | Atomic rebind in the `posix` namespace                                   |
+| `link(old, new)`    | Create additional path binding to the same OID                           |
+| `symlink(target, link)` | Create a `byte_data` object containing the target path, flagged as symlink in metadata |
+| `mkdir(path)`        | Create a directory entry in the `posix` namespace                       |
+| `rmdir(path)`        | Remove directory entry (must be empty)                                  |
+| `readdir(path)`      | List directory entries in namespace                                     |
+| `chmod(path, mode)` | Update access policy to match POSIX permission bits                      |
+| `chown(path, uid, gid)` | Update the ownership metadata (mapped to cell identity)             |
+| `truncate(path, len)` | Truncate payload; update `content_hash` and `sys.size_bytes`          |
+| `mmap(fd, ...)`      | Memory-map the payload region (kernel manages the backing storage)     |
+
+### 11.3 Payload Serialization for Non-byte_data Types
+
+When a POSIX program opens a State Object that is not `byte_data`, the kernel must present the payload as a byte stream. The serialization rules are:
+
+| Object type        | POSIX byte stream representation                                |
+|--------------------|----------------------------------------------------------------|
+| `byte_data`        | Raw bytes (identity — no transformation)                        |
+| `structured_data`  | Serialized in the object's declared encoding (JSON, MSGPACK, etc.) |
+| `embedding`        | Header (text metadata) + raw vector bytes                       |
+| `graph_node`       | JSON serialization of the node structure                        |
+| `model_output`     | JSON serialization of the output record                         |
+| `execution_trace`  | JSON serialization of the trace record                          |
+
+Writes through the POSIX layer to non-`byte_data` objects are restricted:
+
+- `embedding`, `model_output`, and `execution_trace` objects are read-only through the POSIX layer. Writes return `EACCES`.
+- `structured_data` objects accept writes of valid serialized data in the declared encoding. Invalid writes return `EINVAL`.
+- `graph_node` objects accept writes of valid JSON node structures. Edge integrity is validated asynchronously.
+
+### 11.4 Permission Mapping
+
+POSIX permission bits are derived from the object's capability-based access policy:
+
+```
+map_to_posix_mode(access_policy, requesting_uid):
+    mode = 0
+    
+    # Owner permissions (mapped from creator_cell capabilities)
+    if creator_cell has read_payload  → mode |= S_IRUSR
+    if creator_cell has write_payload → mode |= S_IWUSR
+    if object_type == byte_data and metadata has "executable" flag → mode |= S_IXUSR
+    
+    # Group permissions (mapped from cells sharing the creator's group)
+    # ... analogous mapping
+    
+    # Other permissions (mapped from default/public access rules)
+    # ... analogous mapping
+    
+    return mode
+```
+
+The mapping is approximate. POSIX has three permission levels (owner/group/other); Anunix has arbitrary capability rules. The POSIX layer presents the most conservative interpretation: if any condition restricts access, the POSIX bit is cleared.
+
+`chmod` in reverse creates or modifies access policy rules to approximate the requested POSIX permissions. This is a best-effort mapping — fine-grained capability rules that cannot be expressed as rwx bits are preserved and take precedence.
+
+### 11.5 Limitations
+
+The POSIX compatibility layer does not support:
+
+- **`ioctl` for State Object operations.** Native Anunix syscalls (Section 12) are the correct interface. No device-file hacks.
+- **`fcntl` advisory locks as object locks.** POSIX advisory locks work for byte-level coordination but do not interact with the State Object versioning system.
+- **Sparse files.** State Object payloads are not sparse. A `byte_data` object with a `lseek` past the end followed by a write allocates the intervening zeros.
+- **Hard links across namespaces.** A path in the `posix` namespace cannot be a hard link to an object bound in a different namespace. Symlinks can cross namespace boundaries.
+
+---
+
+## 12. System Call Interface
+
+This section defines the kernel system calls for creating, reading, writing, and managing State Objects. These are the native Anunix interfaces — richer than POSIX file operations and designed to expose the full State Object model.
+
+### 12.1 Object Lifecycle Calls
+
+#### `so_create`
+
+```
+so_create({
+    object_type:    object_type,
+    namespace:      string?,            // default: "default"
+    path:           string?,            // optional path binding
+    schema_uri:     string?,            // required for structured_data
+    schema_version: string?,            // required if schema_uri is set
+    payload:        bytes,              // initial payload content
+    access_policy:  AccessPolicy?,      // default: namespace default
+    retention:      RetentionPolicy?,   // default: namespace default
+    parent_oids:    oid[],              // derivation parents (may be empty)
+    user_meta:      map<string, Value>? // initial user metadata
+}) → Result<ObjectHandle, Error>
+```
+
+Creates a new State Object and returns a handle for subsequent operations. The object is `ACTIVE` upon return.
+
+**Errors:** `ERR_INVALID_TYPE`, `ERR_SCHEMA_REQUIRED`, `ERR_NAMESPACE_NOT_FOUND`, `ERR_QUOTA_EXCEEDED`, `ERR_POLICY_DENIED`.
+
+#### `so_open`
+
+```
+so_open(
+    ref:        OidRef | PathRef | ContentRef,
+    mode:       OpenMode,               // READ, WRITE, READ_WRITE
+) → Result<ObjectHandle, Error>
+```
+
+Opens an existing State Object. The handle includes the object's current version for optimistic concurrency checks.
+
+#### `so_close`
+
+```
+so_close(handle: ObjectHandle) → Result<(), Error>
+```
+
+Releases the handle. If the handle held a write lock, the lock is released.
+
+#### `so_delete`
+
+```
+so_delete(oid: oid, { force: bool }) → Result<(), Error>
+```
+
+Deletes an object (see Section 10.6).
+
+#### `so_seal`
+
+```
+so_seal(oid: oid) → Result<(), Error>
+```
+
+Seals an object (see Section 10.4).
+
+### 12.2 Payload Operations
+
+#### `so_read_payload`
+
+```
+so_read_payload(
+    handle:     ObjectHandle,
+    offset:     uint64,
+    length:     uint64
+) → Result<bytes, Error>
+```
+
+Reads a range of the payload. For `byte_data`, this is byte-level access. For typed objects, the offset and length operate on the serialized form.
+
+#### `so_write_payload`
+
+```
+so_write_payload(
+    handle:     ObjectHandle,
+    offset:     uint64,
+    data:       bytes
+) → Result<uint64, Error>     // returns bytes written
+```
+
+Writes to the payload at the specified offset. Fails if the object is `SEALED`.
+
+#### `so_read_field`
+
+```
+so_read_field(
+    handle:     ObjectHandle,
+    field_path: string          // e.g., "result.confidence" or "edges[0].target"
+) → Result<Value, Error>
+```
+
+Reads a specific field from a structured payload without deserializing the entire object. Supported for `structured_data`, `graph_node`, `model_output`, and `execution_trace` types. Subject to field-level access control (Section 9.3).
+
+#### `so_replace_payload`
+
+```
+so_replace_payload(
+    handle:     ObjectHandle,
+    data:       bytes
+) → Result<(), Error>
+```
+
+Replaces the entire payload. Atomically updates `content_hash`, `version`, and `sys.modified_at`.
+
+### 12.3 Metadata Operations
+
+#### `so_get_meta`
+
+```
+so_get_meta(
+    handle:     ObjectHandle,
+    keys:       string[]?       // specific keys, or null for all
+) → Result<map<string, Value>, Error>
+```
+
+Returns system and/or user metadata. System keys are prefixed with `sys.`; user keys are prefixed with `user.`.
+
+#### `so_set_meta`
+
+```
+so_set_meta(
+    handle:     ObjectHandle,
+    entries:    map<string, Value>
+) → Result<(), Error>
+```
+
+Sets user metadata keys. System metadata keys cannot be written by applications.
+
+#### `so_delete_meta`
+
+```
+so_delete_meta(
+    handle:     ObjectHandle,
+    keys:       string[]
+) → Result<(), Error>
+```
+
+Removes user metadata keys.
+
+### 12.4 Query Operations
+
+#### `so_query`
+
+```
+so_query({
+    namespace:  string?,                // scope query to a namespace (optional)
+    predicate:  Predicate,              // filter expression (Section 7.5)
+    order_by:   string?,                // metadata key to sort by
+    order_dir:  ASC | DESC,
+    limit:      uint32?,                // max results (default: 100)
+    cursor:     bytes?                  // pagination cursor from previous query
+}) → Result<QueryResult, Error>
+
+QueryResult {
+    oids:       oid[]                   // matching object IDs
+    cursor:     bytes?                  // cursor for next page (null if no more results)
+    total_est:  uint64                  // estimated total matches
+}
+```
+
+Searches for objects by metadata predicates. Returns OIDs, not full objects — the caller decides what to load.
+
+#### `so_traverse`
+
+```
+so_traverse({
+    start_oid:  oid,
+    direction:  OUTGOING | INCOMING | BOTH,
+    edge_filter: string?,               // edge label filter (e.g., "derived_from")
+    node_filter: Predicate?,            // filter on traversed node metadata
+    max_depth:  uint32,                 // traversal depth limit
+    strategy:   BFS | DFS,
+    limit:      uint32?                 // max nodes to return
+}) → Result<TraversalResult, Error>
+```
+
+Traverses the graph structure starting from a `graph_node` object. Also usable on the provenance graph by specifying system-level edge labels.
+
+### 12.5 Provenance Operations
+
+#### `so_provenance`
+
+```
+so_provenance(
+    oid:        oid,
+    filter:     ProvenanceFilter?
+) → Result<ProvenanceEvent[], Error>
+
+ProvenanceFilter {
+    event_types:    EventType[]?        // e.g., [CREATED, DERIVED_FROM]
+    after:          timestamp?
+    before:         timestamp?
+    actor_cell:     oid?
+    limit:          uint32?
+}
+```
+
+Returns provenance events for the specified object, optionally filtered.
+
+#### `so_provenance_ancestors` / `so_provenance_descendants` / `so_provenance_lineage`
+
+As defined in Section 8.2.
+
+### 12.6 Watch Operations
+
+#### `so_watch`
+
+```
+so_watch({
+    oid:        oid,
+    events:     WatchEvent[],           // e.g., [MUTATED, SEALED, DELETED]
+    callback:   CellEndpoint            // how to notify the watching cell
+}) → Result<WatchHandle, Error>
+```
+
+Registers interest in lifecycle events on a specific object. The kernel pushes notifications to the watching cell when matching events occur. Watches are automatically removed when the watching cell terminates.
+
+#### `so_unwatch`
+
+```
+so_unwatch(watch_handle: WatchHandle) → Result<(), Error>
+```
+
+Removes a previously registered watch.
+
+### 12.7 Validation Operations
+
+#### `so_validate`
+
+```
+so_validate(oid: oid) → Result<ValidationResult, Error>
+
+ValidationResult {
+    valid:          bool
+    errors:         ValidationError[]   // empty if valid
+}
+
+ValidationError {
+    field:          string              // field path where the error occurred
+    rule:           string              // the schema rule that was violated
+    message:        string              // human-readable description
+}
+```
+
+Validates the object's payload against its declared schema. Only applicable to `structured_data` objects and typed objects with schema constraints (e.g., embedding dimensionality).
+
+### 12.8 Namespace Operations
+
+#### `so_namespace_create`
+
+```
+so_namespace_create(
+    name:       string,
+    policy:     NamespacePolicy?
+) → Result<oid, Error>
+```
+
+Creates a new namespace (see Section 6.2.3).
+
+#### `so_namespace_bind`
+
+```
+so_namespace_bind(
+    namespace:  string,
+    path:       string,
+    oid:        oid
+) → Result<(), Error>
+```
+
+Binds an object to a path in the specified namespace.
+
+#### `so_namespace_unbind`
+
+```
+so_namespace_unbind(
+    namespace:  string,
+    path:       string
+) → Result<(), Error>
+```
+
+Removes a path binding. The object itself is not deleted.
+
+---
+
+## 13. Security Considerations
+
+### 13.1 Threat Model
+
+The State Object model assumes the kernel is trusted. Execution Cells are untrusted and may attempt to:
+
+- **Escalate privileges** by forging capability tokens or manipulating provenance records.
+- **Exfiltrate data** by reading objects beyond their authorized scope.
+- **Tamper with lineage** by creating fake provenance events to disguise the origin of data.
+- **Deny service** by creating excessive objects, holding write locks, or triggering garbage collection cascades.
+
+### 13.2 Mitigations
+
+- **Capability tokens are kernel-signed.** Cells cannot forge or modify tokens. The kernel verifies signatures on every access.
+- **Provenance is kernel-generated.** Cells cannot write provenance events directly. Events are created as side effects of kernel-observed operations.
+- **Write locks have timeouts.** A cell that holds a write lock for longer than the configurable timeout (default: 60 seconds) has the lock forcibly released. The cell receives an error on its next write attempt.
+- **Quotas.** Namespaces and individual cells can have object count and storage quotas. Creation beyond quota is rejected.
+- **Sealed objects are tamper-evident.** The `content_hash` of a sealed object is a permanent integrity guarantee. Any modification would require re-sealing (which is impossible — sealed is permanent).
+
+### 13.3 Cryptographic Integrity
+
+For high-assurance environments, the State Object model supports optional **signed objects**: the `content_hash` and critical metadata fields are signed by the creating cell's key, and the signature is stored in the governance section. This enables end-to-end integrity verification: a consumer can verify that the object was created by the claimed cell and has not been modified, even if the kernel's storage layer is compromised.
+
+---
+
+## 14. Open Questions
+
+The following design questions remain open and may be resolved in subsequent RFCs or during implementation:
+
+1. **Schema registry.** Should Anunix include a built-in schema registry as a system service, or rely on external schema storage with URI references? A built-in registry simplifies validation but adds operational complexity.
+
+2. **Cross-node object references.** When Anunix runs across multiple nodes (RFC-0006), how are OID references to remote objects resolved? Eagerly (pre-fetch on access) or lazily (resolve on demand)?
+
+3. **Large object support.** The current model treats payload as a single unit. Objects larger than available RAM (e.g., multi-gigabyte datasets) may need a chunked payload model or external storage references.
+
+4. **Type evolution.** Can an object's type ever change (e.g., `byte_data` → `structured_data` when a schema is retroactively applied)? The current spec says no — but there may be practical pressure to allow controlled type migration.
+
+5. **Provenance query performance.** Deep provenance graphs may have millions of nodes. What indexing and caching strategies are needed for real-time ancestry and descendant queries?
+
+6. **Conflict resolution.** When two cells concurrently derive from the same object and produce conflicting updates, how should conflicts be surfaced? The current model serializes writes, but higher-level semantic conflicts (e.g., two cells producing different summaries of the same document) are not addressed.
+
+---
+
+## 15. Conclusion
+
+The State Object Model replaces the POSIX file with a richer primitive — one that carries its own type, metadata, provenance, access policy, and lifecycle rules as intrinsic properties. This shift enables the kernel to be an active participant in managing state, rather than a passive byte shuffler.
+
+The six canonical object types (`byte_data`, `structured_data`, `embedding`, `graph_node`, `model_output`, `execution_trace`) cover the essential categories of state in AI-native workloads. The capability-based access model, append-only provenance, and kernel-enforced lifecycle provide the governance foundation that convention-based systems cannot guarantee.
+
+Critically, the POSIX compatibility layer ensures that existing programs continue to work. The State Object model is strictly additive: every POSIX file is a valid `byte_data` State Object. New programs gain access to richer semantics; legacy programs see a familiar file system.
+
+This RFC provides the data model upon which the rest of Anunix is built. Execution Cells (RFC-0003) consume and produce State Objects. The Memory Control Plane (RFC-0004) decides where they are stored. The Scheduler (RFC-0005) routes them between cells. The Network Plane (RFC-0006) replicates them across nodes. The State Object is the atom from which Anunix's molecular structures are composed.
