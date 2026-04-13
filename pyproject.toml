@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "anunix"
+version = "0.1.0"
+description = "AI-native operating system framework — Phase 1 userland prototype"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Adam Pippert", email = "adam.pippert@gmail.com" },
+]
+keywords = ["ai", "os", "agent", "memory", "routing"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Operating System",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "networkx>=3.0",
+    "click>=8.0",
+    "structlog>=23.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+models = [
+    "litellm>=1.0",
+]
+embeddings = [
+    "chromadb>=0.4",
+]
+ipc = [
+    "pyzmq>=25.0",
+    "msgpack>=1.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1",
+    "mypy>=1.5",
+]
+all = [
+    "anunix[models,embeddings,ipc,dev]",
+]
+
+[project.scripts]
+anunix = "cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/anunix", "cli"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

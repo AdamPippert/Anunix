@@ -1,0 +1,40 @@
+[anunix]
+version = "0.1.0"
+data_dir = "~/.anunix/data"
+log_level = "INFO"
+
+[state]
+backend = "filesystem"
+content_addressed = true
+default_retention_days = 30
+
+[memory]
+tiers = ["L0", "L1", "L2", "L3", "L4", "L5"]
+hot_max_mb = 512
+embedding_model = "text-embedding-3-small"
+graph_backend = "networkx"
+chroma_persist_dir = "~/.anunix/chroma"
+
+[execution]
+max_concurrent_cells = 16
+default_timeout_seconds = 300
+trace_enabled = true
+
+[routing]
+default_strategy = "local_first"
+local_only = false
+fallback_model = "gpt-4o-mini"
+
+[scheduler]
+policy = "fifo"
+gpu_enabled = false
+
+[network]
+enabled = false
+listen_address = "0.0.0.0:5550"
+heartbeat_interval_seconds = 30
+default_trust_zone = "untrusted-remote"
+
+[posix]
+fuse_mount_point = "/tmp/anunix"
+enabled = false
