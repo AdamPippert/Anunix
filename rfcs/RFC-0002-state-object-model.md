@@ -584,3 +584,169 @@ The six canonical types are designed to cover the essential categories of state 
 3. Implementation in the kernel with backward-compatible storage format changes.
 
 The bar for new types is deliberately high. A rich type system is useful; a proliferating type system is a maintenance burden. If a use case can be served by `structured_data` with an appropriate schema, it should be.
+
+---
+
+## 6. Object Identity & Addressing
+
+Every State Object has a unique identity (its `oid`, defined in Section 4.2.1). But identity alone is not sufficient — programs need ways to *find* and *refer to* objects. This section defines the addressing model: how objects are named, how those names are resolved, and how different reference types serve different use cases.
+
+### 6.1 The Three Reference Forms
+
+Anunix supports three ways to refer to a State Object. Each form serves a different purpose, and programs choose the form that matches their intent.
+
+| Form                | Resolves to         | Stable across | Example                                              |
+|---------------------|---------------------|---------------|------------------------------------------------------|
+| **OID reference**   | Exactly one object  | Lifetime      | `oid:01961f3a-7c00-7000-8000-000000000001`           |
+| **Content reference** | Any object(s) with matching content | Content changes | `sha256:e3b0c44298fc1c149afb...` |
+| **Path reference**  | One object via namespace lookup | Rebinding | `anunix://default/projects/alpha/config.json` |
+
+#### 6.1.1 OID Reference
+
+The most precise reference. An OID reference points to exactly one object and never changes meaning. It is the analogue of referencing an inode number directly.
+
+Format: `oid:<uuid>`
+
+```
+oid:01961f3a-7c00-7000-8000-000000000001
+```
+
+- Always resolves to the same object, regardless of whether the object has been moved, renamed, or re-tiered.
+- If the object has been deleted (or its TTL has expired), the reference resolves to a tombstone record that confirms the object existed and was removed. Tombstones are retained for a configurable period (default: 30 days).
+- Versioned variant: `oid:<uuid>@<version>` references a specific historical version. For example, `oid:01961f3a-...@3` resolves to version 3 of the object, if retained per the retention policy.
+
+**When to use:** Provenance records, edge targets in graph nodes, input/output references in execution traces — anywhere you need an unambiguous, permanent pointer to a specific object.
+
+#### 6.1.2 Content Reference
+
+A reference based on the SHA-256 hash of the payload (the `content_hash` field from Section 4.2.2). Content references answer the question "does an object with this exact content exist?" rather than "which specific object do I want?"
+
+Format: `sha256:<hex-digest>`
+
+```
+sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+- May resolve to zero, one, or many objects. Multiple objects with identical payloads share the same content hash.
+- The kernel maintains a content-hash index for deduplication and lookup. This index is best-effort: it covers objects on local and SSD tiers but may not include objects that have been migrated to archive or remote tiers.
+- Content references are not versioned. They refer to payload content, not object identity.
+- Content references are used for integrity verification ("does this object still contain what I expect?") and deduplication ("does this content already exist in the system?").
+
+**When to use:** Cache invalidation, content-addressable storage patterns, integrity checks, deduplication queries.
+
+#### 6.1.3 Path Reference
+
+A human-readable name bound to an object through a namespace (Section 6.2). Path references are the closest analogue to POSIX file paths and are the primary interface for human users and the POSIX compatibility layer.
+
+Format: `anunix://<namespace>/<path>`
+
+```
+anunix://default/projects/alpha/config.json
+anunix://models/text-embedding-v3/weights
+anunix://traces/2026/04/13/cell-abc123
+```
+
+- A path reference is a **binding**, not an identity. The same path can be rebound to a different object (like a symlink being updated). The object itself does not know or care what paths point to it.
+- Path resolution goes through the namespace layer (Section 6.2), which maps hierarchical path segments to OIDs.
+- Multiple paths can point to the same object (aliases). An object can exist with no path references at all — it is still addressable by OID.
+- Path references are the default for POSIX compatibility: the POSIX path `/home/user/file.txt` maps to `anunix://posix/home/user/file.txt`.
+
+**When to use:** Human-facing interfaces, CLI tools, POSIX compatibility, any context where discoverability and readability matter more than permanence.
+
+### 6.2 Namespaces
+
+A namespace is a hierarchical directory structure that maps path segments to OIDs. Namespaces are themselves State Objects (type: `structured_data`), which means they have provenance, access policies, and retention — but they are given special treatment by the kernel for performance.
+
+#### 6.2.1 Namespace Structure
+
+```
+Namespace {
+    name:           string          // e.g., "default", "posix", "models"
+    root_oid:       oid             // OID of the root directory object
+    policy:         NamespacePolicy
+}
+
+NamespacePolicy {
+    default_access:     AccessPolicy    // default policy for new objects
+    default_retention:  RetentionPolicy // default retention for new objects
+    naming_rules:       NamingRules     // constraints on path segments
+    quota:              Quota?          // optional storage quota
+}
+
+NamingRules {
+    max_segment_length: uint32      // max bytes per path segment (default: 255)
+    max_depth:          uint32      // max directory nesting depth (default: 256)
+    allowed_chars:      regex       // permitted characters (default: POSIX portable)
+    case_sensitive:     bool        // default: true
+}
+```
+
+#### 6.2.2 System Namespaces
+
+Anunix defines the following system namespaces. They exist at boot and cannot be deleted.
+
+| Namespace   | Purpose                                                       |
+|-------------|---------------------------------------------------------------|
+| `posix`     | POSIX compatibility. Maps traditional paths to State Objects. Mounted as the root filesystem for legacy programs. |
+| `default`   | The default namespace for native Anunix applications. New objects that do not specify a namespace are created here. |
+| `system`    | Kernel-managed objects: scheduler state, memory plane configuration, system policies. Read-only for non-kernel cells. |
+| `traces`    | Execution traces. Automatically populated by the kernel. Time-partitioned path structure (`/YYYY/MM/DD/`). |
+
+#### 6.2.3 User-Defined Namespaces
+
+Applications can create additional namespaces for organizational purposes:
+
+```
+so_namespace_create("models", {
+    default_retention: { ttl: null, replicas: 2 },
+    naming_rules: { case_sensitive: true }
+})
+```
+
+User-defined namespaces are useful for isolation (a namespace per project, per team, or per pipeline), for applying bulk policies (all objects in the `ephemeral` namespace get a 1-hour TTL), and for quota management.
+
+### 6.3 Path Resolution
+
+When a program references an object by path, the kernel resolves it through the following steps:
+
+```
+resolve("anunix://models/text-embedding-v3/weights")
+
+1. Look up namespace "models" → Namespace object, get root_oid
+2. From root, resolve segment "text-embedding-v3" → directory entry → oid
+3. From that oid, resolve segment "weights" → directory entry → oid
+4. Return final oid (and object handle)
+```
+
+Path resolution is a kernel-internal operation. The namespace directory structure is cached in memory for active namespaces. Resolution cost is O(depth) in the number of path segments.
+
+**Atomicity.** Path bindings are updated atomically. If a path is rebound from object A to object B, no observer will see a partially-updated state. Concurrent readers see either the old binding or the new binding, never an inconsistent state.
+
+**Dangling paths.** If a path references an object that has been garbage-collected (TTL expired, no retention hold), the path entry is marked as **stale**. Accessing a stale path returns an error with the tombstone information for the deleted object, rather than silently succeeding. The kernel periodically sweeps stale entries.
+
+### 6.4 Cross-References Between Objects
+
+Objects frequently reference other objects — a `graph_node` has edges, a `model_output` has `input_refs`, provenance events have `input_oids`. All inter-object references use OID references.
+
+This is a deliberate choice:
+
+- **Paths can be rebound.** If object A references object B by path, and the path is later rebound to object C, A now silently points at C. OID references are stable.
+- **Content hashes are ambiguous.** Multiple objects can share the same content hash. An OID reference is unambiguous.
+- **OID references survive moves.** If object B is moved to a different namespace or a different storage tier, A's OID reference still resolves correctly.
+
+The one exception is the `schema_uri` field (Section 4.3.2), which uses a URI rather than an OID. Schemas may be external to the Anunix system (e.g., a JSON Schema hosted on a web server), so a URI is more general. For schemas that are themselves State Objects, the URI can include the OID: `anunix:oid:01961f3a-...`.
+
+### 6.5 Addressing and the POSIX Layer
+
+The POSIX compatibility layer presents a traditional file-system view by mapping POSIX paths onto the `posix` namespace:
+
+| POSIX operation          | Anunix equivalent                                     |
+|--------------------------|-------------------------------------------------------|
+| `open("/etc/config", …)` | Resolve `anunix://posix/etc/config` → OID → open handle |
+| `stat("/etc/config")`    | Resolve path → read system metadata                   |
+| `readdir("/etc/")`       | List directory entries in `anunix://posix/etc/`       |
+| `link("a", "b")`         | Create a second path binding to the same OID          |
+| `unlink("a")`            | Remove the path binding (object persists if other refs exist) |
+| `rename("a", "b")`       | Atomic rebind: remove old path, create new path       |
+
+POSIX programs see a familiar `/` rooted tree. They are unaware that paths are bindings into a namespace backed by State Objects. This transparency is essential for DG-7 (backward compatibility).
