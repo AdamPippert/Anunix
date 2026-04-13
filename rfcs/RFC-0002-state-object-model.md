@@ -750,3 +750,199 @@ The POSIX compatibility layer presents a traditional file-system view by mapping
 | `rename("a", "b")`       | Atomic rebind: remove old path, create new path       |
 
 POSIX programs see a familiar `/` rooted tree. They are unaware that paths are bindings into a namespace backed by State Objects. This transparency is essential for DG-7 (backward compatibility).
+
+---
+
+## 7. Metadata Model
+
+Section 4.5 introduced the two metadata namespaces — system and user. This section specifies the full metadata schema, the rules for reading and writing metadata, and how metadata participates in queries and kernel decisions.
+
+### 7.1 Principles
+
+Metadata exists to make objects discoverable and classifiable without loading their payloads. Three principles govern its design:
+
+1. **Separation of authority.** System metadata is the kernel's view of the object. User metadata is the application's view. Neither can overwrite the other, and the kernel guarantees consistency of its own fields without trusting application input.
+2. **Queryability.** All metadata fields — system and user — are indexed and queryable. The kernel provides a structured query interface (Section 12, `so_query`) that supports filtering, sorting, and aggregation over metadata fields. Metadata that cannot be queried is dead weight.
+3. **Proportional cost.** An object with one user metadata field and an object with a hundred must both be efficient to create and access. The metadata storage format uses a compact key-value encoding that avoids per-field overhead beyond the data itself.
+
+### 7.2 System Metadata — Complete Schema
+
+The system metadata fields introduced in Section 4.5.1 are the base set. The full schema includes additional type-specific fields that the kernel populates based on the object's `object_type`.
+
+#### 7.2.1 Universal Fields (all object types)
+
+| Field                | Type        | Set by   | Mutable | Description                                              |
+|----------------------|-------------|----------|---------|----------------------------------------------------------|
+| `sys.created_at`     | timestamp   | kernel   | no      | UTC creation time, nanosecond precision                  |
+| `sys.modified_at`    | timestamp   | kernel   | yes*    | Last payload or governance mutation (* kernel-only)       |
+| `sys.accessed_at`    | timestamp   | kernel   | yes*    | Last `read_payload` access (* kernel-only)               |
+| `sys.size_bytes`     | uint64      | kernel   | yes*    | Payload size in bytes                                    |
+| `sys.storage_tier`   | enum        | kernel   | yes*    | Current tier: `ram`, `ssd`, `archive`, `remote`          |
+| `sys.sealed`         | bool        | kernel   | yes*    | Payload immutability flag (one-way: false → true)        |
+| `sys.creator_cell`   | oid         | kernel   | no      | OID of the Execution Cell that created this object       |
+| `sys.parent_oids`    | oid[]       | kernel   | no      | OIDs of direct parent objects (derivation)               |
+| `sys.version`        | uint64      | kernel   | yes*    | Current version number (mirrors Identity.version)        |
+| `sys.content_hash`   | sha256      | kernel   | yes*    | SHA-256 of payload (mirrors Identity.content_hash)       |
+| `sys.object_type`    | enum        | kernel   | no      | The canonical type (mirrors Type.object_type)            |
+| `sys.namespace`      | string      | kernel   | yes*    | Namespace this object resides in (if path-bound)         |
+| `sys.path`           | string[]    | kernel   | yes*    | All paths currently bound to this object                 |
+| `sys.provenance_len` | uint32      | kernel   | yes*    | Number of provenance events in the log                   |
+
+Fields marked `yes*` are mutable only by the kernel — applications cannot set them directly.
+
+#### 7.2.2 Type-Specific System Fields
+
+The kernel adds additional system metadata fields depending on the `object_type`. These are populated automatically from the payload header and kept in sync on mutation.
+
+**`embedding` objects:**
+
+| Field                   | Type    | Description                              |
+|-------------------------|---------|------------------------------------------|
+| `sys.embed.dimensions`  | uint32  | Vector dimensionality                    |
+| `sys.embed.element_type`| enum    | Element type (float16, float32, etc.)    |
+| `sys.embed.normalized`  | bool    | Whether vector is L2-normalized          |
+| `sys.embed.model_uri`   | string  | Schema URI identifying the embedding model |
+
+**`graph_node` objects:**
+
+| Field                   | Type    | Description                              |
+|-------------------------|---------|------------------------------------------|
+| `sys.graph.node_type`   | string  | Application-defined node type label      |
+| `sys.graph.edge_count`  | uint32  | Number of outgoing edges                 |
+| `sys.graph.edge_labels` | string[]| Distinct edge labels on outgoing edges   |
+
+**`model_output` objects:**
+
+| Field                   | Type    | Description                              |
+|-------------------------|---------|------------------------------------------|
+| `sys.model.model_id`    | string  | Model identifier and version             |
+| `sys.model.task_type`   | string  | Task type (classification, generation, etc.) |
+| `sys.model.confidence`  | float32 | Model-reported confidence [0.0, 1.0]     |
+| `sys.model.input_count` | uint32  | Number of input objects                  |
+
+**`execution_trace` objects:**
+
+| Field                   | Type    | Description                              |
+|-------------------------|---------|------------------------------------------|
+| `sys.trace.cell_oid`    | oid     | OID of the Execution Cell                |
+| `sys.trace.cell_type`   | enum    | Cell type (code, model, hybrid)          |
+| `sys.trace.exit_status` | enum    | Outcome (success, failure, timeout, cancelled) |
+| `sys.trace.duration_ms` | uint64  | Wall-clock duration in milliseconds      |
+| `sys.trace.cpu_ms`      | uint64  | CPU time consumed                        |
+| `sys.trace.memory_peak` | uint64  | Peak memory in bytes                     |
+
+These type-specific fields are indexed alongside the universal fields. This enables efficient kernel-level queries like "all embeddings with dimensions == 768 and model_uri matching `text-embedding-v3`" or "all execution traces with exit_status == FAILURE and duration_ms > 30000".
+
+### 7.3 User Metadata — Schema and Constraints
+
+User metadata is an application-managed key-value map. The kernel stores, indexes, and queries it, but does not interpret its meaning.
+
+#### 7.3.1 Key Format
+
+- UTF-8 strings, 1–256 bytes.
+- Must match the pattern `[a-zA-Z_][a-zA-Z0-9_.]*`. This ensures keys are valid identifiers in most programming languages and query syntaxes.
+- Keys starting with `sys.` are reserved for system metadata. The kernel rejects any attempt to set a user metadata key with this prefix.
+- Keys starting with `anunix.` are reserved for future Anunix extensions. The kernel rejects these as well.
+- No other prefixes are reserved. Applications are encouraged to use a namespace prefix (e.g., `myapp.stage`, `pipeline.run_id`) to avoid collisions.
+
+#### 7.3.2 Value Types
+
+| Type    | Size limit  | Description                                      |
+|---------|-------------|--------------------------------------------------|
+| string  | 64 KiB      | UTF-8 text                                       |
+| int64   | 8 bytes     | Signed 64-bit integer                            |
+| float64 | 8 bytes     | IEEE 754 double-precision float                  |
+| bool    | 1 byte      | True or false                                    |
+| bytes   | 64 KiB      | Arbitrary byte sequence (not indexed by content) |
+| list    | 64 KiB total| Ordered list of values (single type per list)    |
+
+All value types except `bytes` are indexed for query predicates. `bytes` values are stored but only queryable by existence (`HAS(key)`), not by content.
+
+#### 7.3.3 Limits
+
+| Constraint              | Limit     | Rationale                                      |
+|-------------------------|-----------|-------------------------------------------------|
+| Max keys per object     | 1,024     | Prevents metadata bloat on individual objects    |
+| Max total size per object | 1 MiB  | Keeps metadata loadable in a single page         |
+| Max key length          | 256 bytes | Keeps index entries compact                      |
+| Max value size          | 64 KiB   | Prevents using metadata as payload bypass        |
+
+If an application needs to store more than 1 MiB of descriptive data, it should create a separate `structured_data` State Object and reference it via a user metadata key (e.g., `myapp.extended_meta_oid`).
+
+### 7.4 Semantic Annotations
+
+Semantic annotations are a specific pattern within user metadata that enables higher-level classification of objects. They are not a separate system — they are conventions built on user metadata — but they are important enough to standardize.
+
+#### 7.4.1 Standard Annotation Keys
+
+The following user metadata keys are recognized by Anunix tooling (CLI, query interfaces, dashboards) as semantic annotations. They are not enforced by the kernel, but applications that use them benefit from interoperability.
+
+| Key                   | Type    | Purpose                                         |
+|-----------------------|---------|--------------------------------------------------|
+| `anno.tags`           | list    | Free-form classification tags                    |
+| `anno.description`    | string  | Human-readable description of the object         |
+| `anno.source`         | string  | Logical source system or pipeline name           |
+| `anno.stage`          | string  | Pipeline stage (e.g., "raw", "processed", "final") |
+| `anno.language`       | string  | Natural language of content (BCP-47 code)        |
+| `anno.sensitivity`    | string  | Data sensitivity level ("public", "internal", "confidential", "restricted") |
+| `anno.project`        | string  | Project or team identifier                       |
+| `anno.expires_reason` | string  | Human-readable reason for the retention TTL      |
+
+#### 7.4.2 Why Conventions, Not Schema
+
+Making these annotations a kernel-enforced schema would violate DG-8 (minimal overhead) — every object would carry the cost of a fixed annotation structure whether it uses it or not. By defining them as conventions on user metadata, applications opt in only when they benefit, and the kernel indexes them just like any other user metadata.
+
+### 7.5 Metadata Queries
+
+The kernel supports structured queries over metadata fields. The query language is defined in Section 12 (`so_query`), but the key semantics are:
+
+#### 7.5.1 Supported Predicates
+
+| Predicate      | Applies to         | Example                                       |
+|----------------|--------------------|------------------------------------------------|
+| `EQ(k, v)`    | All indexed types   | `EQ("sys.object_type", "embedding")`          |
+| `NEQ(k, v)`   | All indexed types   | `NEQ("sys.trace.exit_status", "SUCCESS")`     |
+| `GT(k, v)`    | int64, float64, timestamp | `GT("sys.size_bytes", 1048576)`         |
+| `LT(k, v)`    | int64, float64, timestamp | `LT("sys.model.confidence", 0.8)`      |
+| `GTE(k, v)`   | int64, float64, timestamp | `GTE("sys.created_at", "2026-04-01T00:00:00Z")` |
+| `LTE(k, v)`   | int64, float64, timestamp | `LTE("sys.trace.duration_ms", 5000)`   |
+| `IN(k, vs)`   | All indexed types   | `IN("anno.stage", ["raw", "processed"])`      |
+| `HAS(k)`      | All types           | `HAS("anno.project")`                         |
+| `PREFIX(k, v)` | string             | `PREFIX("sys.path", "/projects/alpha/")`       |
+| `CONTAINS(k, v)` | list            | `CONTAINS("anno.tags", "training")`            |
+
+#### 7.5.2 Compound Queries
+
+Predicates can be combined with `AND`, `OR`, and `NOT`:
+
+```
+AND(
+    EQ("sys.object_type", "model_output"),
+    LT("sys.model.confidence", 0.8),
+    GTE("sys.created_at", "2026-04-12T00:00:00Z"),
+    CONTAINS("anno.tags", "production")
+)
+```
+
+This query returns all model outputs from the last day with confidence below 0.8 that are tagged as production data — a kernel-level operation that requires no application-specific indexing.
+
+#### 7.5.3 Result Ordering and Pagination
+
+Query results can be ordered by any indexed metadata field (ascending or descending) and paginated with cursor-based pagination. The default ordering is `sys.created_at DESC` (newest first). The kernel returns results as a stream of OIDs; the caller decides whether to load metadata, payloads, or both.
+
+### 7.6 Metadata and the POSIX Layer
+
+POSIX `stat()` maps to a subset of system metadata:
+
+| `stat` field   | Mapped from                                              |
+|----------------|----------------------------------------------------------|
+| `st_size`      | `sys.size_bytes`                                         |
+| `st_atime`     | `sys.accessed_at`                                        |
+| `st_mtime`     | `sys.modified_at`                                        |
+| `st_ctime`     | `sys.created_at` (note: POSIX ctime is "change time," but Anunix maps it to creation for simplicity; `sys.modified_at` covers the change-time role) |
+| `st_mode`      | Derived from the object's access policy (Section 4.6.2)  |
+| `st_uid/st_gid`| Mapped from the creator cell's associated user/group identity |
+| `st_ino`       | Low 64 bits of the `oid` (collision-possible but rare; sufficient for POSIX inode semantics) |
+| `st_nlink`     | Count of path bindings to this object                    |
+
+Extended attributes (`xattr`) map to user metadata keys. `getxattr("user.myapp.stage")` reads the user metadata key `myapp.stage`. This provides a natural POSIX-compatible path for applications that want to use metadata without native Anunix APIs.
