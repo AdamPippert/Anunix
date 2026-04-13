@@ -1,5 +1,7 @@
 # AI-Native OS Architecture Proposal
 
+> **Note:** This document is the original high-level architecture proposal. It has been formalized and expanded as [RFC-0001: Architecture Thesis](rfcs/RFC-0001-architecture-thesis.md). See the [RFC Index](rfcs/RFC-INDEX.md) for all specifications.
+
 ## 1. Thesis
 
 The next generation of operating systems must support both:
