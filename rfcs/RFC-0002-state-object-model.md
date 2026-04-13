@@ -96,3 +96,62 @@ The goal is **not** to make files more complex. The goal is to make the operatin
 ### 2.5 Design Constraint: Backward Compatibility
 
 Anunix does not discard the POSIX model. A traditional byte stream is a valid State Object (type: `byte_data`, no provenance, default policies). The POSIX compatibility layer (Section 11) maps `open`/`read`/`write`/`close` onto State Object operations transparently. Existing programs run without modification. The difference is that new programs *can* use richer semantics, and the kernel *can* reason about state — without forcing legacy tools to change.
+
+---
+
+## 3. Design Goals
+
+The State Object model is governed by the following design goals, listed in priority order. When goals conflict, higher-priority goals take precedence.
+
+### DG-1: Universality
+
+Every piece of persistent or semi-persistent state in the system is a State Object. There is no separate concept of "file," "blob," "record," or "artifact" at the kernel level. A raw byte stream is a State Object. A 768-dimensional embedding vector is a State Object. A model checkpoint containing billions of parameters is a State Object. This uniformity is what allows the rest of the system — scheduling, memory management, provenance tracking — to operate on a single abstraction.
+
+**Test:** If a piece of state exists in the system and is not a State Object, the design has failed.
+
+### DG-2: Self-Description
+
+A State Object carries enough information for the kernel to understand what it is without opening or parsing its payload. The object's type, structure, schema version, and semantic annotations are part of the object itself — not encoded in a file extension, not stored in a sidecar, not inferred by heuristic. Any component in the system can inspect an object's metadata and make decisions (routing, placement, validation) without deserializing the data.
+
+**Test:** If a component must parse an object's payload to determine what the object *is*, the design has failed.
+
+### DG-3: Provenance by Default
+
+Every State Object records its origin and transformation history as an intrinsic, immutable property. Provenance is not opt-in. It is not a feature of a particular tool or framework. It is a system guarantee: for any object, you can answer "where did this come from, what produced it, and what was it derived from?" The provenance record is append-only; it cannot be retroactively edited or stripped.
+
+**Test:** If an object exists in the system with no provenance record, and it was not explicitly created as a POSIX-compatibility shim, the design has failed.
+
+### DG-4: Policy as a First-Class Property
+
+Access control, retention rules, and lifecycle behavior are part of the object's definition, not external configuration. An object can declare "I expire after 24 hours," "I am immutable once sealed," "only audited PII-handling cells may read my raw content," or "I must be replicated to at least two storage tiers." The kernel enforces these policies. They travel with the object if it is moved, copied, or transmitted.
+
+**Test:** If a policy can be silently circumvented by accessing the object through a different interface, the design has failed.
+
+### DG-5: Composability
+
+State Objects are designed to be inputs and outputs of transformations. An Execution Cell (RFC-0003) takes State Objects as input and produces State Objects as output. Semantic Streams carry State Objects between cells. The model is explicitly pipeline-friendly: objects flow through chains of transformations, accumulating provenance at each step, without requiring format conversion or wrapper logic between stages.
+
+**Test:** If connecting two Execution Cells requires a format conversion step that is not itself an Execution Cell, the design has failed.
+
+### DG-6: Kernel Participation
+
+The kernel can make informed decisions about State Objects because it understands their metadata. This means:
+
+- **Storage placement.** Embeddings can be placed near the vector index. Frequently accessed model weights can be pinned in GPU-attached memory. Cold archival objects can be demoted to slower tiers.
+- **Pre-fetching.** When an Execution Cell declares its input objects, the kernel can begin loading them before the cell starts.
+- **Validation.** The kernel can reject a write that violates an object's declared schema, or block access that violates its policy, at the syscall boundary.
+- **Garbage collection.** The kernel can reclaim objects whose TTL has expired or whose retention policy is satisfied, without relying on userland cron jobs.
+
+**Test:** If the kernel treats a State Object as an opaque blob and makes no decisions based on its metadata, the object is effectively a POSIX file and the design goal is not met.
+
+### DG-7: Backward Compatibility
+
+Any valid POSIX file operation must produce correct results when applied to the Anunix system through the compatibility layer. Existing binaries that use `open`, `read`, `write`, `close`, `stat`, `readdir`, and related syscalls must work without modification. The compatibility layer may add provenance records and default metadata, but it must never reject an operation that POSIX would accept. Performance of POSIX-mode operations must be within 10% of an equivalent traditional file system for common workloads.
+
+**Test:** If an existing POSIX binary produces different results or fails when run on Anunix (absent bugs), the design has failed.
+
+### DG-8: Minimal Overhead for Simple Cases
+
+The cost of the State Object model must be proportional to the features used. A simple byte-stream object with default metadata and no custom policies should have near-zero overhead compared to a POSIX file. The metadata, provenance, and policy machinery should add cost only when it carries meaningful information. This prevents the abstraction from penalizing workloads that don't need its full capabilities.
+
+**Test:** If creating and reading a simple byte-stream State Object is measurably slower than creating and reading a POSIX file (beyond a constant-time metadata allocation), the implementation must be optimized before the design is considered complete.
