@@ -34,6 +34,14 @@ htmlcov/
 *.sqlite
 chroma_data/
 
+# Kernel build artifacts
+*.o
+*.elf
+*.bin
+
+# Locally-fetched LLVM tools (from make toolchain)
+tools/llvm/
+
 # OS
 .DS_Store
 Thumbs.db
