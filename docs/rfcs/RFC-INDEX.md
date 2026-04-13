@@ -21,6 +21,7 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0004](RFC-0004-memory-control-plane.md) | Memory Control Plane | Draft | Adam Pippert | 0001, 0002, 0003 |
 | [0005](RFC-0005-routing-and-scheduler.md) | Routing Plane and Unified Scheduler | Draft | Adam Pippert | 0001, 0002, 0003, 0004 |
 | [0006](RFC-0006-network-plane.md) | Network Plane and Federated Execution | Draft | Adam Pippert | 0001, 0002, 0003, 0004, 0005 |
+| [0007](RFC-0007-capability-objects.md) | Capability Objects and Runtime Installation | Draft | Adam Pippert | 0001, 0002, 0003, 0004, 0005, 0006 |
 
 ## Dependency Graph
 
@@ -31,4 +32,5 @@ RFC-0001 (Architecture Thesis)
             └── RFC-0004 (Memory Control Plane)
                  └── RFC-0005 (Routing Plane and Unified Scheduler)
                       └── RFC-0006 (Network Plane and Federated Execution)
+                           └── RFC-0007 (Capability Objects and Runtime Installation)
 ```
