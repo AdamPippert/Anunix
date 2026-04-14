@@ -27,9 +27,11 @@ void arch_irq_restore(bool state);
 /* Read current timestamp (nanoseconds) */
 anx_time_t arch_time_now(void);
 
-/* Console output for early boot (before any drivers) */
+/* Console I/O for early boot (before any drivers) */
 void arch_console_putc(char c);
 void arch_console_puts(const char *s);
+int  arch_console_getc(void);
+bool arch_console_has_input(void);
 
 /* Memory barrier primitives */
 void arch_mb(void);	/* full memory barrier */
