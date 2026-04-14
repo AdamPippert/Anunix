@@ -42,6 +42,9 @@ chroma_data/
 # Locally-fetched LLVM tools (from make toolchain)
 tools/llvm/
 
+# Locally-built QEMU (from make qemu-deps)
+tools/qemu/
+
 # OS
 .DS_Store
 Thumbs.db

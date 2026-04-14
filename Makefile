@@ -5,6 +5,7 @@
 #   make kernel ARCH=arm64
 #   make kernel ARCH=x86_64
 #   make qemu              Boot kernel in QEMU (headless, serial console)
+#   make qemu-deps         Build QEMU and dependencies from source
 #   make clean             Remove all build artifacts
 #   make test              Run kernel unit tests (host-native)
 #   make toolchain         Fetch LLVM tools (ld.lld, llvm-objcopy)
@@ -48,14 +49,24 @@ else
   OBJCOPY := llvm-objcopy
 endif
 
+LOCAL_QEMU := tools/qemu/bin
+
 ifeq ($(ARCH),arm64)
   TARGET  := aarch64-none-elf
-  QEMU    := qemu-system-aarch64
-  QFLAGS  := -M virt -cpu cortex-a72 -m 512M -nographic -kernel
+  ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-aarch64),)
+    QEMU  := $(LOCAL_QEMU)/qemu-system-aarch64
+  else
+    QEMU  := qemu-system-aarch64
+  endif
+  QFLAGS  := -M virt -cpu cortex-a72 -m 512M -nographic -serial mon:stdio -kernel
 else ifeq ($(ARCH),x86_64)
   TARGET  := x86_64-none-elf
-  QEMU    := qemu-system-x86_64
-  QFLAGS  := -m 512M -nographic -no-reboot -kernel
+  ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-x86_64),)
+    QEMU  := $(LOCAL_QEMU)/qemu-system-x86_64
+  else
+    QEMU  := qemu-system-x86_64
+  endif
+  QFLAGS  := -m 512M -nographic -no-reboot -serial mon:stdio -kernel
 else
   $(error Unknown ARCH=$(ARCH). Use arm64 or x86_64)
 endif
@@ -63,6 +74,7 @@ endif
 CFLAGS  := -target $(TARGET) \
            -ffreestanding -fno-builtin -nostdlib -nostdinc \
            -Wall -Wextra -Werror -std=c11 \
+           -mgeneral-regs-only \
            -I kernel/include \
            -O2 -g
 
@@ -80,7 +92,7 @@ LINK_LD   := $(ARCH_DIR)/link.ld
 
 # Collect sources (use shell find for recursive, wildcard doesn't recurse)
 ARCH_C    := $(wildcard $(ARCH_DIR)/*.c)
-ARCH_S    := $(wildcard $(ARCH_DIR)/*.S)
+ARCH_S    := $(filter-out %/qemu_boot.S, $(wildcard $(ARCH_DIR)/*.S))
 CORE_C    := $(shell find $(CORE_DIR) -name '*.c' 2>/dev/null)
 LIB_C     := $(wildcard $(LIB_DIR)/*.c)
 
@@ -96,7 +108,7 @@ KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
-.PHONY: kernel qemu clean test toolchain toolchain-check proto-install proto-test
+.PHONY: kernel qemu qemu-deps clean test toolchain toolchain-check proto-install proto-test
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -129,8 +141,31 @@ $(BUILD_DIR)/lib/%.o: $(LIB_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-qemu: $(KERNEL_BIN)
-	$(QEMU) $(QFLAGS) $(KERNEL_BIN)
+# x86_64 QEMU needs a 32-bit multiboot wrapper (QEMU rejects ELF64 multiboot).
+# ARM64 can use the ELF directly.
+QEMU_KERNEL := $(KERNEL_ELF)
+
+ifeq ($(ARCH),x86_64)
+  QEMU_BOOT_SRC := $(ARCH_DIR)/qemu_boot.S
+  QEMU_BOOT_LD  := $(ARCH_DIR)/qemu_link.ld
+  QEMU_BOOT_OBJ := $(BUILD_DIR)/qemu_boot.o
+  QEMU_KERNEL   := $(BUILD_DIR)/anunix-qemu.elf
+
+$(QEMU_BOOT_OBJ): $(QEMU_BOOT_SRC) $(KERNEL_BIN)
+	@mkdir -p $(dir $@)
+	$(CC) -target i686-none-elf -ffreestanding -nostdlib -c $< -o $@
+
+$(QEMU_KERNEL): $(QEMU_BOOT_OBJ) $(QEMU_BOOT_LD)
+	@mkdir -p $(dir $@)
+	$(LD) -nostdlib -T $(QEMU_BOOT_LD) -o $@ $(QEMU_BOOT_OBJ)
+endif
+
+qemu: $(QEMU_KERNEL)
+	$(QEMU) $(QFLAGS) $(QEMU_KERNEL)
+
+# Build QEMU and dependencies from source into tools/qemu/
+qemu-deps:
+	@./tools/build-qemu.sh
 
 # Fetch LLVM tools (ld.lld, llvm-objcopy) into tools/llvm/bin/
 toolchain:
@@ -154,8 +189,28 @@ clean:
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf dist/ *.egg-info
 
+# Host-native test build — uses system clang without freestanding/cross flags.
+# Excludes kernel/core/main.c (test_main.c provides kernel_main).
+TEST_CC     := clang
+TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
+TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, $(CORE_C))
+TEST_SRCS   := tests/harness/test_main.c \
+               tests/harness/mock_arch.c \
+               tests/test_state_object.c \
+               tests/test_cell_lifecycle.c \
+               tests/test_cell_runtime.c \
+               tests/test_memplane.c \
+               tests/test_engine_registry.c \
+               tests/test_scheduler.c \
+               tests/test_capability.c
+TEST_BIN    := build/test/anunix_test
+
 test:
-	@echo "TODO: kernel unit test harness"
+	@echo "  Building host-native test binary..."
+	@mkdir -p build/test
+	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(LIB_C) -o $(TEST_BIN)
+	@echo "  Running tests..."
+	@$(TEST_BIN)
 
 # --- Python prototype (legacy) ---
 proto-install:

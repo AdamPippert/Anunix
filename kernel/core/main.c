@@ -8,28 +8,60 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
+#include <anx/state_object.h>
+#include <anx/cell.h>
+#include <anx/memplane.h>
+#include <anx/engine.h>
+#include <anx/route.h>
+#include <anx/sched.h>
+#include <anx/netplane.h>
+#include <anx/capability.h>
+#include <anx/shell.h>
 
 #define ANX_VERSION "0.1.0"
 
 void kernel_main(void)
 {
-	kprintf("Anunix %s booting\n", ANX_VERSION);
+	/* Early hardware init (serial/UART so kprintf works) */
+	arch_early_init();
 
-	/* Architecture-specific full init */
+	kprintf("\nAnunix %s booting\n", ANX_VERSION);
+
+	/* Architecture-specific full init (page allocator, etc.) */
 	arch_init();
 
 	kprintf("arch init complete\n");
 
-	/* TODO: Initialize subsystems in dependency order:
-	 *   1. State Object Layer  (RFC-0002)
-	 *   2. Execution Cell Runtime (RFC-0003)
-	 *   3. Memory Control Plane (RFC-0004)
-	 *   4. Routing + Scheduler (RFC-0005)
-	 *   5. Network Plane (RFC-0006)
-	 *   6. Capability Objects (RFC-0007)
-	 *   7. POSIX compatibility layer
-	 */
+	/* 1. State Object Layer (RFC-0002) */
+	anx_objstore_init();
+	kprintf("state object layer initialized\n");
 
-	kprintf("kernel init complete, halting\n");
-	arch_halt();
+	/* 2. Execution Cell Runtime (RFC-0003) */
+	anx_cell_store_init();
+	kprintf("execution cell runtime initialized\n");
+
+	/* 3. Memory Control Plane (RFC-0004) */
+	anx_memplane_init();
+	kprintf("memory control plane initialized\n");
+
+	/* 4. Routing Plane + Scheduler (RFC-0005) */
+	anx_engine_registry_init();
+	anx_route_planner_init();
+	anx_sched_init();
+	kprintf("routing plane and scheduler initialized\n");
+
+	/* 5. Network Plane (RFC-0006) */
+	anx_netplane_init();
+	kprintf("network plane initialized\n");
+
+	/* 6. Capability Objects (RFC-0007) */
+	anx_cap_store_init();
+	kprintf("capability store initialized\n");
+
+	/* TODO: 7. POSIX compatibility layer */
+
+	kprintf("kernel init complete -- all subsystems online\n");
+
+	/* Enter interactive monitor shell */
+	anx_shell_run();
 }

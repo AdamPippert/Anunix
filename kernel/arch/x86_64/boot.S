@@ -1,8 +1,11 @@
 /*
- * boot.S — x86_64 boot entry point for UEFI-booted systems.
+ * boot.S — x86_64 boot entry point.
  *
- * UEFI hands us control in 64-bit long mode with identity-mapped memory.
- * We set up our own stack and jump to the C kernel entry point.
+ * Assumes 64-bit long mode with identity-mapped memory.
+ * UEFI provides this natively. For QEMU, qemu_boot.S handles
+ * the multiboot handshake and 32->64 mode switch first.
+ *
+ * We set up our own stack, zero BSS, and jump to C.
  */
 
 .section .text.boot

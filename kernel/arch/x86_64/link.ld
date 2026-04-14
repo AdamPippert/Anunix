@@ -1,6 +1,6 @@
 /*
  * link.ld — x86_64 kernel linker script.
- * Loads at 1 MiB (standard for UEFI-loaded kernels).
+ * Loads at 1 MiB (standard for x86 kernels).
  */
 
 ENTRY(_start)
