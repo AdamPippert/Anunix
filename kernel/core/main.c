@@ -16,6 +16,7 @@
 #include <anx/sched.h>
 #include <anx/netplane.h>
 #include <anx/capability.h>
+#include <anx/splash.h>
 #include <anx/shell.h>
 
 #define ANX_VERSION "0.1.0"
@@ -25,7 +26,9 @@ void kernel_main(void)
 	/* Early hardware init (serial/UART so kprintf works) */
 	arch_early_init();
 
-	kprintf("\nAnunix %s booting\n", ANX_VERSION);
+	/* Boot splash */
+	anx_splash();
+	kprintf("  Anunix %s booting\n\n", ANX_VERSION);
 
 	/* Architecture-specific full init (page allocator, etc.) */
 	arch_init();
