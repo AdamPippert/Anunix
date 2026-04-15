@@ -37,6 +37,10 @@ void arch_console_puts(const char *s);
 int  arch_console_getc(void);
 bool arch_console_has_input(void);
 
+/* Hardware capability probing */
+struct anx_hw_inventory;
+void arch_probe_hw(struct anx_hw_inventory *inv);
+
 /* Memory barrier primitives */
 void arch_mb(void);	/* full memory barrier */
 void arch_rmb(void);	/* read barrier */

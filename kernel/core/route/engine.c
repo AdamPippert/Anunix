@@ -105,8 +105,9 @@ int anx_engine_find(enum anx_engine_class engine_class,
 			if ((eng->capabilities & required_caps) != required_caps)
 				continue;
 
-			/* Filter out offline engines */
-			if (eng->status == ANX_ENGINE_OFFLINE)
+			/* Only include engines that can serve */
+			if (eng->status != ANX_ENGINE_AVAILABLE &&
+			    eng->status != ANX_ENGINE_DEGRADED)
 				continue;
 
 			results[found++] = eng;
@@ -129,6 +130,120 @@ int anx_engine_set_status(struct anx_engine *engine,
 	engine->status = status;
 	anx_spin_unlock(&engine->lock);
 
+	return ANX_OK;
+}
+
+/*
+ * Engine status transition table.
+ * MAINTENANCE is reachable from any state (admin override).
+ */
+static const bool engine_transitions[ANX_ENGINE_STATUS_COUNT][ANX_ENGINE_STATUS_COUNT] = {
+	[ANX_ENGINE_REGISTERED] = {
+		[ANX_ENGINE_LOADING] = true,
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_LOADING] = {
+		[ANX_ENGINE_READY] = true,
+		[ANX_ENGINE_OFFLINE] = true,		/* load failed */
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_READY] = {
+		[ANX_ENGINE_AVAILABLE] = true,
+		[ANX_ENGINE_UNLOADING] = true,
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_AVAILABLE] = {
+		[ANX_ENGINE_DEGRADED] = true,
+		[ANX_ENGINE_DRAINING] = true,
+		[ANX_ENGINE_OFFLINE] = true,		/* crash */
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_DEGRADED] = {
+		[ANX_ENGINE_AVAILABLE] = true,		/* recovered */
+		[ANX_ENGINE_DRAINING] = true,
+		[ANX_ENGINE_OFFLINE] = true,
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_DRAINING] = {
+		[ANX_ENGINE_UNLOADING] = true,
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_UNLOADING] = {
+		[ANX_ENGINE_OFFLINE] = true,
+		[ANX_ENGINE_REGISTERED] = true,		/* can reload */
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_OFFLINE] = {
+		[ANX_ENGINE_LOADING] = true,
+		[ANX_ENGINE_REGISTERED] = true,
+		[ANX_ENGINE_MAINTENANCE] = true,
+	},
+	[ANX_ENGINE_MAINTENANCE] = {
+		[ANX_ENGINE_LOADING] = true,		/* admin re-enable */
+		[ANX_ENGINE_REGISTERED] = true,
+		[ANX_ENGINE_OFFLINE] = true,
+	},
+};
+
+int anx_engine_transition(struct anx_engine *engine,
+			  enum anx_engine_status new_status)
+{
+	int ret;
+
+	if (!engine)
+		return ANX_EINVAL;
+	if ((int)new_status < 0 || new_status >= ANX_ENGINE_STATUS_COUNT)
+		return ANX_EINVAL;
+
+	anx_spin_lock(&engine->lock);
+
+	if (!engine_transitions[engine->status][new_status]) {
+		anx_spin_unlock(&engine->lock);
+		return ANX_EPERM;
+	}
+
+	engine->status = new_status;
+	ret = ANX_OK;
+
+	anx_spin_unlock(&engine->lock);
+	return ret;
+}
+
+int anx_engine_register_model(const char *name,
+			      enum anx_engine_class engine_class,
+			      uint32_t capabilities,
+			      const struct anx_model_desc *model,
+			      struct anx_engine **out)
+{
+	struct anx_engine *eng;
+	int ret;
+
+	if (!model)
+		return ANX_EINVAL;
+	if (engine_class != ANX_ENGINE_LOCAL_MODEL &&
+	    engine_class != ANX_ENGINE_REMOTE_MODEL)
+		return ANX_EINVAL;
+
+	ret = anx_engine_register(name, engine_class, capabilities, &eng);
+	if (ret != ANX_OK)
+		return ret;
+
+	/* Copy model descriptor */
+	eng->model = *model;
+
+	/* Model engines start in REGISTERED, not AVAILABLE */
+	eng->status = ANX_ENGINE_REGISTERED;
+
+	/* Inherit locality from model descriptor */
+	eng->is_local = (engine_class == ANX_ENGINE_LOCAL_MODEL);
+	eng->requires_network = (engine_class == ANX_ENGINE_REMOTE_MODEL);
+
+	/* Use context window from descriptor */
+	if (model->context_window > 0)
+		eng->max_context_tokens = model->context_window;
+
+	if (out)
+		*out = eng;
 	return ANX_OK;
 }
 

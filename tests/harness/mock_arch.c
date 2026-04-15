@@ -9,6 +9,7 @@
 #include <anx/arch.h>
 #include <anx/page.h>
 #include <anx/fb.h>
+#include <anx/hwprobe.h>
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
@@ -84,6 +85,17 @@ int arch_console_getc(void)
 bool arch_console_has_input(void)
 {
 	return false;
+}
+
+void arch_probe_hw(struct anx_hw_inventory *inv)
+{
+	/* Mock: 4 CPUs, 16 GiB RAM, 1 GPU */
+	inv->cpu_count = 4;
+	inv->ram_bytes = 16ULL * 1024 * 1024 * 1024;
+	inv->accel_count = 1;
+	inv->accels[0].type = ANX_ACCEL_GPU;
+	inv->accels[0].mem_bytes = 8ULL * 1024 * 1024 * 1024;
+	inv->accels[0].compute_units = 32;
 }
 
 void arch_fb_detect(struct anx_fb_info *info)

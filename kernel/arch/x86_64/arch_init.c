@@ -6,6 +6,7 @@
 #include <anx/arch.h>
 #include <anx/page.h>
 #include <anx/fb.h>
+#include <anx/hwprobe.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
@@ -59,6 +60,15 @@ void arch_init(void)
 	anx_page_init((uintptr_t)_heap_start, (uintptr_t)_heap_end);
 
 	/* TODO: GDT, IDT, APIC, ACPI, full paging */
+}
+
+void arch_probe_hw(struct anx_hw_inventory *inv)
+{
+	/* QEMU default: 1 CPU, no discrete GPU */
+	inv->cpu_count = 1;
+	inv->ram_bytes = 512ULL * 1024 * 1024;
+	inv->accel_count = 0;
+	/* TODO: parse ACPI/CPUID for real hardware */
 }
 
 void arch_halt(void)

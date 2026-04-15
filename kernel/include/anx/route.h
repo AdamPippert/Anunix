@@ -24,12 +24,24 @@ struct anx_route_candidate {
 	char reason[64];		/* why selected or rejected */
 };
 
+/* --- Route stages (staged routing) --- */
+
+enum anx_route_stage {
+	ANX_ROUTE_STAGE_KERNEL,		/* deterministic feasibility + scoring */
+	ANX_ROUTE_STAGE_LOCAL_SVC,	/* semantic candidate generation */
+	ANX_ROUTE_STAGE_RLM_PLANNER,	/* slow-path planning */
+};
+
 /* --- Route result --- */
+
+#define ANX_ROUTE_ESCALATION_THRESHOLD	30
 
 struct anx_route_result {
 	struct anx_route_candidate candidates[ANX_MAX_ROUTE_CANDIDATES];
 	uint32_t candidate_count;
 	uint32_t selected_index;	/* index of best candidate */
+	enum anx_route_stage decided_at;
+	bool needs_escalation;		/* stage 2/3 recommended */
 };
 
 /* --- Route Planner API --- */
