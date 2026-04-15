@@ -70,5 +70,8 @@ typedef uint64_t anx_time_t;
 #define ANX_EIO		-6
 #define ANX_EBUSY	-7
 #define ANX_ENOSYS	-8
+#define ANX_ETIMEDOUT	-9
+#define ANX_ECONNRESET	-10
+#define ANX_EHOSTUNREACH -11
 
 #endif /* ANX_TYPES_H */

@@ -23,6 +23,7 @@
 #include <anx/netplane.h>
 #include <anx/capability.h>
 #include <anx/page.h>
+#include <anx/pci.h>
 
 /* --- Line input --- */
 
@@ -126,6 +127,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  cap list                   List capabilities\n");
 	kputs("  sched status               Show scheduler queue depths\n");
 	kputs("  net status                 Show network plane status\n");
+	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
 }
 
@@ -705,6 +707,30 @@ static void cmd_net_status(void)
 	kprintf("  status: online\n");
 }
 
+/* --- PCI commands --- */
+
+static void cmd_pci(void)
+{
+	struct anx_list_head *pos;
+	struct anx_list_head *list = anx_pci_device_list();
+
+	kputs("PCI devices:\n");
+	ANX_LIST_FOR_EACH(pos, list) {
+		struct anx_pci_device *dev;
+
+		dev = ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
+		kprintf("  %x:%x.%x  %x:%x  class %x:%x  irq %u",
+			(uint32_t)dev->bus, (uint32_t)dev->slot,
+			(uint32_t)dev->func,
+			(uint32_t)dev->vendor_id, (uint32_t)dev->device_id,
+			(uint32_t)dev->class_code, (uint32_t)dev->subclass,
+			(uint32_t)dev->irq_line);
+		if (dev->bar[0])
+			kprintf("  bar0=0x%x", dev->bar[0]);
+		kprintf("\n");
+	}
+}
+
 /* --- Command dispatch --- */
 
 static void dispatch(int argc, char **argv)
@@ -742,6 +768,8 @@ static void dispatch(int argc, char **argv)
 			cmd_net_status();
 		else
 			kputs("usage: net status\n");
+	} else if (anx_strcmp(argv[0], "pci") == 0) {
+		cmd_pci();
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
 		kputs("halting system\n");
 		arch_halt();
