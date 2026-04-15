@@ -250,7 +250,10 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_engine_registry.c \
                tests/test_scheduler.c \
                tests/test_capability.c \
-               tests/test_fb.c
+               tests/test_fb.c \
+               tests/test_engine_lifecycle.c \
+               tests/test_resource_lease.c \
+               tests/test_model_server.c
 TEST_BIN    := build/test/anunix_test
 
 test:

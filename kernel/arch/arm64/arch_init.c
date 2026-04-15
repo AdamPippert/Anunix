@@ -9,6 +9,7 @@
 #include <anx/arch.h>
 #include <anx/page.h>
 #include <anx/fb.h>
+#include <anx/hwprobe.h>
 #include <anx/string.h>
 
 /* Linker-defined heap region */
@@ -79,6 +80,15 @@ void arch_init(void)
 	/* TODO: GIC, timers, full MMU */
 }
 
+void arch_probe_hw(struct anx_hw_inventory *inv)
+{
+	/* QEMU virt: 1 CPU, no GPU/NPU */
+	inv->cpu_count = 1;
+	inv->ram_bytes = 512ULL * 1024 * 1024;	/* matches -m 512M */
+	inv->accel_count = 0;
+	/* TODO: parse device tree for real hardware */
+}
+
 void arch_halt(void)
 {
 	for (;;)
@@ -144,6 +154,7 @@ bool arch_console_has_input(void)
 }
 
 /* --- Framebuffer (QEMU ramfb via fw_cfg) --- */
+#if 0 /* Disabled until exception vectors are installed — fw_cfg MMIO faults without them */
 
 /*
  * QEMU fw_cfg MMIO on virt machine.
@@ -291,36 +302,18 @@ static int fw_cfg_find_file(const char *name, uint16_t *selector)
 static uint8_t ramfb_mem[RAMFB_WIDTH * RAMFB_HEIGHT * 4]
 	__attribute__((aligned(4096)));
 
+#endif /* disabled fw_cfg block */
+
 void arch_fb_detect(struct anx_fb_info *info)
 {
-	uint16_t ramfb_sel;
-	struct ramfb_cfg cfg;
-
+	/*
+	 * Framebuffer detection disabled: fw_cfg MMIO at 0x09020000
+	 * faults without exception vectors installed.
+	 *
+	 * TODO: Re-enable ramfb detection after GIC + exception
+	 * vector setup. Use 'make qemu-fb' for graphical testing.
+	 */
 	info->available = false;
-
-	/* Find the ramfb fw_cfg file */
-	if (fw_cfg_find_file("etc/ramfb", &ramfb_sel) != 0)
-		return;
-
-	/* Configure ramfb */
-	anx_memset(&cfg, 0, sizeof(cfg));
-	cfg.addr   = bswap64((uint64_t)(uintptr_t)ramfb_mem);
-	cfg.fourcc = bswap32(DRM_FORMAT_XRGB8888);
-	cfg.flags  = 0;
-	cfg.width  = bswap32(RAMFB_WIDTH);
-	cfg.height = bswap32(RAMFB_HEIGHT);
-	cfg.stride = bswap32(RAMFB_WIDTH * 4);
-
-	/* Write configuration via DMA */
-	fw_cfg_dma_write(ramfb_sel, &cfg, sizeof(cfg));
-
-	/* Fill in framebuffer info */
-	info->addr   = (uint64_t)(uintptr_t)ramfb_mem;
-	info->width  = RAMFB_WIDTH;
-	info->height = RAMFB_HEIGHT;
-	info->pitch  = RAMFB_WIDTH * 4;
-	info->bpp    = 32;
-	info->available = true;
 }
 
 /* --- Memory barriers --- */

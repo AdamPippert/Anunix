@@ -68,6 +68,9 @@ enum anx_cell_type {
 	ANX_CELL_TASK_SCHEDULER_BINDING,
 	ANX_CELL_TASK_COMPENSATION,
 
+	/* Model hosting */
+	ANX_CELL_MODEL_SERVER,
+
 	ANX_CELL_TYPE_COUNT,
 };
 

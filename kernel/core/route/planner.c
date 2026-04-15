@@ -156,6 +156,8 @@ int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 	}
 
 	result->selected_index = best_idx;
+	result->decided_at = ANX_ROUTE_STAGE_KERNEL;
+	result->needs_escalation = false;
 
 	if (result->candidate_count == 0)
 		return ANX_ENOENT;
@@ -171,6 +173,27 @@ int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 		}
 		if (!any_feasible)
 			return ANX_EPERM;
+	}
+
+	/*
+	 * Escalation heuristic: if the best score is low, or the
+	 * top two candidates are ambiguous (within 5 points), mark
+	 * for escalation to the local routing service.
+	 */
+	if (best_score < ANX_ROUTE_ESCALATION_THRESHOLD)
+		result->needs_escalation = true;
+
+	if (result->candidate_count >= 2) {
+		int32_t second_best = -1;
+
+		for (i = 0; i < result->candidate_count; i++) {
+			if (i != best_idx && result->candidates[i].feasible &&
+			    result->candidates[i].score > second_best)
+				second_best = result->candidates[i].score;
+		}
+		if (second_best >= 0 &&
+		    best_score - second_best <= 5)
+			result->needs_escalation = true;
 	}
 
 	return ANX_OK;
