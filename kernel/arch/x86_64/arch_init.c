@@ -4,6 +4,7 @@
 
 #include <anx/types.h>
 #include <anx/arch.h>
+#include <anx/io.h>
 #include <anx/page.h>
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
@@ -24,18 +25,6 @@ extern char _heap_end[];
 #define COM1_DLL	(COM1_PORT + 0)	/* divisor latch low (DLAB=1) */
 #define COM1_DLH	(COM1_PORT + 1)	/* divisor latch high (DLAB=1) */
 
-static inline void outb(uint8_t val, uint16_t port)
-{
-	__asm__ volatile("outb %0, %1" : : "a"(val), "Nd"(port));
-}
-
-static inline uint8_t inb(uint16_t port)
-{
-	uint8_t val;
-	__asm__ volatile("inb %1, %0" : "=a"(val) : "Nd"(port));
-	return val;
-}
-
 static bool com1_present;
 
 /*
@@ -47,26 +36,26 @@ static bool com1_present;
 static void serial_init(void)
 {
 	/* Probe for COM1 existence */
-	outb(0xA5, COM1_SCRATCH);
-	if (inb(COM1_SCRATCH) != 0xA5) {
+	anx_outb(0xA5, COM1_SCRATCH);
+	if (anx_inb(COM1_SCRATCH) != 0xA5) {
 		com1_present = false;
 		return;
 	}
-	outb(0x5A, COM1_SCRATCH);
-	if (inb(COM1_SCRATCH) != 0x5A) {
+	anx_outb(0x5A, COM1_SCRATCH);
+	if (anx_inb(COM1_SCRATCH) != 0x5A) {
 		com1_present = false;
 		return;
 	}
 
 	com1_present = true;
 
-	outb(0x00, COM1_IER);		/* disable interrupts */
-	outb(0x80, COM1_LCR);		/* enable DLAB (set baud divisor) */
-	outb(0x01, COM1_DLL);		/* 115200 baud (divisor 1) */
-	outb(0x00, COM1_DLH);
-	outb(0x03, COM1_LCR);		/* 8N1, DLAB off */
-	outb(0xC7, COM1_FCR);		/* enable FIFO, clear, 14-byte threshold */
-	outb(0x0B, COM1_MCR);		/* DTR + RTS + OUT2 */
+	anx_outb(0x00, COM1_IER);		/* disable interrupts */
+	anx_outb(0x80, COM1_LCR);		/* enable DLAB (set baud divisor) */
+	anx_outb(0x01, COM1_DLL);		/* 115200 baud (divisor 1) */
+	anx_outb(0x00, COM1_DLH);
+	anx_outb(0x03, COM1_LCR);		/* 8N1, DLAB off */
+	anx_outb(0xC7, COM1_FCR);		/* enable FIFO, clear, 14-byte threshold */
+	anx_outb(0x0B, COM1_MCR);		/* DTR + RTS + OUT2 */
 }
 
 /* --- Initialization --- */
@@ -140,9 +129,9 @@ void arch_console_putc(char c)
 	if (!com1_present)
 		return;
 	/* Wait for transmit buffer empty */
-	while ((inb(COM1_LSR) & 0x20) == 0)
+	while ((anx_inb(COM1_LSR) & 0x20) == 0)
 		;
-	outb((uint8_t)c, COM1_DATA);
+	anx_outb((uint8_t)c, COM1_DATA);
 }
 
 void arch_console_puts(const char *s)
@@ -156,16 +145,16 @@ int arch_console_getc(void)
 	if (!com1_present)
 		return -1;
 	/* Poll until data ready */
-	while ((inb(COM1_LSR) & 0x01) == 0)
+	while ((anx_inb(COM1_LSR) & 0x01) == 0)
 		;
-	return (int)inb(COM1_DATA);
+	return (int)anx_inb(COM1_DATA);
 }
 
 bool arch_console_has_input(void)
 {
 	if (!com1_present)
 		return false;
-	return (inb(COM1_LSR) & 0x01) != 0;
+	return (anx_inb(COM1_LSR) & 0x01) != 0;
 }
 
 /* --- Framebuffer detection --- */
