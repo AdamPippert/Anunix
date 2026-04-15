@@ -25,6 +25,7 @@
 #include <anx/posix.h>
 #include <anx/pci.h>
 #include <anx/virtio_net.h>
+#include <anx/net.h>
 #include <anx/splash.h>
 #include <anx/shell.h>
 
@@ -93,8 +94,16 @@ void kernel_main(void)
 	/* 8. PCI bus enumeration */
 	anx_pci_init();
 
-	/* 9. Network device */
-	anx_virtio_net_init();
+	/* 9. Network device and IP stack */
+	if (anx_virtio_net_init() == ANX_OK) {
+		struct anx_net_config net_cfg;
+
+		net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
+		net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
+		net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
+		net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
+		anx_net_stack_init(&net_cfg);
+	}
 
 	kprintf("kernel init complete -- all subsystems online\n");
 

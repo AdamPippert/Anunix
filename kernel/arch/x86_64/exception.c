@@ -288,6 +288,9 @@ void arch_exception_init(void)
 	pic_init();
 	pit_init();
 
+	/* Unmask IRQ0 (PIT timer) so arch_timer_ticks() works */
+	anx_irq_unmask(0);
+
 	/* Enable interrupts */
 	__asm__ volatile("sti");
 }
