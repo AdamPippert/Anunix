@@ -179,6 +179,33 @@ uint32_t anx_ipv4_local_ip(void);
 /* Get the configured DNS server (host byte order) */
 uint32_t anx_ipv4_dns(void);
 
+/* UDP layer */
+typedef void (*anx_udp_recv_fn)(const void *data, uint32_t len,
+				uint32_t src_ip, uint16_t src_port,
+				void *arg);
+void anx_udp_init(void);
+void anx_udp_recv(const void *data, uint32_t len, uint32_t src_ip);
+int anx_udp_send(uint32_t dst_ip, uint16_t src_port, uint16_t dst_port,
+		  const void *data, uint32_t len);
+int anx_udp_bind(uint16_t port, anx_udp_recv_fn handler, void *arg);
+void anx_udp_unbind(uint16_t port);
+
+/* DNS resolver */
+void anx_dns_init(void);
+int anx_dns_resolve(const char *hostname, uint32_t *ip_out);
+
+/* TCP layer */
+struct anx_tcp_conn;
+void anx_tcp_init(void);
+void anx_tcp_recv_segment(const void *data, uint32_t len, uint32_t src_ip);
+void anx_tcp_tick(void);
+int anx_tcp_connect(uint32_t dst_ip, uint16_t dst_port,
+		     struct anx_tcp_conn **out);
+int anx_tcp_send(struct anx_tcp_conn *conn, const void *data, uint32_t len);
+int anx_tcp_recv(struct anx_tcp_conn *conn, void *buf, uint32_t len,
+		  uint32_t timeout_ms);
+int anx_tcp_close(struct anx_tcp_conn *conn);
+
 /* Poll the network device and process any received packets */
 void anx_net_poll(void);
 
