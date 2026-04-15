@@ -23,6 +23,8 @@
 #include <anx/model_server.h>
 #include <anx/route_feedback.h>
 #include <anx/posix.h>
+#include <anx/pci.h>
+#include <anx/virtio_net.h>
 #include <anx/splash.h>
 #include <anx/shell.h>
 
@@ -87,6 +89,12 @@ void kernel_main(void)
 	/* 7. POSIX compatibility layer */
 	anx_posix_init();
 	kprintf("posix compatibility layer initialized\n");
+
+	/* 8. PCI bus enumeration */
+	anx_pci_init();
+
+	/* 9. Network device */
+	anx_virtio_net_init();
 
 	kprintf("kernel init complete -- all subsystems online\n");
 

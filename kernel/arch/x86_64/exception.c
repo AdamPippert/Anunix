@@ -2,25 +2,16 @@
  * exception.c — x86_64 IDT, GDT, PIC, PIT, and exception handling.
  *
  * Sets up a proper kernel GDT (replacing the boot GDT), installs
- * an IDT with 48 vectors (0-31 exceptions, 32-47 IRQs), initializes
- * the 8259 PIC, and configures the PIT for ~100 Hz timer ticks.
+ * an IDT with 256 vectors, initializes the 8259 PIC, configures
+ * the PIT for ~100 Hz timer ticks, and provides dynamic IRQ
+ * registration for device drivers.
  */
 
 #include <anx/types.h>
 #include <anx/arch.h>
+#include <anx/io.h>
+#include <anx/irq.h>
 #include <anx/kprintf.h>
-
-/* --- I/O port access --- */
-
-static inline void outb(uint8_t val, uint16_t port)
-{
-	__asm__ volatile("outb %0, %1" : : "a"(val), "Nd"(port));
-}
-
-static inline void io_wait(void)
-{
-	outb(0, 0x80);
-}
 
 /* --- IDT --- */
 
@@ -67,7 +58,6 @@ static uint64_t gdt[] = {
 	0x00CF92000000FFFFULL,	/* kernel data */
 	0x00AFFA000000FFFFULL,	/* user code 64-bit */
 	0x00CFF2000000FFFFULL,	/* user data */
-	/* TSS entries would go here for ring switching */
 };
 
 struct gdt_ptr {
@@ -106,40 +96,85 @@ static void gdt_init(void)
 #define PIC2_CMD	0xA0
 #define PIC2_DATA	0xA1
 
+static uint8_t pic1_mask = 0xFF;
+static uint8_t pic2_mask = 0xFF;
+
 static void pic_init(void)
 {
 	/* ICW1: begin initialization in cascade mode */
-	outb(0x11, PIC1_CMD);
-	io_wait();
-	outb(0x11, PIC2_CMD);
-	io_wait();
+	anx_outb(0x11, PIC1_CMD);
+	anx_io_wait();
+	anx_outb(0x11, PIC2_CMD);
+	anx_io_wait();
 
 	/* ICW2: remap master to 32-39, slave to 40-47 */
-	outb(32, PIC1_DATA);
-	io_wait();
-	outb(40, PIC2_DATA);
-	io_wait();
+	anx_outb(32, PIC1_DATA);
+	anx_io_wait();
+	anx_outb(40, PIC2_DATA);
+	anx_io_wait();
 
 	/* ICW3: master has slave on IRQ2, slave has cascade on IRQ2 */
-	outb(4, PIC1_DATA);
-	io_wait();
-	outb(2, PIC2_DATA);
-	io_wait();
+	anx_outb(4, PIC1_DATA);
+	anx_io_wait();
+	anx_outb(2, PIC2_DATA);
+	anx_io_wait();
 
 	/* ICW4: 8086 mode */
-	outb(0x01, PIC1_DATA);
-	io_wait();
-	outb(0x01, PIC2_DATA);
-	io_wait();
+	anx_outb(0x01, PIC1_DATA);
+	anx_io_wait();
+	anx_outb(0x01, PIC2_DATA);
+	anx_io_wait();
 
-	/*
-	 * Mask ALL PIC IRQs. On real hardware with LAPIC/IOAPIC,
-	 * the PIC is vestigial. Unmasking IRQ0 can cause spurious
-	 * interrupts that interact badly with APIC routing.
-	 * Timer ticks aren't needed yet — the shell polls for input.
-	 */
-	outb(0xFF, PIC1_DATA);
-	outb(0xFF, PIC2_DATA);
+	/* Mask all IRQs initially — drivers unmask as needed */
+	anx_outb(pic1_mask, PIC1_DATA);
+	anx_outb(pic2_mask, PIC2_DATA);
+}
+
+/* --- Dynamic IRQ handler table --- */
+
+#define PIC_IRQ_COUNT	16
+#define PIC_IRQ_BASE	32	/* vector offset for IRQ 0 */
+
+static struct {
+	anx_irq_handler_t handler;
+	void *arg;
+} irq_handlers[PIC_IRQ_COUNT];
+
+int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
+{
+	if (irq >= PIC_IRQ_COUNT)
+		return ANX_EINVAL;
+	if (irq_handlers[irq].handler)
+		return ANX_EEXIST;
+
+	irq_handlers[irq].handler = handler;
+	irq_handlers[irq].arg = arg;
+	return ANX_OK;
+}
+
+void anx_irq_unmask(uint8_t irq)
+{
+	if (irq < 8) {
+		pic1_mask &= ~(1 << irq);
+		anx_outb(pic1_mask, PIC1_DATA);
+	} else if (irq < 16) {
+		pic2_mask &= ~(1 << (irq - 8));
+		anx_outb(pic2_mask, PIC2_DATA);
+		/* Unmask cascade (IRQ2) on master */
+		pic1_mask &= ~(1 << 2);
+		anx_outb(pic1_mask, PIC1_DATA);
+	}
+}
+
+void anx_irq_mask(uint8_t irq)
+{
+	if (irq < 8) {
+		pic1_mask |= (1 << irq);
+		anx_outb(pic1_mask, PIC1_DATA);
+	} else if (irq < 16) {
+		pic2_mask |= (1 << (irq - 8));
+		anx_outb(pic2_mask, PIC2_DATA);
+	}
 }
 
 /* --- PIT (Programmable Interval Timer) --- */
@@ -156,9 +191,9 @@ static void pit_init(void)
 	uint16_t divisor = PIT_FREQ / TARGET_HZ;
 
 	/* Channel 0, access lo/hi, mode 3 (square wave) */
-	outb(0x36, PIT_CMD);
-	outb((uint8_t)(divisor & 0xFF), PIT_CH0);
-	outb((uint8_t)((divisor >> 8) & 0xFF), PIT_CH0);
+	anx_outb(0x36, PIT_CMD);
+	anx_outb((uint8_t)(divisor & 0xFF), PIT_CH0);
+	anx_outb((uint8_t)((divisor >> 8) & 0xFF), PIT_CH0);
 
 	pit_ticks = 0;
 }
@@ -177,7 +212,6 @@ static const char *exception_names[] = {
 /*
  * LAPIC EOI register — fixed at 0xFEE000B0 on all x86 systems
  * with a local APIC (which includes all AMD64 CPUs).
- * Writing 0 acknowledges the current interrupt.
  */
 #define LAPIC_EOI	((volatile uint32_t *)0xFEE000B0ULL)
 
@@ -186,30 +220,32 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 {
 	(void)frame;
 
-	if (vector == 32) {
-		/* Timer IRQ (PIT via PIC) */
-		pit_ticks++;
-		outb(0x20, PIC1_CMD);
-		return;
-	}
+	/* PIC IRQs (vectors 32-47) */
+	if (vector >= PIC_IRQ_BASE &&
+	    vector < PIC_IRQ_BASE + PIC_IRQ_COUNT) {
+		uint8_t irq = (uint8_t)(vector - PIC_IRQ_BASE);
 
-	if (vector >= 33 && vector <= 47) {
-		/* PIC hardware IRQ */
-		if (vector >= 40)
-			outb(0x20, PIC2_CMD);
-		outb(0x20, PIC1_CMD);
+		if (irq == 0) {
+			/* Timer IRQ — always handled internally */
+			pit_ticks++;
+		} else if (irq_handlers[irq].handler) {
+			irq_handlers[irq].handler(irq, irq_handlers[irq].arg);
+		}
+
+		/* EOI */
+		if (irq >= 8)
+			anx_outb(0x20, PIC2_CMD);
+		anx_outb(0x20, PIC1_CMD);
 		return;
 	}
 
 	if (vector >= 48 || vector == 0xFF) {
 		/*
-		 * Unexpected vector — likely LAPIC/IOAPIC/MSI interrupt
-		 * left pending by UEFI firmware. EOI both PIC and LAPIC
-		 * to clear it, then return. Safe even if the LAPIC is
-		 * disabled — the write is to identity-mapped MMIO.
+		 * Unexpected vector — LAPIC/IOAPIC/MSI interrupt
+		 * left pending by firmware. Safe EOI and return.
 		 */
-		outb(0x20, PIC2_CMD);
-		outb(0x20, PIC1_CMD);
+		anx_outb(0x20, PIC2_CMD);
+		anx_outb(0x20, PIC1_CMD);
 		*LAPIC_EOI = 0;
 		return;
 	}
@@ -239,12 +275,7 @@ void arch_exception_init(void)
 	for (i = 0; i < ISR_COUNT; i++)
 		idt_set_gate(i, isr_stub_table[i]);
 
-	/*
-	 * Fill vectors 48-255 with a default handler.
-	 * UEFI firmware / LAPIC / IOAPIC can deliver interrupts on
-	 * any vector. An empty IDT entry causes #GP -> double fault
-	 * -> triple fault -> reboot.
-	 */
+	/* Fill vectors 48-255 with a default handler */
 	for (i = ISR_COUNT; i < IDT_ENTRIES; i++)
 		idt_set_gate(i, (uint64_t)isr_stub_default);
 
@@ -257,7 +288,7 @@ void arch_exception_init(void)
 	pic_init();
 	pit_init();
 
-	/* Enable interrupts — safe now that all 256 IDT entries are filled */
+	/* Enable interrupts */
 	__asm__ volatile("sti");
 }
 
