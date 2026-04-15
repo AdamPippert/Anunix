@@ -14,6 +14,9 @@ void anx_net_stack_init(const struct anx_net_config *cfg)
 	anx_arp_init();
 	anx_arp_set_ip(cfg->ip);
 	anx_ipv4_init(cfg);
+	anx_udp_init();
+	anx_tcp_init();
+	anx_dns_init();
 
 	kprintf("net: ip %u.%u.%u.%u gw %u.%u.%u.%u dns %u.%u.%u.%u\n",
 		(cfg->ip >> 24) & 0xFF, (cfg->ip >> 16) & 0xFF,

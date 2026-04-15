@@ -26,6 +26,7 @@
 #include <anx/pci.h>
 #include <anx/net.h>
 #include <anx/virtio_net.h>
+#include <anx/http.h>
 
 /* --- Line input --- */
 
@@ -130,6 +131,8 @@ static void cmd_help(int argc, char **argv)
 	kputs("  sched status               Show scheduler queue depths\n");
 	kputs("  net status                 Show network plane status\n");
 	kputs("  ping <ip>                  Send ICMP echo request\n");
+	kputs("  dns <hostname>             Resolve hostname to IP\n");
+	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
 	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
 }
@@ -138,7 +141,7 @@ static void cmd_version(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Anunix 0.1.0 (kernel monitor)\n");
+	kprintf("Anunix 2026.4.15 (kernel monitor)\n");
 }
 
 /* --- Memory commands --- */
@@ -734,6 +737,72 @@ static uint32_t parse_ip(const char *s)
 	return ANX_IP4(a, b, c, d);
 }
 
+static uint16_t parse_port(const char *s)
+{
+	uint16_t val = 0;
+
+	while (*s >= '0' && *s <= '9')
+		val = val * 10 + (uint16_t)(*s++ - '0');
+	return val;
+}
+
+static void cmd_http_get(int argc, char **argv)
+{
+	struct anx_http_response resp;
+	const char *host;
+	uint16_t port = 80;
+	const char *path = "/";
+	int ret;
+
+	if (argc < 2) {
+		kputs("usage: http-get <host> [port] [path]\n");
+		return;
+	}
+
+	host = argv[1];
+	if (argc >= 3)
+		port = parse_port(argv[2]);
+	if (argc >= 4)
+		path = argv[3];
+
+	kprintf("GET http://%s:%u%s\n", host, (uint32_t)port, path);
+
+	ret = anx_http_get(host, port, path, &resp);
+	if (ret != ANX_OK) {
+		kprintf("http-get: failed (%d)\n", ret);
+		return;
+	}
+
+	kprintf("HTTP %d, %u bytes\n", resp.status_code, resp.body_len);
+	if (resp.body && resp.body_len > 0) {
+		uint32_t show = resp.body_len;
+
+		if (show > 512)
+			show = 512;
+		resp.body[show] = '\0';
+		kprintf("%s\n", resp.body);
+		if (resp.body_len > 512)
+			kputs("... (truncated)\n");
+	}
+	anx_http_response_free(&resp);
+}
+
+static void cmd_dns(const char *hostname)
+{
+	uint32_t ip;
+	int ret;
+
+	kprintf("resolving %s...\n", hostname);
+	ret = anx_dns_resolve(hostname, &ip);
+	if (ret == ANX_OK) {
+		kprintf("%s -> %u.%u.%u.%u\n", hostname,
+			(ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
+			(ip >> 8) & 0xFF, ip & 0xFF);
+	} else {
+		kprintf("dns: failed (%d)\n", ret);
+	}
+}
+
 static void cmd_ping(const char *target)
 {
 	uint32_t ip = parse_ip(target);
@@ -809,6 +878,13 @@ static void dispatch(int argc, char **argv)
 			cmd_net_status();
 		else
 			kputs("usage: net status\n");
+	} else if (anx_strcmp(argv[0], "http-get") == 0) {
+		cmd_http_get(argc, argv);
+	} else if (anx_strcmp(argv[0], "dns") == 0) {
+		if (argc >= 2)
+			cmd_dns(argv[1]);
+		else
+			kputs("usage: dns <hostname>\n");
 	} else if (anx_strcmp(argv[0], "ping") == 0) {
 		if (argc >= 2)
 			cmd_ping(argv[1]);

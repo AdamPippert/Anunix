@@ -30,7 +30,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 0.1.0
+ANX_VERSION := 2026.4.15
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -269,7 +269,10 @@ clean:
 TEST_CC     := clang
 TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, $(CORE_C))
-DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' 2>/dev/null)
+# Exclude hardware-dependent drivers from host-native test builds.
+# PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
+DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
+		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' 2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/test_state_object.c \
