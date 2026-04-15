@@ -28,13 +28,40 @@ enum anx_engine_class {
 	ANX_ENGINE_CLASS_COUNT,
 };
 
-/* --- Engine status --- */
+/* --- Engine status (hosting-aware lifecycle) --- */
 
 enum anx_engine_status {
-	ANX_ENGINE_AVAILABLE,
-	ANX_ENGINE_DEGRADED,
-	ANX_ENGINE_OFFLINE,
-	ANX_ENGINE_MAINTENANCE,
+	ANX_ENGINE_REGISTERED,	/* known but not loaded */
+	ANX_ENGINE_LOADING,	/* weights being loaded into memory */
+	ANX_ENGINE_READY,	/* loaded, not yet serving */
+	ANX_ENGINE_AVAILABLE,	/* actively serving requests */
+	ANX_ENGINE_DEGRADED,	/* serving but impaired */
+	ANX_ENGINE_DRAINING,	/* finishing active, rejecting new */
+	ANX_ENGINE_UNLOADING,	/* releasing memory/accelerator */
+	ANX_ENGINE_OFFLINE,	/* not loaded, not available */
+	ANX_ENGINE_MAINTENANCE,	/* administratively disabled */
+	ANX_ENGINE_STATUS_COUNT,
+};
+
+/* --- Model descriptor (LOCAL_MODEL / REMOTE_MODEL only) --- */
+
+enum anx_quant_format {
+	ANX_QUANT_NONE,		/* full precision (fp32/fp16) */
+	ANX_QUANT_Q8,
+	ANX_QUANT_Q6,
+	ANX_QUANT_Q4,
+	ANX_QUANT_Q3,
+	ANX_QUANT_Q2,
+	ANX_QUANT_GGUF,		/* GGUF mixed quantization */
+};
+
+struct anx_model_desc {
+	uint64_t param_count;		/* total parameters */
+	enum anx_quant_format quant;
+	uint32_t context_window;	/* max tokens */
+	uint32_t bench_tok_per_sec;	/* measured throughput (0 = unknown) */
+	uint64_t mem_footprint_bytes;	/* weight memory requirement */
+	bool offline_capable;		/* can serve without network */
 };
 
 /* --- Capability tags (bitmask, RFC-0005 Section 8.4) --- */
@@ -50,6 +77,9 @@ enum anx_engine_status {
 #define ANX_CAP_CONTRADICTION_DETECT	(1U << 8)
 #define ANX_CAP_TOOL_EXECUTION		(1U << 9)
 #define ANX_CAP_MULTIMODAL_INPUT	(1U << 10)
+
+/* Forward declaration for lease pointer */
+struct anx_engine_lease;
 
 /* --- Engine struct --- */
 
@@ -77,6 +107,12 @@ struct anx_engine {
 	/* Locality */
 	bool is_local;
 
+	/* Model descriptor (valid for LOCAL_MODEL / REMOTE_MODEL) */
+	struct anx_model_desc model;
+
+	/* Resource lease (non-NULL when loaded) */
+	struct anx_engine_lease *lease;
+
 	/* Bookkeeping */
 	struct anx_spinlock lock;
 	struct anx_list_head registry_link;
@@ -103,9 +139,20 @@ int anx_engine_find(enum anx_engine_class engine_class,
 		    uint32_t max_results,
 		    uint32_t *found_count);
 
-/* Update engine status */
+/* Update engine status (raw setter, no transition validation) */
 int anx_engine_set_status(struct anx_engine *engine,
 			  enum anx_engine_status status);
+
+/* Validate and perform an engine status transition */
+int anx_engine_transition(struct anx_engine *engine,
+			  enum anx_engine_status new_status);
+
+/* Register a model engine with full descriptor */
+int anx_engine_register_model(const char *name,
+			      enum anx_engine_class engine_class,
+			      uint32_t capabilities,
+			      const struct anx_model_desc *model,
+			      struct anx_engine **out);
 
 /* Unregister an engine */
 int anx_engine_unregister(struct anx_engine *engine);

@@ -18,6 +18,10 @@
 #include <anx/sched.h>
 #include <anx/netplane.h>
 #include <anx/capability.h>
+#include <anx/engine_lease.h>
+#include <anx/hwprobe.h>
+#include <anx/model_server.h>
+#include <anx/route_feedback.h>
 #include <anx/splash.h>
 #include <anx/shell.h>
 
@@ -65,6 +69,10 @@ void kernel_main(void)
 	anx_engine_registry_init();
 	anx_route_planner_init();
 	anx_sched_init();
+	anx_lease_init();
+	anx_hwprobe_init();
+	anx_msrv_init();
+	anx_route_feedback_init();
 	kprintf("routing plane and scheduler initialized\n");
 
 	/* 5. Network Plane (RFC-0006) */
