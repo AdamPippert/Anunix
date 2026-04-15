@@ -8,6 +8,8 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/page.h>
+#include <anx/fb.h>
+#include <anx/string.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
@@ -139,6 +141,186 @@ int arch_console_getc(void)
 bool arch_console_has_input(void)
 {
 	return (mmio_read32(PL011_FR) & PL011_FR_RXFE) == 0;
+}
+
+/* --- Framebuffer (QEMU ramfb via fw_cfg) --- */
+
+/*
+ * QEMU fw_cfg MMIO on virt machine.
+ * Used to configure ramfb: a simple linear framebuffer device.
+ */
+#define FW_CFG_BASE		0x09020000ULL
+#define FW_CFG_DATA		(FW_CFG_BASE + 0x000)
+#define FW_CFG_SEL		(FW_CFG_BASE + 0x008)
+#define FW_CFG_DMA_ADDR		(FW_CFG_BASE + 0x010)
+
+#define FW_CFG_FILE_DIR		0x0019
+
+/* DMA control bits */
+#define FW_CFG_DMA_CTL_ERROR	(1 << 0)
+#define FW_CFG_DMA_CTL_READ	(1 << 1)
+#define FW_CFG_DMA_CTL_SKIP	(1 << 2)
+#define FW_CFG_DMA_CTL_SELECT	(1 << 3)
+#define FW_CFG_DMA_CTL_WRITE	(1 << 4)
+
+/* DRM fourcc for XRGB8888 */
+#define DRM_FORMAT_XRGB8888	0x34325258
+
+/* Ramfb display resolution */
+#define RAMFB_WIDTH		1024
+#define RAMFB_HEIGHT		768
+
+/* Byte-swap helpers (fw_cfg uses big-endian) */
+static inline uint16_t bswap16(uint16_t v)
+{
+	return (v >> 8) | (v << 8);
+}
+
+static inline uint32_t bswap32(uint32_t v)
+{
+	return ((v & 0xFF000000) >> 24) |
+	       ((v & 0x00FF0000) >> 8) |
+	       ((v & 0x0000FF00) << 8) |
+	       ((v & 0x000000FF) << 24);
+}
+
+static inline uint64_t bswap64(uint64_t v)
+{
+	return ((uint64_t)bswap32((uint32_t)v) << 32) |
+	       bswap32((uint32_t)(v >> 32));
+}
+
+/* fw_cfg file directory entry */
+struct fw_cfg_file {
+	uint32_t size;		/* big-endian */
+	uint16_t select;	/* big-endian */
+	uint16_t reserved;
+	char name[56];
+};
+
+/* fw_cfg DMA access structure — must be naturally aligned */
+struct fw_cfg_dma_access {
+	uint32_t control;	/* big-endian */
+	uint32_t length;	/* big-endian */
+	uint64_t address;	/* big-endian */
+} __attribute__((aligned(16)));
+
+/* ramfb configuration structure */
+struct ramfb_cfg {
+	uint64_t addr;		/* big-endian: framebuffer physical address */
+	uint32_t fourcc;	/* big-endian: pixel format */
+	uint32_t flags;		/* big-endian: 0 */
+	uint32_t width;		/* big-endian */
+	uint32_t height;	/* big-endian */
+	uint32_t stride;	/* big-endian: bytes per scanline */
+} __attribute__((packed));
+
+static void fw_cfg_select(uint16_t selector)
+{
+	mmio_write32(FW_CFG_SEL, (uint32_t)bswap16(selector));
+}
+
+static uint8_t fw_cfg_read8(void)
+{
+	return (uint8_t)mmio_read32(FW_CFG_DATA);
+}
+
+static void fw_cfg_read_bytes(void *buf, uint32_t len)
+{
+	uint8_t *p = buf;
+	uint32_t i;
+
+	for (i = 0; i < len; i++)
+		p[i] = fw_cfg_read8();
+}
+
+static void fw_cfg_dma_write(uint16_t selector,
+			     void *data, uint32_t len)
+{
+	volatile struct fw_cfg_dma_access dma;
+
+	dma.control = bswap32(FW_CFG_DMA_CTL_SELECT |
+			      FW_CFG_DMA_CTL_WRITE |
+			      ((uint32_t)selector << 16));
+	dma.length = bswap32(len);
+	dma.address = bswap64((uint64_t)(uintptr_t)data);
+
+	/* Write DMA address (big-endian 64-bit) to trigger transfer */
+	uint64_t dma_addr = (uint64_t)(uintptr_t)&dma;
+
+	/* Ensure dma struct is visible in memory */
+	__asm__ volatile("dsb sy" ::: "memory");
+
+	mmio_write32(FW_CFG_DMA_ADDR, (uint32_t)(bswap64(dma_addr) >> 32));
+	mmio_write32(FW_CFG_DMA_ADDR + 4, (uint32_t)bswap64(dma_addr));
+
+	/* Wait for DMA completion (control goes to 0) */
+	while (bswap32(dma.control) & ~FW_CFG_DMA_CTL_ERROR)
+		__asm__ volatile("dsb sy" ::: "memory");
+}
+
+static int fw_cfg_find_file(const char *name, uint16_t *selector)
+{
+	uint32_t count;
+	uint32_t i;
+
+	fw_cfg_select(FW_CFG_FILE_DIR);
+
+	/* Read file count (big-endian u32) */
+	fw_cfg_read_bytes(&count, 4);
+	count = bswap32(count);
+
+	for (i = 0; i < count; i++) {
+		struct fw_cfg_file entry;
+
+		fw_cfg_read_bytes(&entry, sizeof(entry));
+
+		if (anx_strcmp(entry.name, name) == 0) {
+			*selector = bswap16(entry.select);
+			return 0;
+		}
+	}
+
+	return ANX_ENOENT;
+}
+
+/*
+ * Static framebuffer memory.
+ * 1024 * 768 * 4 = 3 MiB — placed in BSS, page-aligned.
+ */
+static uint8_t ramfb_mem[RAMFB_WIDTH * RAMFB_HEIGHT * 4]
+	__attribute__((aligned(4096)));
+
+void arch_fb_detect(struct anx_fb_info *info)
+{
+	uint16_t ramfb_sel;
+	struct ramfb_cfg cfg;
+
+	info->available = false;
+
+	/* Find the ramfb fw_cfg file */
+	if (fw_cfg_find_file("etc/ramfb", &ramfb_sel) != 0)
+		return;
+
+	/* Configure ramfb */
+	anx_memset(&cfg, 0, sizeof(cfg));
+	cfg.addr   = bswap64((uint64_t)(uintptr_t)ramfb_mem);
+	cfg.fourcc = bswap32(DRM_FORMAT_XRGB8888);
+	cfg.flags  = 0;
+	cfg.width  = bswap32(RAMFB_WIDTH);
+	cfg.height = bswap32(RAMFB_HEIGHT);
+	cfg.stride = bswap32(RAMFB_WIDTH * 4);
+
+	/* Write configuration via DMA */
+	fw_cfg_dma_write(ramfb_sel, &cfg, sizeof(cfg));
+
+	/* Fill in framebuffer info */
+	info->addr   = (uint64_t)(uintptr_t)ramfb_mem;
+	info->width  = RAMFB_WIDTH;
+	info->height = RAMFB_HEIGHT;
+	info->pitch  = RAMFB_WIDTH * 4;
+	info->bpp    = 32;
+	info->available = true;
 }
 
 /* --- Memory barriers --- */

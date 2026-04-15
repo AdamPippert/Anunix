@@ -27,6 +27,10 @@ void arch_irq_restore(bool state);
 /* Read current timestamp (nanoseconds) */
 anx_time_t arch_time_now(void);
 
+/* Framebuffer discovery — arch fills in info if available */
+struct anx_fb_info;
+void arch_fb_detect(struct anx_fb_info *info);
+
 /* Console I/O for early boot (before any drivers) */
 void arch_console_putc(char c);
 void arch_console_puts(const char *s);

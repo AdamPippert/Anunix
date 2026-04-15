@@ -8,6 +8,7 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
+#include <anx/fbcon.h>
 
 typedef __builtin_va_list va_list;
 #define va_start(ap, last)	__builtin_va_start(ap, last)
@@ -17,6 +18,8 @@ typedef __builtin_va_list va_list;
 static void putc(char c)
 {
 	arch_console_putc(c);
+	if (anx_fbcon_active())
+		anx_fbcon_putc(c);
 }
 
 static void puts(const char *s)

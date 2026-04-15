@@ -67,10 +67,35 @@ else ifeq ($(ARCH),x86_64)
     QEMU  := qemu-system-x86_64
   endif
   QFLAGS  := -m 512M -nographic -no-reboot -serial mon:stdio -kernel
+else ifeq ($(ARCH),heteris)
+  # Heteris: RV64IM cross-compilation using xPack riscv-none-elf-gcc
+  # Install toolchain: download xPack to tools/ or set RISCV_PREFIX
+  RISCV_TOOLS := $(wildcard tools/xpack-riscv-none-elf-gcc-*/bin)
+  HETERIS_ISA := ../heteris-isa
+  RISCV_PREFIX ?= $(if $(RISCV_TOOLS),$(RISCV_TOOLS)/riscv-none-elf-,riscv-none-elf-)
+  CC      := $(RISCV_PREFIX)gcc
+  AS      := $(RISCV_PREFIX)gcc
+  LD      := $(RISCV_PREFIX)ld
+  OBJCOPY := $(RISCV_PREFIX)objcopy
+  TARGET  := riscv64-none-elf
+  QEMU    := @echo "Use $(HETERIS_ISA)/sim simulator for Heteris" && false
+  QFLAGS  :=
 else
-  $(error Unknown ARCH=$(ARCH). Use arm64 or x86_64)
+  $(error Unknown ARCH=$(ARCH). Use arm64, x86_64, or heteris)
 endif
 
+ifeq ($(ARCH),heteris)
+CFLAGS  := -march=rv64ima_zicsr -mabi=lp64 \
+           -ffreestanding -fno-builtin -nostdlib -nostdinc \
+           -Wall -Wextra -Werror -std=c11 \
+           -I kernel/include \
+           -O2 -g
+
+ASFLAGS := -march=rv64ima_zicsr -mabi=lp64 \
+           -ffreestanding -nostdlib
+
+LDFLAGS := -nostdlib --gc-sections -m elf64lriscv
+else
 CFLAGS  := -target $(TARGET) \
            -ffreestanding -fno-builtin -nostdlib -nostdinc \
            -Wall -Wextra -Werror -std=c11 \
@@ -82,33 +107,37 @@ ASFLAGS := -target $(TARGET) \
            -ffreestanding -nostdlib
 
 LDFLAGS := -nostdlib --gc-sections
+endif
 
 # --- Source files ---
-ARCH_DIR  := kernel/arch/$(ARCH)
-CORE_DIR  := kernel/core
-LIB_DIR   := kernel/lib
-BUILD_DIR := build/$(ARCH)
-LINK_LD   := $(ARCH_DIR)/link.ld
+ARCH_DIR    := kernel/arch/$(ARCH)
+CORE_DIR    := kernel/core
+LIB_DIR     := kernel/lib
+DRIVER_DIR  := kernel/drivers
+BUILD_DIR   := build/$(ARCH)
+LINK_LD     := $(ARCH_DIR)/link.ld
 
 # Collect sources (use shell find for recursive, wildcard doesn't recurse)
 ARCH_C    := $(wildcard $(ARCH_DIR)/*.c)
 ARCH_S    := $(filter-out %/qemu_boot.S, $(wildcard $(ARCH_DIR)/*.S))
 CORE_C    := $(shell find $(CORE_DIR) -name '*.c' 2>/dev/null)
 LIB_C     := $(wildcard $(LIB_DIR)/*.c)
+DRIVER_C  := $(shell find $(DRIVER_DIR) -name '*.c' 2>/dev/null)
 
 # Object files
-ARCH_C_OBJ := $(patsubst $(ARCH_DIR)/%.c,$(BUILD_DIR)/arch/%.o,$(ARCH_C))
-ARCH_S_OBJ := $(patsubst $(ARCH_DIR)/%.S,$(BUILD_DIR)/arch/%.o,$(ARCH_S))
-CORE_OBJ   := $(patsubst $(CORE_DIR)/%.c,$(BUILD_DIR)/core/%.o,$(CORE_C))
-LIB_OBJ    := $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/lib/%.o,$(LIB_C))
+ARCH_C_OBJ  := $(patsubst $(ARCH_DIR)/%.c,$(BUILD_DIR)/arch/%.o,$(ARCH_C))
+ARCH_S_OBJ  := $(patsubst $(ARCH_DIR)/%.S,$(BUILD_DIR)/arch/%.o,$(ARCH_S))
+CORE_OBJ    := $(patsubst $(CORE_DIR)/%.c,$(BUILD_DIR)/core/%.o,$(CORE_C))
+LIB_OBJ     := $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/lib/%.o,$(LIB_C))
+DRIVER_OBJ  := $(patsubst $(DRIVER_DIR)/%.c,$(BUILD_DIR)/drivers/%.o,$(DRIVER_C))
 
-ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(LIB_OBJ)
+ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(DRIVER_OBJ) $(LIB_OBJ)
 
 KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
-.PHONY: kernel qemu qemu-deps clean test toolchain toolchain-check proto-install proto-test
+.PHONY: kernel qemu qemu-fb qemu-deps clean test toolchain toolchain-check proto-install proto-test
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -141,6 +170,11 @@ $(BUILD_DIR)/lib/%.o: $(LIB_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Compile C files from drivers/ (recursive)
+$(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # x86_64 QEMU needs a 32-bit multiboot wrapper (QEMU rejects ELF64 multiboot).
 # ARM64 can use the ELF directly.
 QEMU_KERNEL := $(KERNEL_ELF)
@@ -162,6 +196,18 @@ endif
 
 qemu: $(QEMU_KERNEL)
 	$(QEMU) $(QFLAGS) $(QEMU_KERNEL)
+
+# QEMU with framebuffer display (serial on stdio + graphical window)
+ifeq ($(ARCH),arm64)
+  QFLAGS_FB := -M virt -cpu cortex-a72 -m 512M -serial mon:stdio -device ramfb -kernel
+else ifeq ($(ARCH),x86_64)
+  QFLAGS_FB := -m 512M -serial mon:stdio -no-reboot -vga std -kernel
+else
+  QFLAGS_FB := $(QFLAGS)
+endif
+
+qemu-fb: $(QEMU_KERNEL)
+	$(QEMU) $(QFLAGS_FB) $(QEMU_KERNEL)
 
 # Build QEMU and dependencies from source into tools/qemu/
 qemu-deps:
@@ -194,6 +240,7 @@ clean:
 TEST_CC     := clang
 TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, $(CORE_C))
+DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' 2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/test_state_object.c \
@@ -202,13 +249,14 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_memplane.c \
                tests/test_engine_registry.c \
                tests/test_scheduler.c \
-               tests/test_capability.c
+               tests/test_capability.c \
+               tests/test_fb.c
 TEST_BIN    := build/test/anunix_test
 
 test:
 	@echo "  Building host-native test binary..."
 	@mkdir -p build/test
-	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(LIB_C) -o $(TEST_BIN)
+	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(DRIVER_C_ALL) $(LIB_C) -o $(TEST_BIN)
 	@echo "  Running tests..."
 	@$(TEST_BIN)
 
