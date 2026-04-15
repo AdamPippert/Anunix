@@ -24,6 +24,8 @@
 #include <anx/capability.h>
 #include <anx/page.h>
 #include <anx/pci.h>
+#include <anx/net.h>
+#include <anx/virtio_net.h>
 
 /* --- Line input --- */
 
@@ -127,6 +129,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  cap list                   List capabilities\n");
 	kputs("  sched status               Show scheduler queue depths\n");
 	kputs("  net status                 Show network plane status\n");
+	kputs("  ping <ip>                  Send ICMP echo request\n");
 	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
 }
@@ -707,6 +710,44 @@ static void cmd_net_status(void)
 	kprintf("  status: online\n");
 }
 
+/* --- Network helpers --- */
+
+static uint32_t parse_ip(const char *s)
+{
+	uint32_t a = 0, b = 0, c = 0, d = 0;
+	int field = 0;
+	uint32_t val = 0;
+
+	while (*s) {
+		if (*s >= '0' && *s <= '9') {
+			val = val * 10 + (uint32_t)(*s - '0');
+		} else if (*s == '.') {
+			if (field == 0) a = val;
+			else if (field == 1) b = val;
+			else if (field == 2) c = val;
+			field++;
+			val = 0;
+		}
+		s++;
+	}
+	d = val;
+	return ANX_IP4(a, b, c, d);
+}
+
+static void cmd_ping(const char *target)
+{
+	uint32_t ip = parse_ip(target);
+
+	kprintf("ping %u.%u.%u.%u...\n",
+		(ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
+		(ip >> 8) & 0xFF, ip & 0xFF);
+
+	if (anx_icmp_ping(ip, 1) == ANX_OK)
+		kputs("ping sent\n");
+	else
+		kputs("ping failed\n");
+}
+
 /* --- PCI commands --- */
 
 static void cmd_pci(void)
@@ -768,6 +809,11 @@ static void dispatch(int argc, char **argv)
 			cmd_net_status();
 		else
 			kputs("usage: net status\n");
+	} else if (anx_strcmp(argv[0], "ping") == 0) {
+		if (argc >= 2)
+			cmd_ping(argv[1]);
+		else
+			kputs("usage: ping <ip>\n");
 	} else if (anx_strcmp(argv[0], "pci") == 0) {
 		cmd_pci();
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
