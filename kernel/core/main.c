@@ -22,6 +22,7 @@
 #include <anx/hwprobe.h>
 #include <anx/model_server.h>
 #include <anx/route_feedback.h>
+#include <anx/posix.h>
 #include <anx/splash.h>
 #include <anx/shell.h>
 
@@ -83,7 +84,9 @@ void kernel_main(void)
 	anx_cap_store_init();
 	kprintf("capability store initialized\n");
 
-	/* TODO: 7. POSIX compatibility layer */
+	/* 7. POSIX compatibility layer */
+	anx_posix_init();
+	kprintf("posix compatibility layer initialized\n");
 
 	kprintf("kernel init complete -- all subsystems online\n");
 
