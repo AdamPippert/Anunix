@@ -69,10 +69,10 @@ void anx_ipv4_recv(const void *data, uint32_t len)
 		anx_icmp_recv(payload, payload_len, src_ip);
 		break;
 	case ANX_IP_PROTO_UDP:
-		/* TODO: add UDP dispatch */
+		anx_udp_recv(payload, payload_len, src_ip);
 		break;
 	case ANX_IP_PROTO_TCP:
-		/* TODO: add TCP dispatch */
+		anx_tcp_recv_segment(payload, payload_len, src_ip);
 		break;
 	default:
 		break;

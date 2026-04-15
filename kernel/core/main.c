@@ -29,7 +29,7 @@
 #include <anx/splash.h>
 #include <anx/shell.h>
 
-#define ANX_VERSION "0.1.0"
+#define ANX_VERSION "2026.4.15"
 
 void kernel_main(void)
 {
