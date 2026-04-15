@@ -59,7 +59,8 @@ void arch_init(void)
 	/* Initialize page allocator with linker-defined heap */
 	anx_page_init((uintptr_t)_heap_start, (uintptr_t)_heap_end);
 
-	/* TODO: GDT, IDT, APIC, ACPI, full paging */
+	/* IDT, GDT, PIC, PIT timer */
+	arch_exception_init();
 }
 
 void arch_probe_hw(struct anx_hw_inventory *inv)

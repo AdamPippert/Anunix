@@ -15,6 +15,11 @@
 #include <anx/cell_trace.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
+#include <anx/route.h>
+#include <anx/engine.h>
+#include <anx/model_server.h>
+#include <anx/uuid.h>
+#include <anx/string.h>
 
 /* --- Admission --- */
 
@@ -67,6 +72,25 @@ static int runtime_plan(struct anx_cell *cell, struct anx_cell_trace *trace,
 		return ret;
 	}
 
+	/* Route: select an engine for execution */
+	{
+		struct anx_route_result route;
+
+		if (anx_route_plan(cell, &route) == ANX_OK &&
+		    route.candidate_count > 0 &&
+		    route.candidates[route.selected_index].feasible) {
+			uint32_t s;
+
+			for (s = 0; s < plan->step_count; s++) {
+				if (plan->steps[s].kind == ANX_STEP_DIRECT_EXEC) {
+					plan->steps[s].assigned_engine =
+						route.candidates[route.selected_index].engine_id;
+					break;
+				}
+			}
+		}
+	}
+
 	cell->plan_id = plan->plan_id;
 
 	ret = anx_cell_transition(cell, ANX_CELL_PLANNED);
@@ -116,10 +140,28 @@ static int runtime_execute(struct anx_cell *cell,
 
 		switch (step->kind) {
 		case ANX_STEP_DIRECT_EXEC:
-			/*
-			 * Stub: real engine dispatch will go here.
-			 * For now, execution "succeeds" immediately.
-			 */
+			/* Dispatch to assigned engine if set */
+			if (!anx_uuid_is_nil(&step->assigned_engine)) {
+				struct anx_engine *eng;
+
+				eng = anx_engine_lookup(&step->assigned_engine);
+				if (eng &&
+				    (eng->engine_class == ANX_ENGINE_LOCAL_MODEL ||
+				     eng->engine_class == ANX_ENGINE_REMOTE_MODEL)) {
+					struct anx_model_server *srv;
+
+					srv = anx_msrv_lookup(&step->assigned_engine);
+					if (srv) {
+						struct anx_infer_request req;
+
+						anx_memset(&req, 0, sizeof(req));
+						req.requestor_cid = cell->cid;
+						req.engine_id = eng->eid;
+						anx_msrv_submit(srv, &req);
+					}
+				}
+				/* Non-model engines: stub for now */
+			}
 			break;
 
 		case ANX_STEP_CHILD_CELL:

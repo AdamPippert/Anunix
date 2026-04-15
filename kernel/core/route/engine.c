@@ -85,6 +85,12 @@ int anx_engine_find(enum anx_engine_class engine_class,
 	if (!results || !found_count)
 		return ANX_EINVAL;
 
+	/* Handle uninitialized registry gracefully */
+	if (!engine_table.buckets) {
+		*found_count = 0;
+		return ANX_OK;
+	}
+
 	bucket_count = 1U << engine_table.bits;
 
 	for (i = 0; i < bucket_count && found < max_results; i++) {
