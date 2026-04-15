@@ -9,6 +9,7 @@
 #include <anx/arch.h>
 #include <anx/irq.h>
 #include <anx/pci.h>
+#include <anx/credential.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
 #include <anx/http.h>
