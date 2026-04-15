@@ -8,6 +8,8 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
+#include <anx/fb.h>
+#include <anx/fbcon.h>
 #include <anx/state_object.h>
 #include <anx/cell.h>
 #include <anx/memplane.h>
@@ -25,6 +27,18 @@ void kernel_main(void)
 {
 	/* Early hardware init (serial/UART so kprintf works) */
 	arch_early_init();
+
+	/* Detect and initialize framebuffer if available */
+	{
+		struct anx_fb_info fb_info;
+
+		arch_fb_detect(&fb_info);
+		if (fb_info.available && anx_fb_init(&fb_info) == ANX_OK) {
+			anx_fbcon_init();
+			kprintf("framebuffer console: %ux%u @ %ubpp\n",
+				fb_info.width, fb_info.height, fb_info.bpp);
+		}
+	}
 
 	/* Boot splash */
 	anx_splash();

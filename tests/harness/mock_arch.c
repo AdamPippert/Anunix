@@ -8,6 +8,7 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/page.h>
+#include <anx/fb.h>
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
@@ -83,6 +84,12 @@ int arch_console_getc(void)
 bool arch_console_has_input(void)
 {
 	return false;
+}
+
+void arch_fb_detect(struct anx_fb_info *info)
+{
+	/* No framebuffer in test builds — tests set it up directly */
+	info->available = false;
 }
 
 void arch_mb(void)

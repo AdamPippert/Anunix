@@ -5,6 +5,7 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/page.h>
+#include <anx/fb.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
@@ -126,6 +127,49 @@ int arch_console_getc(void)
 bool arch_console_has_input(void)
 {
 	return (inb(COM1_LSR) & 0x01) != 0;
+}
+
+/* --- Framebuffer detection --- */
+
+/*
+ * Multiboot framebuffer info stashed at 0x1000 by qemu_boot.S trampoline.
+ * See qemu_boot.S for the layout.
+ */
+#define MB_FB_MAGIC_ADDR	0x1000
+#define MB_FB_MAGIC_VAL		0x414E5846	/* "ANXF" */
+#define MB_FB_FLAGS_ADDR	0x1004
+#define MB_FB_ADDR_ADDR		0x1008
+#define MB_FB_PITCH_ADDR	0x1010
+#define MB_FB_WIDTH_ADDR	0x1014
+#define MB_FB_HEIGHT_ADDR	0x1018
+#define MB_FB_BPP_ADDR		0x101C
+#define MB_FB_TYPE_ADDR		0x101D
+
+void arch_fb_detect(struct anx_fb_info *info)
+{
+	volatile uint32_t *magic = (volatile uint32_t *)MB_FB_MAGIC_ADDR;
+	volatile uint32_t *flags = (volatile uint32_t *)MB_FB_FLAGS_ADDR;
+
+	info->available = false;
+
+	/* Check magic to confirm trampoline stored info */
+	if (*magic != MB_FB_MAGIC_VAL)
+		return;
+
+	/* Check multiboot flags bit 12 (framebuffer info present) */
+	if (!(*flags & (1 << 12)))
+		return;
+
+	/* Check type is linear framebuffer (type 1 = direct RGB) */
+	if (*(volatile uint8_t *)MB_FB_TYPE_ADDR != 1)
+		return;
+
+	info->addr   = *(volatile uint64_t *)MB_FB_ADDR_ADDR;
+	info->pitch  = *(volatile uint32_t *)MB_FB_PITCH_ADDR;
+	info->width  = *(volatile uint32_t *)MB_FB_WIDTH_ADDR;
+	info->height = *(volatile uint32_t *)MB_FB_HEIGHT_ADDR;
+	info->bpp    = *(volatile uint8_t *)MB_FB_BPP_ADDR;
+	info->available = (info->addr != 0 && info->bpp == 32);
 }
 
 /* --- Memory barriers --- */

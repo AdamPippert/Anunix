@@ -25,6 +25,7 @@ int test_memplane(void);
 int test_engine_registry(void);
 int test_scheduler(void);
 int test_capability(void);
+int test_fb(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -34,6 +35,7 @@ static struct test_case tests[] = {
 	{ "engine_registry",	test_engine_registry },
 	{ "scheduler",		test_scheduler },
 	{ "capability",		test_capability },
+	{ "fb",			test_fb },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
