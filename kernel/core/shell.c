@@ -27,6 +27,7 @@
 #include <anx/net.h>
 #include <anx/virtio_net.h>
 #include <anx/http.h>
+#include <anx/credential.h>
 
 /* --- Line input --- */
 
@@ -132,6 +133,10 @@ static void cmd_help(int argc, char **argv)
 	kputs("  net status                 Show network plane status\n");
 	kputs("  ping <ip>                  Send ICMP echo request\n");
 	kputs("  dns <hostname>             Resolve hostname to IP\n");
+	kputs("  secret set <name> <value>  Store a credential\n");
+	kputs("  secret list                List credentials (no values)\n");
+	kputs("  secret show <name>         Show credential metadata\n");
+	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
 	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
@@ -817,6 +822,113 @@ static void cmd_ping(const char *target)
 		kputs("ping failed\n");
 }
 
+/* --- Secret commands (RFC-0008) --- */
+
+static const char *cred_type_name(enum anx_credential_type t)
+{
+	switch (t) {
+	case ANX_CRED_API_KEY:		return "api_key";
+	case ANX_CRED_TOKEN:		return "token";
+	case ANX_CRED_CERTIFICATE:	return "certificate";
+	case ANX_CRED_PRIVATE_KEY:	return "private_key";
+	case ANX_CRED_PASSWORD:		return "password";
+	case ANX_CRED_OPAQUE:		return "opaque";
+	default:			return "unknown";
+	}
+}
+
+static void cmd_secret(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: secret <set|list|show|revoke> [args]\n");
+		return;
+	}
+
+	if (anx_strcmp(argv[1], "set") == 0) {
+		int ret;
+
+		if (argc < 4) {
+			kputs("usage: secret set <name> <value>\n");
+			return;
+		}
+		ret = anx_credential_create(argv[2], ANX_CRED_API_KEY,
+					     argv[3],
+					     (uint32_t)anx_strlen(argv[3]));
+		if (ret == ANX_EEXIST)
+			kprintf("secret: '%s' already exists (use rotate)\n",
+				argv[2]);
+		else if (ret != ANX_OK)
+			kprintf("secret: create failed (%d)\n", ret);
+
+		/* Zero the value in the command buffer */
+		anx_memset(argv[3], 0, anx_strlen(argv[3]));
+
+	} else if (anx_strcmp(argv[1], "list") == 0) {
+		struct anx_credential_info entries[16];
+		uint32_t count = 0;
+		uint32_t i;
+
+		anx_credential_list(entries, 16, &count);
+		if (count == 0) {
+			kputs("(no credentials stored)\n");
+			return;
+		}
+		for (i = 0; i < count; i++) {
+			kprintf("  %s  %s  %u bytes  %u accesses\n",
+				entries[i].name,
+				cred_type_name(entries[i].cred_type),
+				entries[i].secret_len,
+				entries[i].access_count);
+		}
+
+	} else if (anx_strcmp(argv[1], "show") == 0) {
+		struct anx_credential_info info;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: secret show <name>\n");
+			return;
+		}
+		ret = anx_credential_info(argv[2], &info);
+		if (ret != ANX_OK) {
+			kprintf("secret: '%s' not found\n", argv[2]);
+			return;
+		}
+		kprintf("  name:     %s\n", info.name);
+		kprintf("  type:     %s\n", cred_type_name(info.cred_type));
+		kprintf("  size:     %u bytes\n", info.secret_len);
+		kprintf("  accesses: %u\n", info.access_count);
+		kputs("  payload:  [REDACTED]\n");
+
+	} else if (anx_strcmp(argv[1], "rotate") == 0) {
+		int ret;
+
+		if (argc < 4) {
+			kputs("usage: secret rotate <name> <new-value>\n");
+			return;
+		}
+		ret = anx_credential_rotate(argv[2], argv[3],
+					     (uint32_t)anx_strlen(argv[3]));
+		if (ret != ANX_OK)
+			kprintf("secret: rotate failed (%d)\n", ret);
+		anx_memset(argv[3], 0, anx_strlen(argv[3]));
+
+	} else if (anx_strcmp(argv[1], "revoke") == 0) {
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: secret revoke <name>\n");
+			return;
+		}
+		ret = anx_credential_revoke(argv[2]);
+		if (ret != ANX_OK)
+			kprintf("secret: revoke failed (%d)\n", ret);
+
+	} else {
+		kputs("usage: secret <set|list|show|rotate|revoke>\n");
+	}
+}
+
 /* --- PCI commands --- */
 
 static void cmd_pci(void)
@@ -878,6 +990,8 @@ static void dispatch(int argc, char **argv)
 			cmd_net_status();
 		else
 			kputs("usage: net status\n");
+	} else if (anx_strcmp(argv[0], "secret") == 0) {
+		cmd_secret(argc, argv);
 	} else if (anx_strcmp(argv[0], "http-get") == 0) {
 		cmd_http_get(argc, argv);
 	} else if (anx_strcmp(argv[0], "dns") == 0) {
