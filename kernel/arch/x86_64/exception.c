@@ -132,9 +132,14 @@ static void pic_init(void)
 	outb(0x01, PIC2_DATA);
 	io_wait();
 
-	/* Mask all IRQs except IRQ0 (timer) */
-	outb(0xFE, PIC1_DATA);	/* master: only IRQ0 unmasked */
-	outb(0xFF, PIC2_DATA);	/* slave: all masked */
+	/*
+	 * Mask ALL PIC IRQs. On real hardware with LAPIC/IOAPIC,
+	 * the PIC is vestigial. Unmasking IRQ0 can cause spurious
+	 * interrupts that interact badly with APIC routing.
+	 * Timer ticks aren't needed yet — the shell polls for input.
+	 */
+	outb(0xFF, PIC1_DATA);
+	outb(0xFF, PIC2_DATA);
 }
 
 /* --- PIT (Programmable Interval Timer) --- */
@@ -169,27 +174,47 @@ static const char *exception_names[] = {
 	"Virtualization", "Control protection",
 };
 
+/*
+ * LAPIC EOI register — fixed at 0xFEE000B0 on all x86 systems
+ * with a local APIC (which includes all AMD64 CPUs).
+ * Writing 0 acknowledges the current interrupt.
+ */
+#define LAPIC_EOI	((volatile uint32_t *)0xFEE000B0ULL)
+
 void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 			     void *frame)
 {
 	(void)frame;
 
 	if (vector == 32) {
-		/* Timer IRQ */
+		/* Timer IRQ (PIT via PIC) */
 		pit_ticks++;
-		outb(0x20, PIC1_CMD);	/* EOI to master PIC */
+		outb(0x20, PIC1_CMD);
 		return;
 	}
 
 	if (vector >= 33 && vector <= 47) {
-		/* Other hardware IRQ — unhandled, just EOI */
+		/* PIC hardware IRQ */
 		if (vector >= 40)
 			outb(0x20, PIC2_CMD);
 		outb(0x20, PIC1_CMD);
 		return;
 	}
 
-	/* CPU exception */
+	if (vector >= 48 || vector == 0xFF) {
+		/*
+		 * Unexpected vector — likely LAPIC/IOAPIC/MSI interrupt
+		 * left pending by UEFI firmware. EOI both PIC and LAPIC
+		 * to clear it, then return. Safe even if the LAPIC is
+		 * disabled — the write is to identity-mapped MMIO.
+		 */
+		outb(0x20, PIC2_CMD);
+		outb(0x20, PIC1_CMD);
+		*LAPIC_EOI = 0;
+		return;
+	}
+
+	/* CPU exception (vectors 0-31) */
 	kprintf("\n*** EXCEPTION %u: %s ***\n",
 		(uint32_t)vector,
 		vector < 22 ? exception_names[vector] : "Unknown");
@@ -200,6 +225,9 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 
 /* --- Public API --- */
 
+/* Default handler for vectors not in stub table (from idt.S) */
+extern void isr_stub_default(void);
+
 void arch_exception_init(void)
 {
 	uint32_t i;
@@ -207,22 +235,29 @@ void arch_exception_init(void)
 	/* Install kernel GDT */
 	gdt_init();
 
-	/* Set up IDT entries from stub table */
+	/* Set up IDT entries from stub table (vectors 0-47) */
 	for (i = 0; i < ISR_COUNT; i++)
 		idt_set_gate(i, isr_stub_table[i]);
 
-	/* Remaining entries: leave as zero (not present) */
+	/*
+	 * Fill vectors 48-255 with a default handler.
+	 * UEFI firmware / LAPIC / IOAPIC can deliver interrupts on
+	 * any vector. An empty IDT entry causes #GP -> double fault
+	 * -> triple fault -> reboot.
+	 */
+	for (i = ISR_COUNT; i < IDT_ENTRIES; i++)
+		idt_set_gate(i, (uint64_t)isr_stub_default);
 
 	/* Load IDT */
 	idtr.limit = sizeof(idt) - 1;
 	idtr.base = (uint64_t)idt;
 	__asm__ volatile("lidt %0" : : "m"(idtr));
 
-	/* Initialize PIC and PIT */
+	/* Initialize PIC (all IRQs masked) and PIT */
 	pic_init();
 	pit_init();
 
-	/* Enable interrupts */
+	/* Enable interrupts — safe now that all 256 IDT entries are filled */
 	__asm__ volatile("sti");
 }
 

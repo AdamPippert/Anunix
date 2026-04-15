@@ -221,9 +221,11 @@ iso-deps:
 	@./tools/fetch-grub.sh
 
 # Build bootable x86_64 hybrid ISO (BIOS + UEFI)
+# Primary kernel: native 64-bit ELF (multiboot2, UEFI boot)
+# Optional: 32-bit multiboot wrapper for legacy BIOS fallback
 iso:
 	@$(MAKE) kernel ARCH=x86_64
-	@$(MAKE) ARCH=x86_64 build/x86_64/anunix-qemu.elf
+	@$(MAKE) ARCH=x86_64 build/x86_64/anunix-qemu.elf 2>/dev/null || true
 	@./tools/build-iso.sh
 
 # Distribution tarball with both architectures

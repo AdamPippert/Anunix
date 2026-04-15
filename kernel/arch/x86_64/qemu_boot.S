@@ -48,28 +48,28 @@ _start:
 /* Temporary stack in BSS */
 	movl	$(boot_stack_top), %esp
 
-	/* Zero page tables (3 pages = 12 KiB) */
+	/* Zero page tables (2 pages = 8 KiB) */
 	movl	$boot_pml4, %edi
 	xorl	%eax, %eax
-	movl	$(3 * 4096 / 4), %ecx
+	movl	$(2 * 4096 / 4), %ecx
 	rep	stosl
 
 	/* PML4[0] -> PDPT */
 	movl	$(boot_pdpt + 0x3), boot_pml4
 
-	/* PDPT[0] -> PD */
-	movl	$(boot_pd + 0x3), boot_pdpt
-
-	/* PD[0..511] -> 2 MiB identity pages (first 1 GiB) */
-	movl	$boot_pd, %edi
-	movl	$0x83, %eax		/* present + writable + 2MiB */
-	movl	$512, %ecx
-1:	movl	%eax, (%edi)
-	movl	$0, 4(%edi)
-	addl	$0x200000, %eax
-	addl	$8, %edi
-	decl	%ecx
-	jnz	1b
+	/*
+	 * PDPT[0..3] -> 1 GiB identity pages (first 4 GiB).
+	 * 1 GiB pages (PS bit 7) are supported by all AMD64 CPUs.
+	 * 4 GiB covers the framebuffer which PCI maps below 4 GiB.
+	 */
+	movl	$0x83, boot_pdpt + 0		/* 0x00000000 - 0x3FFFFFFF */
+	movl	$0, boot_pdpt + 4
+	movl	$0x40000083, boot_pdpt + 8	/* 0x40000000 - 0x7FFFFFFF */
+	movl	$0, boot_pdpt + 12
+	movl	$0x80000083, boot_pdpt + 16	/* 0x80000000 - 0xBFFFFFFF */
+	movl	$0, boot_pdpt + 20
+	movl	$0xC0000083, boot_pdpt + 24	/* 0xC0000000 - 0xFFFFFFFF */
+	movl	$0, boot_pdpt + 28
 
 	/* CR3 = PML4 */
 	movl	$boot_pml4, %eax
@@ -114,8 +114,6 @@ boot_gdt_ptr:
 boot_pml4:
 	.space 4096
 boot_pdpt:
-	.space 4096
-boot_pd:
 	.space 4096
 
 .align 16

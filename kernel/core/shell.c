@@ -41,6 +41,9 @@ static int kgetline(char *buf, size_t size)
 	while (pos < size - 1) {
 		int c = arch_console_getc();
 
+		if (c < 0)
+			break;
+
 		if (c == '\r' || c == '\n') {
 			arch_console_putc('\r');
 			arch_console_putc('\n');
