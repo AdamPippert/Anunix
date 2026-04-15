@@ -24,6 +24,7 @@
 #include <anx/route_feedback.h>
 #include <anx/posix.h>
 #include <anx/pci.h>
+#include <anx/credential.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
 #include <anx/splash.h>
@@ -91,10 +92,14 @@ void kernel_main(void)
 	anx_posix_init();
 	kprintf("posix compatibility layer initialized\n");
 
-	/* 8. PCI bus enumeration */
+	/* 8. Credential store (RFC-0008) */
+	anx_credstore_init();
+	kprintf("credential store initialized\n");
+
+	/* 9. PCI bus enumeration */
 	anx_pci_init();
 
-	/* 9. Network device and IP stack */
+	/* 10. Network device and IP stack */
 	if (anx_virtio_net_init() == ANX_OK) {
 		struct anx_net_config net_cfg;
 

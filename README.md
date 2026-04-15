@@ -17,12 +17,11 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | Sockets | **Network Plane** | Federated execution across machines |
 | `chmod`/ACLs | **Capabilities** | Object-level, unforgeable, delegatable |
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
-
-The kernel is real, it boots, and all subsystems initialize — including the model hosting control plane.
+| `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
 
 ## Current Status
 
-**The kernel boots on both ARM64 and x86_64 under QEMU.**
+**Version 2026.4.15** (CalVer). The kernel boots on ARM64 and x86_64, with full VM networking and HTTP client capability.
 
 ```
                        ___
@@ -37,59 +36,106 @@ The kernel is real, it boots, and all subsystems initialize — including the mo
                 A N U N I X
           The AI-Native Operating System
 
-  Anunix 0.1.0 booting
+  Anunix 2026.4.15 booting
 
-arch init complete
-state object layer initialized
-execution cell runtime initialized
-memory control plane initialized
-routing plane and scheduler initialized
-network plane initialized
-capability store initialized
+pci: 6 devices found
+virtio-net: 52:54:0:12:34:56 on irq 11
+net: ip 10.0.2.15 gw 10.0.2.2 dns 10.0.2.3
+credential store initialized
 kernel init complete -- all subsystems online
 
 Anunix kernel monitor ready. Type 'help' for commands.
 
-anx>
+anx> ping 10.0.2.2
+ping 10.0.2.2...
+ping sent
+
+anx> dns example.com
+resolving example.com...
+example.com -> 172.66.147.243
+
+anx> http-get example.com 80 /
+GET http://example.com:80/
+HTTP 200, 540 bytes
 ```
 
 ### What works
 
 - Dual-architecture kernel (ARM64 + x86_64) built from the same source
-- All subsystem foundations (RFC-0002 through RFC-0007)
-- **Model hosting control plane** — engine lifecycle, resource leasing, model server cells, staged routing, budget profiles
-- Hardware capability probing (CPU, RAM, accelerators)
+- **Boots on real UEFI hardware** (AMD Ryzen 9 HX 370) and QEMU/OVMF
+- All subsystem foundations (RFC-0002 through RFC-0008)
+- **VM networking** — virtio-net driver, full IP stack (Ethernet, ARP, IPv4, ICMP, UDP, TCP), DNS resolver, HTTP/1.1 client
+- **Credential store** (RFC-0008) — kernel-enforced secrets with opaque payloads, never exposed in traces or logs
+- **PCI bus enumeration** — discovers devices on bus 0, enables bus mastering for DMA
+- Model hosting control plane — engine lifecycle, resource leasing, model server cells, staged routing, budget profiles
 - Framebuffer console driver (VGA for x86_64, ramfb for ARM64)
-- Interactive kernel monitor shell
-- 11 passing unit tests
-- QEMU boot for both architectures (built from source, no Homebrew)
+- Bootable ISO (BIOS + UEFI) for USB installation
+- Interactive kernel monitor shell with networking commands
+- 12 passing unit tests
 - ANSI color boot splash
 
-### Model Hosting Architecture
+### Networking Stack
 
-The kernel acts as a **control plane** for AI model hosting — it does not run inference itself. Key components:
+The kernel includes a complete networking stack for QEMU virtual machines:
 
-- **Engine Registry** — models register with capability tags, quantization format, parameter count, context window, and throughput benchmarks
-- **Engine Lifecycle** — 9-state machine (REGISTERED → LOADING → READY → AVAILABLE → DEGRADED → DRAINING → UNLOADING → OFFLINE / MAINTENANCE)
-- **Resource Leasing** — memory tier and accelerator (GPU/NPU) reservations per engine, with availability tracking and exhaustion protection
-- **Model Server Cells** — privileged `ANX_CELL_MODEL_SERVER` cells that host running engines, with health monitoring, backpressure, and automatic restart
-- **Staged Routing** — deterministic feasibility + scoring in the kernel, with an escalation flag for a local semantic routing service (future) and slow-path RLM planner (future)
-- **Budget Profiles** — named profiles (interactive_private, background_enrichment, critical_decision) with scoring weights and hard caps on latency and cost
-- **Route Feedback** — ring buffer recording outcome signals (latency, cost, tokens, validation pass/fail) for future route improvement
+| Layer | Component | Status |
+|-------|-----------|--------|
+| Device | Virtio-net PCI driver (legacy PIO) | Working |
+| Link | Ethernet frame dispatch | Working |
+| Network | ARP, IPv4 (gateway routing, checksums) | Working |
+| Network | ICMP echo request/reply (ping) | Working |
+| Transport | UDP with port dispatch, DNS resolver | Working |
+| Transport | TCP client (4 connections, blocking I/O) | Working |
+| Application | HTTP/1.1 GET/POST (Connection: close) | Working |
+| Security | Credential store (RFC-0008 Phase 1) | Working |
+| Security | TLS | Deferred (host-side proxy for now) |
+
+For HTTPS APIs (like Claude), a TLS-terminating proxy runs on the QEMU host:
+```sh
+socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1
+```
+
+### Credential Management (RFC-0008)
+
+Secrets are first-class kernel objects, not plaintext strings:
+
+```
+anx> secret set anthropic-api-key sk-ant-api03-...
+credential: anthropic-api-key stored (51 bytes)
+
+anx> secret list
+  anthropic-api-key  api_key  51 bytes  0 accesses
+
+anx> secret show anthropic-api-key
+  name:     anthropic-api-key
+  type:     api_key
+  size:     51 bytes
+  accesses: 0
+  payload:  [REDACTED]
+```
+
+Kernel-enforced invariants:
+- Payloads never appear in traces, provenance logs, kprintf, or network messages
+- Secure zeroing on revoke/rotate (constant-time, compiler-safe)
+- Named addressing decouples rotation from policy
+- Phase 2 adds cell-scoped access bindings (least privilege)
 
 ### What's next
 
-- Exception vectors (GIC for ARM64, IDT for x86_64) — needed for safe framebuffer detection and interrupt-driven I/O
-- Engine dispatch wiring — connect route planner results to model server inference requests
-- POSIX compatibility shim
-- Real hardware testing (Apple Silicon, Framework Laptop)
+- Credential injection into HTTP requests via routing plane
+- In-kernel TLS 1.3 client (BearSSL port)
+- Real hardware networking (driver for AMD/Intel NICs)
+- Engine dispatch wiring — connect route planner to live model APIs
+- Persistent storage (virtio-blk driver)
 
 ## Target Platforms
 
 | Platform | Architecture | Status |
 |----------|-------------|--------|
 | QEMU virt (ARM64) | AArch64 | Boots, all subsystems |
-| QEMU (x86_64) | x86_64 | Boots, all subsystems |
+| QEMU (x86_64) | x86_64 | Boots, networking, HTTP client |
+| QEMU + OVMF (UEFI) | x86_64 | Boots, networking, HTTP client |
+| AMD Ryzen 9 HX 370 | x86_64 | Boots (USB ISO, framebuffer) |
 | Apple Silicon Macs | AArch64 | Planned |
 | Framework Laptop 16 | x86_64 | Planned |
 | Framework Desktop | x86_64 | Planned |
@@ -106,18 +152,26 @@ The kernel acts as a **control plane** for AI model hosting — it does not run 
 ```sh
 make toolchain         # Fetch ld.lld + llvm-objcopy
 make qemu-deps         # Build QEMU from source (~5 min)
+make iso-deps          # Fetch GRUB + xorriso for ISO builds
 ```
 
 ### Build and run
 
 ```sh
 make kernel            # Build for host architecture
-make kernel ARCH=arm64 # Build for ARM64
 make kernel ARCH=x86_64 # Build for x86_64
 make qemu              # Boot in QEMU, serial console (Ctrl-A X to quit)
 make qemu-fb           # Boot with framebuffer display window
-make qemu ARCH=arm64   # Boot ARM64 kernel
-make test              # Run unit tests (11 tests)
+make test              # Run unit tests (12 tests)
+make iso               # Build bootable x86_64 ISO (BIOS + UEFI)
+```
+
+### Boot with networking
+
+```sh
+qemu-system-x86_64 -m 512M -nographic -serial mon:stdio -no-reboot \
+  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+  -kernel build/x86_64/anunix-qemu.elf
 ```
 
 ## Project Structure
@@ -126,33 +180,29 @@ make test              # Run unit tests (11 tests)
 kernel/
   arch/
     arm64/          ARM64: PL011 UART, boot, page tables
-    x86_64/         x86_64: COM1 serial, multiboot, long mode switch
+    x86_64/         x86_64: COM1 serial, multiboot, IDT, PIC, PIT
   core/
     state/          State Object Layer          (RFC-0002)
     exec/           Execution Cell Runtime      (RFC-0003)
     mem/            Memory Control Plane        (RFC-0004)
     route/          Routing Plane + Model Hosting (RFC-0005)
-      engine.c      Engine registry + lifecycle
-      planner.c     Route planner with escalation
-      model_server.c Model server cell management
-      lease.c       Resource leasing (memory + accelerators)
-      hwprobe.c     Hardware capability probing
-      feedback.c    Route outcome recording
-      budget.c      Budget profiles
     sched/          Unified Scheduler           (RFC-0005)
     net/            Network Plane               (RFC-0006)
     cap/            Capability Objects          (RFC-0007)
+    credential.c    Credential Store            (RFC-0008)
     shell.c         Interactive kernel monitor
-    splash.c        Boot splash screen
     main.c          Kernel entry point
   drivers/
     fb/             Framebuffer + console drivers
+    pci/            PCI bus enumeration
+    virtio/         Virtio transport + virtio-net driver
+    net/            IP stack (Ethernet, ARP, IPv4, ICMP, UDP, TCP, DNS, HTTP)
   include/anx/      Public kernel headers
   lib/              Kernel support (kprintf, alloc, font, string, etc.)
 tests/              Host-native unit tests
-tools/              Build scripts (LLVM fetch, QEMU build)
-assets/             Brand logos
+tools/              Build scripts (LLVM fetch, QEMU build, ISO assembly)
 docs/rfcs/          Design specifications
+config/             GRUB boot configuration
 ```
 
 ## Design Documents
@@ -164,23 +214,7 @@ docs/rfcs/          Design specifications
 - [RFC-0005: Routing Plane and Unified Scheduler](docs/rfcs/RFC-0005-routing-and-scheduler.md)
 - [RFC-0006: Network Plane and Federated Execution](docs/rfcs/RFC-0006-network-plane.md)
 - [RFC-0007: Capability Objects](docs/rfcs/RFC-0007-capability-objects.md)
-
-## Testing with UTM
-
-To test on a Mac with [UTM](https://mac.getutm.app):
-
-1. Build the kernel: `make kernel ARCH=arm64`
-2. In UTM: **New VM** → **Emulate** → **Other**
-3. Set Architecture to **ARM64 (aarch64)**, System to **virt**, Memory to **512 MB**
-4. Skip storage (no disk needed)
-5. In VM Settings → QEMU, add these arguments:
-   ```
-   -serial mon:stdio
-   -kernel /path/to/Anunix/build/arm64/anunix.elf
-   ```
-6. Boot the VM — the splash and shell appear in the serial console
-
-For x86_64, use Architecture **x86_64** and kernel path `build/x86_64/anunix-qemu.elf`.
+- [RFC-0008: Credential Objects and Secrets Management](docs/rfcs/RFC-0008-credential-objects.md)
 
 ## License
 
