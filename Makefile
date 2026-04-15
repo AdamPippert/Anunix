@@ -30,6 +30,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
+ANX_VERSION := 0.1.0
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -137,7 +138,7 @@ KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
-.PHONY: kernel qemu qemu-fb qemu-deps clean test toolchain toolchain-check proto-install proto-test
+.PHONY: kernel qemu qemu-fb qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -212,6 +213,32 @@ qemu-fb: $(QEMU_KERNEL)
 # Build QEMU and dependencies from source into tools/qemu/
 qemu-deps:
 	@./tools/build-qemu.sh
+
+# --- ISO and distribution ---
+
+# Download GRUB modules and build xorriso
+iso-deps:
+	@./tools/fetch-grub.sh
+
+# Build bootable x86_64 hybrid ISO (BIOS + UEFI)
+iso:
+	@$(MAKE) kernel ARCH=x86_64
+	@$(MAKE) ARCH=x86_64 build/x86_64/anunix-qemu.elf
+	@./tools/build-iso.sh
+
+# Distribution tarball with both architectures
+dist: iso
+	@echo "  Building distribution..."
+	@mkdir -p build/dist/anunix-$(ANX_VERSION)/x86_64
+	@mkdir -p build/dist/anunix-$(ANX_VERSION)/arm64
+	@cp build/anunix-x86_64.iso build/dist/anunix-$(ANX_VERSION)/x86_64/
+	@cp build/x86_64/anunix.elf build/dist/anunix-$(ANX_VERSION)/x86_64/
+	@$(MAKE) kernel ARCH=arm64
+	@cp build/arm64/anunix.elf build/dist/anunix-$(ANX_VERSION)/arm64/
+	@cp build/arm64/anunix.bin build/dist/anunix-$(ANX_VERSION)/arm64/
+	@cd build/dist && tar czf ../anunix-$(ANX_VERSION).tar.gz anunix-$(ANX_VERSION)/
+	@echo "  DIST    build/anunix-$(ANX_VERSION).tar.gz"
+
 
 # Fetch LLVM tools (ld.lld, llvm-objcopy) into tools/llvm/bin/
 toolchain:

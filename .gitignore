@@ -45,6 +45,9 @@ tools/llvm/
 # Locally-built QEMU (from make qemu-deps)
 tools/qemu/
 
+# GRUB modules and xorriso (from make iso-deps)
+tools/grub/
+
 # OS
 .DS_Store
 Thumbs.db
