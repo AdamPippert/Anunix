@@ -16,8 +16,9 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | Pipes | **Routing Plane** | Type-aware routing with pluggable transformation engines |
 | Sockets | **Network Plane** | Federated execution across machines |
 | `chmod`/ACLs | **Capabilities** | Object-level, unforgeable, delegatable |
+| Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 
-The kernel is real, it boots, and all six subsystems initialize.
+The kernel is real, it boots, and all subsystems initialize — including the model hosting control plane.
 
 ## Current Status
 
@@ -56,17 +57,31 @@ anx>
 
 - Dual-architecture kernel (ARM64 + x86_64) built from the same source
 - All subsystem foundations (RFC-0002 through RFC-0007)
+- **Model hosting control plane** — engine lifecycle, resource leasing, model server cells, staged routing, budget profiles
+- Hardware capability probing (CPU, RAM, accelerators)
+- Framebuffer console driver (VGA for x86_64, ramfb for ARM64)
 - Interactive kernel monitor shell
-- 7 passing unit tests
+- 11 passing unit tests
 - QEMU boot for both architectures (built from source, no Homebrew)
 - ANSI color boot splash
 
+### Model Hosting Architecture
+
+The kernel acts as a **control plane** for AI model hosting — it does not run inference itself. Key components:
+
+- **Engine Registry** — models register with capability tags, quantization format, parameter count, context window, and throughput benchmarks
+- **Engine Lifecycle** — 9-state machine (REGISTERED → LOADING → READY → AVAILABLE → DEGRADED → DRAINING → UNLOADING → OFFLINE / MAINTENANCE)
+- **Resource Leasing** — memory tier and accelerator (GPU/NPU) reservations per engine, with availability tracking and exhaustion protection
+- **Model Server Cells** — privileged `ANX_CELL_MODEL_SERVER` cells that host running engines, with health monitoring, backpressure, and automatic restart
+- **Staged Routing** — deterministic feasibility + scoring in the kernel, with an escalation flag for a local semantic routing service (future) and slow-path RLM planner (future)
+- **Budget Profiles** — named profiles (interactive_private, background_enrichment, critical_decision) with scoring weights and hard caps on latency and cost
+- **Route Feedback** — ring buffer recording outcome signals (latency, cost, tokens, validation pass/fail) for future route improvement
+
 ### What's next
 
+- Exception vectors (GIC for ARM64, IDT for x86_64) — needed for safe framebuffer detection and interrupt-driven I/O
+- Engine dispatch wiring — connect route planner results to model server inference requests
 - POSIX compatibility shim
-- Framebuffer display driver (VGA/ramfb)
-- GIC + timer interrupts (ARM64)
-- IDT + APIC (x86_64)
 - Real hardware testing (Apple Silicon, Framework Laptop)
 
 ## Target Platforms
@@ -99,9 +114,10 @@ make qemu-deps         # Build QEMU from source (~5 min)
 make kernel            # Build for host architecture
 make kernel ARCH=arm64 # Build for ARM64
 make kernel ARCH=x86_64 # Build for x86_64
-make qemu              # Boot in QEMU (Ctrl-A X to quit)
+make qemu              # Boot in QEMU, serial console (Ctrl-A X to quit)
+make qemu-fb           # Boot with framebuffer display window
 make qemu ARCH=arm64   # Boot ARM64 kernel
-make test              # Run unit tests
+make test              # Run unit tests (11 tests)
 ```
 
 ## Project Structure
@@ -115,15 +131,24 @@ kernel/
     state/          State Object Layer          (RFC-0002)
     exec/           Execution Cell Runtime      (RFC-0003)
     mem/            Memory Control Plane        (RFC-0004)
-    route/          Routing Plane               (RFC-0005)
+    route/          Routing Plane + Model Hosting (RFC-0005)
+      engine.c      Engine registry + lifecycle
+      planner.c     Route planner with escalation
+      model_server.c Model server cell management
+      lease.c       Resource leasing (memory + accelerators)
+      hwprobe.c     Hardware capability probing
+      feedback.c    Route outcome recording
+      budget.c      Budget profiles
     sched/          Unified Scheduler           (RFC-0005)
     net/            Network Plane               (RFC-0006)
     cap/            Capability Objects          (RFC-0007)
     shell.c         Interactive kernel monitor
     splash.c        Boot splash screen
     main.c          Kernel entry point
+  drivers/
+    fb/             Framebuffer + console drivers
   include/anx/      Public kernel headers
-  lib/              Kernel support (kprintf, alloc, string, etc.)
+  lib/              Kernel support (kprintf, alloc, font, string, etc.)
 tests/              Host-native unit tests
 tools/              Build scripts (LLVM fetch, QEMU build)
 assets/             Brand logos
