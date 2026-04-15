@@ -12,6 +12,11 @@ SECTIONS {
         *(.text.boot)
     }
 
+    . = ALIGN(2048);
+    .vectors : {
+        KEEP(*(.vectors))
+    }
+
     .text : {
         *(.text .text.*)
     }

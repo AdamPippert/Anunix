@@ -37,6 +37,12 @@ void arch_console_puts(const char *s);
 int  arch_console_getc(void);
 bool arch_console_has_input(void);
 
+/* Exception and interrupt initialization */
+void arch_exception_init(void);
+
+/* Timer tick count (monotonically increasing) */
+uint64_t arch_timer_ticks(void);
+
 /* Hardware capability probing */
 struct anx_hw_inventory;
 void arch_probe_hw(struct anx_hw_inventory *inv);

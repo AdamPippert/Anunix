@@ -87,6 +87,15 @@ bool arch_console_has_input(void)
 	return false;
 }
 
+void arch_exception_init(void)
+{
+}
+
+uint64_t arch_timer_ticks(void)
+{
+	return 0;
+}
+
 void arch_probe_hw(struct anx_hw_inventory *inv)
 {
 	/* Mock: 4 CPUs, 16 GiB RAM, 1 GPU */
