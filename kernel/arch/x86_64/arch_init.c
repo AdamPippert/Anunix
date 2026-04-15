@@ -36,8 +36,30 @@ static inline uint8_t inb(uint16_t port)
 	return val;
 }
 
+static bool com1_present;
+
+/*
+ * Detect COM1 by writing to the scratch register (offset +7)
+ * and reading it back. If no UART exists, reads return 0xFF.
+ */
+#define COM1_SCRATCH	(COM1_PORT + 7)
+
 static void serial_init(void)
 {
+	/* Probe for COM1 existence */
+	outb(0xA5, COM1_SCRATCH);
+	if (inb(COM1_SCRATCH) != 0xA5) {
+		com1_present = false;
+		return;
+	}
+	outb(0x5A, COM1_SCRATCH);
+	if (inb(COM1_SCRATCH) != 0x5A) {
+		com1_present = false;
+		return;
+	}
+
+	com1_present = true;
+
 	outb(0x00, COM1_IER);		/* disable interrupts */
 	outb(0x80, COM1_LCR);		/* enable DLAB (set baud divisor) */
 	outb(0x01, COM1_DLL);		/* 115200 baud (divisor 1) */
@@ -115,6 +137,8 @@ anx_time_t arch_time_now(void)
 
 void arch_console_putc(char c)
 {
+	if (!com1_present)
+		return;
 	/* Wait for transmit buffer empty */
 	while ((inb(COM1_LSR) & 0x20) == 0)
 		;
@@ -129,6 +153,8 @@ void arch_console_puts(const char *s)
 
 int arch_console_getc(void)
 {
+	if (!com1_present)
+		return -1;
 	/* Poll until data ready */
 	while ((inb(COM1_LSR) & 0x01) == 0)
 		;
@@ -137,50 +163,134 @@ int arch_console_getc(void)
 
 bool arch_console_has_input(void)
 {
+	if (!com1_present)
+		return false;
 	return (inb(COM1_LSR) & 0x01) != 0;
 }
 
 /* --- Framebuffer detection --- */
 
 /*
- * Multiboot framebuffer info stashed at 0x1000 by qemu_boot.S trampoline.
+ * Boot info saved by boot.S _start entry point.
+ * On multiboot2 (UEFI): _mb_magic = 0x36d76289, _mb_info = info pointer.
+ * On QEMU trampoline:   _mb_magic = garbage, _mb_info = garbage.
+ */
+extern uint32_t _mb_magic;
+extern uint64_t _mb_info;
+
+#define MB2_MAGIC		0x36d76289
+
+/* Multiboot2 tag types */
+#define MB2_TAG_END		0
+#define MB2_TAG_FRAMEBUFFER	8
+
+struct mb2_tag {
+	uint32_t type;
+	uint32_t size;
+};
+
+struct mb2_tag_framebuffer {
+	uint32_t type;
+	uint32_t size;
+	uint64_t addr;
+	uint32_t pitch;
+	uint32_t width;
+	uint32_t height;
+	uint8_t  bpp;
+	uint8_t  fb_type;	/* 1 = direct RGB */
+	uint8_t  reserved;
+};
+
+static bool fb_detect_mb2(struct anx_fb_info *info)
+{
+	uint8_t *ptr;
+	uint8_t *end;
+	uint32_t total_size;
+
+	if (_mb_magic != MB2_MAGIC || _mb_info == 0)
+		return false;
+
+	ptr = (uint8_t *)(uintptr_t)_mb_info;
+	total_size = *(uint32_t *)ptr;
+	end = ptr + total_size;
+	ptr += 8;	/* skip total_size + reserved */
+
+	while (ptr + sizeof(struct mb2_tag) <= end) {
+		struct mb2_tag *tag = (struct mb2_tag *)ptr;
+
+		if (tag->type == MB2_TAG_END)
+			break;
+
+		if (tag->type == MB2_TAG_FRAMEBUFFER &&
+		    tag->size >= sizeof(struct mb2_tag_framebuffer)) {
+			struct mb2_tag_framebuffer *fb =
+				(struct mb2_tag_framebuffer *)ptr;
+
+			if (fb->fb_type != 1)	/* not direct RGB */
+				break;
+
+			info->addr   = fb->addr;
+			info->pitch  = fb->pitch;
+			info->width  = fb->width;
+			info->height = fb->height;
+			info->bpp    = fb->bpp;
+			info->available = (info->addr != 0 &&
+					   info->bpp == 32);
+			return true;
+		}
+
+		/* Tags are 8-byte aligned */
+		ptr += (tag->size + 7) & ~7u;
+	}
+
+	return false;
+}
+
+/*
+ * Multiboot1 framebuffer info stashed at 0x1000 by qemu_boot.S trampoline.
  * See qemu_boot.S for the layout.
  */
-#define MB_FB_MAGIC_ADDR	0x1000
-#define MB_FB_MAGIC_VAL		0x414E5846	/* "ANXF" */
-#define MB_FB_FLAGS_ADDR	0x1004
-#define MB_FB_ADDR_ADDR		0x1008
-#define MB_FB_PITCH_ADDR	0x1010
-#define MB_FB_WIDTH_ADDR	0x1014
-#define MB_FB_HEIGHT_ADDR	0x1018
-#define MB_FB_BPP_ADDR		0x101C
-#define MB_FB_TYPE_ADDR		0x101D
+#define MB1_FB_MAGIC_ADDR	0x1000
+#define MB1_FB_MAGIC_VAL	0x414E5846	/* "ANXF" */
+#define MB1_FB_FLAGS_ADDR	0x1004
+#define MB1_FB_ADDR_ADDR	0x1008
+#define MB1_FB_PITCH_ADDR	0x1010
+#define MB1_FB_WIDTH_ADDR	0x1014
+#define MB1_FB_HEIGHT_ADDR	0x1018
+#define MB1_FB_BPP_ADDR		0x101C
+#define MB1_FB_TYPE_ADDR	0x101D
+
+static bool fb_detect_mb1(struct anx_fb_info *info)
+{
+	volatile uint32_t *magic = (volatile uint32_t *)MB1_FB_MAGIC_ADDR;
+	volatile uint32_t *flags = (volatile uint32_t *)MB1_FB_FLAGS_ADDR;
+
+	if (*magic != MB1_FB_MAGIC_VAL)
+		return false;
+	if (!(*flags & (1 << 12)))
+		return false;
+	if (*(volatile uint8_t *)MB1_FB_TYPE_ADDR != 1)
+		return false;
+
+	info->addr   = *(volatile uint64_t *)MB1_FB_ADDR_ADDR;
+	info->pitch  = *(volatile uint32_t *)MB1_FB_PITCH_ADDR;
+	info->width  = *(volatile uint32_t *)MB1_FB_WIDTH_ADDR;
+	info->height = *(volatile uint32_t *)MB1_FB_HEIGHT_ADDR;
+	info->bpp    = *(volatile uint8_t *)MB1_FB_BPP_ADDR;
+	info->available = (info->addr != 0 && info->bpp == 32);
+	return info->available;
+}
 
 void arch_fb_detect(struct anx_fb_info *info)
 {
-	volatile uint32_t *magic = (volatile uint32_t *)MB_FB_MAGIC_ADDR;
-	volatile uint32_t *flags = (volatile uint32_t *)MB_FB_FLAGS_ADDR;
-
 	info->available = false;
 
-	/* Check magic to confirm trampoline stored info */
-	if (*magic != MB_FB_MAGIC_VAL)
+	/* Try multiboot2 first (UEFI / real hardware) */
+	if (fb_detect_mb2(info))
 		return;
 
-	/* Check multiboot flags bit 12 (framebuffer info present) */
-	if (!(*flags & (1 << 12)))
-		return;
-
-	/* Check type is linear framebuffer (type 1 = direct RGB) */
-	if (*(volatile uint8_t *)MB_FB_TYPE_ADDR != 1)
-		return;
-
-	info->addr   = *(volatile uint64_t *)MB_FB_ADDR_ADDR;
-	info->pitch  = *(volatile uint32_t *)MB_FB_PITCH_ADDR;
-	info->width  = *(volatile uint32_t *)MB_FB_WIDTH_ADDR;
-	info->height = *(volatile uint32_t *)MB_FB_HEIGHT_ADDR;
-	info->bpp    = *(volatile uint8_t *)MB_FB_BPP_ADDR;
-	info->available = (info->addr != 0 && info->bpp == 32);
+	/* Fall back to multiboot1 trampoline info (QEMU) */
+	fb_detect_mb1(info);
 }
 
 /* --- Memory barriers --- */
