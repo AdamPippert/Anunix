@@ -143,8 +143,20 @@ ISR_NOERR 46	/* Primary ATA (IRQ 14) */
 ISR_NOERR 47	/* Secondary ATA (IRQ 15) */
 
 /*
+ * Default stub for vectors 48-255 (LAPIC, MSI, spurious).
+ * Pushes a sentinel vector so the C dispatch can identify it
+ * as unexpected and do a safe EOI + return.
+ */
+.global isr_stub_default
+isr_stub_default:
+	pushq	$0		/* dummy error code */
+	pushq	$0xFF		/* sentinel: "unexpected vector" */
+	jmp	common_stub
+
+/*
  * ISR stub table — array of 48 function pointers for IDT setup.
  * The C code indexes this to fill IDT entries.
+ * Vectors 48-255 use isr_stub_default (set by C code).
  */
 .section .rodata
 .global isr_stub_table

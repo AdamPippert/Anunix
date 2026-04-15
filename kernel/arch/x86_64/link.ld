@@ -1,6 +1,9 @@
 /*
  * link.ld — x86_64 kernel linker script.
  * Loads at 1 MiB (standard for x86 kernels).
+ *
+ * The multiboot2 header must appear within the first 32 KiB
+ * of the binary, so it goes before all other sections.
  */
 
 ENTRY(_start)
@@ -10,6 +13,14 @@ SECTIONS {
 
     .text.boot : {
         *(.text.boot)
+    }
+
+    /* Multiboot2 header — must be within first 32 KiB of the ELF.
+     * Placed after .text.boot so _start stays at 0x100000
+     * (the QEMU wrapper jumps to that fixed address).
+     */
+    .multiboot2 : {
+        KEEP(*(.multiboot2))
     }
 
     .text : {
