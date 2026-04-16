@@ -29,19 +29,83 @@
 #include <anx/http.h>
 #include <anx/credential.h>
 
-/* --- Line input --- */
+/* --- Line input with history --- */
 
 #define MAX_LINE	256
 #define MAX_ARGS	16
+#define HISTORY_SIZE	32
+
+static char history[HISTORY_SIZE][MAX_LINE];
+static uint32_t history_count;
+static uint32_t history_write;	/* next slot to write */
 
 static void kputs(const char *s)
 {
 	kprintf("%s", s);
 }
 
+static void history_add(const char *line)
+{
+	if (line[0] == '\0')
+		return;
+	/* Don't duplicate the last entry */
+	if (history_count > 0) {
+		uint32_t prev = (history_write + HISTORY_SIZE - 1) %
+				HISTORY_SIZE;
+		if (anx_strcmp(history[prev], line) == 0)
+			return;
+	}
+	anx_strlcpy(history[history_write], line, MAX_LINE);
+
+	/* Scrub 'secret set' values from history */
+	if (anx_strncmp(history[history_write], "secret set ", 11) == 0) {
+		/* Keep "secret set <name>" but erase the value */
+		char *p = history[history_write] + 11;
+
+		/* Skip the name */
+		while (*p && *p != ' ')
+			p++;
+		/* Zero everything after the name */
+		if (*p)
+			*p = '\0';
+	}
+
+	history_write = (history_write + 1) % HISTORY_SIZE;
+	if (history_count < HISTORY_SIZE)
+		history_count++;
+}
+
+/* Clear the current line on the terminal and redraw with new content */
+static void line_replace(char *buf, size_t *pos, size_t size,
+			  const char *new_content)
+{
+	size_t i;
+	size_t new_len;
+
+	/* Erase current line: backspace over every character */
+	for (i = 0; i < *pos; i++)
+		kputs("\b \b");
+
+	/* Copy new content */
+	new_len = anx_strlen(new_content);
+	if (new_len >= size)
+		new_len = size - 1;
+	anx_memcpy(buf, new_content, new_len);
+	buf[new_len] = '\0';
+	*pos = new_len;
+
+	/* Display it */
+	for (i = 0; i < new_len; i++)
+		arch_console_putc(buf[i]);
+}
+
 static int kgetline(char *buf, size_t size)
 {
 	size_t pos = 0;
+	uint32_t hist_idx = history_count;	/* past the end = current input */
+	char saved[MAX_LINE];			/* save in-progress input */
+
+	saved[0] = '\0';
 
 	while (pos < size - 1) {
 		int c = arch_console_getc();
@@ -56,7 +120,6 @@ static int kgetline(char *buf, size_t size)
 		}
 
 		if (c == 0x7F || c == '\b') {
-			/* Backspace */
 			if (pos > 0) {
 				pos--;
 				kputs("\b \b");
@@ -65,10 +128,74 @@ static int kgetline(char *buf, size_t size)
 		}
 
 		if (c == 0x03) {
-			/* Ctrl-C */
 			kputs("^C\n");
 			pos = 0;
 			break;
+		}
+
+		/* Arrow key escape sequences: ESC [ A (up), ESC [ B (down) */
+		if (c == 0x1B) {
+			int c2 = arch_console_getc();
+
+			if (c2 < 0)
+				continue;
+			if (c2 == '[') {
+				int c3 = arch_console_getc();
+
+				if (c3 < 0)
+					continue;
+				if (c3 == 'A') {
+					/* Up arrow */
+					if (history_count == 0)
+						continue;
+					if (hist_idx == history_count) {
+						/* Save current input */
+						buf[pos] = '\0';
+						anx_strlcpy(saved, buf,
+							     MAX_LINE);
+					}
+					if (hist_idx > 0)
+						hist_idx--;
+					/* Map hist_idx to ring buffer */
+					{
+						uint32_t ri;
+
+						if (history_count < HISTORY_SIZE)
+							ri = hist_idx;
+						else
+							ri = (history_write +
+							      hist_idx) %
+							     HISTORY_SIZE;
+						line_replace(buf, &pos,
+							     size,
+							     history[ri]);
+					}
+				} else if (c3 == 'B') {
+					/* Down arrow */
+					if (hist_idx >= history_count)
+						continue;
+					hist_idx++;
+					if (hist_idx == history_count) {
+						/* Restore saved input */
+						line_replace(buf, &pos,
+							     size, saved);
+					} else {
+						uint32_t ri;
+
+						if (history_count < HISTORY_SIZE)
+							ri = hist_idx;
+						else
+							ri = (history_write +
+							      hist_idx) %
+							     HISTORY_SIZE;
+						line_replace(buf, &pos,
+							     size,
+							     history[ri]);
+					}
+				}
+				/* Ignore other escape sequences */
+			}
+			continue;
 		}
 
 		if (c >= 0x20 && c < 0x7F) {
@@ -1105,6 +1232,7 @@ void anx_shell_run(void)
 		if (line[0] == '\0')
 			continue;
 
+		history_add(line);
 		argc = parse_args(line, argv, MAX_ARGS);
 		dispatch(argc, argv);
 	}
