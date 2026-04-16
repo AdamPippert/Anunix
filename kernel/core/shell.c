@@ -1241,6 +1241,29 @@ static void cmd_ask(int argc, char **argv)
 	message[off] = '\0';
 
 	req.model = "claude-sonnet-4-5-20241022";
+	/* Fallback options if this doesn't work:
+	 * "claude-sonnet-4-5-latest"
+	 * "claude-3-5-sonnet-20241022"
+	 * Use 'ask -m <model-id> <message>' to override
+	 */
+
+	/* Allow model override: 'ask -m model-id message...' */
+	if (argc >= 4 && anx_strcmp(argv[1], "-m") == 0) {
+		req.model = argv[2];
+		/* Rebuild message from argv[3+] */
+		off = 0;
+		for (i = 3; i < argc && off < sizeof(message) - 2; i++) {
+			uint32_t len = (uint32_t)anx_strlen(argv[i]);
+
+			if (i > 3 && off < sizeof(message) - 1)
+				message[off++] = ' ';
+			if (off + len >= sizeof(message) - 1)
+				len = (uint32_t)(sizeof(message) - 1 - off);
+			anx_memcpy(message + off, argv[i], len);
+			off += len;
+		}
+		message[off] = '\0';
+	}
 	req.system = "You are an AI assistant running inside Anunix, "
 		     "an AI-native operating system. Be concise.";
 	req.user_message = message;
