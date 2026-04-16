@@ -34,6 +34,7 @@
 #include <anx/model_client.h>
 #include <anx/gui.h>
 #include <anx/io.h>
+#include <anx/perf.h>
 #include <anx/acpi.h>
 
 /* --- Line input with history --- */
@@ -290,6 +291,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  store stats                Show store statistics\n");
 	kputs("  disk                       Show block device info\n");
 	kputs("  pci                        List PCI devices\n");
+	kputs("  perf                       Show boot performance profile\n");
 	kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
 	kputs("  reboot                     Reboot the system\n");
 	kputs("  halt                       Halt the system\n");
@@ -1608,6 +1610,8 @@ static void dispatch(int argc, char **argv)
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
 		kputs("halting system\n");
 		arch_halt();
+	} else if (anx_strcmp(argv[0], "perf") == 0) {
+		anx_perf_report();
 	} else if (anx_strcmp(argv[0], "tz") == 0) {
 		if (argc >= 2) {
 			const char *v = argv[1];

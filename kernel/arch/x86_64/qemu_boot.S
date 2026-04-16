@@ -45,6 +45,9 @@ _start:
 	cli
 	movl	%ebx, %esi		/* save multiboot info */
 
+	/* Debug: write 'A' at top-left of VGA text buffer */
+	movw	$0x4F41, 0xB8000	/* white 'A' on red */
+
 /* Temporary stack in BSS */
 	movl	$(boot_stack_top), %esp
 
@@ -71,6 +74,9 @@ _start:
 	movl	$0xC0000083, boot_pdpt + 24	/* 0xC0000000 - 0xFFFFFFFF */
 	movl	$0, boot_pdpt + 28
 
+	/* Debug: 'B' = page tables built */
+	movw	$0x4F42, 0xB8002
+
 	/* CR3 = PML4 */
 	movl	$boot_pml4, %eax
 	movl	%eax, %cr3
@@ -90,6 +96,9 @@ _start:
 	movl	%cr0, %eax
 	orl	$(1 << 31), %eax
 	movl	%eax, %cr0
+
+	/* Debug: 'C' = long mode enabled, about to jump */
+	movw	$0x4F43, 0xB8004
 
 /* Jump to 64-bit mode via GDT */
 	lgdt	boot_gdt_ptr
@@ -192,6 +201,9 @@ trampoline:
 	movq	%rax, 0x1020		/* zero-extend to u64 */
 .Lno_cmdline:
 
+	/* Debug: 'D' = in 64-bit, about to copy kernel */
+	movw	$0x4F44, 0xB8006
+
 	/* Copy kernel from kernel_payload to 0x100000 */
 	movq	$kernel_payload, %rsi
 	movq	$0x100000, %rdi
@@ -199,6 +211,9 @@ trampoline:
 	shrq	$3, %rcx		/* qword count */
 	addq	$1, %rcx		/* round up */
 	rep	movsq
+
+	/* Debug: 'E' = kernel copied, jumping */
+	movw	$0x4F45, 0xB8008
 
 /* Jump to kernel entry at 0x100000 */
 	movq	$0x100000, %rax

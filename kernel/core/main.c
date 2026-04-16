@@ -32,6 +32,7 @@
 #include <anx/virtio_blk.h>
 #include <anx/net.h>
 #include <anx/splash.h>
+#include <anx/perf.h>
 #include <anx/gui.h>
 #include <anx/shell.h>
 
@@ -55,21 +56,30 @@ void kernel_main(void)
 	}
 
 	/* Architecture-specific full init (page allocator, etc.) */
+	PERF_BEGIN("arch_init");
 	arch_init();
+	PERF_END();
 
 	/* Boot splash (after arch_init so page allocator is ready for JPEG) */
+	PERF_BEGIN("splash");
 	anx_splash();
+	PERF_END();
 
 	/* Initialize graphical environment (after splash, before text output) */
-	if (anx_fb_available())
+	if (anx_fb_available()) {
+		PERF_BEGIN("gui_init");
 		anx_gui_init();
+		PERF_END();
+	}
 
 	kprintf("  Anunix %s booting\n\n", ANX_VERSION);
 
 	kprintf("arch init complete\n");
 
 	/* 1. State Object Layer (RFC-0002) */
+	PERF_BEGIN("objstore_init");
 	anx_objstore_init();
+	PERF_END();
 	kprintf("state object layer initialized\n");
 
 	/* 2. Execution Cell Runtime (RFC-0003) */
@@ -185,11 +195,17 @@ void kernel_main(void)
 	kprintf("credential store initialized\n");
 
 	/* 9. Hardware discovery */
+	PERF_BEGIN("acpi_init");
 	anx_acpi_init();
+	PERF_END();
+	PERF_BEGIN("pci_init");
 	anx_pci_init();
+	PERF_END();
 
 	/* 10. Block device */
+	PERF_BEGIN("virtio_blk_init");
 	anx_virtio_blk_init();
+	PERF_END();
 
 	/* 11. Network device and IP stack */
 	if (anx_virtio_net_init() == ANX_OK) {
@@ -200,6 +216,7 @@ void kernel_main(void)
 		anx_udp_init();
 
 		/* Try DHCP first (5s timeout) */
+		PERF_BEGIN("dhcp_discover");
 		kprintf("dhcp: discovering...\n");
 		if (anx_dhcp_discover(&net_cfg) != ANX_OK) {
 			/* Fall back to QEMU user-mode defaults */
@@ -209,10 +226,16 @@ void kernel_main(void)
 			net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
 			kprintf("dhcp: timeout, using static 10.0.2.15\n");
 		}
+		PERF_END();
+		PERF_BEGIN("net_stack_init");
 		anx_net_stack_init(&net_cfg);
+		PERF_END();
 	}
 
 	kprintf("kernel init complete -- all subsystems online\n");
+
+	/* Show boot performance profile */
+	anx_perf_report();
 
 	/* Enter interactive monitor shell */
 	anx_shell_run();
