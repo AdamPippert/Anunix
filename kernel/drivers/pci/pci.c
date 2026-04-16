@@ -164,6 +164,55 @@ struct anx_list_head *anx_pci_device_list(void)
 	return &pci_devices;
 }
 
+const char *anx_pci_class_name(uint8_t class_code, uint8_t subclass)
+{
+	switch (class_code) {
+	case 0x00:
+		return "unclassified";
+	case 0x01:
+		switch (subclass) {
+		case 0x00: return "SCSI storage";
+		case 0x01: return "IDE controller";
+		case 0x05: return "ATA controller";
+		case 0x06: return "AHCI controller";
+		case 0x08: return "NVMe controller";
+		default:   return "storage controller";
+		}
+	case 0x02:
+		switch (subclass) {
+		case 0x00: return "Ethernet controller";
+		case 0x80: return "network controller";
+		default:   return "network controller";
+		}
+	case 0x03:
+		switch (subclass) {
+		case 0x00: return "VGA controller";
+		case 0x02: return "3D controller";
+		default:   return "display controller";
+		}
+	case 0x04: return "multimedia";
+	case 0x05: return "memory controller";
+	case 0x06:
+		switch (subclass) {
+		case 0x00: return "host bridge";
+		case 0x01: return "ISA bridge";
+		case 0x04: return "PCI bridge";
+		case 0x80: return "system peripheral";
+		default:   return "bridge";
+		}
+	case 0x07: return "communication controller";
+	case 0x08: return "system peripheral";
+	case 0x0C:
+		switch (subclass) {
+		case 0x03: return "USB controller";
+		case 0x05: return "SMBus controller";
+		default:   return "serial bus";
+		}
+	case 0x0D: return "wireless controller";
+	default:   return "unknown";
+	}
+}
+
 void anx_pci_enable_bus_master(struct anx_pci_device *dev)
 {
 	uint32_t cmd;
