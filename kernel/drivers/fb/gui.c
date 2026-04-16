@@ -13,6 +13,7 @@
 #include <anx/gui.h>
 #include <anx/fb.h>
 #include <anx/font.h>
+#include <anx/io.h>
 #include <anx/arch.h>
 #include <anx/string.h>
 
@@ -94,29 +95,50 @@ static void draw_terminal_frame(void)
 
 /* --- Time display --- */
 
+/* Read a CMOS RTC register */
+static uint8_t rtc_read(uint8_t reg)
+{
+	anx_outb(reg, 0x70);
+	return anx_inb(0x71);
+}
+
+/* Convert BCD to binary */
+static uint8_t bcd_to_bin(uint8_t bcd)
+{
+	return (bcd >> 4) * 10 + (bcd & 0x0F);
+}
+
 void anx_gui_update_time(void)
 {
-	uint64_t ticks;
-	uint32_t secs, mins, hrs;
+	uint8_t hrs, mins, secs;
+	uint8_t status_b;
 	char timebuf[16];
 	uint32_t time_w, time_x;
 
 	if (!gui_ready)
 		return;
 
-	ticks = arch_timer_ticks();
-	secs = (uint32_t)(ticks / 100);	/* 100 Hz PIT */
-	mins = secs / 60;
-	hrs = mins / 60;
+	/* Read CMOS RTC (UTC) */
+	secs = rtc_read(0x00);
+	mins = rtc_read(0x02);
+	hrs  = rtc_read(0x04);
+	status_b = rtc_read(0x0B);
 
-	/* Format HH:MM:SS (uptime for now — no RTC/timezone yet) */
-	timebuf[0] = '0' + (char)((hrs / 10) % 10);
+	/* Convert BCD to binary if needed */
+	if (!(status_b & 0x04)) {
+		secs = bcd_to_bin(secs);
+		mins = bcd_to_bin(mins);
+		hrs  = bcd_to_bin(hrs);
+	}
+
+	/* Format HH:MM:SS UTC */
+	timebuf[0] = '0' + (char)(hrs / 10);
 	timebuf[1] = '0' + (char)(hrs % 10);
 	timebuf[2] = ':';
-	timebuf[3] = '0' + (char)((mins % 60) / 10);
+	timebuf[3] = '0' + (char)(mins / 10);
 	timebuf[4] = '0' + (char)(mins % 10);
 	timebuf[5] = ':';
-	timebuf[6] = '0' + (char)((secs % 60) / 10);
+	timebuf[6] = '0' + (char)(secs / 10);
 	timebuf[7] = '0' + (char)(secs % 10);
 	timebuf[8] = '\0';
 

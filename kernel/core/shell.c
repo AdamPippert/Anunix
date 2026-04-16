@@ -33,6 +33,7 @@
 #include <anx/auth.h>
 #include <anx/model_client.h>
 #include <anx/gui.h>
+#include <anx/io.h>
 #include <anx/acpi.h>
 
 /* --- Line input with history --- */
@@ -102,7 +103,7 @@ static void line_replace(char *buf, size_t *pos, size_t size,
 
 	/* Display it */
 	for (i = 0; i < new_len; i++)
-		arch_console_putc(buf[i]);
+		kputc(buf[i]);
 }
 
 static int kgetline(char *buf, size_t size)
@@ -125,8 +126,8 @@ static int kgetline(char *buf, size_t size)
 			break;
 
 		if (c == '\r' || c == '\n') {
-			arch_console_putc('\r');
-			arch_console_putc('\n');
+			kputc('\r');
+			kputc('\n');
 			break;
 		}
 
@@ -211,7 +212,7 @@ static int kgetline(char *buf, size_t size)
 
 		if (c >= 0x20 && c < 0x7F) {
 			buf[pos++] = (char)c;
-			arch_console_putc((char)c);
+			kputc((char)c);
 		}
 	}
 
@@ -1386,7 +1387,7 @@ static void cmd_login(int argc, char **argv)
 			if (c < 0)
 				break;
 			if (c == '\r' || c == '\n') {
-				arch_console_putc('\n');
+				kputc('\n');
 				break;
 			}
 			if (c == 0x7F || c == '\b') {
@@ -1608,7 +1609,9 @@ static void dispatch(int argc, char **argv)
 		arch_halt();
 	} else if (anx_strcmp(argv[0], "reboot") == 0) {
 		kputs("rebooting...\n");
-		/* Triple-fault reboot: load null IDT and trigger interrupt */
+		/* Keyboard controller reset (PS/2 port 0x64) */
+		anx_outb(0xFE, 0x64);
+		/* If that didn't work, triple-fault */
 		{
 			struct { uint16_t limit; uint64_t base; }
 				__attribute__((packed)) null_idt = {0, 0};
