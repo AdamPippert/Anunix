@@ -62,23 +62,53 @@ uintptr_t anx_page_alloc(uint32_t order)
 	if (count > free_count)
 		return 0;
 
-	/* Linear scan for contiguous free pages */
-	for (uint64_t i = 0; i + count <= total_pages; i++) {
-		bool found = true;
+	/*
+	 * For large allocations (>= 16 pages), search from the END
+	 * of the heap to avoid fragmenting the low region used by
+	 * small slab allocations. For small allocations, search
+	 * from the start.
+	 */
+	if (count >= 16) {
+		/* Search backwards from end */
+		for (uint64_t i = total_pages - count; i < total_pages; i--) {
+			bool found = true;
 
-		for (uint64_t j = 0; j < count; j++) {
-			if (!bit_test(i + j)) {
-				found = false;
-				i += j; /* skip ahead */
-				break;
+			for (uint64_t j = 0; j < count; j++) {
+				if (!bit_test(i + j)) {
+					found = false;
+					break;
+				}
 			}
-		}
 
-		if (found) {
-			for (uint64_t j = 0; j < count; j++)
-				bit_clear(i + j);
-			free_count -= count;
-			return heap_base + (i << ANX_PAGE_SHIFT);
+			if (found) {
+				for (uint64_t j = 0; j < count; j++)
+					bit_clear(i + j);
+				free_count -= count;
+				return heap_base + (i << ANX_PAGE_SHIFT);
+			}
+
+			if (i == 0)
+				break;
+		}
+	} else {
+		/* Small: scan forward from start */
+		for (uint64_t i = 0; i + count <= total_pages; i++) {
+			bool found = true;
+
+			for (uint64_t j = 0; j < count; j++) {
+				if (!bit_test(i + j)) {
+					found = false;
+					i += j;
+					break;
+				}
+			}
+
+			if (found) {
+				for (uint64_t j = 0; j < count; j++)
+					bit_clear(i + j);
+				free_count -= count;
+				return heap_base + (i << ANX_PAGE_SHIFT);
+			}
 		}
 	}
 
