@@ -153,6 +153,10 @@ int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
 void anx_irq_unmask(uint8_t irq) { (void)irq; }
 void anx_irq_mask(uint8_t irq) { (void)irq; }
 
+/* Mock JPEG splash */
+const uint8_t _splash_jpg_start[1] = {0};
+const uint8_t _splash_jpg_end[1] = {0};
+
 /* Mock model client */
 void anx_model_client_init(const struct anx_model_endpoint *ep) { (void)ep; }
 bool anx_model_client_ready(void) { return false; }
