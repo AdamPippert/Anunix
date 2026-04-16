@@ -290,6 +290,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  store stats                Show store statistics\n");
 	kputs("  disk                       Show block device info\n");
 	kputs("  pci                        List PCI devices\n");
+	kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
 	kputs("  reboot                     Reboot the system\n");
 	kputs("  halt                       Halt the system\n");
 }
@@ -1607,6 +1608,23 @@ static void dispatch(int argc, char **argv)
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
 		kputs("halting system\n");
 		arch_halt();
+	} else if (anx_strcmp(argv[0], "tz") == 0) {
+		if (argc >= 2) {
+			const char *v = argv[1];
+			int32_t offset = 0;
+			bool neg = false;
+
+			if (*v == '-') { neg = true; v++; }
+			else if (*v == '+') { v++; }
+			while (*v >= '0' && *v <= '9')
+				offset = offset * 10 + (*v++ - '0');
+			if (neg) offset = -offset;
+			anx_gui_set_tz_offset(offset);
+			kprintf("timezone set to UTC%s%d\n",
+				offset >= 0 ? "+" : "", (int)offset);
+		} else {
+			kputs("usage: tz <offset> (e.g., tz -7 for PDT)\n");
+		}
 	} else if (anx_strcmp(argv[0], "reboot") == 0) {
 		kputs("rebooting...\n");
 		/* Keyboard controller reset (PS/2 port 0x64) */

@@ -20,6 +20,14 @@
 static bool gui_ready;
 static uint32_t screen_w, screen_h;
 
+/* UTC offset in hours (set via boot cmdline: tz=-7 for PDT) */
+static int32_t utc_offset_hours;
+
+void anx_gui_set_tz_offset(int32_t hours)
+{
+	utc_offset_hours = hours;
+}
+
 /* Terminal state */
 static uint32_t term_x, term_y;	/* pixel origin of terminal area */
 static uint32_t term_w, term_h;	/* pixel size of terminal area */
@@ -131,7 +139,16 @@ void anx_gui_update_time(void)
 		hrs  = bcd_to_bin(hrs);
 	}
 
-	/* Format HH:MM:SS UTC */
+	/* Apply timezone offset */
+	{
+		int32_t h = (int32_t)hrs + utc_offset_hours;
+
+		if (h < 0) h += 24;
+		if (h >= 24) h -= 24;
+		hrs = (uint8_t)h;
+	}
+
+	/* Format HH:MM:SS */
 	timebuf[0] = '0' + (char)(hrs / 10);
 	timebuf[1] = '0' + (char)(hrs % 10);
 	timebuf[2] = ':';

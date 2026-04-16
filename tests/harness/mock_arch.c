@@ -162,6 +162,7 @@ void anx_gui_init(void) {}
 bool anx_gui_active(void) { return false; }
 void anx_gui_terminal_putc(char c) { (void)c; }
 void anx_gui_update_time(void) {}
+void anx_gui_set_tz_offset(int32_t h) { (void)h; }
 void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
     uint32_t fg, uint32_t bg, uint32_t scale)
 { (void)x;(void)y;(void)c;(void)fg;(void)bg;(void)scale; }
