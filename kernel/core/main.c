@@ -114,6 +114,33 @@ void kernel_main(void)
 			const char *p = cmdline;
 
 			while (*p) {
+				/* Look for "tz=" prefix (e.g., tz=-7) */
+				if (p[0] == 't' && p[1] == 'z' &&
+				    p[2] == '=') {
+					const char *v = p + 3;
+					int32_t offset = 0;
+					bool neg = false;
+
+					if (*v == '-') {
+						neg = true;
+						v++;
+					} else if (*v == '+') {
+						v++;
+					}
+					while (*v >= '0' && *v <= '9') {
+						offset = offset * 10 +
+							 (*v - '0');
+						v++;
+					}
+					if (neg) offset = -offset;
+					anx_gui_set_tz_offset(offset);
+					kprintf("timezone: UTC%s%d\n",
+						offset >= 0 ? "+" : "",
+						(int)offset);
+					p = v;
+					continue;
+				}
+
 				/* Look for "cred:" prefix */
 				if (p[0] == 'c' && p[1] == 'r' &&
 				    p[2] == 'e' && p[3] == 'd' &&
