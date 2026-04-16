@@ -32,6 +32,7 @@
 #include <anx/virtio_blk.h>
 #include <anx/net.h>
 #include <anx/splash.h>
+#include <anx/gui.h>
 #include <anx/shell.h>
 
 #define ANX_VERSION "2026.4.16"
@@ -55,6 +56,11 @@ void kernel_main(void)
 
 	/* Boot splash */
 	anx_splash();
+
+	/* Initialize graphical environment (after splash, before text output) */
+	if (anx_fb_available())
+		anx_gui_init();
+
 	kprintf("  Anunix %s booting\n\n", ANX_VERSION);
 
 	/* Architecture-specific full init (page allocator, etc.) */
