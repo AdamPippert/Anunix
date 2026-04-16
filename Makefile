@@ -272,7 +272,8 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, $(CORE_C))
 # Exclude hardware-dependent drivers from host-native test builds.
 # PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
-		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' 2>/dev/null)
+		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
+		  ! -path '*/acpi/*' 2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/test_state_object.c \

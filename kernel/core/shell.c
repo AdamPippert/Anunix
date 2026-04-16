@@ -28,6 +28,7 @@
 #include <anx/virtio_net.h>
 #include <anx/http.h>
 #include <anx/credential.h>
+#include <anx/virtio_blk.h>
 
 /* --- Line input with history --- */
 
@@ -267,6 +268,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
+	kputs("  disk                       Show block device info\n");
 	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
 }
@@ -1178,27 +1180,61 @@ static void cmd_secret(int argc, char **argv)
 	}
 }
 
+/* --- Disk commands --- */
+
+static void cmd_disk(void)
+{
+	uint64_t cap;
+	uint32_t mb;
+
+	if (!anx_blk_ready()) {
+		kputs("no block device detected\n");
+		return;
+	}
+	cap = anx_blk_capacity();
+	mb = (uint32_t)(cap * 512 / (1024 * 1024));
+	kprintf("virtio-blk: %u MiB (%u sectors)\n", mb, (uint32_t)cap);
+}
+
 /* --- PCI commands --- */
 
-static void cmd_pci(void)
+static void cmd_pci(int argc, char **argv)
 {
 	struct anx_list_head *pos;
 	struct anx_list_head *list = anx_pci_device_list();
+	bool detail = (argc >= 2 && anx_strcmp(argv[1], "detail") == 0);
 
 	kputs("PCI devices:\n");
 	ANX_LIST_FOR_EACH(pos, list) {
 		struct anx_pci_device *dev;
 
 		dev = ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
-		kprintf("  %x:%x.%x  %x:%x  class %x:%x  irq %u",
+		kprintf("  %x:%x.%x  %x:%x  %s",
 			(uint32_t)dev->bus, (uint32_t)dev->slot,
 			(uint32_t)dev->func,
 			(uint32_t)dev->vendor_id, (uint32_t)dev->device_id,
-			(uint32_t)dev->class_code, (uint32_t)dev->subclass,
-			(uint32_t)dev->irq_line);
-		if (dev->bar[0])
-			kprintf("  bar0=0x%x", dev->bar[0]);
-		kprintf("\n");
+			anx_pci_class_name(dev->class_code, dev->subclass));
+		if (detail) {
+			int i;
+
+			kprintf("\n    class: %x:%x  rev: %x  irq: %u\n",
+				(uint32_t)dev->class_code,
+				(uint32_t)dev->subclass,
+				(uint32_t)dev->revision,
+				(uint32_t)dev->irq_line);
+			for (i = 0; i < 6; i++) {
+				if (dev->bar[i] == 0)
+					continue;
+				kprintf("    bar%d: 0x%x (%s)\n", i,
+					dev->bar[i],
+					(dev->bar[i] & 1) ? "I/O" : "MMIO");
+			}
+		} else {
+			if (dev->irq_line)
+				kprintf("  irq %u",
+					(uint32_t)dev->irq_line);
+			kprintf("\n");
+		}
 	}
 }
 
@@ -1255,8 +1291,10 @@ static void dispatch(int argc, char **argv)
 			cmd_ping(argv[1]);
 		else
 			kputs("usage: ping <ip>\n");
+	} else if (anx_strcmp(argv[0], "disk") == 0) {
+		cmd_disk();
 	} else if (anx_strcmp(argv[0], "pci") == 0) {
-		cmd_pci();
+		cmd_pci(argc, argv);
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
 		kputs("halting system\n");
 		arch_halt();
