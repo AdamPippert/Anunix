@@ -206,9 +206,18 @@ int anx_tcp_recv(struct anx_tcp_conn *c, void *b, uint32_t l, uint32_t t)
 int anx_tcp_close(struct anx_tcp_conn *c) { (void)c; return ANX_OK; }
 int anx_http_get(const char *h, uint16_t p, const char *pa, struct anx_http_response *r)
 { (void)h; (void)p; (void)pa; r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
+int anx_http_get_authed(const char *h, uint16_t p, const char *pa,
+			 const char *eh, struct anx_http_response *r)
+{ (void)h; (void)p; (void)pa; (void)eh;
+  r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
 int anx_http_post(const char *h, uint16_t p, const char *pa, const char *ct,
 		   const void *b, uint32_t bl, struct anx_http_response *r)
 { (void)h; (void)p; (void)pa; (void)ct; (void)b; (void)bl;
+  r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
+int anx_http_post_authed(const char *h, uint16_t p, const char *pa,
+			  const char *eh, const char *ct,
+			  const void *b, uint32_t bl, struct anx_http_response *r)
+{ (void)h; (void)p; (void)pa; (void)eh; (void)ct; (void)b; (void)bl;
   r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
 void anx_http_response_free(struct anx_http_response *r)
 { if(r) { r->body=NULL; r->body_len=0; } }
