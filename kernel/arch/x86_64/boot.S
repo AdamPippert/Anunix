@@ -77,6 +77,9 @@ mb2_end:
 _start:
 	cli
 
+	/* Debug: 'F' = kernel _start reached */
+	movw	$0x4F46, 0xB800A
+
 	/*
 	 * Save boot info before anything clobbers RAX/RBX.
 	 * Callee-saved registers survive BSS zeroing.
