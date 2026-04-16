@@ -283,6 +283,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  store stats                Show store statistics\n");
 	kputs("  disk                       Show block device info\n");
 	kputs("  pci                        List PCI devices\n");
+	kputs("  reboot                     Reboot the system\n");
 	kputs("  halt                       Halt the system\n");
 }
 
@@ -1599,6 +1600,15 @@ static void dispatch(int argc, char **argv)
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
 		kputs("halting system\n");
 		arch_halt();
+	} else if (anx_strcmp(argv[0], "reboot") == 0) {
+		kputs("rebooting...\n");
+		/* Triple-fault reboot: load null IDT and trigger interrupt */
+		{
+			struct { uint16_t limit; uint64_t base; }
+				__attribute__((packed)) null_idt = {0, 0};
+			__asm__ volatile("lidt %0" : : "m"(null_idt));
+			__asm__ volatile("int3");
+		}
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 	}
