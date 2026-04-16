@@ -9,6 +9,7 @@
 #include <anx/arch.h>
 #include <anx/irq.h>
 #include <anx/pci.h>
+#include <anx/acpi.h>
 #include <anx/credential.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
@@ -151,6 +152,11 @@ int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
 void anx_irq_unmask(uint8_t irq) { (void)irq; }
 void anx_irq_mask(uint8_t irq) { (void)irq; }
 
+/* Mock ACPI */
+static struct anx_acpi_info mock_acpi = { .valid = false };
+int anx_acpi_init(void) { return ANX_OK; }
+const struct anx_acpi_info *anx_acpi_get_info(void) { return &mock_acpi; }
+
 /* Mock PCI — excluded from test build (hardware-dependent) */
 static struct anx_list_head mock_pci_list = ANX_LIST_HEAD_INIT(mock_pci_list);
 int anx_pci_init(void) { return ANX_OK; }
@@ -158,6 +164,7 @@ struct anx_pci_device *anx_pci_find_device(uint16_t v, uint16_t d)
 { (void)v; (void)d; return NULL; }
 struct anx_list_head *anx_pci_device_list(void) { return &mock_pci_list; }
 void anx_pci_enable_bus_master(struct anx_pci_device *d) { (void)d; }
+const char *anx_pci_class_name(uint8_t c, uint8_t s) { (void)c; (void)s; return "unknown"; }
 uint32_t anx_pci_config_read(uint8_t b, uint8_t s, uint8_t f, uint8_t o)
 { (void)b; (void)s; (void)f; (void)o; return 0xFFFFFFFF; }
 void anx_pci_config_write(uint8_t b, uint8_t s, uint8_t f, uint8_t o, uint32_t v)
@@ -209,6 +216,13 @@ int anx_tcp_send(struct anx_tcp_conn *c, const void *d, uint32_t l)
 int anx_tcp_recv(struct anx_tcp_conn *c, void *b, uint32_t l, uint32_t t)
 { (void)c; (void)b; (void)l; (void)t; return ANX_EIO; }
 int anx_tcp_close(struct anx_tcp_conn *c) { (void)c; return ANX_OK; }
+/* Mock virtio-blk */
+int anx_virtio_blk_init(void) { return ANX_ENOENT; }
+int anx_blk_read(uint64_t s, uint32_t c, void *b) { (void)s;(void)c;(void)b; return ANX_EIO; }
+int anx_blk_write(uint64_t s, uint32_t c, const void *b) { (void)s;(void)c;(void)b; return ANX_EIO; }
+uint64_t anx_blk_capacity(void) { return 0; }
+bool anx_blk_ready(void) { return false; }
+
 int anx_http_get(const char *h, uint16_t p, const char *pa, struct anx_http_response *r)
 { (void)h; (void)p; (void)pa; r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
 int anx_http_get_authed(const char *h, uint16_t p, const char *pa,

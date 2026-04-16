@@ -24,9 +24,11 @@
 #include <anx/route_feedback.h>
 #include <anx/posix.h>
 #include <anx/pci.h>
+#include <anx/acpi.h>
 #include <anx/string.h>
 #include <anx/credential.h>
 #include <anx/virtio_net.h>
+#include <anx/virtio_blk.h>
 #include <anx/net.h>
 #include <anx/splash.h>
 #include <anx/shell.h>
@@ -147,10 +149,14 @@ void kernel_main(void)
 
 	kprintf("credential store initialized\n");
 
-	/* 9. PCI bus enumeration */
+	/* 9. Hardware discovery */
+	anx_acpi_init();
 	anx_pci_init();
 
-	/* 10. Network device and IP stack */
+	/* 10. Block device */
+	anx_virtio_blk_init();
+
+	/* 11. Network device and IP stack */
 	if (anx_virtio_net_init() == ANX_OK) {
 		struct anx_net_config net_cfg;
 

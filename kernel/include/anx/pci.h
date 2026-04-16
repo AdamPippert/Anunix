@@ -47,4 +47,7 @@ struct anx_list_head *anx_pci_device_list(void);
 /* Enable PCI bus mastering for a device (required for DMA) */
 void anx_pci_enable_bus_master(struct anx_pci_device *dev);
 
+/* Get human-readable name for a PCI class/subclass */
+const char *anx_pci_class_name(uint8_t class_code, uint8_t subclass);
+
 #endif /* ANX_PCI_H */
