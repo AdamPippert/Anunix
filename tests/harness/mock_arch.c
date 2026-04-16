@@ -11,6 +11,7 @@
 #include <anx/pci.h>
 #include <anx/acpi.h>
 #include <anx/credential.h>
+#include <anx/model_client.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
 #include <anx/http.h>
@@ -151,6 +152,14 @@ int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
 
 void anx_irq_unmask(uint8_t irq) { (void)irq; }
 void anx_irq_mask(uint8_t irq) { (void)irq; }
+
+/* Mock model client */
+void anx_model_client_init(const struct anx_model_endpoint *ep) { (void)ep; }
+bool anx_model_client_ready(void) { return false; }
+int anx_model_call(const struct anx_model_request *r, struct anx_model_response *resp)
+{ (void)r; resp->content=NULL; resp->stop_reason=NULL; resp->content_len=0;
+  resp->input_tokens=0; resp->output_tokens=0; resp->status_code=0; return ANX_EIO; }
+void anx_model_response_free(struct anx_model_response *r) { (void)r; }
 
 /* Mock ACPI */
 static struct anx_acpi_info mock_acpi = { .valid = false };

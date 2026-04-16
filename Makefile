@@ -268,7 +268,8 @@ clean:
 # Excludes kernel/core/main.c (test_main.c provides kernel_main).
 TEST_CC     := clang
 TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
-TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, $(CORE_C))
+TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
+		  $(filter-out $(CORE_DIR)/agent/%, $(CORE_C)))
 # Exclude hardware-dependent drivers from host-native test builds.
 # PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
