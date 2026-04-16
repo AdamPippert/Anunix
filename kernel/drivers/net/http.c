@@ -58,7 +58,8 @@ static int buf_append(char *buf, uint32_t *off, uint32_t cap,
 /* Build the HTTP request into buf, return length */
 static int http_build_request(char *buf, uint32_t cap,
 			       const char *method, const char *host,
-			       const char *path, const char *content_type,
+			       const char *path, const char *extra_headers,
+			       const char *content_type,
 			       const void *body, uint32_t body_len)
 {
 	uint32_t off = 0;
@@ -84,6 +85,12 @@ static int http_build_request(char *buf, uint32_t cap,
 	/* Connection: close */
 	if (buf_append(buf, &off, cap, "Connection: close\r\n") != ANX_OK)
 		return -1;
+
+	/* Extra headers (pre-formatted with \r\n terminators) */
+	if (extra_headers) {
+		if (buf_append(buf, &off, cap, extra_headers) != ANX_OK)
+			return -1;
+	}
 
 	/* Content headers for POST */
 	if (body && body_len > 0 && content_type) {
@@ -158,7 +165,8 @@ static int http_find_body(const char *data, uint32_t len)
 }
 
 static int http_request(const char *host, uint16_t port, const char *path,
-			 const char *method, const char *content_type,
+			 const char *method, const char *extra_headers,
+			 const char *content_type,
 			 const void *body, uint32_t body_len,
 			 struct anx_http_response *resp)
 {
@@ -198,7 +206,8 @@ static int http_request(const char *host, uint16_t port, const char *path,
 	}
 
 	req_len = http_build_request(req_buf, 4096, method, host, path,
-				     content_type, body, body_len);
+				     extra_headers, content_type,
+				     body, body_len);
 	if (req_len < 0) {
 		anx_free(req_buf);
 		anx_tcp_close(conn);
@@ -258,7 +267,16 @@ static int http_request(const char *host, uint16_t port, const char *path,
 int anx_http_get(const char *host, uint16_t port, const char *path,
 		  struct anx_http_response *resp)
 {
-	return http_request(host, port, path, "GET", NULL, NULL, 0, resp);
+	return http_request(host, port, path, "GET",
+			    NULL, NULL, NULL, 0, resp);
+}
+
+int anx_http_get_authed(const char *host, uint16_t port, const char *path,
+			 const char *extra_headers,
+			 struct anx_http_response *resp)
+{
+	return http_request(host, port, path, "GET",
+			    extra_headers, NULL, NULL, 0, resp);
 }
 
 int anx_http_post(const char *host, uint16_t port, const char *path,
@@ -267,7 +285,18 @@ int anx_http_post(const char *host, uint16_t port, const char *path,
 		   struct anx_http_response *resp)
 {
 	return http_request(host, port, path, "POST",
-			    content_type, body, body_len, resp);
+			    NULL, content_type, body, body_len, resp);
+}
+
+int anx_http_post_authed(const char *host, uint16_t port, const char *path,
+			  const char *extra_headers,
+			  const char *content_type,
+			  const void *body, uint32_t body_len,
+			  struct anx_http_response *resp)
+{
+	return http_request(host, port, path, "POST",
+			    extra_headers, content_type,
+			    body, body_len, resp);
 }
 
 void anx_http_response_free(struct anx_http_response *resp)

@@ -137,6 +137,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret list                List credentials (no values)\n");
 	kputs("  secret show <name>         Show credential metadata\n");
 	kputs("  secret revoke <name>       Revoke a credential\n");
+	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
 	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
@@ -751,6 +752,77 @@ static uint16_t parse_port(const char *s)
 	return val;
 }
 
+static void cmd_api(int argc, char **argv)
+{
+	char key_buf[256];
+	uint32_t key_len;
+	char headers[512];
+	uint32_t hdr_off = 0;
+	struct anx_http_response resp;
+	const char *host;
+	uint16_t port;
+	const char *path;
+	int ret;
+
+	if (argc < 4) {
+		kputs("usage: api <cred-name> <host> <port> [path]\n");
+		kputs("  reads credential, injects as x-api-key header\n");
+		return;
+	}
+
+	/* Read the credential */
+	ret = anx_credential_read(argv[1], key_buf, sizeof(key_buf) - 1,
+				   &key_len);
+	if (ret != ANX_OK) {
+		kprintf("api: credential '%s' not found (%d)\n", argv[1], ret);
+		return;
+	}
+	key_buf[key_len] = '\0';
+
+	/* Build auth headers (pre-formatted with \r\n) */
+	hdr_off = 0;
+	anx_memcpy(headers + hdr_off, "x-api-key: ", 11);
+	hdr_off += 11;
+	anx_memcpy(headers + hdr_off, key_buf, key_len);
+	hdr_off += key_len;
+	anx_memcpy(headers + hdr_off, "\r\nanthropic-version: 2023-06-01\r\n", 33);
+	hdr_off += 33;
+	headers[hdr_off] = '\0';
+
+	/* Zero the key from our local buffer immediately */
+	anx_memset(key_buf, 0, sizeof(key_buf));
+
+	host = argv[2];
+	port = parse_port(argv[3]);
+	path = argc >= 5 ? argv[4] : "/";
+
+	kprintf("API %s:%u%s (credential: %s)\n",
+		host, (uint32_t)port, path, argv[1]);
+
+	ret = anx_http_get_authed(host, port, path, headers, &resp);
+
+	/* Zero headers containing the key */
+	anx_memset(headers, 0, sizeof(headers));
+
+	if (ret != ANX_OK) {
+		kprintf("api: request failed (%d)\n", ret);
+		return;
+	}
+
+	kprintf("HTTP %d, %u bytes\n", resp.status_code, resp.body_len);
+	if (resp.body && resp.body_len > 0) {
+		uint32_t show = resp.body_len;
+
+		if (show > 1024)
+			show = 1024;
+		resp.body[show] = '\0';
+		kprintf("%s\n", resp.body);
+		if (resp.body_len > 1024)
+			kputs("... (truncated)\n");
+	}
+	anx_http_response_free(&resp);
+}
+
 static void cmd_http_get(int argc, char **argv)
 {
 	struct anx_http_response resp;
@@ -990,6 +1062,8 @@ static void dispatch(int argc, char **argv)
 			cmd_net_status();
 		else
 			kputs("usage: net status\n");
+	} else if (anx_strcmp(argv[0], "api") == 0) {
+		cmd_api(argc, argv);
 	} else if (anx_strcmp(argv[0], "secret") == 0) {
 		cmd_secret(argc, argv);
 	} else if (anx_strcmp(argv[0], "http-get") == 0) {
