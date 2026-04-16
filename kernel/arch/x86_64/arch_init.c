@@ -5,6 +5,7 @@
 #include <anx/types.h>
 #include <anx/arch.h>
 #include <anx/io.h>
+#include <anx/irq.h>
 #include <anx/page.h>
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
@@ -65,6 +66,8 @@ void arch_early_init(void)
 	serial_init();
 }
 
+static void kbd_init(void);
+
 void arch_init(void)
 {
 	/* Initialize page allocator with linker-defined heap */
@@ -72,6 +75,9 @@ void arch_init(void)
 
 	/* IDT, GDT, PIC, PIT timer */
 	arch_exception_init();
+
+	/* PS/2 keyboard (IRQ1) */
+	kbd_init();
 }
 
 void arch_probe_hw(struct anx_hw_inventory *inv)
@@ -122,6 +128,88 @@ anx_time_t arch_time_now(void)
 	return ((uint64_t)hi << 32) | lo;
 }
 
+/* --- PS/2 Keyboard --- */
+
+#define KBD_DATA_PORT	0x60
+#define KBD_STATUS_PORT	0x64
+#define KBD_BUF_SIZE	64
+
+static char kbd_buf[KBD_BUF_SIZE];
+static volatile uint32_t kbd_head, kbd_tail;
+static bool kbd_shift;
+
+/* US QWERTY scancode set 1 → ASCII (lowercase) */
+static const char scancode_map[128] = {
+	0, 0x1B, '1','2','3','4','5','6','7','8','9','0','-','=','\b',
+	'\t','q','w','e','r','t','y','u','i','o','p','[',']','\n',
+	0, 'a','s','d','f','g','h','j','k','l',';','\'','`',
+	0, '\\','z','x','c','v','b','n','m',',','.','/', 0,
+	'*', 0, ' ',
+};
+
+static const char scancode_shift[128] = {
+	0, 0x1B, '!','@','#','$','%','^','&','*','(',')','_','+','\b',
+	'\t','Q','W','E','R','T','Y','U','I','O','P','{','}','\n',
+	0, 'A','S','D','F','G','H','J','K','L',':','"','~',
+	0, '|','Z','X','C','V','B','N','M','<','>','?', 0,
+	'*', 0, ' ',
+};
+
+static void kbd_irq_handler(uint32_t irq, void *arg)
+{
+	uint8_t scancode;
+	char c;
+	uint32_t next;
+
+	(void)irq;
+	(void)arg;
+
+	scancode = anx_inb(KBD_DATA_PORT);
+
+	/* Handle shift key */
+	if (scancode == 0x2A || scancode == 0x36) {
+		kbd_shift = true;
+		return;
+	}
+	if (scancode == 0xAA || scancode == 0xB6) {
+		kbd_shift = false;
+		return;
+	}
+
+	/* Ignore key releases (bit 7 set) */
+	if (scancode & 0x80)
+		return;
+
+	/* Convert to ASCII */
+	if (scancode >= 128)
+		return;
+	c = kbd_shift ? scancode_shift[scancode] : scancode_map[scancode];
+	if (c == 0)
+		return;
+
+	/* Buffer the character */
+	next = (kbd_head + 1) % KBD_BUF_SIZE;
+	if (next != kbd_tail) {
+		kbd_buf[kbd_head] = c;
+		kbd_head = next;
+	}
+}
+
+static void kbd_init(void)
+{
+	kbd_head = 0;
+	kbd_tail = 0;
+	kbd_shift = false;
+
+	/* Flush any pending scancodes */
+	while (anx_inb(KBD_STATUS_PORT) & 0x01)
+		anx_inb(KBD_DATA_PORT);
+
+	/* Register IRQ1 handler and unmask */
+	anx_irq_register(1, kbd_irq_handler, NULL);
+	anx_irq_unmask(1);
+}
+
 /* --- Console I/O --- */
 
 void arch_console_putc(char c)
@@ -142,19 +230,38 @@ void arch_console_puts(const char *s)
 
 int arch_console_getc(void)
 {
+	/* Check keyboard buffer first (IRQ-driven) */
+	if (kbd_head != kbd_tail) {
+		char c = kbd_buf[kbd_tail];
+
+		kbd_tail = (kbd_tail + 1) % KBD_BUF_SIZE;
+		return (int)c;
+	}
+
+	/* Fall back to serial */
 	if (!com1_present)
 		return -1;
-	/* Poll until data ready */
-	while ((anx_inb(COM1_LSR) & 0x01) == 0)
-		;
+	while ((anx_inb(COM1_LSR) & 0x01) == 0) {
+		/* Check keyboard while waiting for serial */
+		if (kbd_head != kbd_tail) {
+			char c = kbd_buf[kbd_tail];
+
+			kbd_tail = (kbd_tail + 1) % KBD_BUF_SIZE;
+			return (int)c;
+		}
+	}
 	return (int)anx_inb(COM1_DATA);
 }
 
 bool arch_console_has_input(void)
 {
-	if (!com1_present)
-		return false;
-	return (anx_inb(COM1_LSR) & 0x01) != 0;
+	/* Keyboard buffer has data */
+	if (kbd_head != kbd_tail)
+		return true;
+	/* Serial has data */
+	if (com1_present && (anx_inb(COM1_LSR) & 0x01) != 0)
+		return true;
+	return false;
 }
 
 /* --- Framebuffer detection --- */

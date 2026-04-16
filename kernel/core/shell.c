@@ -32,6 +32,7 @@
 #include <anx/objstore_disk.h>
 #include <anx/auth.h>
 #include <anx/model_client.h>
+#include <anx/gui.h>
 #include <anx/acpi.h>
 
 /* --- Line input with history --- */
@@ -113,8 +114,13 @@ static int kgetline(char *buf, size_t size)
 	saved[0] = '\0';
 
 	while (pos < size - 1) {
-		int c = arch_console_getc();
+		int c;
 
+		/* Poll for input, updating clock while waiting */
+		while (!arch_console_has_input())
+			anx_gui_update_time();
+
+		c = arch_console_getc();
 		if (c < 0)
 			break;
 
