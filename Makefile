@@ -124,6 +124,7 @@ ARCH_S    := $(filter-out %/qemu_boot.S, $(wildcard $(ARCH_DIR)/*.S))
 CORE_C    := $(shell find $(CORE_DIR) -name '*.c' 2>/dev/null)
 LIB_C     := $(wildcard $(LIB_DIR)/*.c)
 DRIVER_C  := $(shell find $(DRIVER_DIR) -name '*.c' 2>/dev/null)
+DRIVER_S  := $(shell find $(DRIVER_DIR) -name '*.S' 2>/dev/null)
 
 # Object files
 ARCH_C_OBJ  := $(patsubst $(ARCH_DIR)/%.c,$(BUILD_DIR)/arch/%.o,$(ARCH_C))
@@ -131,8 +132,9 @@ ARCH_S_OBJ  := $(patsubst $(ARCH_DIR)/%.S,$(BUILD_DIR)/arch/%.o,$(ARCH_S))
 CORE_OBJ    := $(patsubst $(CORE_DIR)/%.c,$(BUILD_DIR)/core/%.o,$(CORE_C))
 LIB_OBJ     := $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/lib/%.o,$(LIB_C))
 DRIVER_OBJ  := $(patsubst $(DRIVER_DIR)/%.c,$(BUILD_DIR)/drivers/%.o,$(DRIVER_C))
+DRIVER_S_OBJ := $(patsubst $(DRIVER_DIR)/%.S,$(BUILD_DIR)/drivers/%.o,$(DRIVER_S))
 
-ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(DRIVER_OBJ) $(LIB_OBJ)
+ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(DRIVER_OBJ) $(DRIVER_S_OBJ) $(LIB_OBJ)
 
 KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
@@ -175,6 +177,11 @@ $(BUILD_DIR)/lib/%.o: $(LIB_DIR)/%.c
 $(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Assemble .S files from drivers/ (for embedded assets)
+$(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.S
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) -c $< -o $@
 
 # x86_64 QEMU needs a 32-bit multiboot wrapper (QEMU rejects ELF64 multiboot).
 # ARM64 can use the ELF directly.
