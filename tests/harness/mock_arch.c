@@ -12,6 +12,8 @@
 #include <anx/acpi.h>
 #include <anx/credential.h>
 #include <anx/model_client.h>
+#include <anx/gui.h>
+#include <anx/jpeg.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
 #include <anx/http.h>
@@ -153,7 +155,21 @@ int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
 void anx_irq_unmask(uint8_t irq) { (void)irq; }
 void anx_irq_mask(uint8_t irq) { (void)irq; }
 
-/* Mock JPEG splash */
+/* fb.c, fbcon.c, font.c compiled from real sources — no mocks needed */
+
+/* Mock GUI (gui.c excluded from test build) */
+void anx_gui_init(void) {}
+bool anx_gui_active(void) { return false; }
+void anx_gui_terminal_putc(char c) { (void)c; }
+void anx_gui_update_time(void) {}
+void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
+    uint32_t fg, uint32_t bg, uint32_t scale)
+{ (void)x;(void)y;(void)c;(void)fg;(void)bg;(void)scale; }
+void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
+    uint32_t fg, uint32_t bg, uint32_t scale)
+{ (void)x;(void)y;(void)s;(void)fg;(void)bg;(void)scale; }
+
+/* Mock JPEG splash data (real jpeg.c from lib/ is compiled) */
 const uint8_t _splash_jpg_start[1] = {0};
 const uint8_t _splash_jpg_end[1] = {0};
 

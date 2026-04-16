@@ -1,0 +1,265 @@
+/*
+ * gui.c — Graphical user environment.
+ *
+ * Tiled window manager with:
+ * - Light sky blue (#87CEEB) background
+ * - Top bar with centered time in white (2x scale = 16x32 font)
+ * - Midnight blue (#191970) terminal window with 30px margin
+ * - White text in the terminal
+ * - Functional anx> shell
+ */
+
+#include <anx/types.h>
+#include <anx/gui.h>
+#include <anx/fb.h>
+#include <anx/font.h>
+#include <anx/arch.h>
+#include <anx/string.h>
+
+static bool gui_ready;
+static uint32_t screen_w, screen_h;
+
+/* Terminal state */
+static uint32_t term_x, term_y;	/* pixel origin of terminal area */
+static uint32_t term_w, term_h;	/* pixel size of terminal area */
+static uint32_t term_cols, term_rows;	/* character grid */
+static uint32_t cur_col, cur_row;	/* cursor position in chars */
+
+#define TERM_FONT_SCALE	1	/* 1x = 8x16, 2x = 16x32 */
+#define TERM_CHAR_W	(ANX_FONT_WIDTH * TERM_FONT_SCALE)
+#define TERM_CHAR_H	(ANX_FONT_HEIGHT * TERM_FONT_SCALE)
+#define TIME_FONT_SCALE	2	/* 2x for top bar time */
+
+/* --- Scaled font rendering --- */
+
+void anx_gui_draw_char_scaled(uint32_t px, uint32_t py, char c,
+			       uint32_t fg, uint32_t bg, uint32_t scale)
+{
+	const uint8_t *glyph = anx_font_glyph(c);
+	uint32_t row, col, sy, sx;
+
+	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
+		uint8_t bits = glyph[row];
+
+		for (col = 0; col < ANX_FONT_WIDTH; col++) {
+			uint32_t color = (bits & (0x80 >> col)) ? fg : bg;
+
+			for (sy = 0; sy < scale; sy++) {
+				uint32_t y = py + row * scale + sy;
+
+				if (y >= screen_h)
+					continue;
+				for (sx = 0; sx < scale; sx++) {
+					uint32_t x = px + col * scale + sx;
+
+					if (x >= screen_w)
+						continue;
+					anx_fb_putpixel(x, y, color);
+				}
+			}
+		}
+	}
+}
+
+void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
+				 uint32_t fg, uint32_t bg, uint32_t scale)
+{
+	while (*s) {
+		anx_gui_draw_char_scaled(x, y, *s, fg, bg, scale);
+		x += ANX_FONT_WIDTH * scale;
+		s++;
+	}
+}
+
+/* --- Background and layout --- */
+
+static void draw_background(void)
+{
+	anx_fb_clear(ANX_COLOR_SKY_BLUE);
+}
+
+static void draw_topbar(void)
+{
+	/* Top bar is sky blue background with centered time */
+	/* The time gets drawn by anx_gui_update_time */
+}
+
+static void draw_terminal_frame(void)
+{
+	/* Fill the terminal area with midnight blue */
+	anx_fb_fill_rect(term_x, term_y, term_w, term_h,
+			  ANX_COLOR_MIDNIGHT);
+}
+
+/* --- Time display --- */
+
+void anx_gui_update_time(void)
+{
+	uint64_t ticks;
+	uint32_t secs, mins, hrs;
+	char timebuf[16];
+	uint32_t time_w, time_x;
+
+	if (!gui_ready)
+		return;
+
+	ticks = arch_timer_ticks();
+	secs = (uint32_t)(ticks / 100);	/* 100 Hz PIT */
+	mins = secs / 60;
+	hrs = mins / 60;
+
+	/* Format HH:MM:SS (uptime for now — no RTC/timezone yet) */
+	timebuf[0] = '0' + (char)((hrs / 10) % 10);
+	timebuf[1] = '0' + (char)(hrs % 10);
+	timebuf[2] = ':';
+	timebuf[3] = '0' + (char)((mins % 60) / 10);
+	timebuf[4] = '0' + (char)(mins % 10);
+	timebuf[5] = ':';
+	timebuf[6] = '0' + (char)((secs % 60) / 10);
+	timebuf[7] = '0' + (char)(secs % 10);
+	timebuf[8] = '\0';
+
+	/* Center the time string in the top bar */
+	time_w = 8 * ANX_FONT_WIDTH * TIME_FONT_SCALE;
+	time_x = (screen_w - time_w) / 2;
+
+	/* Clear the time area */
+	anx_fb_fill_rect(time_x - 4, 4, time_w + 8,
+			  ANX_FONT_HEIGHT * TIME_FONT_SCALE + 4,
+			  ANX_COLOR_SKY_BLUE);
+
+	anx_gui_draw_string_scaled(time_x,
+				    (ANX_GUI_TOPBAR_HEIGHT -
+				     ANX_FONT_HEIGHT * TIME_FONT_SCALE) / 2,
+				    timebuf, ANX_COLOR_WHITE,
+				    ANX_COLOR_SKY_BLUE, TIME_FONT_SCALE);
+}
+
+/* --- Terminal output --- */
+
+static void terminal_scroll(void)
+{
+	/* Scroll terminal content up by one line */
+	uint32_t line_bytes;
+	uint32_t y;
+	const struct anx_fb_info *info = anx_fb_get_info();
+
+	if (!info)
+		return;
+
+	line_bytes = info->pitch;
+
+	/* Move each row up by TERM_CHAR_H pixels */
+	for (y = term_y; y < term_y + term_h - TERM_CHAR_H; y++) {
+		uint8_t *dst = (uint8_t *)(uintptr_t)info->addr +
+			       y * line_bytes;
+		uint8_t *src = dst + TERM_CHAR_H * line_bytes;
+
+		anx_memcpy(dst + term_x * 4, src + term_x * 4, term_w * 4);
+	}
+
+	/* Clear the last line */
+	anx_fb_fill_rect(term_x, term_y + term_h - TERM_CHAR_H,
+			  term_w, TERM_CHAR_H, ANX_COLOR_MIDNIGHT);
+}
+
+static void terminal_newline(void)
+{
+	cur_col = 0;
+	cur_row++;
+	if (cur_row >= term_rows) {
+		cur_row = term_rows - 1;
+		terminal_scroll();
+	}
+}
+
+void anx_gui_terminal_putc(char c)
+{
+	uint32_t px, py;
+
+	if (!gui_ready)
+		return;
+
+	switch (c) {
+	case '\n':
+		terminal_newline();
+		return;
+	case '\r':
+		cur_col = 0;
+		return;
+	case '\b':
+		if (cur_col > 0) {
+			cur_col--;
+			px = term_x + cur_col * TERM_CHAR_W;
+			py = term_y + cur_row * TERM_CHAR_H;
+			anx_gui_draw_char_scaled(px, py, ' ',
+						  ANX_COLOR_WHITE,
+						  ANX_COLOR_MIDNIGHT,
+						  TERM_FONT_SCALE);
+		}
+		return;
+	case '\t': {
+		uint32_t next = (cur_col + 8) & ~7u;
+
+		if (next >= term_cols)
+			next = term_cols - 1;
+		cur_col = next;
+		return;
+	}
+	default:
+		break;
+	}
+
+	if (c < 0x20 || c >= 0x7F)
+		return;
+
+	px = term_x + cur_col * TERM_CHAR_W;
+	py = term_y + cur_row * TERM_CHAR_H;
+
+	anx_gui_draw_char_scaled(px, py, c,
+				  ANX_COLOR_WHITE, ANX_COLOR_MIDNIGHT,
+				  TERM_FONT_SCALE);
+
+	cur_col++;
+	if (cur_col >= term_cols)
+		terminal_newline();
+}
+
+/* --- Initialization --- */
+
+void anx_gui_init(void)
+{
+	const struct anx_fb_info *info;
+
+	info = anx_fb_get_info();
+	if (!info || !info->available)
+		return;
+
+	screen_w = info->width;
+	screen_h = info->height;
+
+	/* Calculate terminal geometry */
+	term_x = ANX_GUI_MARGIN;
+	term_y = ANX_GUI_TOPBAR_HEIGHT + ANX_GUI_MARGIN;
+	term_w = screen_w - 2 * ANX_GUI_MARGIN;
+	term_h = screen_h - ANX_GUI_TOPBAR_HEIGHT - 2 * ANX_GUI_MARGIN;
+
+	term_cols = term_w / TERM_CHAR_W;
+	term_rows = term_h / TERM_CHAR_H;
+
+	cur_col = 0;
+	cur_row = 0;
+
+	/* Draw the environment */
+	draw_background();
+	draw_topbar();
+	draw_terminal_frame();
+	anx_gui_update_time();
+
+	gui_ready = true;
+}
+
+bool anx_gui_active(void)
+{
+	return gui_ready;
+}
