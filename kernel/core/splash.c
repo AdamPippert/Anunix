@@ -1,19 +1,24 @@
 /*
- * splash.c — Boot splash screen for serial console.
+ * splash.c — Boot splash screen.
  *
- * Displays the Anunix logo using ANSI escape codes.
- * Works on any terminal that supports 256-color ANSI
- * (QEMU serial, UTM console, minicom, etc.).
+ * When a framebuffer is available, decodes the embedded JPEG logo
+ * and displays it scaled to fill the screen for 5 seconds.
+ * Falls back to ANSI art on serial-only consoles.
  */
 
+#include <anx/types.h>
 #include <anx/arch.h>
+#include <anx/fb.h>
+#include <anx/jpeg.h>
 #include <anx/kprintf.h>
+
+/* Embedded JPEG from splash_img.S */
+extern const uint8_t _splash_jpg_start[];
+extern const uint8_t _splash_jpg_end[];
 
 /*
  * ANSI color codes for the teal-to-navy gradient.
  * Uses 256-color mode: \033[38;5;Nm
- *   30 = dark teal    37 = teal       73 = medium teal
- *   31 = darker teal  23 = navy       24 = dark navy
  */
 
 static void puts_color(const char *s, int color)
@@ -21,32 +26,20 @@ static void puts_color(const char *s, int color)
 	kprintf("\033[38;5;%dm%s\033[0m", color, s);
 }
 
-void anx_splash(void)
+static void splash_serial(void)
 {
-	/* Clear screen */
-	kprintf("\033[2J\033[H");
+	kprintf("\033[2J\033[H\n");
 
-	kprintf("\n");
-
-	/*
-	 * Anunix "A" logo — stylized triangular mark with center dot.
-	 * Uses block drawing characters and ANSI 256-color for the
-	 * teal-to-navy gradient from the brand logo.
-	 */
-
-	/* Row 1: peak of the A */
 	kprintf("                       ");
 	puts_color("___", 37);
 	kprintf("\n");
 
-	/* Row 2 */
 	kprintf("                      ");
 	puts_color("/", 37);
 	kprintf("   ");
 	puts_color("\\", 37);
 	kprintf("\n");
 
-	/* Row 3 */
 	kprintf("                     ");
 	puts_color("/", 37);
 	kprintf("  ");
@@ -55,14 +48,12 @@ void anx_splash(void)
 	puts_color("\\", 73);
 	kprintf("\n");
 
-	/* Row 4 */
 	kprintf("                    ");
 	puts_color("/", 30);
 	kprintf("       ");
 	puts_color("\\", 73);
 	kprintf("\n");
 
-	/* Row 5: crossbar */
 	kprintf("                   ");
 	puts_color("/", 30);
 	kprintf("  ");
@@ -71,7 +62,6 @@ void anx_splash(void)
 	puts_color("\\", 73);
 	kprintf("\n");
 
-	/* Row 6 */
 	kprintf("                  ");
 	puts_color("/", 24);
 	kprintf("  ");
@@ -82,7 +72,6 @@ void anx_splash(void)
 	puts_color("\\", 73);
 	kprintf("\n");
 
-	/* Row 7 */
 	kprintf("                 ");
 	puts_color("/", 24);
 	kprintf("  ");
@@ -93,7 +82,6 @@ void anx_splash(void)
 	puts_color("\\", 37);
 	kprintf("\n");
 
-	/* Row 8: base */
 	kprintf("                ");
 	puts_color("/", 24);
 	puts_color("__", 24);
@@ -102,19 +90,57 @@ void anx_splash(void)
 	puts_color("\\", 37);
 	puts_color("__", 37);
 	puts_color("\\", 37);
-	kprintf("\n");
+	kprintf("\n\n");
 
-	kprintf("\n");
-
-	/* Wordmark */
 	kprintf("                ");
 	puts_color("A N U N I X", 37);
 	kprintf("\n");
 
-	/* Tagline */
 	kprintf("          ");
 	puts_color("The AI-Native Operating System", 243);
-	kprintf("\n");
+	kprintf("\n\n");
+}
 
-	kprintf("\n");
+static void splash_graphical(void)
+{
+	const struct anx_fb_info *info;
+	struct anx_jpeg_image img;
+	uint32_t jpg_size;
+	uint64_t start;
+	int ret;
+
+	info = anx_fb_get_info();
+	if (!info || !info->available)
+		return;
+
+	jpg_size = (uint32_t)(_splash_jpg_end - _splash_jpg_start);
+	if (jpg_size == 0)
+		return;
+
+	ret = anx_jpeg_decode(_splash_jpg_start, jpg_size, &img);
+	if (ret != ANX_OK) {
+		kprintf("splash: jpeg decode failed (%d)\n", ret);
+		return;
+	}
+
+	/* Scale and blit to framebuffer */
+	anx_jpeg_blit_scaled(&img, info->width, info->height);
+	anx_jpeg_free(&img);
+
+	/* Hold the splash for 5 seconds */
+	start = arch_timer_ticks();
+	while (arch_timer_ticks() - start < 500)
+		;
+
+	/* Clear framebuffer for text output */
+	anx_fb_clear(0x00000000);
+}
+
+void anx_splash(void)
+{
+	if (anx_fb_available())
+		splash_graphical();
+
+	/* Always show ANSI splash on serial for headless monitoring */
+	splash_serial();
 }
