@@ -209,12 +209,19 @@ static int blk_request(uint32_t type, uint64_t sector,
 		arch_rmb();
 	}
 
-	/* Reclaim descriptors */
+	/* Reclaim all 3 descriptors in the chain */
 	{
 		struct anx_virtqueue *vq = &blkdev.req_vq;
 		uint32_t dummy_len;
 
+		/* Consume the used ring entry */
 		anx_vq_get_used(vq, &dummy_len);
+
+		/* Return d1 and d2 to free list (get_used only freed head) */
+		vq->desc[d2].next = vq->free_head;
+		vq->free_head = d1;
+		vq->desc[d1].next = d2;
+		vq->num_free += 2;
 	}
 
 	{

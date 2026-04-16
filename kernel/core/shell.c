@@ -29,6 +29,7 @@
 #include <anx/http.h>
 #include <anx/credential.h>
 #include <anx/virtio_blk.h>
+#include <anx/objstore_disk.h>
 
 /* --- Line input with history --- */
 
@@ -268,6 +269,9 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
+	kputs("  store format [label]       Format disk with object store\n");
+	kputs("  store mount                Mount existing object store\n");
+	kputs("  store stats                Show store statistics\n");
 	kputs("  disk                       Show block device info\n");
 	kputs("  pci                        List PCI devices\n");
 	kputs("  halt                       Halt the system\n");
@@ -1180,6 +1184,41 @@ static void cmd_secret(int argc, char **argv)
 	}
 }
 
+/* --- Store commands --- */
+
+static void cmd_store(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: store <format|mount|stats> [label]\n");
+		return;
+	}
+
+	if (anx_strcmp(argv[1], "format") == 0) {
+		const char *label = argc >= 3 ? argv[2] : "anunix";
+		int ret = anx_disk_format(label);
+
+		if (ret != ANX_OK)
+			kprintf("store format: failed (%d)\n", ret);
+	} else if (anx_strcmp(argv[1], "mount") == 0) {
+		int ret = anx_disk_store_init();
+
+		if (ret != ANX_OK)
+			kprintf("store mount: failed (%d)\n", ret);
+	} else if (anx_strcmp(argv[1], "stats") == 0) {
+		uint64_t obj_count, used, total;
+		int ret = anx_disk_stats(&obj_count, &used, &total);
+
+		if (ret != ANX_OK) {
+			kputs("store not mounted\n");
+			return;
+		}
+		kprintf("objects: %u  used: %u sectors  total: %u sectors\n",
+			(uint32_t)obj_count, (uint32_t)used, (uint32_t)total);
+	} else {
+		kputs("usage: store <format|mount|stats>\n");
+	}
+}
+
 /* --- Disk commands --- */
 
 static void cmd_disk(void)
@@ -1291,6 +1330,8 @@ static void dispatch(int argc, char **argv)
 			cmd_ping(argv[1]);
 		else
 			kputs("usage: ping <ip>\n");
+	} else if (anx_strcmp(argv[0], "store") == 0) {
+		cmd_store(argc, argv);
 	} else if (anx_strcmp(argv[0], "disk") == 0) {
 		cmd_disk();
 	} else if (anx_strcmp(argv[0], "pci") == 0) {
