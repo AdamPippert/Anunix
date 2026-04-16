@@ -37,6 +37,9 @@ void anx_gui_update_time(void);
 /* Write a character to the GUI terminal (fbcon replacement) */
 void anx_gui_terminal_putc(char c);
 
+/* Set UTC offset in hours (e.g., -7 for PDT, -8 for PST) */
+void anx_gui_set_tz_offset(int32_t hours);
+
 /* Check if GUI is active */
 bool anx_gui_active(void);
 
