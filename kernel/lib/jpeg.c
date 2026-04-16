@@ -657,6 +657,20 @@ int anx_jpeg_decode(const void *data, uint32_t data_len,
 			if (ret != ANX_OK)
 				return ret;
 
+			/* Check if image fits in available memory.
+			 * Decode needs: pixels (w*h*4) + 3 component
+			 * planes (~w*h*4 total). Cap at 4MB pixel buffer
+			 * to leave heap room for everything else.
+			 */
+			{
+				uint64_t pixel_bytes;
+
+				pixel_bytes = (uint64_t)ctx.width *
+					      ctx.height * sizeof(uint32_t);
+				if (pixel_bytes > 4 * 1024 * 1024)
+					return ANX_ENOMEM;
+			}
+
 			/* Allocate output pixels */
 			ctx.pixels = anx_zalloc(
 				(uint64_t)ctx.width * ctx.height *
