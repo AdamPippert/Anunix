@@ -262,14 +262,14 @@ static int http_request(const char *host, uint16_t port, const char *path,
 		return ret;
 	}
 
-	/* Build and send request */
-	req_buf = anx_alloc(4096);
+	/* Build and send request (8KB for large API headers + body) */
+	req_buf = anx_alloc(8192);
 	if (!req_buf) {
 		anx_tcp_close(conn);
 		return ANX_ENOMEM;
 	}
 
-	req_len = http_build_request(req_buf, 4096, method, host, path,
+	req_len = http_build_request(req_buf, 8192, method, host, path,
 				     extra_headers, content_type,
 				     body, body_len);
 	if (req_len < 0) {
