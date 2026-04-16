@@ -34,102 +34,94 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 
 ## Release: 2026.4.15
 
-### Highlights
+### Milestone: First Claude API Call from Bare Metal
 
-- **Boots on real UEFI hardware** — tested on AMD Ryzen 9 HX 370 (96GB RAM) via USB ISO
-- **Full VM networking stack** — virtio-net driver, Ethernet, ARP, IPv4, ICMP, UDP, TCP, DNS, HTTP/1.1
-- **Credential store** (RFC-0008) — kernel-enforced secrets management with opaque payloads
-- **Authenticated API calls** — `api` command reads credentials and injects auth headers
-- **Boot-time credential provisioning** — pass secrets via GRUB command line, no manual entry
-- **Command history** — up/down arrow navigation with secret value scrubbing
-- **PCI bus enumeration** — discovers all devices on bus 0, enables DMA bus mastering
-- **CalVer versioning** — switched from semver to date-based versioning (YYYY.M.D)
-- **8 RFCs** — complete architecture from state objects through credential management
-
-### Boot Output
-
-```
-                       ___
-                      /   \
-                     /  o  \
-                    /       \
-                   /  _____  \
-                  /  /     \  \
-                 /  /       \  \
-                /__/         \__\
-
-                A N U N I X
-          The AI-Native Operating System
-
-  Anunix 2026.4.15 booting
-
-pci: 6 devices found
-virtio-net: 52:54:0:12:34:56 on irq 11
-net: ip 10.0.2.15 gw 10.0.2.2 dns 10.0.2.3
-credential store initialized
-kernel init complete -- all subsystems online
-
-Anunix kernel monitor ready. Type 'help' for commands.
-
-anx> dns example.com
-resolving example.com...
-example.com -> 172.66.147.243
-
-anx> http-get example.com 80 /
-GET http://example.com:80/
-HTTP 200, 540 bytes
-```
-
-## Networking Stack
-
-The kernel includes a complete networking stack for virtual and physical machines:
-
-| Layer | Component | Status |
-|-------|-----------|--------|
-| Device | Virtio-net PCI driver (legacy PIO) | Working |
-| Link | Ethernet frame dispatch | Working |
-| Network | ARP, IPv4 (gateway routing, checksums) | Working |
-| Network | ICMP echo request/reply (ping) | Working |
-| Transport | UDP with port dispatch, DNS resolver | Working |
-| Transport | TCP client (4 connections, blocking I/O) | Working |
-| Application | HTTP/1.1 GET/POST with auth header injection | Working |
-| Security | Credential store with boot-time provisioning | Working |
-| Security | TLS | Deferred (host-side proxy) |
-
-## Credential Management (RFC-0008)
-
-Secrets are first-class kernel objects with enforced invariants — not plaintext strings:
+Anunix can now talk to Claude. From a cold boot, the kernel initializes its own networking stack, reads API credentials from a kernel-enforced secret store, builds a JSON request, sends it over TCP through a TLS proxy, parses the response, and displays Claude's answer — all in ~17,000 lines of C running on bare metal with no libc, no OS underneath.
 
 ```
 anx> secret set anthropic-api-key sk-ant-api03-...
-credential: anthropic-api-key stored (51 bytes)
+anx> model-init anthropic-api-key 10.0.2.2 8080
+anx> ask Hello from Anunix
 
-anx> secret show anthropic-api-key
-  name:     anthropic-api-key
-  type:     api_key
-  size:     51 bytes
-  accesses: 0
-  payload:  [REDACTED]
+thinking...
 
-anx> api anthropic-api-key 10.0.2.2 8080 /v1/models
-API 10.0.2.2:8080/v1/models (credential: anthropic-api-key)
-HTTP 200, ...
+Hello! How can I help you today?
+
+[32 in / 12 out tokens]
 ```
 
-**Kernel-enforced invariants:**
-- Payloads never appear in traces, provenance logs, kprintf, or network messages
-- Secure zeroing on revoke/rotate (constant-time, compiler-safe)
-- Command history scrubs secret values (`secret set name` stored, value stripped)
-- Boot-time provisioning: `qemu -append "cred:name=value"` — no manual entry
-- Remote fetch: `secret fetch <name> <host> <port> [path]`
+### What's in this release
+
+**Kernel Subsystems (RFC-0001 through RFC-0008)**
+- State Object Layer, Execution Cell Runtime, Memory Control Plane
+- Routing Plane with staged model hosting, budget profiles, route feedback
+- Network Plane (stub — local node registry)
+- Capability Objects with trust lifecycle
+- Credential Objects (RFC-0008) — kernel-enforced secrets management
+
+**Networking**
+- PCI bus enumeration with device class decode
+- Virtio-net driver (legacy PIO transport)
+- Full IP stack: Ethernet, ARP, IPv4, ICMP, UDP, TCP
+- DNS resolver (A records via UDP)
+- HTTP/1.1 client with auth header injection
+- `ping`, `dns`, `http-get`, `api` shell commands
+
+**Storage**
+- Virtio-blk driver (sector read/write, 3-descriptor chains)
+- Journaled on-disk object store (write-ahead log, OID index)
+- GPT partition table creation (EFI + Anunix data partition)
+
+**Hardware Discovery**
+- ACPI table parsing (RSDP, RSDT/XSDT, MADT for CPU/IOAPIC count)
+- Extended PCI device decode (20+ device class names)
+- `hw-inventory` command with ACPI + PCI + block + network summary
+
+**AI Integration**
+- Claude Messages API client with JSON request/response
+- Credential-gated authentication (x-api-key injection)
+- `ask` command with model override (`ask -m model-id message`)
+- Default model: `claude-sonnet-4-6`
+- JSON parser (recursive descent, tree queries)
+
+**Authentication**
+- Multi-key user accounts (password + SSH public key)
+- SHA-256 password hashing (full software implementation)
+- Per-key scopes: console, credentials, objects, admin
+- Login/logout sessions with scope tracking
+- `useradd`, `login`, `logout` shell commands
+
+**Security**
+- Credential payloads never in traces, provenance, kprintf, or network messages
+- Constant-time hash comparison for authentication
+- Secure zeroing of secrets on revoke/rotate (compiler-safe)
+- Command history scrubs `secret set` and `useradd` values
+- Boot-time credential provisioning via multiboot command line
+
+**Platform**
+- Boots on real UEFI hardware (AMD Ryzen 9 HX 370, 96GB RAM)
+- Bootable ISO (BIOS + UEFI) for USB installation
+- 4GB identity mapping via 1GB pages for framebuffer/MMIO access
+- COM1 detection for headless vs graphical boot
+- Framebuffer console with ANSI color splash
+- Command history with up/down arrow keys (32 entries)
+- 12 passing unit tests
+- CalVer versioning (YYYY.M.D)
+
+### Known Issues
+
+- Subsequent `ask` calls after the first may fail (TCP connection cleanup)
+- TLS requires a host-side proxy (`socat` to api.anthropic.com)
+- No DHCP client yet (network config hardcoded for QEMU user-mode)
+- No persistent storage of user accounts or credentials across reboot
 
 ## Target Platforms
 
 | Platform | Architecture | Status |
 |----------|-------------|--------|
 | QEMU virt (ARM64) | AArch64 | Boots, all subsystems |
-| QEMU (x86_64) | x86_64 | Boots, networking, HTTP client |
-| QEMU + OVMF (UEFI) | x86_64 | Boots, networking, HTTP client |
+| QEMU (x86_64) | x86_64 | Boots, networking, Claude API |
+| QEMU + OVMF (UEFI) | x86_64 | Boots, networking, Claude API |
 | AMD Ryzen 9 HX 370 | x86_64 | Boots (USB ISO, framebuffer) |
 | Apple Silicon Macs | AArch64 | Planned |
 | Framework Laptop 16 | x86_64 | Planned |
@@ -156,22 +148,25 @@ make iso-deps          # Fetch GRUB + xorriso for ISO builds
 make kernel            # Build for host architecture
 make kernel ARCH=x86_64 # Build for x86_64
 make qemu              # Boot in QEMU, serial console
-make qemu-fb           # Boot with framebuffer display window
 make test              # Run unit tests (12 tests)
 make iso               # Build bootable x86_64 ISO (BIOS + UEFI)
 ```
 
-### Boot with networking and credentials
+### Talk to Claude
 
 ```sh
-# Start TLS proxy on host (for HTTPS API access)
+# Terminal 1: TLS proxy
 socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1 &
 
-# Boot with virtio-net and pre-provisioned API key
+# Terminal 2: Boot Anunix with networking
 qemu-system-x86_64 -m 512M -nographic -serial mon:stdio -no-reboot \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-  -kernel build/x86_64/anunix-qemu.elf \
-  -append "cred:anthropic-api-key=sk-ant-api03-YOUR-KEY"
+  -kernel build/x86_64/anunix-qemu.elf
+
+# In the Anunix shell:
+anx> secret set anthropic-api-key sk-ant-api03-YOUR-KEY
+anx> model-init anthropic-api-key 10.0.2.2 8080
+anx> ask What is the meaning of life?
 ```
 
 ## Project Structure
@@ -179,31 +174,35 @@ qemu-system-x86_64 -m 512M -nographic -serial mon:stdio -no-reboot \
 ```
 kernel/
   arch/
-    arm64/          ARM64: PL011 UART, boot, page tables
-    x86_64/         x86_64: COM1 serial, multiboot, IDT, PIC, PIT
+    arm64/            ARM64: PL011 UART, boot, page tables
+    x86_64/           x86_64: COM1 serial, multiboot, IDT, PIC, PIT
   core/
-    state/          State Object Layer          (RFC-0002)
-    exec/           Execution Cell Runtime      (RFC-0003)
-    mem/            Memory Control Plane        (RFC-0004)
-    route/          Routing Plane + Model Hosting (RFC-0005)
-    sched/          Unified Scheduler           (RFC-0005)
-    net/            Network Plane               (RFC-0006)
-    cap/            Capability Objects          (RFC-0007)
-    credential.c    Credential Store            (RFC-0008)
-    shell.c         Interactive kernel monitor
-    main.c          Kernel entry point
+    state/            State Object Layer + disk store   (RFC-0002)
+    exec/             Execution Cell Runtime            (RFC-0003)
+    mem/              Memory Control Plane              (RFC-0004)
+    route/            Routing Plane + Model Hosting     (RFC-0005)
+    sched/            Unified Scheduler                 (RFC-0005)
+    net/              Network Plane                     (RFC-0006)
+    cap/              Capability Objects                (RFC-0007)
+    agent/            Model API client                  (new)
+    install/          GPT partitioning                  (new)
+    credential.c      Credential Store                  (RFC-0008)
+    auth.c            Multi-key Authentication          (new)
+    shell.c           Interactive kernel monitor
+    main.c            Kernel entry point
   drivers/
-    fb/             Framebuffer + console drivers
-    pci/            PCI bus enumeration
-    virtio/         Virtio transport + virtio-net driver
-    net/            IP stack (Ethernet, ARP, IPv4, ICMP, UDP, TCP, DNS, HTTP)
-  include/anx/      Public kernel headers
-  lib/              Kernel support (kprintf, alloc, font, string, etc.)
-tests/              Host-native unit tests
-tools/              Build scripts (LLVM fetch, QEMU build, ISO assembly)
-assets/             Brand assets (logo)
-docs/rfcs/          Design specifications
-config/             GRUB boot configuration
+    fb/               Framebuffer + console
+    pci/              PCI bus enumeration
+    virtio/           Virtio transport, net, blk drivers
+    net/              IP stack (Eth/ARP/IPv4/ICMP/UDP/TCP/DNS/HTTP)
+    acpi/             ACPI table parsing
+  include/anx/        Public kernel headers
+  lib/                Kernel support (kprintf, alloc, json, font, etc.)
+tests/                Host-native unit tests
+tools/                Build scripts
+assets/               Brand assets (logo)
+docs/rfcs/            Design specifications
+config/               GRUB boot configuration
 ```
 
 ## Design Documents
@@ -221,17 +220,28 @@ config/             GRUB boot configuration
 
 ## Roadmap
 
-### Next: Installable Agent OS (2026.5)
+### 2026.4.16 — Agent Memory + Installer
 
-- **Text-based installer** with kickstart-style provisioning (JSON State Object)
-- **Virtio-blk driver** + journaled on-disk object store
-- **ACPI parsing** + extended PCI hardware discovery
+- **RFC-0009: Agent Memory** — episodic memory with graph metadata, kernel-level embedding for semantic retrieval, access-based decay with relevance scoring, "dream" consolidation during utilization minima
+- **Text-based installer** with kickstart-style JSON provisioning (State Object)
 - **DHCP client** for network-at-install-time
-- **Multi-key authentication** — console login + scoped credential store access
-- **Claude API client** — `ask` command in the kernel shell
-- **Minimum viable agent** — perceive/plan/act/observe loop
-- **Graphical installer** (after text installer is validated)
+- **Fix: TCP connection reuse** for sequential `ask` calls
+- **Persistent storage** of credentials and user accounts across reboot
+
+### 2026.5 — Minimum Viable Agent
+
+- **Agent cell runtime** — perceive/plan/act/observe loop
+- **Remote memory** — distributed access via raw mounts (flat networks) or trust-zone peers
+- **Graphical installer** (after text installer validation)
+- **In-kernel TLS 1.3** (BearSSL port or minimal subset)
 - Real hardware validation: Framework Laptop 16 → M1 Mac Studio
+
+### Future
+
+- Phone-class deployment target
+- Multi-agent coordination with scoped memory
+- AHCI/NVMe storage drivers for real hardware
+- Capability learning from execution traces (RFC-0007 Phase 2)
 
 ## License
 
