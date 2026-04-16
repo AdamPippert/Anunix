@@ -1240,12 +1240,7 @@ static void cmd_ask(int argc, char **argv)
 	}
 	message[off] = '\0';
 
-	req.model = "claude-sonnet-4-5-20241022";
-	/* Fallback options if this doesn't work:
-	 * "claude-sonnet-4-5-latest"
-	 * "claude-3-5-sonnet-20241022"
-	 * Use 'ask -m <model-id> <message>' to override
-	 */
+	req.model = "claude-sonnet-4-6";
 
 	/* Allow model override: 'ask -m model-id message...' */
 	if (argc >= 4 && anx_strcmp(argv[1], "-m") == 0) {
