@@ -144,15 +144,8 @@ trampoline:
 	movw	%ax, %ss
 
 	/*
-	 * Save multiboot framebuffer info at 0x1000-0x1020.
+	 * Save multiboot info at 0x1000-0x1028.
 	 * ESI holds multiboot info pointer (saved in 32-bit entry).
-	 * Multiboot info layout (when flags bit 12 is set):
-	 *   offset 88:  framebuffer_addr  (u64)
-	 *   offset 96:  framebuffer_pitch (u32)
-	 *   offset 100: framebuffer_width (u32)
-	 *   offset 104: framebuffer_height(u32)
-	 *   offset 108: framebuffer_bpp   (u8)
-	 *   offset 109: framebuffer_type  (u8)
 	 *
 	 * We store at 0x1000:
 	 *   0x1000: magic (0x414E5846 = "ANXF")
@@ -163,6 +156,7 @@ trampoline:
 	 *   0x1018: framebuffer_height (u32)
 	 *   0x101C: framebuffer_bpp (u8)
 	 *   0x101D: framebuffer_type (u8)
+	 *   0x1020: cmdline pointer (u64, zero-extended from u32)
 	 */
 	movq	%rsi, %rbx		/* multiboot info pointer */
 	movl	$0x414E5846, 0x1000	/* magic "ANXF" */
@@ -190,6 +184,14 @@ trampoline:
 	movb	%al, 0x101D
 
 .Lno_fb:
+	/* Save cmdline pointer (offset 16, valid when flags bit 2 set) */
+	movl	(%rbx), %eax		/* flags */
+	testl	$(1 << 2), %eax
+	jz	.Lno_cmdline
+	movl	16(%rbx), %eax		/* cmdline (u32 phys addr) */
+	movq	%rax, 0x1020		/* zero-extend to u64 */
+.Lno_cmdline:
+
 	/* Copy kernel from kernel_payload to 0x100000 */
 	movq	$kernel_payload, %rsi
 	movq	$0x100000, %rdi

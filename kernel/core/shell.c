@@ -263,6 +263,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret set <name> <value>  Store a credential\n");
 	kputs("  secret list                List credentials (no values)\n");
 	kputs("  secret show <name>         Show credential metadata\n");
+	kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
 	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
@@ -1111,6 +1112,55 @@ static void cmd_secret(int argc, char **argv)
 		if (ret != ANX_OK)
 			kprintf("secret: rotate failed (%d)\n", ret);
 		anx_memset(argv[3], 0, anx_strlen(argv[3]));
+
+	} else if (anx_strcmp(argv[1], "fetch") == 0) {
+		struct anx_http_response resp;
+		int ret;
+
+		if (argc < 5) {
+			kputs("usage: secret fetch <name> <host> <port> [path]\n");
+			return;
+		}
+		{
+			const char *host = argv[3];
+			uint16_t port = parse_port(argv[4]);
+			const char *path = argc >= 6 ? argv[5] : "/";
+
+			kprintf("fetching credential '%s' from %s:%u%s...\n",
+				argv[2], host, (uint32_t)port, path);
+			ret = anx_http_get(host, port, path, &resp);
+		}
+		if (ret != ANX_OK) {
+			kprintf("secret fetch: request failed (%d)\n", ret);
+			return;
+		}
+		if (resp.status_code != 200) {
+			kprintf("secret fetch: HTTP %d\n", resp.status_code);
+			anx_http_response_free(&resp);
+			return;
+		}
+		if (resp.body && resp.body_len > 0) {
+			/* Trim trailing whitespace/newlines */
+			while (resp.body_len > 0 &&
+			       (resp.body[resp.body_len - 1] == '\n' ||
+				resp.body[resp.body_len - 1] == '\r' ||
+				resp.body[resp.body_len - 1] == ' '))
+				resp.body_len--;
+
+			ret = anx_credential_create(argv[2],
+						     ANX_CRED_API_KEY,
+						     resp.body,
+						     resp.body_len);
+			if (ret == ANX_OK)
+				kprintf("credential: %s fetched (%u bytes)\n",
+					argv[2], resp.body_len);
+			else
+				kprintf("secret fetch: store failed (%d)\n",
+					ret);
+		} else {
+			kputs("secret fetch: empty response\n");
+		}
+		anx_http_response_free(&resp);
 
 	} else if (anx_strcmp(argv[1], "revoke") == 0) {
 		int ret;

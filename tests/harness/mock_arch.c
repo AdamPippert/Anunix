@@ -131,6 +131,11 @@ void arch_wmb(void)
 {
 }
 
+const char *arch_boot_cmdline(void)
+{
+	return NULL;
+}
+
 /*
  * Mock stubs for hardware-dependent subsystems that the real
  * driver code (compiled from DRIVER_C_ALL) calls into.

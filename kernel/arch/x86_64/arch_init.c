@@ -282,6 +282,23 @@ void arch_fb_detect(struct anx_fb_info *info)
 	fb_detect_mb1(info);
 }
 
+/* --- Boot command line --- */
+
+/*
+ * Multiboot1 cmdline saved by qemu_boot.S trampoline at 0x1020.
+ * Returns pointer to the command line string, or NULL if unavailable.
+ */
+#define MB1_CMDLINE_ADDR	0x1020
+
+const char *arch_boot_cmdline(void)
+{
+	volatile uint64_t *cmdline_ptr = (volatile uint64_t *)MB1_CMDLINE_ADDR;
+
+	if (*cmdline_ptr == 0)
+		return NULL;
+	return (const char *)(uintptr_t)*cmdline_ptr;
+}
+
 /* --- Memory barriers --- */
 
 void arch_mb(void)

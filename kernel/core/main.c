@@ -24,6 +24,7 @@
 #include <anx/route_feedback.h>
 #include <anx/posix.h>
 #include <anx/pci.h>
+#include <anx/string.h>
 #include <anx/credential.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
@@ -94,6 +95,56 @@ void kernel_main(void)
 
 	/* 8. Credential store (RFC-0008) */
 	anx_credstore_init();
+
+	/* Parse boot command line for credentials: cred:name=value */
+	{
+		const char *cmdline = arch_boot_cmdline();
+
+		if (cmdline) {
+			const char *p = cmdline;
+
+			while (*p) {
+				/* Look for "cred:" prefix */
+				if (p[0] == 'c' && p[1] == 'r' &&
+				    p[2] == 'e' && p[3] == 'd' &&
+				    p[4] == ':') {
+					const char *name_start = p + 5;
+					const char *eq = name_start;
+					const char *val;
+					const char *end;
+					char name[128];
+					uint32_t nlen, vlen;
+
+					while (*eq && *eq != '=' && *eq != ' ')
+						eq++;
+					if (*eq != '=')
+						goto next_token;
+					val = eq + 1;
+					end = val;
+					while (*end && *end != ' ')
+						end++;
+
+					nlen = (uint32_t)(eq - name_start);
+					vlen = (uint32_t)(end - val);
+					if (nlen > 0 && nlen < 128 && vlen > 0) {
+						anx_memcpy(name, name_start, nlen);
+						name[nlen] = '\0';
+						anx_credential_create(name,
+							ANX_CRED_API_KEY,
+							val, vlen);
+					}
+					p = end;
+					continue;
+				}
+			next_token:
+				while (*p && *p != ' ')
+					p++;
+				while (*p == ' ')
+					p++;
+			}
+		}
+	}
+
 	kprintf("credential store initialized\n");
 
 	/* 9. PCI bus enumeration */
