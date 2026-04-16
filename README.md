@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.4.15-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.4.16-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
   <img src="https://img.shields.io/badge/tests-12%20passing-brightgreen" alt="Tests">
@@ -32,7 +32,7 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
 
-## Release: 2026.4.15
+## Release: 2026.4.16
 
 ### Milestone: First Claude API Call from Bare Metal
 
