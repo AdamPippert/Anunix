@@ -59,6 +59,28 @@ void *anx_memmove(void *dst, const void *src, size_t n)
 	return dst;
 }
 
+/*
+ * Bare-name aliases for compiler-generated calls (struct assignment, etc.).
+ * Only needed in freestanding kernel builds — host-native test builds
+ * get these from libc.
+ */
+#if !defined(__STDC_HOSTED__) || __STDC_HOSTED__ == 0
+void *memcpy(void *dst, const void *src, size_t n)
+{
+	return anx_memcpy(dst, src, n);
+}
+
+void *memset(void *dst, int val, size_t n)
+{
+	return anx_memset(dst, val, n);
+}
+
+void *memmove(void *dst, const void *src, size_t n)
+{
+	return anx_memmove(dst, src, n);
+}
+#endif
+
 size_t anx_strlen(const char *s)
 {
 	const char *p = s;
