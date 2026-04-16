@@ -50,17 +50,15 @@ void anx_perf_report(void)
 
 	for (i = 0; i < entry_count; i++) {
 		uint64_t cycles = entries[i].cycles;
-		uint32_t us = (uint32_t)(cycles / 1000); /* ~1 GHz approx */
+		uint32_t kcycles = (uint32_t)(cycles / 1000);
+		uint32_t us = kcycles; /* ~1 GHz approx */
 
-		kprintf("  %-28s %u Kcycles  (~%u us)\n",
-			entries[i].name,
-			(uint32_t)(cycles / 1000),
-			us);
+		kprintf("  %s: %u Kcycles (~%u us)\n",
+			entries[i].name, kcycles, us);
 		total_cycles += cycles;
 	}
 
-	kprintf("\n  %-28s %u Kcycles  (~%u us)\n",
-		"TOTAL",
+	kprintf("\n  TOTAL: %u Kcycles (~%u us)\n",
 		(uint32_t)(total_cycles / 1000),
 		(uint32_t)(total_cycles / 1000));
 	kprintf("\n");
