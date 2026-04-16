@@ -26,6 +26,7 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0009](RFC-0009-agent-memory.md) | Agent Memory System | Draft | Adam Pippert | 0001, 0002, 0003, 0004, 0005 |
 | [0010](RFC-0010-userland-utilities.md) | Userland Utility Layer — POSIX Port and Anunix Adaptation | Draft | Adam Pippert | 0001–0008 |
 | [0011](RFC-0011-agent-native-utilities.md) | Agent-Native Utilities and Hardware Discovery | Draft | Adam Pippert | 0001–0010 |
+| [0012](RFC-0012-interface-plane.md) | Interface Plane — Kernel-Level Abstraction for Interactive Environments | Draft | Adam Pippert | 0001–0008 |
 
 ## Dependency Graph
 
@@ -41,4 +42,6 @@ RFC-0001 (Architecture Thesis)
                                      └── RFC-0009 (Agent Memory System)
                                           └── RFC-0010 (Userland Utility Layer)
                                                └── RFC-0011 (Agent-Native Utilities and Hardware Discovery)
+RFC-0008 (Credential Objects)
+  └── RFC-0012 (Interface Plane) [also depends on RFC-0002 through RFC-0007]
 ```
