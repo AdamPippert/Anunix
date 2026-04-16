@@ -38,21 +38,84 @@
 
 #define ANX_VERSION "2026.4.16"
 
+/*
+ * Emergency framebuffer write — draw a colored bar directly to
+ * the multiboot2 framebuffer before any subsystem is initialized.
+ * Used to prove the kernel is running on hardware with no serial.
+ */
+extern uint32_t _mb_magic;
+extern uint64_t _mb_info;
+
+static void early_fb_debug(uint32_t color, uint32_t row)
+{
+	uint8_t *ptr, *end;
+	uint32_t total_size;
+	uint64_t fb_addr = 0;
+	uint32_t fb_pitch = 0;
+	uint32_t fb_width = 0;
+	uint32_t x, y;
+	uint32_t *pixel;
+
+	if (_mb_magic != 0x36d76289 || _mb_info == 0)
+		return;
+
+	/* Parse multiboot2 tags for framebuffer */
+	ptr = (uint8_t *)(uintptr_t)_mb_info;
+	total_size = *(uint32_t *)ptr;
+	end = ptr + total_size;
+	ptr += 8;
+
+	while (ptr + 8 <= end) {
+		uint32_t tag_type = *(uint32_t *)ptr;
+		uint32_t tag_size = *(uint32_t *)(ptr + 4);
+
+		if (tag_type == 0)
+			break;
+		if (tag_type == 8 && tag_size >= 32) {
+			fb_addr  = *(uint64_t *)(ptr + 8);
+			fb_pitch = *(uint32_t *)(ptr + 16);
+			fb_width = *(uint32_t *)(ptr + 20);
+			break;
+		}
+		ptr += (tag_size + 7) & ~7u;
+	}
+
+	if (fb_addr == 0 || fb_width == 0)
+		return;
+
+	/* Draw a colored bar at the specified row */
+	for (y = row * 20; y < row * 20 + 20; y++) {
+		pixel = (uint32_t *)(uintptr_t)(fb_addr + y * fb_pitch);
+		for (x = 0; x < fb_width && x < 400; x++)
+			pixel[x] = color;
+	}
+}
+
 void kernel_main(void)
 {
+	/* Immediate visual debug — proves kernel is running on bare metal */
+	early_fb_debug(0x00FF0000, 0);	/* red bar: kernel_main entered */
+
 	/* Early hardware init (serial/UART so kprintf works) */
 	arch_early_init();
+
+	early_fb_debug(0x0000FF00, 1);	/* green bar: serial init done */
 
 	/* Detect and initialize framebuffer if available */
 	{
 		struct anx_fb_info fb_info;
 
 		arch_fb_detect(&fb_info);
+
+		early_fb_debug(0x000000FF, 2);	/* blue bar: fb detect done */
+
 		if (fb_info.available && anx_fb_init(&fb_info) == ANX_OK) {
 			anx_fbcon_init();
 			kprintf("framebuffer console: %ux%u @ %ubpp\n",
 				fb_info.width, fb_info.height, fb_info.bpp);
 		}
+
+		early_fb_debug(0x00FFFF00, 3);	/* yellow bar: fb init done */
 	}
 
 	/* Architecture-specific full init (page allocator, etc.) */
