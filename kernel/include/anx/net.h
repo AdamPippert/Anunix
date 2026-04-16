@@ -206,6 +206,9 @@ int anx_tcp_recv(struct anx_tcp_conn *conn, void *buf, uint32_t len,
 		  uint32_t timeout_ms);
 int anx_tcp_close(struct anx_tcp_conn *conn);
 
+/* DHCP client */
+int anx_dhcp_discover(struct anx_net_config *cfg);
+
 /* Poll the network device and process any received packets */
 void anx_net_poll(void);
 
