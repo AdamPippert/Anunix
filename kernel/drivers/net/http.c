@@ -92,6 +92,23 @@ static int buf_append(char *buf, uint32_t *off, uint32_t cap,
 	return ANX_OK;
 }
 
+/* Check if a header name appears in a header block */
+static bool has_header(const char *headers, const char *name)
+{
+	uint32_t nlen = (uint32_t)anx_strlen(name);
+
+	while (*headers) {
+		if (anx_strncmp(headers, name, nlen) == 0)
+			return true;
+		/* Skip to next line */
+		while (*headers && *headers != '\n')
+			headers++;
+		if (*headers == '\n')
+			headers++;
+	}
+	return false;
+}
+
 /* Build the HTTP request into buf, return length */
 static int http_build_request(char *buf, uint32_t cap,
 			       const char *method, const char *host,
@@ -111,23 +128,28 @@ static int http_build_request(char *buf, uint32_t cap,
 	if (buf_append(buf, &off, cap, " HTTP/1.1\r\n") != ANX_OK)
 		return -1;
 
-	/* Host header */
-	if (buf_append(buf, &off, cap, "Host: ") != ANX_OK)
-		return -1;
-	if (buf_append(buf, &off, cap, host) != ANX_OK)
-		return -1;
-	if (buf_append(buf, &off, cap, "\r\n") != ANX_OK)
-		return -1;
-
-	/* Connection: close */
-	if (buf_append(buf, &off, cap, "Connection: close\r\n") != ANX_OK)
-		return -1;
-
-	/* Extra headers (pre-formatted with \r\n terminators) */
+	/*
+	 * Extra headers first — if they include Host:, it takes
+	 * precedence over the default (proxy use case).
+	 */
 	if (extra_headers) {
 		if (buf_append(buf, &off, cap, extra_headers) != ANX_OK)
 			return -1;
 	}
+
+	/* Default Host header (skipped if extra_headers set one) */
+	if (!extra_headers || !has_header(extra_headers, "Host:")) {
+		if (buf_append(buf, &off, cap, "Host: ") != ANX_OK)
+			return -1;
+		if (buf_append(buf, &off, cap, host) != ANX_OK)
+			return -1;
+		if (buf_append(buf, &off, cap, "\r\n") != ANX_OK)
+			return -1;
+	}
+
+	/* Connection: close */
+	if (buf_append(buf, &off, cap, "Connection: close\r\n") != ANX_OK)
+		return -1;
 
 	/* Content headers for POST */
 	if (body && body_len > 0 && content_type) {

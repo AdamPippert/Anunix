@@ -20,10 +20,13 @@
 #include <anx/kprintf.h>
 
 /* Owned copies of endpoint strings (argv pointers are transient) */
-static char ep_host[128];
+static char ep_host[128];	/* connect-to address */
 static char ep_cred[128];
 static uint16_t ep_port;
 static bool configured;
+
+/* API host for Host header (api.anthropic.com) */
+#define API_HOST	"api.anthropic.com"
 
 /* --- JSON request body construction --- */
 
@@ -275,8 +278,11 @@ int anx_model_call(const struct anx_model_request *req,
 	}
 	key_buf[key_len] = '\0';
 
-	/* Build auth headers */
+	/* Build auth headers (includes Host override for proxy) */
 	hdr_off = 0;
+	/* "Host: api.anthropic.com\r\n" = 25 bytes */
+	anx_memcpy(headers + hdr_off, "Host: " API_HOST "\r\n", 25);
+	hdr_off += 25;
 	anx_memcpy(headers + hdr_off, "x-api-key: ", 11);
 	hdr_off += 11;
 	anx_memcpy(headers + hdr_off, key_buf, key_len);
