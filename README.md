@@ -1,8 +1,21 @@
-# Anunix
+<p align="center">
+  <img src="assets/logo-full.jpg" alt="Anunix" width="600">
+</p>
 
-An AI-native operating system that redefines UNIX primitives around state, transformation, memory, routing, and validation.
+<p align="center">
+  <strong>The AI-Native Operating System</strong><br>
+  Redefining UNIX primitives around state, transformation, memory, routing, and validation.<br>
+  Written in C and assembly. No C++, no Rust, no Go.
+</p>
 
-Written in C and assembly. No C++, no Rust, no Go.
+<p align="center">
+  <img src="https://img.shields.io/badge/version-2026.4.15-blue" alt="Version">
+  <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
+  <img src="https://img.shields.io/badge/tests-12%20passing-brightgreen" alt="Tests">
+</p>
+
+---
 
 ## What It Does
 
@@ -19,9 +32,21 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
 
-## Current Status
+## Release: 2026.4.15
 
-**Version 2026.4.15** (CalVer). The kernel boots on ARM64 and x86_64, with full VM networking and HTTP client capability.
+### Highlights
+
+- **Boots on real UEFI hardware** — tested on AMD Ryzen 9 HX 370 (96GB RAM) via USB ISO
+- **Full VM networking stack** — virtio-net driver, Ethernet, ARP, IPv4, ICMP, UDP, TCP, DNS, HTTP/1.1
+- **Credential store** (RFC-0008) — kernel-enforced secrets management with opaque payloads
+- **Authenticated API calls** — `api` command reads credentials and injects auth headers
+- **Boot-time credential provisioning** — pass secrets via GRUB command line, no manual entry
+- **Command history** — up/down arrow navigation with secret value scrubbing
+- **PCI bus enumeration** — discovers all devices on bus 0, enables DMA bus mastering
+- **CalVer versioning** — switched from semver to date-based versioning (YYYY.M.D)
+- **8 RFCs** — complete architecture from state objects through credential management
+
+### Boot Output
 
 ```
                        ___
@@ -46,10 +71,6 @@ kernel init complete -- all subsystems online
 
 Anunix kernel monitor ready. Type 'help' for commands.
 
-anx> ping 10.0.2.2
-ping 10.0.2.2...
-ping sent
-
 anx> dns example.com
 resolving example.com...
 example.com -> 172.66.147.243
@@ -59,24 +80,9 @@ GET http://example.com:80/
 HTTP 200, 540 bytes
 ```
 
-### What works
+## Networking Stack
 
-- Dual-architecture kernel (ARM64 + x86_64) built from the same source
-- **Boots on real UEFI hardware** (AMD Ryzen 9 HX 370) and QEMU/OVMF
-- All subsystem foundations (RFC-0002 through RFC-0008)
-- **VM networking** — virtio-net driver, full IP stack (Ethernet, ARP, IPv4, ICMP, UDP, TCP), DNS resolver, HTTP/1.1 client
-- **Credential store** (RFC-0008) — kernel-enforced secrets with opaque payloads, never exposed in traces or logs
-- **PCI bus enumeration** — discovers devices on bus 0, enables bus mastering for DMA
-- Model hosting control plane — engine lifecycle, resource leasing, model server cells, staged routing, budget profiles
-- Framebuffer console driver (VGA for x86_64, ramfb for ARM64)
-- Bootable ISO (BIOS + UEFI) for USB installation
-- Interactive kernel monitor shell with networking commands
-- 12 passing unit tests
-- ANSI color boot splash
-
-### Networking Stack
-
-The kernel includes a complete networking stack for QEMU virtual machines:
+The kernel includes a complete networking stack for virtual and physical machines:
 
 | Layer | Component | Status |
 |-------|-----------|--------|
@@ -86,25 +92,17 @@ The kernel includes a complete networking stack for QEMU virtual machines:
 | Network | ICMP echo request/reply (ping) | Working |
 | Transport | UDP with port dispatch, DNS resolver | Working |
 | Transport | TCP client (4 connections, blocking I/O) | Working |
-| Application | HTTP/1.1 GET/POST (Connection: close) | Working |
-| Security | Credential store (RFC-0008 Phase 1) | Working |
-| Security | TLS | Deferred (host-side proxy for now) |
+| Application | HTTP/1.1 GET/POST with auth header injection | Working |
+| Security | Credential store with boot-time provisioning | Working |
+| Security | TLS | Deferred (host-side proxy) |
 
-For HTTPS APIs (like Claude), a TLS-terminating proxy runs on the QEMU host:
-```sh
-socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1
-```
+## Credential Management (RFC-0008)
 
-### Credential Management (RFC-0008)
-
-Secrets are first-class kernel objects, not plaintext strings:
+Secrets are first-class kernel objects with enforced invariants — not plaintext strings:
 
 ```
 anx> secret set anthropic-api-key sk-ant-api03-...
 credential: anthropic-api-key stored (51 bytes)
-
-anx> secret list
-  anthropic-api-key  api_key  51 bytes  0 accesses
 
 anx> secret show anthropic-api-key
   name:     anthropic-api-key
@@ -112,21 +110,18 @@ anx> secret show anthropic-api-key
   size:     51 bytes
   accesses: 0
   payload:  [REDACTED]
+
+anx> api anthropic-api-key 10.0.2.2 8080 /v1/models
+API 10.0.2.2:8080/v1/models (credential: anthropic-api-key)
+HTTP 200, ...
 ```
 
-Kernel-enforced invariants:
+**Kernel-enforced invariants:**
 - Payloads never appear in traces, provenance logs, kprintf, or network messages
 - Secure zeroing on revoke/rotate (constant-time, compiler-safe)
-- Named addressing decouples rotation from policy
-- Phase 2 adds cell-scoped access bindings (least privilege)
-
-### What's next
-
-- Credential injection into HTTP requests via routing plane
-- In-kernel TLS 1.3 client (BearSSL port)
-- Real hardware networking (driver for AMD/Intel NICs)
-- Engine dispatch wiring — connect route planner to live model APIs
-- Persistent storage (virtio-blk driver)
+- Command history scrubs secret values (`secret set name` stored, value stripped)
+- Boot-time provisioning: `qemu -append "cred:name=value"` — no manual entry
+- Remote fetch: `secret fetch <name> <host> <port> [path]`
 
 ## Target Platforms
 
@@ -160,18 +155,23 @@ make iso-deps          # Fetch GRUB + xorriso for ISO builds
 ```sh
 make kernel            # Build for host architecture
 make kernel ARCH=x86_64 # Build for x86_64
-make qemu              # Boot in QEMU, serial console (Ctrl-A X to quit)
+make qemu              # Boot in QEMU, serial console
 make qemu-fb           # Boot with framebuffer display window
 make test              # Run unit tests (12 tests)
 make iso               # Build bootable x86_64 ISO (BIOS + UEFI)
 ```
 
-### Boot with networking
+### Boot with networking and credentials
 
 ```sh
+# Start TLS proxy on host (for HTTPS API access)
+socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1 &
+
+# Boot with virtio-net and pre-provisioned API key
 qemu-system-x86_64 -m 512M -nographic -serial mon:stdio -no-reboot \
   -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-  -kernel build/x86_64/anunix-qemu.elf
+  -kernel build/x86_64/anunix-qemu.elf \
+  -append "cred:anthropic-api-key=sk-ant-api03-YOUR-KEY"
 ```
 
 ## Project Structure
@@ -201,20 +201,37 @@ kernel/
   lib/              Kernel support (kprintf, alloc, font, string, etc.)
 tests/              Host-native unit tests
 tools/              Build scripts (LLVM fetch, QEMU build, ISO assembly)
+assets/             Brand assets (logo)
 docs/rfcs/          Design specifications
 config/             GRUB boot configuration
 ```
 
 ## Design Documents
 
-- [RFC-0001: Architecture Thesis](docs/rfcs/RFC-0001-architecture-thesis.md)
-- [RFC-0002: State Object Model](rfcs/RFC-0002-state-object-model.md)
-- [RFC-0003: Execution Cell Runtime](docs/rfcs/RFC-0003-execution-cell-runtime.md)
-- [RFC-0004: Memory Control Plane](docs/rfcs/RFC-0004-memory-control-plane.md)
-- [RFC-0005: Routing Plane and Unified Scheduler](docs/rfcs/RFC-0005-routing-and-scheduler.md)
-- [RFC-0006: Network Plane and Federated Execution](docs/rfcs/RFC-0006-network-plane.md)
-- [RFC-0007: Capability Objects](docs/rfcs/RFC-0007-capability-objects.md)
-- [RFC-0008: Credential Objects and Secrets Management](docs/rfcs/RFC-0008-credential-objects.md)
+| RFC | Title | Status |
+|-----|-------|--------|
+| [RFC-0001](docs/rfcs/RFC-0001-architecture-thesis.md) | Architecture Thesis | Draft |
+| [RFC-0002](rfcs/RFC-0002-state-object-model.md) | State Object Model | Draft |
+| [RFC-0003](docs/rfcs/RFC-0003-execution-cell-runtime.md) | Execution Cell Runtime | Draft |
+| [RFC-0004](docs/rfcs/RFC-0004-memory-control-plane.md) | Memory Control Plane | Draft |
+| [RFC-0005](docs/rfcs/RFC-0005-routing-and-scheduler.md) | Routing Plane and Unified Scheduler | Draft |
+| [RFC-0006](docs/rfcs/RFC-0006-network-plane.md) | Network Plane and Federated Execution | Draft |
+| [RFC-0007](docs/rfcs/RFC-0007-capability-objects.md) | Capability Objects | Draft |
+| [RFC-0008](docs/rfcs/RFC-0008-credential-objects.md) | Credential Objects and Secrets Management | Draft |
+
+## Roadmap
+
+### Next: Installable Agent OS (2026.5)
+
+- **Text-based installer** with kickstart-style provisioning (JSON State Object)
+- **Virtio-blk driver** + journaled on-disk object store
+- **ACPI parsing** + extended PCI hardware discovery
+- **DHCP client** for network-at-install-time
+- **Multi-key authentication** — console login + scoped credential store access
+- **Claude API client** — `ask` command in the kernel shell
+- **Minimum viable agent** — perceive/plan/act/observe loop
+- **Graphical installer** (after text installer is validated)
+- Real hardware validation: Framework Laptop 16 → M1 Mac Studio
 
 ## License
 
