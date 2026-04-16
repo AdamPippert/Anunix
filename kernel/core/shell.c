@@ -30,6 +30,7 @@
 #include <anx/credential.h>
 #include <anx/virtio_blk.h>
 #include <anx/objstore_disk.h>
+#include <anx/auth.h>
 
 /* --- Line input with history --- */
 
@@ -269,6 +270,9 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
+	kputs("  login <user>               Login with password\n");
+	kputs("  logout                     End session\n");
+	kputs("  useradd <user> <pass>      Create user account\n");
 	kputs("  store format [label]       Format disk with object store\n");
 	kputs("  store mount                Mount existing object store\n");
 	kputs("  store stats                Show store statistics\n");
@@ -1184,6 +1188,90 @@ static void cmd_secret(int argc, char **argv)
 	}
 }
 
+/* --- Auth commands --- */
+
+static void cmd_login(int argc, char **argv)
+{
+	struct anx_session session;
+	char password[128];
+	const char *username;
+	int ret;
+
+	if (anx_auth_current_session()) {
+		kprintf("already logged in as %s (use 'logout' first)\n",
+			anx_auth_current_session()->username);
+		return;
+	}
+
+	if (argc < 2) {
+		kputs("usage: login <username>\n");
+		return;
+	}
+	username = argv[1];
+
+	kputs("password: ");
+	/* Read password without echo */
+	{
+		size_t pos = 0;
+
+		while (pos < sizeof(password) - 1) {
+			int c = arch_console_getc();
+
+			if (c < 0)
+				break;
+			if (c == '\r' || c == '\n') {
+				arch_console_putc('\n');
+				break;
+			}
+			if (c == 0x7F || c == '\b') {
+				if (pos > 0)
+					pos--;
+				continue;
+			}
+			if (c >= 0x20 && c < 0x7F)
+				password[pos++] = (char)c;
+		}
+		password[pos] = '\0';
+	}
+
+	ret = anx_auth_login_password(username, password, &session);
+
+	/* Zero password immediately */
+	anx_memset(password, 0, sizeof(password));
+
+	if (ret == ANX_OK)
+		kprintf("logged in as %s\n", session.username);
+	else
+		kputs("login failed\n");
+}
+
+static void cmd_useradd(int argc, char **argv)
+{
+	int ret;
+
+	if (argc < 3) {
+		kputs("usage: useradd <username> <password>\n");
+		return;
+	}
+
+	ret = anx_auth_create_user(argv[1]);
+	if (ret != ANX_OK && ret != ANX_EEXIST) {
+		kprintf("useradd: failed (%d)\n", ret);
+		return;
+	}
+
+	ret = anx_auth_add_password(argv[1], argv[2], ANX_SCOPE_ADMIN);
+	if (ret != ANX_OK) {
+		kprintf("useradd: password set failed (%d)\n", ret);
+		return;
+	}
+
+	/* Zero the password from the command buffer */
+	anx_memset(argv[2], 0, anx_strlen(argv[2]));
+
+	kprintf("user '%s' created with admin scope\n", argv[1]);
+}
+
 /* --- Store commands --- */
 
 static void cmd_store(int argc, char **argv)
@@ -1330,6 +1418,13 @@ static void dispatch(int argc, char **argv)
 			cmd_ping(argv[1]);
 		else
 			kputs("usage: ping <ip>\n");
+	} else if (anx_strcmp(argv[0], "login") == 0) {
+		cmd_login(argc, argv);
+	} else if (anx_strcmp(argv[0], "logout") == 0) {
+		anx_auth_logout();
+		kputs("logged out\n");
+	} else if (anx_strcmp(argv[0], "useradd") == 0) {
+		cmd_useradd(argc, argv);
 	} else if (anx_strcmp(argv[0], "store") == 0) {
 		cmd_store(argc, argv);
 	} else if (anx_strcmp(argv[0], "disk") == 0) {

@@ -27,6 +27,7 @@
 #include <anx/acpi.h>
 #include <anx/string.h>
 #include <anx/credential.h>
+#include <anx/auth.h>
 #include <anx/virtio_net.h>
 #include <anx/virtio_blk.h>
 #include <anx/net.h>
@@ -95,7 +96,8 @@ void kernel_main(void)
 	anx_posix_init();
 	kprintf("posix compatibility layer initialized\n");
 
-	/* 8. Credential store (RFC-0008) */
+	/* 8. Authentication + Credential store (RFC-0008) */
+	anx_auth_init();
 	anx_credstore_init();
 
 	/* Parse boot command line for credentials: cred:name=value */
