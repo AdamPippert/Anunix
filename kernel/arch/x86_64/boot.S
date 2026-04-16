@@ -77,8 +77,21 @@ mb2_end:
 _start:
 	cli
 
-	/* Debug: 'F' = kernel _start reached */
-	movw	$0x4F46, 0xB800A
+	/* Debug: white bar = kernel _start reached (use saved fb addr) */
+	movq	0x1008, %rdi
+	testq	%rdi, %rdi
+	jz	.Lno_dbg_f
+	/* Approximate: skip 50 rows worth of pixels (pitch unknown here,
+	 * assume 4096 bytes/row for common resolutions) */
+	addq	$(50 * 4096), %rdi
+	movl	$2000, %ecx
+	movl	$0x00FFFFFF, %eax	/* white */
+.Lfill_f:
+	movl	%eax, (%rdi)
+	addq	$4, %rdi
+	decl	%ecx
+	jnz	.Lfill_f
+.Lno_dbg_f:
 
 	/*
 	 * Save boot info before anything clobbers RAX/RBX.
