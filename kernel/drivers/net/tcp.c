@@ -317,6 +317,9 @@ int anx_tcp_connect(uint32_t dst_ip, uint16_t dst_port,
 	conn->rx_len = 0;
 	conn->rx_cap = TCP_RX_BUF_SIZE;
 
+	/* Drain any stale packets from previous connections */
+	anx_net_poll();
+
 	/* Send SYN */
 	conn->state = ANX_TCP_SYN_SENT;
 	tcp_send_segment(conn, ANX_TCP_SYN, NULL, 0);
@@ -424,7 +427,7 @@ int anx_tcp_close(struct anx_tcp_conn *conn)
 		conn->snd_nxt++;
 	}
 
-	/* Wait briefly for final ACK */
+	/* Wait briefly for final handshake */
 	start = arch_timer_ticks();
 	while (conn->state != ANX_TCP_CLOSED &&
 	       conn->state != ANX_TCP_TIME_WAIT &&
@@ -432,12 +435,24 @@ int anx_tcp_close(struct anx_tcp_conn *conn)
 		anx_net_poll();
 	}
 
+	/* Free resources */
 	if (conn->rx_buf) {
 		anx_free(conn->rx_buf);
 		conn->rx_buf = NULL;
 	}
-	conn->in_use = false;
-	conn->state = ANX_TCP_CLOSED;
+
+	/* Fully zero the connection slot so no stale state remains */
+	{
+		uint16_t saved_local_port = conn->local_port;
+
+		anx_memset(conn, 0, sizeof(*conn));
+		/* Preserve the local port so next_ephemeral stays ahead */
+		(void)saved_local_port;
+	}
+
+	/* Drain any remaining packets for this connection */
+	anx_net_poll();
+	anx_net_poll();
 
 	return ANX_OK;
 }
