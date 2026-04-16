@@ -10,6 +10,7 @@
 #include <anx/fb.h>
 #include <anx/font.h>
 #include <anx/fbcon.h>
+#include <anx/gui.h>
 
 /* Console colors */
 #define FBCON_FG	0x00CCCCCC	/* light gray text */
@@ -94,6 +95,12 @@ void anx_fbcon_putc(char c)
 {
 	if (!fbcon_ready)
 		return;
+
+	/* Route through GUI terminal when active */
+	if (anx_gui_active()) {
+		anx_gui_terminal_putc(c);
+		return;
+	}
 
 	switch (c) {
 	case '\n':

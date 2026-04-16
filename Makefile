@@ -279,9 +279,12 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 		  $(filter-out $(CORE_DIR)/agent/%, $(CORE_C)))
 # Exclude hardware-dependent drivers from host-native test builds.
 # PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
+# Exclude hardware-dependent drivers from host-native test builds.
+# fb/*.c included (tests need it) except gui.c (needs kernel GUI subsystem).
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
-		  ! -path '*/acpi/*' 2>/dev/null)
+		  ! -path '*/acpi/*' ! -name 'gui.c' ! -name 'splash_img.S' \
+		  2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/test_state_object.c \
