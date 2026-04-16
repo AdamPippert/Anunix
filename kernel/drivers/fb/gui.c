@@ -80,8 +80,9 @@ static void draw_background(void)
 
 static void draw_topbar(void)
 {
-	/* Top bar is sky blue background with centered time */
-	/* The time gets drawn by anx_gui_update_time */
+	/* Dark blue strip across the top for the clock */
+	anx_fb_fill_rect(0, 0, screen_w, ANX_GUI_TOPBAR_HEIGHT,
+			  ANX_COLOR_MIDNIGHT);
 }
 
 static void draw_terminal_frame(void)
@@ -126,13 +127,13 @@ void anx_gui_update_time(void)
 	/* Clear the time area */
 	anx_fb_fill_rect(time_x - 4, 4, time_w + 8,
 			  ANX_FONT_HEIGHT * TIME_FONT_SCALE + 4,
-			  ANX_COLOR_SKY_BLUE);
+			  ANX_COLOR_MIDNIGHT);
 
 	anx_gui_draw_string_scaled(time_x,
 				    (ANX_GUI_TOPBAR_HEIGHT -
 				     ANX_FONT_HEIGHT * TIME_FONT_SCALE) / 2,
 				    timebuf, ANX_COLOR_WHITE,
-				    ANX_COLOR_SKY_BLUE, TIME_FONT_SCALE);
+				    ANX_COLOR_MIDNIGHT, TIME_FONT_SCALE);
 }
 
 /* --- Terminal output --- */
