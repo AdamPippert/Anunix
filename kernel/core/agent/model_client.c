@@ -19,7 +19,10 @@
 #include <anx/arch.h>
 #include <anx/kprintf.h>
 
-static struct anx_model_endpoint endpoint;
+/* Owned copies of endpoint strings (argv pointers are transient) */
+static char ep_host[128];
+static char ep_cred[128];
+static uint16_t ep_port;
 static bool configured;
 
 /* --- JSON request body construction --- */
@@ -220,10 +223,12 @@ static int parse_response(const char *body, uint32_t body_len,
 
 void anx_model_client_init(const struct anx_model_endpoint *ep)
 {
-	endpoint = *ep;
+	anx_strlcpy(ep_host, ep->host, sizeof(ep_host));
+	anx_strlcpy(ep_cred, ep->cred_name, sizeof(ep_cred));
+	ep_port = ep->port;
 	configured = true;
 	kprintf("model: endpoint %s:%u (credential: %s)\n",
-		ep->host, (uint32_t)ep->port, ep->cred_name);
+		ep_host, (uint32_t)ep_port, ep_cred);
 }
 
 bool anx_model_client_ready(void)
@@ -260,12 +265,12 @@ int anx_model_call(const struct anx_model_request *req,
 	}
 
 	/* Read API key from credential store */
-	ret = anx_credential_read(endpoint.cred_name, key_buf,
+	ret = anx_credential_read(ep_cred, key_buf,
 				   sizeof(key_buf) - 1, &key_len);
 	if (ret != ANX_OK) {
 		anx_free(body_buf);
 		kprintf("model: credential '%s' not found\n",
-			endpoint.cred_name);
+			ep_cred);
 		return ret;
 	}
 	key_buf[key_len] = '\0';
@@ -285,7 +290,7 @@ int anx_model_call(const struct anx_model_request *req,
 	anx_memset(key_buf, 0, sizeof(key_buf));
 
 	/* Send POST request */
-	ret = anx_http_post_authed(endpoint.host, endpoint.port,
+	ret = anx_http_post_authed(ep_host, ep_port,
 				    "/v1/messages", headers,
 				    "application/json",
 				    body_buf, (uint32_t)body_len,
