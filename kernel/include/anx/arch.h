@@ -47,6 +47,9 @@ uint64_t arch_timer_ticks(void);
 struct anx_hw_inventory;
 void arch_probe_hw(struct anx_hw_inventory *inv);
 
+/* Boot command line (from bootloader, NULL if unavailable) */
+const char *arch_boot_cmdline(void);
+
 /* Memory barrier primitives */
 void arch_mb(void);	/* full memory barrier */
 void arch_rmb(void);	/* read barrier */
