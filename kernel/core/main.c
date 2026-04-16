@@ -168,10 +168,16 @@ void kernel_main(void)
 	if (anx_virtio_net_init() == ANX_OK) {
 		struct anx_net_config net_cfg;
 
-		net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
-		net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
-		net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
-		net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
+		/* Try DHCP first, fall back to QEMU user-mode defaults */
+		anx_arp_init();
+		anx_udp_init();
+		if (anx_dhcp_discover(&net_cfg) != ANX_OK) {
+			net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
+			net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
+			net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
+			net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
+			kprintf("dhcp: failed, using static config\n");
+		}
 		anx_net_stack_init(&net_cfg);
 	}
 
