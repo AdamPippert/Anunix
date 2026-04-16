@@ -54,7 +54,10 @@ void kernel_main(void)
 		}
 	}
 
-	/* Boot splash */
+	/* Architecture-specific full init (page allocator, etc.) */
+	arch_init();
+
+	/* Boot splash (after arch_init so page allocator is ready for JPEG) */
 	anx_splash();
 
 	/* Initialize graphical environment (after splash, before text output) */
@@ -62,9 +65,6 @@ void kernel_main(void)
 		anx_gui_init();
 
 	kprintf("  Anunix %s booting\n\n", ANX_VERSION);
-
-	/* Architecture-specific full init (page allocator, etc.) */
-	arch_init();
 
 	kprintf("arch init complete\n");
 

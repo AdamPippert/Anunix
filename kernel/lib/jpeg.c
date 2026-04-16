@@ -466,8 +466,8 @@ static int decode_scan(struct jpeg_ctx *c)
 	int32_t block[64];
 	int ci, bx, by;
 
-	/* Component planes (Y, Cb, Cr) */
-	int32_t *planes[MAX_COMPONENTS];
+	/* Component planes (Y, Cb, Cr) — uint8_t to reduce memory */
+	uint8_t *planes[MAX_COMPONENTS];
 	uint32_t plane_w[MAX_COMPONENTS];
 	uint32_t plane_h[MAX_COMPONENTS];
 	int ret;
@@ -481,8 +481,7 @@ static int decode_scan(struct jpeg_ctx *c)
 	for (ci = 0; ci < c->num_components; ci++) {
 		plane_w[ci] = mcu_cols * c->comp[ci].h_samp * 8;
 		plane_h[ci] = mcu_rows * c->comp[ci].v_samp * 8;
-		planes[ci] = anx_zalloc(plane_w[ci] * plane_h[ci] *
-					sizeof(int32_t));
+		planes[ci] = anx_zalloc(plane_w[ci] * plane_h[ci]);
 		if (!planes[ci]) {
 			int j;
 			for (j = 0; j < ci; j++)
@@ -522,7 +521,7 @@ static int decode_scan(struct jpeg_ctx *c)
 
 								idx = (py + pi) * plane_w[ci] + (px + pj);
 								if (idx < plane_w[ci] * plane_h[ci])
-									planes[ci][idx] = block[pi * 8 + pj] + 128;
+									planes[ci][idx] = clamp8(block[pi * 8 + pj] + 128);
 							}
 						}
 					}
@@ -560,14 +559,14 @@ static int decode_scan(struct jpeg_ctx *c)
 				uint32_t cx, cy;
 
 				/* Y is at full resolution */
-				yy = planes[0][y * plane_w[0] + x];
+				yy = (int32_t)planes[0][y * plane_w[0] + x];
 
 				if (c->num_components >= 3) {
 					/* Cb/Cr may be subsampled */
 					cx = x * c->comp[1].h_samp / c->max_h_samp;
 					cy = y * c->comp[1].v_samp / c->max_v_samp;
-					cb = planes[1][cy * plane_w[1] + cx];
-					cr = planes[2][cy * plane_w[2] + cx];
+					cb = (int32_t)planes[1][cy * plane_w[1] + cx];
+					cr = (int32_t)planes[2][cy * plane_w[2] + cx];
 				} else {
 					cb = 128;
 					cr = 128;
