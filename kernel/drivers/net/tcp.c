@@ -120,10 +120,17 @@ static uint16_t tcp_checksum(uint32_t src_ip, uint32_t dst_ip,
 static int tcp_send_segment(struct anx_tcp_conn *conn, uint8_t flags,
 			     const void *data, uint32_t data_len)
 {
-	uint8_t pkt[128 + TCP_TX_BUF_SIZE];
-	struct anx_tcp_hdr *tcp = (struct anx_tcp_hdr *)pkt;
+	uint8_t *pkt;
+	struct anx_tcp_hdr *tcp;
 	uint32_t total = sizeof(struct anx_tcp_hdr) + data_len;
+	int ret;
 
+	/* Heap-allocate to avoid blowing the 16 KiB kernel stack */
+	pkt = anx_alloc(total);
+	if (!pkt)
+		return ANX_ENOMEM;
+
+	tcp = (struct anx_tcp_hdr *)pkt;
 	anx_memset(tcp, 0, sizeof(struct anx_tcp_hdr));
 	tcp->src_port = anx_htons(conn->local_port);
 	tcp->dst_port = anx_htons(conn->remote_port);
@@ -143,7 +150,9 @@ static int tcp_send_segment(struct anx_tcp_conn *conn, uint8_t flags,
 				     pkt, total);
 
 	conn->last_send_tick = arch_timer_ticks();
-	return anx_ipv4_send(conn->remote_ip, ANX_IP_PROTO_TCP, pkt, total);
+	ret = anx_ipv4_send(conn->remote_ip, ANX_IP_PROTO_TCP, pkt, total);
+	anx_free(pkt);
+	return ret;
 }
 
 void anx_tcp_recv_segment(const void *data, uint32_t len, uint32_t src_ip)
