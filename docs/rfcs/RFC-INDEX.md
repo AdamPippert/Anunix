@@ -22,6 +22,10 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0005](RFC-0005-routing-and-scheduler.md) | Routing Plane and Unified Scheduler | Draft | Adam Pippert | 0001, 0002, 0003, 0004 |
 | [0006](RFC-0006-network-plane.md) | Network Plane and Federated Execution | Draft | Adam Pippert | 0001, 0002, 0003, 0004, 0005 |
 | [0007](RFC-0007-capability-objects.md) | Capability Objects and Runtime Installation | Draft | Adam Pippert | 0001, 0002, 0003, 0004, 0005, 0006 |
+| [0008](RFC-0008-credential-objects.md) | Credential Objects | Draft | Adam Pippert | 0001, 0002, 0003, 0007 |
+| [0009](RFC-0009-agent-memory.md) | Agent Memory System | Draft | Adam Pippert | 0001, 0002, 0003, 0004, 0005 |
+| [0010](RFC-0010-userland-utilities.md) | Userland Utility Layer — POSIX Port and Anunix Adaptation | Draft | Adam Pippert | 0001–0008 |
+| [0011](RFC-0011-agent-native-utilities.md) | Agent-Native Utilities and Hardware Discovery | Draft | Adam Pippert | 0001–0010 |
 
 ## Dependency Graph
 
@@ -33,4 +37,8 @@ RFC-0001 (Architecture Thesis)
                  └── RFC-0005 (Routing Plane and Unified Scheduler)
                       └── RFC-0006 (Network Plane and Federated Execution)
                            └── RFC-0007 (Capability Objects and Runtime Installation)
+                                └── RFC-0008 (Credential Objects)
+                                     └── RFC-0009 (Agent Memory System)
+                                          └── RFC-0010 (Userland Utility Layer)
+                                               └── RFC-0011 (Agent-Native Utilities and Hardware Discovery)
 ```
