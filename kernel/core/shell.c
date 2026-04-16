@@ -31,6 +31,8 @@
 #include <anx/virtio_blk.h>
 #include <anx/objstore_disk.h>
 #include <anx/auth.h>
+#include <anx/model_client.h>
+#include <anx/acpi.h>
 
 /* --- Line input with history --- */
 
@@ -268,6 +270,9 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret show <name>         Show credential metadata\n");
 	kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
 	kputs("  secret revoke <name>       Revoke a credential\n");
+	kputs("  ask <message...>           Ask Claude a question\n");
+	kputs("  model-init <cred> <host> <port>  Configure model endpoint\n");
+	kputs("  hw-inventory               Show hardware summary\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
 	kputs("  login <user>               Login with password\n");
@@ -1188,6 +1193,142 @@ static void cmd_secret(int argc, char **argv)
 	}
 }
 
+/* --- Model commands --- */
+
+static void cmd_model_init(int argc, char **argv)
+{
+	struct anx_model_endpoint ep;
+
+	if (argc < 4) {
+		kputs("usage: model-init <cred-name> <host> <port>\n");
+		return;
+	}
+	ep.cred_name = argv[1];
+	ep.host = argv[2];
+	ep.port = parse_port(argv[3]);
+	anx_model_client_init(&ep);
+}
+
+static void cmd_ask(int argc, char **argv)
+{
+	struct anx_model_request req;
+	struct anx_model_response resp;
+	char message[1024];
+	uint32_t off = 0;
+	int i, ret;
+
+	if (argc < 2) {
+		kputs("usage: ask <message...>\n");
+		return;
+	}
+
+	if (!anx_model_client_ready()) {
+		kputs("model not configured (use 'model-init' first)\n");
+		return;
+	}
+
+	/* Reconstruct message from args */
+	for (i = 1; i < argc && off < sizeof(message) - 2; i++) {
+		uint32_t len = (uint32_t)anx_strlen(argv[i]);
+
+		if (i > 1 && off < sizeof(message) - 1)
+			message[off++] = ' ';
+		if (off + len >= sizeof(message) - 1)
+			len = (uint32_t)(sizeof(message) - 1 - off);
+		anx_memcpy(message + off, argv[i], len);
+		off += len;
+	}
+	message[off] = '\0';
+
+	req.model = "claude-sonnet-4-5-20241022";
+	req.system = "You are an AI assistant running inside Anunix, "
+		     "an AI-native operating system. Be concise.";
+	req.user_message = message;
+	req.max_tokens = 1024;
+
+	kputs("thinking...\n");
+	ret = anx_model_call(&req, &resp);
+
+	if (ret != ANX_OK) {
+		kprintf("ask: failed (%d)\n", ret);
+		return;
+	}
+
+	if (resp.content) {
+		kprintf("\n%s\n\n", resp.content);
+		kprintf("[%d in / %d out tokens]\n",
+			resp.input_tokens, resp.output_tokens);
+	}
+	anx_model_response_free(&resp);
+}
+
+/* --- HW Inventory --- */
+
+static void cmd_hw_inventory(void)
+{
+	const struct anx_acpi_info *acpi = anx_acpi_get_info();
+	struct anx_list_head *pos;
+	struct anx_list_head *pci_list = anx_pci_device_list();
+	uint32_t net_count = 0, storage_count = 0, display_count = 0;
+
+	kputs("=== Hardware Inventory ===\n\n");
+
+	/* CPU info from ACPI */
+	if (acpi) {
+		kprintf("CPUs:    %u\n", acpi->cpu_count);
+		kprintf("LAPIC:   0x%x\n", acpi->lapic_addr);
+		kprintf("IOAPICs: %u\n", acpi->ioapic_count);
+	} else {
+		kputs("CPUs:    (ACPI unavailable)\n");
+	}
+
+	/* Memory */
+	{
+		uint64_t total, free_pages;
+
+		anx_page_stats(&total, &free_pages);
+		kprintf("Memory:  %u KiB free / %u KiB total\n",
+			(uint32_t)(free_pages * 4),
+			(uint32_t)(total * 4));
+	}
+
+	/* Categorize PCI devices */
+	ANX_LIST_FOR_EACH(pos, pci_list) {
+		struct anx_pci_device *dev;
+
+		dev = ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
+		if (dev->class_code == 0x02)
+			net_count++;
+		else if (dev->class_code == 0x01)
+			storage_count++;
+		else if (dev->class_code == 0x03)
+			display_count++;
+	}
+
+	kprintf("\nDevices:\n");
+	kprintf("  Network:  %u\n", net_count);
+	kprintf("  Storage:  %u\n", storage_count);
+	kprintf("  Display:  %u\n", display_count);
+
+	/* Block device */
+	if (anx_blk_ready())
+		kprintf("\nBlock:   %u MiB (virtio-blk)\n",
+			(uint32_t)(anx_blk_capacity() * 512 / (1024 * 1024)));
+
+	/* Network */
+	if (anx_virtio_net_ready()) {
+		uint8_t mac[6];
+
+		anx_virtio_net_mac(mac);
+		kprintf("Network: %x:%x:%x:%x:%x:%x (virtio-net)\n",
+			(uint32_t)mac[0], (uint32_t)mac[1],
+			(uint32_t)mac[2], (uint32_t)mac[3],
+			(uint32_t)mac[4], (uint32_t)mac[5]);
+	}
+
+	kputs("\n");
+}
+
 /* --- Auth commands --- */
 
 static void cmd_login(int argc, char **argv)
@@ -1418,6 +1559,12 @@ static void dispatch(int argc, char **argv)
 			cmd_ping(argv[1]);
 		else
 			kputs("usage: ping <ip>\n");
+	} else if (anx_strcmp(argv[0], "ask") == 0) {
+		cmd_ask(argc, argv);
+	} else if (anx_strcmp(argv[0], "model-init") == 0) {
+		cmd_model_init(argc, argv);
+	} else if (anx_strcmp(argv[0], "hw-inventory") == 0) {
+		cmd_hw_inventory();
 	} else if (anx_strcmp(argv[0], "login") == 0) {
 		cmd_login(argc, argv);
 	} else if (anx_strcmp(argv[0], "logout") == 0) {
