@@ -124,10 +124,12 @@ _mb_info:
 	.quad	0
 
 /*
- * Boot stack — 16 KiB, 16-byte aligned.
+ * Boot stack — 64 KiB, 16-byte aligned.
+ * Sized for deep call chains: JPEG decode, GUI rendering,
+ * HTTP/TCP networking, and the shell input loop.
  */
 .section .bss
 .align 16
 _stack_bottom:
-	.space 16384
+	.space 65536
 _stack_top:

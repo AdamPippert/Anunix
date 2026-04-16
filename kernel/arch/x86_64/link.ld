@@ -43,7 +43,14 @@ SECTIONS {
     }
     _bss_end = .;
 
+    /*
+     * Heap must start ABOVE 0x210000 to avoid the multiboot
+     * wrapper's page tables at 0x200000 (PML4 + PDPT, still
+     * active in CR3). With the 640KB JPEG logo + 64KB stack,
+     * BSS can extend past 0x200000 — force heap above.
+     */
     . = ALIGN(4096);
+    . = (. < 0x210000) ? 0x210000 : .;
     _heap_start = .;
     . = . + 16M;
     _heap_end = .;
