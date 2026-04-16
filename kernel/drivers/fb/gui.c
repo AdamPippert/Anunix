@@ -116,6 +116,8 @@ static uint8_t bcd_to_bin(uint8_t bcd)
 	return (bcd >> 4) * 10 + (bcd & 0x0F);
 }
 
+static uint8_t last_drawn_min = 0xFF;
+
 void anx_gui_update_time(void)
 {
 	uint8_t hrs, mins, secs;
@@ -131,6 +133,8 @@ void anx_gui_update_time(void)
 	mins = rtc_read(0x02);
 	hrs  = rtc_read(0x04);
 	status_b = rtc_read(0x0B);
+
+	(void)secs;
 
 	/* Convert BCD to binary if needed */
 	if (!(status_b & 0x04)) {
@@ -148,19 +152,21 @@ void anx_gui_update_time(void)
 		hrs = (uint8_t)h;
 	}
 
-	/* Format HH:MM:SS */
+	/* Only redraw when the minute changes */
+	if (mins == last_drawn_min)
+		return;
+	last_drawn_min = mins;
+
+	/* Format HH:MM */
 	timebuf[0] = '0' + (char)(hrs / 10);
 	timebuf[1] = '0' + (char)(hrs % 10);
 	timebuf[2] = ':';
 	timebuf[3] = '0' + (char)(mins / 10);
 	timebuf[4] = '0' + (char)(mins % 10);
-	timebuf[5] = ':';
-	timebuf[6] = '0' + (char)(secs / 10);
-	timebuf[7] = '0' + (char)(secs % 10);
-	timebuf[8] = '\0';
+	timebuf[5] = '\0';
 
 	/* Center the time string in the top bar */
-	time_w = 8 * ANX_FONT_WIDTH * TIME_FONT_SCALE;
+	time_w = 5 * ANX_FONT_WIDTH * TIME_FONT_SCALE;
 	time_x = (screen_w - time_w) / 2;
 
 	/* Clear the time area */
