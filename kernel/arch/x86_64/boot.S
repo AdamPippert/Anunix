@@ -62,6 +62,19 @@ mb2_start:
 	.long	12		/* size */
 	.long	_start		/* 64-bit entry point */
 
+	/*
+	 * EFI boot services NOT terminated (tag type 7).
+	 * This tells GRUB to stay in 64-bit mode and NOT call
+	 * ExitBootServices. The kernel enters with EFI identity
+	 * mapping active — all physical memory is accessible.
+	 * Required for real UEFI hardware where GRUB's multiboot1
+	 * 64→32 transition crashes.
+	 */
+	.align 8
+	.short	7		/* type: EFI boot services */
+	.short	0		/* flags */
+	.long	8		/* size */
+
 	/* End tag */
 	.align 8
 	.short	0		/* type: end */
