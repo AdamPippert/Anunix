@@ -123,8 +123,29 @@ static void splash_graphical(void)
 		return;
 	}
 
-	/* Scale and blit to framebuffer */
-	anx_jpeg_blit_scaled(&img, info->width, info->height);
+	/* Center the logo on the framebuffer (no scaling) */
+	{
+		uint32_t ox, oy, sx, sy;
+
+		/* Clear to black first */
+		anx_fb_clear(0x00000000);
+
+		/* Calculate centered position */
+		ox = (info->width > img.width)
+		     ? (info->width - img.width) / 2 : 0;
+		oy = (info->height > img.height)
+		     ? (info->height - img.height) / 2 : 0;
+
+		/* Blit at native resolution */
+		for (sy = 0; sy < img.height && oy + sy < info->height; sy++) {
+			uint32_t *row = anx_fb_row_ptr(oy + sy);
+
+			if (!row)
+				continue;
+			for (sx = 0; sx < img.width && ox + sx < info->width; sx++)
+				row[ox + sx] = img.pixels[sy * img.width + sx];
+		}
+	}
 	anx_jpeg_free(&img);
 
 	/* Hold the splash for 5 seconds */

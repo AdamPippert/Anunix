@@ -22,6 +22,12 @@ static void putc(char c)
 		anx_fbcon_putc(c);
 }
 
+/* Public single-char output for shell echo */
+void kputc(char c)
+{
+	putc(c);
+}
+
 static void puts(const char *s)
 {
 	while (*s)
