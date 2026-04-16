@@ -16,6 +16,43 @@
 #define HTTP_BUF_SIZE		16384
 #define HTTP_RECV_TIMEOUT_MS	10000
 
+/* Check if a string is a dotted-decimal IP; return it or 0 */
+static uint32_t parse_ip_str(const char *s)
+{
+	uint32_t a = 0, b = 0, c = 0, d = 0;
+	int dots = 0;
+	const char *p = s;
+
+	/* Must start with a digit */
+	if (!*p || *p < '0' || *p > '9')
+		return 0;
+
+	while (*p) {
+		if (*p == '.')
+			dots++;
+		else if (*p < '0' || *p > '9')
+			return 0;
+		p++;
+	}
+	if (dots != 3)
+		return 0;
+
+	/* Parse octets */
+	p = s;
+	while (*p && *p != '.') a = a * 10 + (uint32_t)(*p++ - '0');
+	p++;
+	while (*p && *p != '.') b = b * 10 + (uint32_t)(*p++ - '0');
+	p++;
+	while (*p && *p != '.') c = c * 10 + (uint32_t)(*p++ - '0');
+	p++;
+	while (*p) d = d * 10 + (uint32_t)(*p++ - '0');
+
+	if (a > 255 || b > 255 || c > 255 || d > 255)
+		return 0;
+
+	return (a << 24) | (b << 16) | (c << 8) | d;
+}
+
 /* Simple integer-to-string for Content-Length */
 static int itoa_simple(uint32_t val, char *buf, uint32_t bufsize)
 {
@@ -184,11 +221,16 @@ static int http_request(const char *host, uint16_t port, const char *path,
 	resp->body = NULL;
 	resp->body_len = 0;
 
-	/* Resolve hostname */
-	ret = anx_dns_resolve(host, &ip);
-	if (ret != ANX_OK) {
-		kprintf("http: dns failed for %s (%d)\n", host, ret);
-		return ret;
+	/* Resolve hostname — skip DNS if it's already an IP address */
+	ip = parse_ip_str(host);
+	if (ip != 0) {
+		ret = ANX_OK;
+	} else {
+		ret = anx_dns_resolve(host, &ip);
+		if (ret != ANX_OK) {
+			kprintf("http: dns failed for %s (%d)\n", host, ret);
+			return ret;
+		}
 	}
 
 	/* Connect */
