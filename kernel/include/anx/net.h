@@ -209,6 +209,9 @@ int anx_tcp_close(struct anx_tcp_conn *conn);
 /* DHCP client */
 int anx_dhcp_discover(struct anx_net_config *cfg);
 
+/* NTP time sync */
+int anx_ntp_sync(uint32_t server_ip);
+
 /* Poll the network device and process any received packets */
 void anx_net_poll(void);
 
