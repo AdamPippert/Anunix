@@ -17,7 +17,7 @@ LIB_DIR="${GRUB_DIR}/lib/grub"
 SHARE_DIR="${GRUB_DIR}/share"
 BUILD_TMP="${GRUB_DIR}/build-tmp"
 
-NJOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+NJOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 # Debian package versions (bookworm/stable)
 GRUB_VER="2.06-13+deb12u1"

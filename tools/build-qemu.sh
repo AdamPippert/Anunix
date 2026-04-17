@@ -2,10 +2,8 @@
 #
 # build-qemu.sh — Build QEMU and dependencies from source.
 #
-# Builds a minimal QEMU (aarch64 + x86_64 system emulation, no GUI)
-# with all dependencies compiled locally into tools/qemu/.
-#
-# No Homebrew required. Uses system clang (Xcode CLT) for everything.
+# On macOS: builds everything from source (no Homebrew required).
+# On Linux: recommends using the system package manager instead.
 # Run once: 'make qemu-deps'
 #
 # Dependencies built (in order):
@@ -34,9 +32,25 @@ PIXMAN_VER="0.42.2"
 QEMU_VER="9.0.2"
 
 # Parallelism
-NJOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+NJOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-# SDK path for system headers/libs
+# On Linux, recommend system QEMU instead of building from source
+if [ "$(uname -s)" = "Linux" ]; then
+	if command -v qemu-system-x86_64 >/dev/null 2>&1; then
+		echo "QEMU already available from system package manager."
+		echo "  $(qemu-system-x86_64 --version | head -1)"
+		echo "Skipping source build. To force: remove this check."
+		exit 0
+	else
+		echo "Linux detected. Install QEMU from your package manager:"
+		echo "  Arch:   sudo pacman -S qemu-full"
+		echo "  Debian: sudo apt install qemu-system-x86"
+		echo "  Fedora: sudo dnf install qemu-system-x86"
+		exit 1
+	fi
+fi
+
+# SDK path for system headers/libs (macOS)
 SDK_PATH=$(xcrun --show-sdk-path 2>/dev/null || echo "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk")
 
 # Check if already built
