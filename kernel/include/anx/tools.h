@@ -31,5 +31,10 @@ void cmd_evctl(int argc, char **argv);
 void cmd_compctl(int argc, char **argv);
 void cmd_envctl(int argc, char **argv);
 
-#endif /* ANX_TOOLS_H */
+/* Hardware discovery agent */
+void cmd_hwd(int argc, char **argv);
+
+/* Metadata tool (Phase 2) */
 void cmd_meta(int argc, char **argv);
+
+#endif /* ANX_TOOLS_H */
