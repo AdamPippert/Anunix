@@ -20,6 +20,7 @@
 #include <anx/model_server.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
+#include <anx/external_call.h>
 
 /* --- Admission --- */
 
@@ -140,6 +141,26 @@ static int runtime_execute(struct anx_cell *cell,
 
 		switch (step->kind) {
 		case ANX_STEP_DIRECT_EXEC:
+			/*
+			 * External-call task: dispatch via the scheme
+			 * registry. This is the designated bridge to
+			 * outside systems (Postgres, HTTP, etc.).
+			 */
+			if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL &&
+			    cell->ext_call) {
+				int xret;
+
+				xret = anx_external_invoke(cell->ext_call);
+				if (xret != ANX_OK) {
+					anx_trace_append(trace,
+							 ANX_TRACE_STEP_COMPLETED,
+							 "external call failed",
+							 xret);
+					return xret;
+				}
+				break;
+			}
+
 			/* Dispatch to assigned engine if set */
 			if (!anx_uuid_is_nil(&step->assigned_engine)) {
 				struct anx_engine *eng;
@@ -246,6 +267,28 @@ int anx_cell_run(struct anx_cell *cell)
 
 	if (!cell)
 		return ANX_EINVAL;
+
+	/*
+	 * DAG gate: a cell with declared predecessors cannot enter the
+	 * pipeline until all of them have COMPLETED. A failed or
+	 * cancelled predecessor propagates — this cell is marked FAILED.
+	 * No trace is started in the not-ready case so the caller can
+	 * retry cleanly.
+	 */
+	if (cell->dep_count > 0) {
+		int deps = anx_cell_deps_satisfied(cell);
+
+		if (deps < 0) {
+			cell->error_code = deps;
+			anx_strlcpy(cell->error_msg,
+				    "dependency failed",
+				    sizeof(cell->error_msg));
+			anx_cell_transition(cell, ANX_CELL_FAILED);
+			return deps;
+		}
+		if (deps == 0)
+			return ANX_EBUSY;	/* retry later */
+	}
 
 	ret = anx_trace_create(&cell->cid, &trace);
 	if (ret != ANX_OK)
