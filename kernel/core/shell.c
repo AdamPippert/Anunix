@@ -271,6 +271,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  cells                      List execution cells\n");
 	kputs("  sysinfo                    System overview\n");
 	kputs("  netinfo                    Network configuration\n");
+	kputs("  ntp [server-ip]            Sync time from NTP server\n");
 	kputs("  install -i                 Interactive OS installer\n");
 	kputs("  meta show|set|get <path>   Object metadata editor\n");
 	kputs("  echo <text...>             Print text ($? for return code)\n");
@@ -1697,6 +1698,26 @@ static void dispatch(int argc, char **argv)
 				__attribute__((packed)) null_idt = {0, 0};
 			__asm__ volatile("lidt %0" : : "m"(null_idt));
 			__asm__ volatile("int3");
+		}
+	} else if (anx_strcmp(argv[0], "ntp") == 0) {
+		if (argc >= 2) {
+			uint32_t ntp_ip = parse_ip(argv[1]);
+			int ntp_ret = anx_ntp_sync(ntp_ip);
+
+			if (ntp_ret != ANX_OK)
+				kprintf("ntp: sync failed (%d)\n", ntp_ret);
+		} else {
+			uint32_t ntp_ip;
+			int ntp_ret = anx_dns_resolve("time.nist.gov", &ntp_ip);
+
+			if (ntp_ret == ANX_OK) {
+				ntp_ret = anx_ntp_sync(ntp_ip);
+				if (ntp_ret != ANX_OK)
+					kprintf("ntp: sync failed (%d)\n",
+						ntp_ret);
+			} else {
+				kprintf("ntp: dns failed (%d)\n", ntp_ret);
+			}
 		}
 	} else if (anx_strcmp(argv[0], "install") == 0) {
 		if (argc >= 2 && anx_strcmp(argv[1], "-i") == 0) {
