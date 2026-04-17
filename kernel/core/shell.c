@@ -1649,6 +1649,14 @@ static void dispatch(int argc, char **argv)
 		cmd_disk();
 	} else if (anx_strcmp(argv[0], "pci") == 0) {
 		cmd_pci(argc, argv);
+	} else if (anx_strcmp(argv[0], "surfctl") == 0) {
+		cmd_surfctl(argc, argv);
+	} else if (anx_strcmp(argv[0], "evctl") == 0) {
+		cmd_evctl(argc, argv);
+	} else if (anx_strcmp(argv[0], "compctl") == 0) {
+		cmd_compctl(argc, argv);
+	} else if (anx_strcmp(argv[0], "envctl") == 0) {
+		cmd_envctl(argc, argv);
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
 		kputs("halting system\n");
 		arch_halt();

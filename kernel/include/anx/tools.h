@@ -25,4 +25,10 @@ void cmd_inspect(int argc, char **argv);
 void cmd_fetch(int argc, char **argv);
 void cmd_netinfo(int argc, char **argv);
 
+/* Interface Plane tools */
+void cmd_surfctl(int argc, char **argv);
+void cmd_evctl(int argc, char **argv);
+void cmd_compctl(int argc, char **argv);
+void cmd_envctl(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */
