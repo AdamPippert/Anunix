@@ -75,6 +75,14 @@ if [ -f "${KERNEL_MB1}" ]; then
 	echo "  kernel (BIOS): $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk '{print $5}')"
 fi
 
+# Copy EFI stub if built (direct UEFI boot without GRUB)
+EFI_STUB="${PROJECT_DIR}/build/x86_64/BOOTX64.EFI"
+if [ -f "${EFI_STUB}" ]; then
+	# Place as a secondary EFI boot option
+	cp "${EFI_STUB}" "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI"
+	echo "  EFI stub: $(ls -lh "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" | awk '{print $5}')"
+fi
+
 # Set up ISOLINUX (BIOS CD-ROM bootloader)
 if [ -f "${SYSLINUX_DIR}/isolinux.bin" ]; then
 	cp "${SYSLINUX_DIR}/isolinux.bin" "${ISO_DIR}/isolinux/"

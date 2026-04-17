@@ -30,7 +30,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.4.16
+ANX_VERSION := 2026.4.17
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -227,12 +227,38 @@ qemu-deps:
 iso-deps:
 	@./tools/fetch-grub.sh
 
+# EFI stub loader — standalone UEFI application that boots the kernel
+EFI_STUB_DIR := kernel/boot/efi
+EFI_STUB_EFI := build/x86_64/BOOTX64.EFI
+
+# Build EFI stub as COFF objects → PE32+ via lld-link mode
+$(EFI_STUB_EFI): $(KERNEL_BIN) $(EFI_STUB_DIR)/efi_stub.c $(EFI_STUB_DIR)/kernel_payload.S
+	@mkdir -p $(dir $@)
+	@echo "  EFI STUB"
+	$(CC) -target x86_64-unknown-windows -ffreestanding -fno-builtin \
+		-nostdlib -nostdinc -mno-red-zone -fno-stack-protector \
+		-I $(EFI_STUB_DIR) -O2 -Wall -Wextra \
+		-c $(EFI_STUB_DIR)/efi_stub.c \
+		-o build/x86_64/efi_stub.obj
+	$(CC) -target x86_64-unknown-windows -ffreestanding -nostdlib \
+		-c $(EFI_STUB_DIR)/kernel_payload.S \
+		-o build/x86_64/efi_payload.obj
+	$(LD) -flavor link \
+		/entry:efi_main /subsystem:efi_application \
+		/out:$@ \
+		build/x86_64/efi_stub.obj build/x86_64/efi_payload.obj
+
+efi-stub: $(EFI_STUB_EFI)
+	@echo "  BUILT   $(EFI_STUB_EFI)"
+
 # Build bootable x86_64 hybrid ISO (BIOS + UEFI)
 # Primary kernel: native 64-bit ELF (multiboot2, UEFI boot)
 # Optional: 32-bit multiboot wrapper for legacy BIOS fallback
+# Optional: EFI stub for direct UEFI boot without GRUB
 iso:
 	@$(MAKE) kernel ARCH=x86_64
 	@$(MAKE) ARCH=x86_64 build/x86_64/anunix-qemu.elf 2>/dev/null || true
+	@$(MAKE) ARCH=x86_64 efi-stub 2>/dev/null || true
 	@./tools/build-iso.sh
 
 # Distribution tarball with both architectures

@@ -38,7 +38,7 @@
 #include <anx/interface_plane.h>
 #include <anx/shell.h>
 
-#define ANX_VERSION "2026.4.16"
+#define ANX_VERSION "2026.4.17"
 
 /*
  * Emergency framebuffer write — draw a colored bar directly to
