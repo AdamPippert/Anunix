@@ -35,6 +35,7 @@
 #include <anx/splash.h>
 #include <anx/perf.h>
 #include <anx/gui.h>
+#include <anx/interface_plane.h>
 #include <anx/shell.h>
 
 #define ANX_VERSION "2026.4.16"
@@ -173,7 +174,25 @@ void kernel_main(void)
 	anx_cap_store_init();
 	kprintf("capability store initialized\n");
 
-	/* 7. POSIX compatibility layer */
+	/* 7a. Interface Plane (RFC-0012) — after engine registry */
+	if (anx_iface_init() == ANX_OK) {
+		anx_renderer_headless_register();
+		if (anx_fb_available())
+			anx_renderer_gpu_register();
+		anx_iface_env_define("visual-desktop",
+		                      "anx:env/visual-desktop/v1",
+		                      ANX_ENGINE_RENDERER_GPU);
+		anx_iface_env_define("headless-agent",
+		                      "anx:env/headless-agent/v1",
+		                      ANX_ENGINE_RENDERER_HEADLESS);
+		if (anx_fb_available())
+			anx_iface_env_activate("visual-desktop");
+		else
+			anx_iface_env_activate("headless-agent");
+		kprintf("interface plane initialized\n");
+	}
+
+	/* 8. POSIX compatibility layer */
 	anx_posix_init();
 	kprintf("posix compatibility layer initialized\n");
 
