@@ -262,6 +262,9 @@ static void cmd_help(int argc, char **argv)
 	kputs("  mv <src> <dst>             Move/rename namespace binding\n");
 	kputs("  rm [-f] <ns:path>          Delete a State Object\n");
 	kputs("  inspect <oid-or-path>      Full object inspection\n");
+	kputs("  search [-i] <pattern>      Search object payloads\n");
+	kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET → object\n");
+	kputs("  cells                      List execution cells\n");
 	kputs("  sysinfo                    System overview\n");
 	kputs("  netinfo                    Network configuration\n");
 	kputs("\nSubsystems:\n");
@@ -1575,6 +1578,12 @@ static void dispatch(int argc, char **argv)
 		cmd_sysinfo(argc, argv);
 	} else if (anx_strcmp(argv[0], "netinfo") == 0) {
 		cmd_netinfo(argc, argv);
+	} else if (anx_strcmp(argv[0], "search") == 0) {
+		cmd_search(argc, argv);
+	} else if (anx_strcmp(argv[0], "fetch") == 0) {
+		cmd_fetch(argc, argv);
+	} else if (anx_strcmp(argv[0], "cells") == 0) {
+		cmd_cells(argc, argv);
 	} else if (anx_strcmp(argv[0], "version") == 0) {
 		cmd_version(argc, argv);
 	} else if (anx_strcmp(argv[0], "mem") == 0) {
