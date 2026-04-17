@@ -258,6 +258,8 @@ static void cmd_help(int argc, char **argv)
 	kputs("  ls [ns:path]               List namespace entries\n");
 	kputs("  cat <oid-or-path>          Read object payload\n");
 	kputs("  write <ns:path> <content>  Create a State Object\n");
+	kputs("  rm [-f] <ns:path>          Delete a State Object\n");
+	kputs("  inspect <oid-or-path>      Full object inspection\n");
 	kputs("  sysinfo                    System overview\n");
 	kputs("  netinfo                    Network configuration\n");
 	kputs("\nSubsystems:\n");
@@ -1559,6 +1561,10 @@ static void dispatch(int argc, char **argv)
 		cmd_cat(argc, argv);
 	} else if (anx_strcmp(argv[0], "write") == 0) {
 		cmd_write_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "rm") == 0) {
+		cmd_rm_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "inspect") == 0) {
+		cmd_inspect(argc, argv);
 	} else if (anx_strcmp(argv[0], "sysinfo") == 0) {
 		cmd_sysinfo(argc, argv);
 	} else if (anx_strcmp(argv[0], "netinfo") == 0) {
