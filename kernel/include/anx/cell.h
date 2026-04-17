@@ -258,6 +258,10 @@ void anx_cell_store_release(struct anx_cell *cell);
 /* Destroy a cell (removes from store, must have refcount == 1) */
 int anx_cell_destroy(struct anx_cell *cell);
 
+/* Iterate all cells in the store */
+typedef int (*anx_cell_iter_fn)(struct anx_cell *cell, void *arg);
+int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg);
+
 /* --- Cell Runtime API --- */
 
 /* Run a cell through the full pipeline: admit→plan→execute→validate→commit */
