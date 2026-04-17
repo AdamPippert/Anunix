@@ -1553,6 +1553,10 @@ static void cmd_pci(int argc, char **argv)
 	}
 }
 
+/* --- Shell variables --- */
+
+static int last_return_code;	/* $? */
+
 /* --- Command dispatch --- */
 
 static void dispatch(int argc, char **argv)
@@ -1690,12 +1694,38 @@ static void dispatch(int argc, char **argv)
 			__asm__ volatile("lidt %0" : : "m"(null_idt));
 			__asm__ volatile("int3");
 		}
+	} else if (anx_strcmp(argv[0], "echo") == 0) {
+		int ei;
+
+		for (ei = 1; ei < argc; ei++) {
+			if (anx_strcmp(argv[ei], "$?") == 0)
+				kprintf("%d", last_return_code);
+			else
+				kprintf("%s", argv[ei]);
+			if (ei < argc - 1)
+				kprintf(" ");
+		}
+		kprintf("\n");
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
+		last_return_code = -1;
 	}
 }
 
 /* --- Shell main loop --- */
+
+/* Execute a single command line (may be called recursively for if/for) */
+static void execute_line(const char *input)
+{
+	char line_copy[MAX_LINE];
+	char *argv[MAX_ARGS];
+	int argc;
+
+	anx_strlcpy(line_copy, input, MAX_LINE);
+	argc = parse_args(line_copy, argv, MAX_ARGS);
+	if (argc > 0)
+		dispatch(argc, argv);
+}
 
 void anx_shell_run(void)
 {
@@ -1713,6 +1743,67 @@ void anx_shell_run(void)
 			continue;
 
 		history_add(line);
+
+		/* Check for if/then/end construct */
+		if (anx_strncmp(line, "if ", 3) == 0) {
+			/* Simple: if $? == 0 then <cmd> end */
+			/* Or multi-line: if <cond> then ... end */
+			char *then_ptr = NULL;
+			char *p = line + 3;
+
+			/* Find 'then' keyword */
+			while (*p) {
+				if (anx_strncmp(p, "then ", 5) == 0 ||
+				    anx_strncmp(p, "then\0", 5) == 0) {
+					then_ptr = p + 5;
+					break;
+				}
+				p++;
+			}
+
+			if (then_ptr) {
+				/* Evaluate condition: "$? == 0" */
+				bool condition = false;
+				char *cond = line + 3;
+
+				/* Trim spaces */
+				while (*cond == ' ') cond++;
+
+				if (anx_strncmp(cond, "$? == 0", 7) == 0)
+					condition = (last_return_code == 0);
+				else if (anx_strncmp(cond, "$? != 0", 7) == 0)
+					condition = (last_return_code != 0);
+				else
+					condition = (last_return_code == 0);
+
+				if (condition) {
+					/* Strip trailing 'end' if present */
+					char cmd[MAX_LINE];
+					uint32_t cmd_len;
+
+					anx_strlcpy(cmd, then_ptr, MAX_LINE);
+					cmd_len = (uint32_t)anx_strlen(cmd);
+					while (cmd_len > 0 &&
+					       cmd[cmd_len-1] == ' ')
+						cmd[--cmd_len] = '\0';
+					if (cmd_len >= 3 &&
+					    anx_strcmp(cmd + cmd_len - 3,
+						      "end") == 0)
+						cmd[cmd_len - 3] = '\0';
+
+					/* Trim trailing spaces */
+					cmd_len = (uint32_t)anx_strlen(cmd);
+					while (cmd_len > 0 &&
+					       cmd[cmd_len-1] == ' ')
+						cmd[--cmd_len] = '\0';
+
+					if (cmd[0])
+						execute_line(cmd);
+				}
+			}
+			continue;
+		}
+
 		argc = parse_args(line, argv, MAX_ARGS);
 		dispatch(argc, argv);
 	}
