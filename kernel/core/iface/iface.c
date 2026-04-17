@@ -6,6 +6,7 @@
  */
 
 #include <anx/interface_plane.h>
+#include <anx/input.h>
 #include <anx/hashtable.h>
 #include <anx/alloc.h>
 #include <anx/uuid.h>
@@ -71,6 +72,8 @@ anx_iface_init(void)
 	anx_memset(surf_used,  0, sizeof(surf_used));
 	anx_memset(renderers,  0, sizeof(renderers));
 	anx_memset(envs,       0, sizeof(envs));
+
+	anx_input_init();
 
 	return ANX_OK;
 }
