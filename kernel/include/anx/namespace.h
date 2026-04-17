@@ -27,4 +27,20 @@ int anx_ns_bind(const char *ns_name, const char *path, const anx_oid_t *oid);
 /* Remove a path binding */
 int anx_ns_unbind(const char *ns_name, const char *path);
 
+/* Entry info for listing */
+struct anx_ns_list_entry {
+	char name[ANX_NS_SEGMENT_MAX + 1];
+	anx_oid_t oid;
+	bool is_directory;
+};
+
+/* List entries at a path (NULL path = root). Returns count. */
+int anx_ns_list(const char *ns_name, const char *path,
+		 struct anx_ns_list_entry *out, uint32_t max_entries,
+		 uint32_t *count);
+
+/* List all namespace names */
+int anx_ns_list_namespaces(char names[][ANX_NS_NAME_MAX],
+			    uint32_t max_names, uint32_t *count);
+
 #endif /* ANX_NAMESPACE_H */
