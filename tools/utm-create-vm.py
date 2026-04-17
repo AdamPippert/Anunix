@@ -94,14 +94,6 @@ def make_config(arch: str, kernel_bundle_path: str, vm_name: str) -> dict:
             "Icon": "cpu",
             "IconCustom": False,
             "Name": vm_name,
-            "Notes": (
-                f"Anunix bare-metal kernel — {arch}\n"
-                f"{machine_desc}\n"
-                f"Kernel: {kernel_bundle_path}\n"
-                "Serial console: UTM terminal window\n"
-                "Rebuild: make kernel ARCH={arch} && "
-                "python3 tools/utm-create-vm.py --arch {arch} --force\n"
-            ),
             "UUID": vm_uuid,
         },
         "System": {
@@ -127,26 +119,25 @@ def make_config(arch: str, kernel_bundle_path: str, vm_name: str) -> dict:
             "TSO": False,
             "UEFIBoot": False,      # direct -kernel load, no UEFI firmware
         },
-        # Serial terminal — UTM opens a terminal window for this port
-        "Serial": [
+        # virtio-gpu-pci — the only display hardware UTM 4.x validates on QEMU
+        # QEMU also exposes a legacy VGA at 0xA0000 for multiboot2 framebuffer
+        "Display": [
             {
-                "Mode": "BuiltinTerminal",
-                "Target": "ManagementConsole",
-                "Terminal": {
-                    "Font":     "Menlo",
-                    "FontSize": 13,
-                    "Theme":    "Default",
-                },
+                "DownscalingFilter": "Linear",
+                "DynamicResolution": False,
+                "Hardware": "virtio-gpu-pci",
+                "NativeResolution": False,
+                "UpscalingFilter": "Nearest",
             }
         ],
-        # No GPU display — all output on serial
-        "Display": [],
+        # Serial left empty — serial output goes to QEMU stdio/debug log
+        "Serial": [],
         "Drive": [],
         "Network": [],
         "Sound": [],
         "Input": {
-            "MaximumUsbShare": 0,
-            "UsbBusSupport": "Disabled",
+            "MaximumUsbShare": 3,
+            "UsbBusSupport": "3.0",
             "UsbSharing": False,
         },
         "Sharing": {
