@@ -155,7 +155,7 @@ if [ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]; then
 
 	if command -v mformat >/dev/null 2>&1; then
 		# Linux path: use mtools (mformat + mcopy)
-		mformat -i "${EFI_IMG}" -F ::
+		mformat -i "${EFI_IMG}" ::
 		mmd -i "${EFI_IMG}" ::/EFI
 		mmd -i "${EFI_IMG}" ::/EFI/BOOT
 		mcopy -i "${EFI_IMG}" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ::/EFI/BOOT/
