@@ -32,3 +32,4 @@ void cmd_compctl(int argc, char **argv);
 void cmd_envctl(int argc, char **argv);
 
 #endif /* ANX_TOOLS_H */
+void cmd_meta(int argc, char **argv);
