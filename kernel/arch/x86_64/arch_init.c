@@ -9,6 +9,7 @@
 #include <anx/page.h>
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
+#include <anx/input.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
@@ -169,18 +170,32 @@ static void kbd_irq_handler(uint32_t irq, void *arg)
 	/* Handle shift key */
 	if (scancode == 0x2A || scancode == 0x36) {
 		kbd_shift = true;
+		anx_input_ps2_key(scancode, 0);
 		return;
 	}
 	if (scancode == 0xAA || scancode == 0xB6) {
 		kbd_shift = false;
+		anx_input_ps2_key(scancode, 0);
 		return;
 	}
 
-	/* Ignore key releases (bit 7 set) */
+	/* Forward all scancodes (including releases) to input layer */
+	{
+		uint8_t raw = scancode & 0x7F;
+		uint32_t unicode = 0;
+
+		if (!(scancode & 0x80) && raw < 128) {
+			char ch = kbd_shift ? scancode_shift[raw] : scancode_map[raw];
+			unicode = (uint32_t)(unsigned char)ch;
+		}
+		anx_input_ps2_key(scancode, unicode);
+	}
+
+	/* Key releases: only needed for input layer above */
 	if (scancode & 0x80)
 		return;
 
-	/* Convert to ASCII */
+	/* Convert to ASCII for arch_console_getc() ring buffer */
 	if (scancode >= 128)
 		return;
 	c = kbd_shift ? scancode_shift[scancode] : scancode_map[scancode];
