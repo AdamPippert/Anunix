@@ -1645,6 +1645,8 @@ static void dispatch(int argc, char **argv)
 		cmd_model_init(argc, argv);
 	} else if (anx_strcmp(argv[0], "hw-inventory") == 0) {
 		cmd_hw_inventory();
+	} else if (anx_strcmp(argv[0], "hwd") == 0) {
+		cmd_hwd(argc, argv);
 	} else if (anx_strcmp(argv[0], "login") == 0) {
 		cmd_login(argc, argv);
 	} else if (anx_strcmp(argv[0], "logout") == 0) {
