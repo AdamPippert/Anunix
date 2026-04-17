@@ -119,3 +119,26 @@ int anx_cell_destroy(struct anx_cell *cell)
 	anx_free(cell);
 	return ANX_OK;
 }
+
+int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg)
+{
+	uint32_t bucket;
+	int ret;
+
+	for (bucket = 0; bucket < (1u << CELL_STORE_BITS); bucket++) {
+		struct anx_list_head *pos;
+		struct anx_list_head *head;
+
+		head = anx_htable_bucket(&cell_table, bucket);
+		ANX_LIST_FOR_EACH(pos, head) {
+			struct anx_cell *cell;
+
+			cell = ANX_LIST_ENTRY(pos, struct anx_cell,
+					     store_link);
+			ret = cb(cell, arg);
+			if (ret != 0)
+				return ret;
+		}
+	}
+	return ANX_OK;
+}
