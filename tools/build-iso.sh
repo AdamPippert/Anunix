@@ -147,37 +147,55 @@ echo "  modules: $(ls "${ISO_DIR}/boot/grub/x86_64-efi/"*.mod | wc -l | tr -d ' 
 EFI_IMG="${ISO_DIR}/EFI/BOOT/efiboot.img"
 
 if [ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]; then
-	# Create a raw FAT image using macOS-native tools (no mtools/Homebrew)
-	EFI_MNT="${BUILD_TMP:-/tmp}/efi_mount_$$"
+	# Create a raw FAT12 image for EFI boot
+	# Cross-platform: uses mtools on Linux, hdiutil on macOS
 
-	# 1. Create blank 8 MB raw image (must fit BOOTX64.EFI + grub.cfg + FAT overhead)
+	# 1. Create blank 8 MB raw image
 	dd if=/dev/zero of="${EFI_IMG}" bs=1k count=8192 2>/dev/null
 
-	# 2. Attach as a block device without mounting
-	EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null \
-		| head -1 | awk '{print $1}')
+	if command -v mformat >/dev/null 2>&1; then
+		# Linux path: use mtools (mformat + mcopy)
+		mformat -i "${EFI_IMG}" -F ::
+		mmd -i "${EFI_IMG}" ::/EFI
+		mmd -i "${EFI_IMG}" ::/EFI/BOOT
+		mcopy -i "${EFI_IMG}" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ::/EFI/BOOT/
+		# Copy Anunix EFI stub if present
+		if [ -f "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" ]; then
+			mcopy -i "${EFI_IMG}" "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" ::/EFI/BOOT/
+		fi
+		mmd -i "${EFI_IMG}" ::/boot
+		mmd -i "${EFI_IMG}" ::/boot/grub
+		mcopy -i "${EFI_IMG}" "${GRUB_CFG}" ::/boot/grub/grub.cfg
+	elif command -v hdiutil >/dev/null 2>&1; then
+		# macOS path: use hdiutil + newfs_msdos
+		EFI_MNT="${BUILD_TMP:-/tmp}/efi_mount_$$"
+		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null \
+			| head -1 | awk '{print $1}')
 
-	if [ -z "${EFI_DEV}" ]; then
-		echo "  ERROR: Could not attach EFI image" >&2
+		if [ -z "${EFI_DEV}" ]; then
+			echo "  ERROR: Could not attach EFI image" >&2
+			exit 1
+		fi
+
+		newfs_msdos -F 12 "${EFI_DEV}" > /dev/null 2>&1
+		mkdir -p "${EFI_MNT}"
+		mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
+
+		mkdir -p "${EFI_MNT}/EFI/BOOT"
+		cp "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" "${EFI_MNT}/EFI/BOOT/"
+		if [ -f "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" ]; then
+			cp "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" "${EFI_MNT}/EFI/BOOT/"
+		fi
+		mkdir -p "${EFI_MNT}/boot/grub"
+		cp "${GRUB_CFG}" "${EFI_MNT}/boot/grub/grub.cfg"
+
+		umount "${EFI_MNT}" 2>/dev/null
+		hdiutil detach "${EFI_DEV}" > /dev/null 2>&1
+		rmdir "${EFI_MNT}" 2>/dev/null || true
+	else
+		echo "  ERROR: need mtools (Linux) or hdiutil (macOS) for EFI image" >&2
 		exit 1
 	fi
-
-	# 3. Format as FAT12
-	newfs_msdos -F 12 "${EFI_DEV}" > /dev/null 2>&1
-
-	# 4. Mount, copy files, unmount
-	mkdir -p "${EFI_MNT}"
-	mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
-
-	mkdir -p "${EFI_MNT}/EFI/BOOT"
-	cp "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" "${EFI_MNT}/EFI/BOOT/"
-	# Include grub.cfg inside EFI image as fallback
-	mkdir -p "${EFI_MNT}/boot/grub"
-	cp "${GRUB_CFG}" "${EFI_MNT}/boot/grub/grub.cfg"
-
-	umount "${EFI_MNT}" 2>/dev/null
-	hdiutil detach "${EFI_DEV}" > /dev/null 2>&1
-	rmdir "${EFI_MNT}" 2>/dev/null || true
 
 	echo "  efiboot.img: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
 else
