@@ -248,6 +248,17 @@ int anx_renderer_gpu_register(void);
 int anx_renderer_headless_register(void);
 
 /* ------------------------------------------------------------------ */
+/* Compositor support                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Walk all surfaces back-to-front, commit every ANX_SURF_VISIBLE surface,
+ * and set keyboard focus to the topmost visible surface.
+ * Returns number of surfaces committed, negative on error.
+ */
+int anx_iface_compositor_repaint(void);
+
+/* ------------------------------------------------------------------ */
 /* Wayland compatibility bridge                                         */
 /* ------------------------------------------------------------------ */
 

@@ -491,3 +491,53 @@ anx_wayland_surface_wrap(void *pixels, uint32_t width, uint32_t height,
 	*out = surf;
 	return ANX_OK;
 }
+
+/* ------------------------------------------------------------------ */
+/* Compositor support                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Walk all surfaces in z-order (back to front) and commit every visible
+ * surface. Returns the number of surfaces committed, or a negative error.
+ * Also sets input focus to the topmost ANX_SURF_VISIBLE surface.
+ */
+int
+anx_iface_compositor_repaint(void)
+{
+	struct anx_list_head *pos;
+	anx_oid_t topmost_focus;
+	bool found_focus = false;
+	int committed = 0;
+	bool flags;
+
+	topmost_focus.hi = 0;
+	topmost_focus.lo = 0;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+
+	ANX_LIST_FOR_EACH(pos, &surf_zlist) {
+		struct anx_surface *s =
+			ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
+
+		if (s->state != ANX_SURF_VISIBLE)
+			continue;
+
+		if (s->renderer_ops && s->renderer_ops->commit) {
+			anx_spin_unlock_irqrestore(&iface_lock, flags);
+			s->renderer_ops->commit(s);
+			anx_spin_lock_irqsave(&iface_lock, &flags);
+			committed++;
+		}
+
+		/* Topmost visible surface gets keyboard focus */
+		if (!found_focus) {
+			topmost_focus = s->oid;
+			found_focus = true;
+		}
+	}
+
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	anx_input_focus_set(topmost_focus);
+	return committed;
+}
