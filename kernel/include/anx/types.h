@@ -73,5 +73,7 @@ typedef uint64_t anx_time_t;
 #define ANX_ETIMEDOUT	-9
 #define ANX_ECONNRESET	-10
 #define ANX_EHOSTUNREACH -11
+#define ANX_ENOTIMPL	-12   /* not yet implemented */
+#define ANX_EFULL	-13   /* store or queue is full */
 
 #endif /* ANX_TYPES_H */

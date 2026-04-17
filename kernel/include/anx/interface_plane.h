@@ -15,10 +15,6 @@
 #include <anx/types.h>
 #include <anx/list.h>
 #include <anx/spinlock.h>
-#include <anx/state_object.h>
-#include <anx/cell.h>
-#include <anx/engine.h>
-#include <anx/route.h>
 
 /* ------------------------------------------------------------------ */
 /* Surface lifecycle states                                             */
@@ -34,93 +30,115 @@ enum anx_surface_state {
 };
 
 /* ------------------------------------------------------------------ */
-/* Semantic content node types (surface content tree)                  */
+/* Semantic content node types                                          */
 /* ------------------------------------------------------------------ */
 
 enum anx_content_type {
-	ANX_CONTENT_CANVAS,         /* raw pixel/GPU buffer (Wayland compat) */
-	ANX_CONTENT_TEXT,           /* unicode text with optional markup */
-	ANX_CONTENT_BUTTON,         /* activatable control */
-	ANX_CONTENT_FORM,           /* structured input collection */
-	ANX_CONTENT_VIEWPORT,       /* sub-surface region */
-	ANX_CONTENT_AUDIO_STREAM,   /* PCM/compressed audio */
-	ANX_CONTENT_SENSOR_STREAM,  /* live sensor data (camera, lidar, etc.) */
+	ANX_CONTENT_CANVAS,          /* raw pixel buffer (Wayland compat) */
+	ANX_CONTENT_TEXT,            /* UTF-8 text, NUL-terminated in data */
+	ANX_CONTENT_BUTTON,          /* activatable label, text in label[] */
+	ANX_CONTENT_FORM,            /* structured input collection */
+	ANX_CONTENT_VIEWPORT,        /* sub-surface region */
+	ANX_CONTENT_AUDIO_STREAM,    /* PCM/compressed audio */
+	ANX_CONTENT_SENSOR_STREAM,   /* live sensor data */
 	ANX_CONTENT_ACTUATOR_TARGET, /* robot actuator control point */
-	ANX_CONTENT_HAPTIC_PATTERN, /* vibration/force-feedback spec */
-	ANX_CONTENT_VOID,           /* headless / agent-only surface */
+	ANX_CONTENT_HAPTIC_PATTERN,  /* vibration/force-feedback spec */
+	ANX_CONTENT_VOID,            /* headless / agent-only surface */
+};
+
+struct anx_content_node {
+	enum anx_content_type    type;
+	char                     label[128];   /* accessible name or button text */
+	void                    *data;         /* type-specific payload */
+	uint32_t                 data_len;
+	struct anx_content_node *children;
+	uint32_t                 child_count;
 };
 
 /* ------------------------------------------------------------------ */
-/* Renderer engine classes (registered in the Engine Registry)         */
+/* Renderer engine classes                                              */
 /* ------------------------------------------------------------------ */
 
 /*
- * Renderer engine classes extend enum anx_engine_class (engine.h).
- * Values start at ANX_ENGINE_RENDERER_BASE to avoid collision.
+ * Renderer classes use values above ANX_ENGINE_RENDERER_BASE so they
+ * never collide with the base anx_engine_class enum (values 0-8).
  */
-#define ANX_ENGINE_RENDERER_BASE     0x100
-
-#define ANX_ENGINE_RENDERER_GPU      (ANX_ENGINE_RENDERER_BASE + 0)
-#define ANX_ENGINE_RENDERER_VOICE    (ANX_ENGINE_RENDERER_BASE + 1)
-#define ANX_ENGINE_RENDERER_HAPTIC   (ANX_ENGINE_RENDERER_BASE + 2)
-#define ANX_ENGINE_RENDERER_ROBOT    (ANX_ENGINE_RENDERER_BASE + 3)
-#define ANX_ENGINE_RENDERER_HEADLESS (ANX_ENGINE_RENDERER_BASE + 4)
+#define ANX_ENGINE_RENDERER_BASE       0x100
+#define ANX_ENGINE_RENDERER_GPU        (ANX_ENGINE_RENDERER_BASE + 0)
+#define ANX_ENGINE_RENDERER_VOICE      (ANX_ENGINE_RENDERER_BASE + 1)
+#define ANX_ENGINE_RENDERER_HAPTIC     (ANX_ENGINE_RENDERER_BASE + 2)
+#define ANX_ENGINE_RENDERER_ROBOT      (ANX_ENGINE_RENDERER_BASE + 3)
+#define ANX_ENGINE_RENDERER_HEADLESS   (ANX_ENGINE_RENDERER_BASE + 4)
 #define ANX_ENGINE_RENDERER_COMPOSITOR (ANX_ENGINE_RENDERER_BASE + 5)
+
+/* ------------------------------------------------------------------ */
+/* Renderer operations (filled by each renderer implementation)        */
+/* ------------------------------------------------------------------ */
+
+struct anx_surface;  /* forward */
+
+struct anx_renderer_ops {
+	/* Called when a surface is mapped to this renderer. */
+	int  (*map)(struct anx_surface *surf);
+	/* Called to push committed content to the output medium. */
+	int  (*commit)(struct anx_surface *surf);
+	/* Called to mark a sub-region dirty (hint; commit follows). */
+	void (*damage)(struct anx_surface *surf,
+	               int32_t x, int32_t y, uint32_t w, uint32_t h);
+	/* Called when a surface is unmapped or destroyed. */
+	void (*unmap)(struct anx_surface *surf);
+};
 
 /* ------------------------------------------------------------------ */
 /* Capability flags for Interface Plane operations                     */
 /* ------------------------------------------------------------------ */
 
-#define ANX_CAP_SURF_CREATE    (1 << 20)  /* create new surfaces */
-#define ANX_CAP_SURF_MAP       (1 << 21)  /* map surface to renderer */
-#define ANX_CAP_SURF_DESTROY   (1 << 22)  /* destroy any surface */
-#define ANX_CAP_INPUT_RECEIVE  (1 << 23)  /* receive input events */
-#define ANX_CAP_INPUT_INJECT   (1 << 24)  /* inject synthetic events */
-#define ANX_CAP_COMPOSITOR     (1 << 25)  /* register as compositor */
-#define ANX_CAP_ENV_SWITCH     (1 << 26)  /* switch active environment */
-#define ANX_CAP_RENDERER_REG   (1 << 27)  /* register a renderer engine */
+#define ANX_CAP_SURF_CREATE    (1u << 20)
+#define ANX_CAP_SURF_MAP       (1u << 21)
+#define ANX_CAP_SURF_DESTROY   (1u << 22)
+#define ANX_CAP_INPUT_RECEIVE  (1u << 23)
+#define ANX_CAP_INPUT_INJECT   (1u << 24)
+#define ANX_CAP_COMPOSITOR     (1u << 25)
+#define ANX_CAP_ENV_SWITCH     (1u << 26)
+#define ANX_CAP_RENDERER_REG   (1u << 27)
 
 /* ------------------------------------------------------------------ */
 /* Surface Object                                                       */
 /* ------------------------------------------------------------------ */
 
-struct anx_content_node {
-	enum anx_content_type   type;
-	char                    label[128];    /* accessible name */
-	void                   *data;          /* type-specific payload */
-	uint32_t                data_len;
-	struct anx_content_node *children;
-	uint32_t                child_count;
-};
+#define ANX_SURF_MAX  256
 
 struct anx_surface {
-	anx_oid_t               oid;           /* State Object OID */
-	enum anx_surface_state  state;
-	anx_cid_t               owner_cid;     /* cell that created this surface */
-	anx_cid_t               compositor_cid;/* compositor cell managing it */
+	anx_oid_t                oid;            /* globally unique ID */
+	enum anx_surface_state   state;
+	anx_cid_t                owner_cid;      /* cell that created this */
+	anx_cid_t                compositor_cid; /* compositor cell managing it */
 
-	/* Semantic content tree */
+	/* Semantic content */
 	struct anx_content_node *content_root;
 
 	/* Renderer assignment */
-	int                     renderer_class; /* ANX_ENGINE_RENDERER_* */
-	anx_eid_t               renderer_eid;  /* assigned renderer engine ID */
+	int                      renderer_class; /* ANX_ENGINE_RENDERER_* */
+	const struct anx_renderer_ops *renderer_ops;
 
 	/* Geometry (renderer-specific interpretation) */
-	int32_t                 x, y;
-	uint32_t                width, height;
-	uint32_t                z_order;
+	int32_t                  x, y;
+	uint32_t                 width, height;
+	uint32_t                 z_order;        /* higher = closer to front */
 
 	/* Hierarchy */
-	anx_oid_t               parent_oid;    /* parent surface, or zero */
-	struct anx_list_head    children;
+	anx_oid_t                parent_oid;
+	struct anx_list_head     children;       /* child surfaces */
 
-	/* Synchronization */
-	struct anx_spinlock     lock;
+	/* Internal: hashtable chain and z-order list membership */
+	struct anx_list_head     ht_node;
+	struct anx_list_head     z_node;
+
+	struct anx_spinlock      lock;
 };
 
 /* ------------------------------------------------------------------ */
-/* Event Objects (ANX_OBJ_EVENT, routed via Routing Plane)             */
+/* Event Objects                                                        */
 /* ------------------------------------------------------------------ */
 
 enum anx_event_type {
@@ -133,10 +151,10 @@ enum anx_event_type {
 	ANX_EVENT_TOUCH_MOVE,
 	ANX_EVENT_TOUCH_END,
 	ANX_EVENT_GESTURE,
-	ANX_EVENT_VOICE_INTENT,     /* parsed voice command */
-	ANX_EVENT_VOICE_RAW,        /* raw audio segment */
-	ANX_EVENT_SENSOR,           /* generic sensor reading */
-	ANX_EVENT_ACTUATOR_FEEDBACK,/* robot joint/motor feedback */
+	ANX_EVENT_VOICE_INTENT,
+	ANX_EVENT_VOICE_RAW,
+	ANX_EVENT_SENSOR,
+	ANX_EVENT_ACTUATOR_FEEDBACK,
 	ANX_EVENT_FOCUS_ENTER,
 	ANX_EVENT_FOCUS_LEAVE,
 	ANX_EVENT_SURFACE_MAPPED,
@@ -144,12 +162,12 @@ enum anx_event_type {
 };
 
 struct anx_event {
-	anx_oid_t           oid;            /* State Object OID */
+	anx_oid_t           oid;            /* event's own OID */
 	enum anx_event_type type;
-	uint64_t            timestamp_ns;   /* kernel monotonic time */
-	anx_oid_t           target_surf;    /* surface this event is for */
-	anx_cid_t           source_cell;    /* cell that produced the event */
-	uint32_t            device_id;      /* input device or sensor ID */
+	uint64_t            timestamp_ns;
+	anx_oid_t           target_surf;    /* surface this event targets */
+	anx_cid_t           source_cell;
+	uint32_t            device_id;
 
 	union {
 		struct { int32_t x, y; uint32_t buttons; uint32_t modifiers; } pointer;
@@ -167,64 +185,79 @@ struct anx_event {
 /* ------------------------------------------------------------------ */
 
 #define ANX_ENV_NAME_MAX  64
+#define ANX_ENV_MAX        8
 
 struct anx_environment {
-	char                name[ANX_ENV_NAME_MAX];  /* e.g. "visual-desktop" */
-	char                schema[128];             /* e.g. "anx:env/visual-desktop/v1" */
-	int                 renderer_class;          /* primary renderer */
-	anx_eid_t           compositor_eid;          /* active compositor */
-	uint32_t            input_device_mask;       /* bound input devices */
-	anx_cid_t           manager_cid;             /* cell managing this env */
-	int                 active;
+	char     name[ANX_ENV_NAME_MAX];
+	char     schema[128];
+	int      renderer_class;
+	uint32_t input_device_mask;
+	int      active;
 };
 
 /* ------------------------------------------------------------------ */
 /* Interface Plane API                                                  */
 /* ------------------------------------------------------------------ */
 
+/* Subsystem init — call after anx_engine_registry_init() */
+int anx_iface_init(void);
+
 /* Surface management */
-int anx_iface_surface_create(struct anx_cell *owner, int renderer_class,
+int anx_iface_surface_create(int renderer_class,
                               struct anx_content_node *root,
-                              struct anx_surface **out);
-int anx_iface_surface_map(struct anx_surface *surf, anx_eid_t renderer_eid);
-int anx_iface_surface_damage(struct anx_surface *surf,
                               int32_t x, int32_t y,
-                              uint32_t w, uint32_t h);
+                              uint32_t width, uint32_t height,
+                              struct anx_surface **out);
+int anx_iface_surface_map(struct anx_surface *surf);
+int anx_iface_surface_damage(struct anx_surface *surf,
+                              int32_t x, int32_t y, uint32_t w, uint32_t h);
 int anx_iface_surface_commit(struct anx_surface *surf);
 int anx_iface_surface_destroy(struct anx_surface *surf);
+
+/* Surface queries */
+int anx_iface_surface_list(anx_oid_t *oids_out, uint32_t max,
+                            uint32_t *count_out);
+int anx_iface_surface_lookup(anx_oid_t oid, struct anx_surface **out);
 
 /* Event routing */
 int anx_iface_event_post(struct anx_event *ev);
 int anx_iface_event_subscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
 int anx_iface_event_unsubscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
+/* Poll for the next event addressed to cell_cid; returns ANX_ENOENT if empty */
+int anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out);
 
 /* Renderer registration */
-int anx_iface_renderer_register(int renderer_class, anx_eid_t eid,
-                                 const char *name);
-int anx_iface_renderer_unregister(anx_eid_t eid);
-anx_eid_t anx_iface_renderer_find(int renderer_class);
+int       anx_iface_renderer_register(int renderer_class,
+                                       const struct anx_renderer_ops *ops,
+                                       const char *name);
+int       anx_iface_renderer_unregister(int renderer_class);
+const struct anx_renderer_ops *anx_iface_renderer_ops(int renderer_class);
 
 /* Environment management */
+int anx_iface_env_define(const char *name, const char *schema,
+                          int renderer_class);
 int anx_iface_env_activate(const char *env_name);
 int anx_iface_env_deactivate(const char *env_name);
 int anx_iface_env_query(const char *env_name, struct anx_environment *out);
 
-/* Surface tree query */
-int anx_iface_surface_list(anx_oid_t *oids_out, uint32_t max, uint32_t *count_out);
-int anx_iface_surface_lookup(anx_oid_t oid, struct anx_surface **out);
+/* ------------------------------------------------------------------ */
+/* Renderer registration helpers (called by renderer_*.c at boot)      */
+/* ------------------------------------------------------------------ */
+
+int anx_renderer_gpu_register(void);
+int anx_renderer_headless_register(void);
 
 /* ------------------------------------------------------------------ */
 /* Wayland compatibility bridge                                         */
 /* ------------------------------------------------------------------ */
 
 /*
- * anx_wayland_surface_wrap() bridges an existing Wayland pixel buffer
- * into the Interface Plane as a CANVAS content surface with RENDERER_GPU.
- * Called by the Wayland compat layer in userland when a wl_surface
- * commits a buffer.
+ * Wrap an existing pixel buffer as a CANVAS surface on the GPU renderer.
+ * The caller retains ownership of pixels; surface must be destroyed before
+ * the pixel buffer is freed.
  */
-int anx_wayland_surface_wrap(void *wl_buffer, uint32_t width, uint32_t height,
-                              anx_cid_t owner_cid,
+int anx_wayland_surface_wrap(void *pixels, uint32_t width, uint32_t height,
+                              int32_t x, int32_t y,
                               struct anx_surface **out);
 
 #endif /* ANX_INTERFACE_PLANE_H */
