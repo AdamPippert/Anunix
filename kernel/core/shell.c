@@ -35,6 +35,7 @@
 #include <anx/gui.h>
 #include <anx/io.h>
 #include <anx/perf.h>
+#include <anx/tools.h>
 #include <anx/acpi.h>
 
 /* --- Line input with history --- */
@@ -252,7 +253,14 @@ static void cmd_help(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kputs("Anunix kernel monitor\n\n");
+	kputs("ansh — Anunix Shell\n\n");
+	kputs("Object tools:\n");
+	kputs("  ls [ns:path]               List namespace entries\n");
+	kputs("  cat <oid-or-path>          Read object payload\n");
+	kputs("  write <ns:path> <content>  Create a State Object\n");
+	kputs("  sysinfo                    System overview\n");
+	kputs("  netinfo                    Network configuration\n");
+	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
 	kputs("  version                    Show kernel version\n");
 	kputs("  mem stats                  Page allocator statistics\n");
@@ -1545,6 +1553,16 @@ static void dispatch(int argc, char **argv)
 	if (anx_strcmp(argv[0], "help") == 0 ||
 	    anx_strcmp(argv[0], "?") == 0) {
 		cmd_help(argc, argv);
+	} else if (anx_strcmp(argv[0], "ls") == 0) {
+		cmd_ls(argc, argv);
+	} else if (anx_strcmp(argv[0], "cat") == 0) {
+		cmd_cat(argc, argv);
+	} else if (anx_strcmp(argv[0], "write") == 0) {
+		cmd_write_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "sysinfo") == 0) {
+		cmd_sysinfo(argc, argv);
+	} else if (anx_strcmp(argv[0], "netinfo") == 0) {
+		cmd_netinfo(argc, argv);
 	} else if (anx_strcmp(argv[0], "version") == 0) {
 		cmd_version(argc, argv);
 	} else if (anx_strcmp(argv[0], "mem") == 0) {
@@ -1653,7 +1671,7 @@ void anx_shell_run(void)
 	char *argv[MAX_ARGS];
 	int argc;
 
-	kputs("\nAnunix kernel monitor ready. Type 'help' for commands.\n\n");
+	kputs("\nansh ready. Type 'help' for commands.\n\n");
 
 	for (;;) {
 		kputs("anx> ");

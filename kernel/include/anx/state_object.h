@@ -148,4 +148,8 @@ struct anx_state_object *anx_objstore_lookup(const anx_oid_t *oid);
 /* Release a reference (decrements refcount) */
 void anx_objstore_release(struct anx_state_object *obj);
 
+/* Iterate all objects in the store. Callback returns 0 to continue, non-zero to stop. */
+typedef int (*anx_objstore_iter_fn)(struct anx_state_object *obj, void *arg);
+int anx_objstore_iterate(anx_objstore_iter_fn cb, void *arg);
+
 #endif /* ANX_STATE_OBJECT_H */
