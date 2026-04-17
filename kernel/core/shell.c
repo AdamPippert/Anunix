@@ -33,6 +33,7 @@
 #include <anx/auth.h>
 #include <anx/model_client.h>
 #include <anx/gui.h>
+#include <anx/interface_plane.h>
 #include <anx/io.h>
 #include <anx/perf.h>
 #include <anx/tools.h>
@@ -119,9 +120,11 @@ static int kgetline(char *buf, size_t size)
 	while (pos < size - 1) {
 		int c;
 
-		/* Poll for input, updating clock while waiting */
-		while (!arch_console_has_input())
+		/* Poll for input, updating clock and repainting surfaces */
+		while (!arch_console_has_input()) {
 			anx_gui_update_time();
+			anx_iface_compositor_repaint();
+		}
 
 		c = arch_console_getc();
 		if (c < 0)
