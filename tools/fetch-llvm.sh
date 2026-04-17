@@ -21,22 +21,30 @@ if [ -x "${BIN_DIR}/ld.lld" ] && [ -x "${BIN_DIR}/llvm-objcopy" ]; then
 	exit 0
 fi
 
-# Detect host and pick the right release.
-# LLVM dropped x86_64-darwin builds after 15.x, so we use different
-# versions per architecture. We only need ld.lld and llvm-objcopy,
-# which are stable across versions.
+# Detect host OS and architecture, pick the right LLVM release.
+# We only need ld.lld and llvm-objcopy.
 UNAME_M=$(uname -m)
-case "${UNAME_M}" in
-	x86_64)
+UNAME_S=$(uname -s)
+
+case "${UNAME_S}-${UNAME_M}" in
+	Darwin-x86_64)
 		LLVM_VERSION="15.0.7"
 		ARCHIVE_NAME="clang+llvm-${LLVM_VERSION}-x86_64-apple-darwin21.0"
 		;;
-	arm64)
+	Darwin-arm64)
 		LLVM_VERSION="18.1.8"
 		ARCHIVE_NAME="clang+llvm-${LLVM_VERSION}-arm64-apple-macos11"
 		;;
+	Linux-x86_64)
+		LLVM_VERSION="18.1.8"
+		ARCHIVE_NAME="clang+llvm-${LLVM_VERSION}-x86_64-linux-gnu-ubuntu-18.04"
+		;;
+	Linux-aarch64)
+		LLVM_VERSION="18.1.8"
+		ARCHIVE_NAME="clang+llvm-${LLVM_VERSION}-aarch64-linux-gnu"
+		;;
 	*)
-		echo "Unsupported architecture: ${UNAME_M}" >&2
+		echo "Unsupported platform: ${UNAME_S}-${UNAME_M}" >&2
 		exit 1
 		;;
 esac
