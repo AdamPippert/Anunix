@@ -37,6 +37,7 @@
 #include <anx/io.h>
 #include <anx/perf.h>
 #include <anx/tools.h>
+#include <anx/installer.h>
 #include <anx/acpi.h>
 
 /* --- Line input with history --- */
@@ -270,6 +271,9 @@ static void cmd_help(int argc, char **argv)
 	kputs("  cells                      List execution cells\n");
 	kputs("  sysinfo                    System overview\n");
 	kputs("  netinfo                    Network configuration\n");
+	kputs("  install -i                 Interactive OS installer\n");
+	kputs("  meta show|set|get <path>   Object metadata editor\n");
+	kputs("  echo <text...>             Print text ($? for return code)\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
 	kputs("  version                    Show kernel version\n");
@@ -1694,6 +1698,15 @@ static void dispatch(int argc, char **argv)
 			__asm__ volatile("lidt %0" : : "m"(null_idt));
 			__asm__ volatile("int3");
 		}
+	} else if (anx_strcmp(argv[0], "install") == 0) {
+		if (argc >= 2 && anx_strcmp(argv[1], "-i") == 0) {
+			anx_installer_interactive();
+		} else {
+			kprintf("usage: install -i (interactive)\n");
+			kprintf("  Automated install requires provision.json\n");
+		}
+	} else if (anx_strcmp(argv[0], "meta") == 0) {
+		cmd_meta(argc, argv);
 	} else if (anx_strcmp(argv[0], "echo") == 0) {
 		int ei;
 
