@@ -52,6 +52,29 @@ void anx_objstore_release(struct anx_state_object *obj)
 		obj->refcount--;
 }
 
+int anx_objstore_iterate(anx_objstore_iter_fn cb, void *arg)
+{
+	uint32_t bucket;
+	int ret;
+
+	for (bucket = 0; bucket < (1u << OID_HASH_BITS); bucket++) {
+		struct anx_list_head *pos;
+		struct anx_list_head *head;
+
+		head = anx_htable_bucket(&oid_table, bucket);
+		ANX_LIST_FOR_EACH(pos, head) {
+			struct anx_state_object *obj;
+
+			obj = ANX_LIST_ENTRY(pos, struct anx_state_object,
+					     oid_link);
+			ret = cb(obj, arg);
+			if (ret != 0)
+				return ret;
+		}
+	}
+	return ANX_OK;
+}
+
 static void objstore_add(struct anx_state_object *obj)
 {
 	uint64_t hash = anx_uuid_hash(&obj->oid);

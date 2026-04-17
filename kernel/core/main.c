@@ -24,6 +24,7 @@
 #include <anx/route_feedback.h>
 #include <anx/posix.h>
 #include <anx/pci.h>
+#include <anx/namespace.h>
 #include <anx/acpi.h>
 #include <anx/string.h>
 #include <anx/credential.h>
@@ -142,6 +143,7 @@ void kernel_main(void)
 	/* 1. State Object Layer (RFC-0002) */
 	PERF_BEGIN("objstore_init");
 	anx_objstore_init();
+	anx_ns_init();
 	PERF_END();
 	kprintf("state object layer initialized\n");
 
