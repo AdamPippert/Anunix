@@ -36,6 +36,7 @@
 #include <anx/perf.h>
 #include <anx/gui.h>
 #include <anx/interface_plane.h>
+#include <anx/usb_mouse.h>
 #include <anx/shell.h>
 
 #define ANX_VERSION "2026.4.17"
@@ -191,6 +192,9 @@ void kernel_main(void)
 			anx_iface_env_activate("headless-agent");
 		kprintf("interface plane initialized\n");
 	}
+
+	/* 7b. USB HID mouse (non-fatal if no controller found) */
+	anx_usb_mouse_init();
 
 	/* 8. POSIX compatibility layer */
 	anx_posix_init();
