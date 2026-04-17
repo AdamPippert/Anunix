@@ -13,6 +13,8 @@
 #define ANX_INTERFACE_PLANE_H
 
 #include <anx/types.h>
+#include <anx/list.h>
+#include <anx/spinlock.h>
 #include <anx/state_object.h>
 #include <anx/cell.h>
 #include <anx/engine.h>
@@ -111,7 +113,7 @@ struct anx_surface {
 
 	/* Hierarchy */
 	anx_oid_t               parent_oid;    /* parent surface, or zero */
-	struct anx_list         children;
+	struct anx_list_head    children;
 
 	/* Synchronization */
 	struct anx_spinlock     lock;
