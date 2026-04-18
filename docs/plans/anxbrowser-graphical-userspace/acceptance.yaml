@@ -1,0 +1,358 @@
+version: 1
+name: anxbrowser-graphical-userspace-acceptance
+mode: advisory-planning-only
+
+global_rules:
+  - id: GR-001
+    rule: "No ticket is complete without at least 1 unit test and 1 integration test."
+  - id: GR-002
+    rule: "All tests must be deterministic (fixed inputs, fixed expected outputs, explicit pass/fail conditions)."
+  - id: GR-003
+    rule: "Performance tests must declare hardware/profile context and threshold budget."
+  - id: GR-004
+    rule: "Security-relevant tickets must include at least one negative (deny) test."
+
+phases:
+  - phase: P0
+    tickets:
+      - id: P0-001
+        title: Userspace process isolation baseline
+        acceptance:
+          unit_tests:
+            - id: P0-001-U01
+              name: isolate_vm_descriptors
+              check: "Two spawned process contexts have distinct virtual-memory descriptor roots and page map IDs."
+            - id: P0-001-U02
+              name: sibling_integrity_after_fault
+              check: "A simulated fault in process A does not mutate process B mapping metadata."
+          integration_tests:
+            - id: P0-001-I01
+              name: two_process_lifecycle
+              check: "QEMU boot can spawn process A and B; each exits independently with expected status codes."
+          done_when:
+            - "Process-context isolation invariants enforced in automated tests."
+
+      - id: P0-002
+        title: Executable loader + syscall ABI v0
+        acceptance:
+          unit_tests:
+            - id: P0-002-U01
+              name: reject_invalid_binary_matrix
+              check: "Loader rejects invalid magic, bad entry point, overlapping/invalid segments with explicit errors."
+            - id: P0-002-U02
+              name: syscall_table_bounds
+              check: "Unknown syscall IDs return defined ENOSYS-style code."
+          integration_tests:
+            - id: P0-002-I01
+              name: static_userprog_run
+              check: "Minimal static userspace program executes and returns deterministic stdout+exit status."
+            - id: P0-002-I02
+              name: abi_smoke
+              check: "open/read/write/close/time syscalls succeed with fixed expected outputs."
+          done_when:
+            - "exec path is no longer stub for baseline userspace binary."
+
+      - id: P0-003
+        title: Compositor as Execution Cell (minimum viable)
+        acceptance:
+          unit_tests:
+            - id: P0-003-U01
+              name: one_compositor_per_domain
+              check: "Attempting second compositor for same domain fails with explicit conflict code."
+            - id: P0-003-U02
+              name: registry_survives_compositor_restart
+              check: "Surface registry remains intact after compositor cell crash/restart."
+          integration_tests:
+            - id: P0-003-I01
+              name: z_order_commit_sequence
+              check: "For N visible surfaces, commit order matches z-order policy across repaint cycles."
+          done_when:
+            - "Repaint/focus is mediated by compositor cell lifecycle."
+
+      - id: P0-004
+        title: Input routing hardening
+        acceptance:
+          unit_tests:
+            - id: P0-004-U01
+              name: key_event_ordering
+              check: "Synthetic burst preserves key-down/key-up order per key."
+            - id: P0-004-U02
+              name: focus_gate
+              check: "Only focused surface receives keyboard events; no-focus drops are counted."
+            - id: P0-004-U03
+              name: monotonic_timestamps
+              check: "Event timestamps are strictly monotonic for a single input source stream."
+          integration_tests:
+            - id: P0-004-I01
+              name: focus_transfer_routing
+              check: "After focus change, subsequent events route to new focused surface only."
+            - id: P0-004-I02
+              name: queue_overflow_policy
+              check: "Under overload, drop/backpressure policy activates and increments telemetry counters."
+          done_when:
+            - "Input invariants are codified and pass in CI/QEMU profile."
+
+      - id: P0-005
+        title: Browser-grade TLS trust baseline
+        acceptance:
+          unit_tests:
+            - id: P0-005-U01
+              name: cert_chain_validation
+              check: "Known valid chain accepted; malformed and untrusted chain rejected."
+            - id: P0-005-U02
+              name: hostname_verification
+              check: "CN/SAN mismatch fails with explicit validation error."
+          integration_tests:
+            - id: P0-005-I01
+              name: https_success_path
+              check: "HTTPS request to known valid endpoint succeeds without proxy workaround."
+            - id: P0-005-I02
+              name: https_invalid_cert_path
+              check: "Endpoint with invalid cert is rejected and error is surfaced deterministically."
+          done_when:
+            - "TLS path is self-sufficient with trust-store validation lifecycle."
+
+      - id: P0-006
+        title: Browser profile/cache storage primitives
+        acceptance:
+          unit_tests:
+            - id: P0-006-U01
+              name: atomic_commit
+              check: "Interrupted write never leaves partially committed profile visible as current."
+            - id: P0-006-U02
+              name: lock_contention
+              check: "Concurrent writer conflict is deterministic (fail/retry path defined)."
+          integration_tests:
+            - id: P0-006-I01
+              name: crash_recovery_profile
+              check: "Post-reboot recovery yields last committed profile state and passes integrity hash check."
+          done_when:
+            - "Profile/cache durability guarantees are test-backed."
+
+      - id: P0-007
+        title: Shared-memory IPC v0
+        acceptance:
+          unit_tests:
+            - id: P0-007-U01
+              name: shm_roundtrip
+              check: "Producer-consumer shared buffer roundtrip matches exact bytes and sequence marker."
+            - id: P0-007-U02
+              name: unauthorized_map_denied
+              check: "Capability-missing map call fails with explicit denial code."
+          integration_tests:
+            - id: P0-007-I01
+              name: compositor_consume_buffer
+              check: "Userspace producer updates buffer; compositor consumer sees updates in bounded latency window."
+          done_when:
+            - "Secure low-copy IPC path exists for graphics data exchange."
+
+      - id: P0-008
+        title: Conformance/perf harness integration
+        acceptance:
+          unit_tests:
+            - id: P0-008-U01
+              name: report_schema_validation
+              check: "Harness output matches fixed JSON/YAML schema and required fields."
+            - id: P0-008-U02
+              name: deterministic_diff_engine
+              check: "Given same prior/current artifacts, diff output is byte-stable."
+          integration_tests:
+            - id: P0-008-I01
+              name: weekly_run_artifact
+              check: "Scheduled run emits report artifact with scorecard and deltas."
+            - id: P0-008-I02
+              name: threshold_gate
+              check: "Configured regression threshold breach causes deterministic non-zero pipeline status."
+          done_when:
+            - "Conformance/perf reporting is integrated into repeatable workflow."
+
+  - phase: P1
+    tickets:
+      - id: P1-001
+        title: Dirty-rect compositor + frame pacing
+        acceptance:
+          unit_tests:
+            - id: P1-001-U01
+              name: damage_region_merge
+              check: "Dirty rectangle merge output matches expected canonical region set."
+          integration_tests:
+            - id: P1-001-I01
+              name: partial_redraw_efficiency
+              check: "Partial updates reduce committed pixel area vs full redraw baseline by configured threshold."
+            - id: P1-001-I02
+              name: frame_pacing_bounds
+              check: "Frame cadence stays within jitter budget under fixed workload profile."
+          done_when:
+            - "Damage-driven rendering and pacing metrics meet threshold."
+
+      - id: P1-002
+        title: Multi-window/tab surface model hardening
+        acceptance:
+          unit_tests:
+            - id: P1-002-U01
+              name: z_order_ops
+              check: "Raise/lower/reorder operations produce expected deterministic order."
+          integration_tests:
+            - id: P1-002-I01
+              name: focus_with_tab_switch
+              check: "Active tab switch updates focus target deterministically."
+            - id: P1-002-I02
+              name: close_active_tab_focus_fallback
+              check: "Closing active tab transfers focus to defined fallback surface."
+          done_when:
+            - "Multi-surface semantics are stable and test-verified."
+
+      - id: P1-003
+        title: Clipboard, drag/drop, file-pick contracts
+        acceptance:
+          unit_tests:
+            - id: P1-003-U01
+              name: clipboard_policy_deny
+              check: "Unauthorized clipboard read/write denied with explicit code."
+          integration_tests:
+            - id: P1-003-I01
+              name: clipboard_roundtrip
+              check: "Copy/paste text roundtrip succeeds with exact payload match."
+            - id: P1-003-I02
+              name: drag_drop_file_meta
+              check: "Dropped file metadata reaches target surface with correct fields."
+          done_when:
+            - "Core desktop interaction contracts are in place."
+
+      - id: P1-004
+        title: Text/font shaping correctness baseline
+        acceptance:
+          unit_tests:
+            - id: P1-004-U01
+              name: utf8_valid_invalid_vectors
+              check: "UTF-8 parser accepts valid vectors and rejects malformed sequences."
+          integration_tests:
+            - id: P1-004-I01
+              name: multilingual_fixture_render
+              check: "Script fixture set renders without crash and with stable glyph count expectations."
+            - id: P1-004-I02
+              name: font_fallback_path
+              check: "Missing glyph triggers deterministic fallback font selection."
+          done_when:
+            - "Text path supports non-ASCII baselines with predictable fallback."
+
+      - id: P1-005
+        title: Download pipeline + object policy integration
+        acceptance:
+          unit_tests:
+            - id: P1-005-U01
+              name: destination_policy_enforcement
+              check: "Invalid destination policy is rejected before write start."
+          integration_tests:
+            - id: P1-005-I01
+              name: interrupted_resume_hash
+              check: "Interrupted download resumes; final hash equals expected fixture hash."
+            - id: P1-005-I02
+              name: provenance_recording
+              check: "Completed download creates object metadata/provenance entries."
+          done_when:
+            - "Download lifecycle is recoverable and auditable."
+
+      - id: P1-006
+        title: Event queue QoS and telemetry
+        acceptance:
+          unit_tests:
+            - id: P1-006-U01
+              name: priority_ordering
+              check: "Higher-priority input events dequeue ahead of lower-priority cosmetic events."
+          integration_tests:
+            - id: P1-006-I01
+              name: overload_input_survival
+              check: "Under overload, input delivery ratio remains above configured floor."
+            - id: P1-006-I02
+              name: telemetry_counter_accuracy
+              check: "Queue metrics match injected synthetic load profile within tolerance."
+          done_when:
+            - "Queue behavior is observable and policy-enforced under stress."
+
+  - phase: P2
+    tickets:
+      - id: P2-001
+        title: Accessibility object model and assistive hooks
+        acceptance:
+          unit_tests:
+            - id: P2-001-U01
+              name: a11y_tree_schema
+              check: "Accessibility tree export validates against schema and required node attributes."
+          integration_tests:
+            - id: P2-001-I01
+              name: assistive_action_routing
+              check: "Assistive action dispatch triggers expected target interaction event."
+            - id: P2-001-I02
+              name: focus_announcement_stream
+              check: "Focus changes emit deterministic accessibility notifications."
+          done_when:
+            - "Accessibility is first-class and test-backed."
+
+      - id: P2-002
+        title: Media path baseline
+        acceptance:
+          unit_tests:
+            - id: P2-002-U01
+              name: audio_buffer_recovery
+              check: "Buffer underrun recovery path returns to steady playback within budget."
+          integration_tests:
+            - id: P2-002-I01
+              name: av_sync_fixture
+              check: "Fixed media fixture playback drift stays within configured sync threshold."
+            - id: P2-002-I02
+              name: seek_state_machine
+              check: "Start/stop/seek transitions follow defined state machine without deadlock."
+          done_when:
+            - "Media baseline supports common browser workloads deterministically."
+
+      - id: P2-003
+        title: Site/process isolation hardening profile
+        acceptance:
+          unit_tests:
+            - id: P2-003-U01
+              name: cross_origin_shm_deny
+              check: "Cross-origin unauthorized shared-memory map attempt is denied."
+          integration_tests:
+            - id: P2-003-I01
+              name: compromised_renderer_containment
+              check: "Renderer compromise simulation cannot read unrelated origin state."
+            - id: P2-003-I02
+              name: policy_violation_audit
+              check: "Isolation policy violations produce provenance-linked audit events."
+          done_when:
+            - "Isolation profile materially constrains hostile-web blast radius."
+
+      - id: P2-004
+        title: WPT-class conformance gate integration
+        acceptance:
+          unit_tests:
+            - id: P2-004-U01
+              name: corpus_runner_determinism
+              check: "Same corpus + seed generates byte-identical summary artifact."
+          integration_tests:
+            - id: P2-004-I01
+              name: baseline_diff_fidelity
+              check: "Behavior changes are isolated to explicit test IDs with stable diff format."
+            - id: P2-004-I02
+              name: gate_fail_on_threshold
+              check: "Configured compatibility regression threshold breach fails pipeline deterministically."
+          done_when:
+            - "Conformance gate blocks regressions automatically."
+
+      - id: P2-005
+        title: Crash diagnostics + performance observability
+        acceptance:
+          unit_tests:
+            - id: P2-005-U01
+              name: crash_artifact_schema
+              check: "Synthetic crash generates parseable artifact with required fields."
+          integration_tests:
+            - id: P2-005-I01
+              name: trace_phase_coverage
+              check: "Trace captures fixed benchmark phases in expected order."
+            - id: P2-005-I02
+              name: metrics_compatibility
+              check: "Telemetry schema remains backward compatible across two sequential versions."
+          done_when:
+            - "Failure triage and performance regressions are quickly diagnosable from artifacts."
