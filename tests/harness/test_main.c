@@ -32,6 +32,7 @@ int test_model_server(void);
 int test_posix(void);
 int test_external_call(void);
 int test_disk_store(void);
+int test_tensor(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -48,6 +49,7 @@ static struct test_case tests[] = {
 	{ "posix",		test_posix },
 	{ "external_call",	test_external_call },
 	{ "disk_store",		test_disk_store },
+	{ "tensor",		test_tensor },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
