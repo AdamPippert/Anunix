@@ -47,7 +47,9 @@
  * Emergency framebuffer write — draw a colored bar directly to
  * the multiboot2 framebuffer before any subsystem is initialized.
  * Used to prove the kernel is running on hardware with no serial.
+ * Only available on x86_64 where multiboot2 provides the FB info tag.
  */
+#ifdef __x86_64__
 extern uint32_t _mb_magic;
 extern uint64_t _mb_info;
 
@@ -95,6 +97,12 @@ static void early_fb_debug(uint32_t color, uint32_t row)
 			pixel[x] = color;
 	}
 }
+#else
+static void early_fb_debug(uint32_t color, uint32_t row)
+{
+	(void)color; (void)row;
+}
+#endif /* __x86_64__ */
 
 void kernel_main(void)
 {

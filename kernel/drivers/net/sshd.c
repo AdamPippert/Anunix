@@ -1445,24 +1445,61 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 					anx_free(signed_data);
 
 					if (verify_ret == 0) {
-						/* Log the pubkey fingerprint
-						 * for audit.  Any valid
-						 * Ed25519 sig is accepted
-						 * for now — production should
-						 * check authorized_keys. */
-						uint8_t fp[32];
-						uint32_t i;
+						/*
+						 * Signature valid — now check
+						 * authorized_keys credential.
+						 * If no credential exists we
+						 * warn and accept (dev mode).
+						 * If it exists, key must match.
+						 */
+						uint8_t authkeys[ANX_AUTHORIZED_KEYS_MAX * 32];
+						uint32_t ak_len = 0;
+						uint32_t ki;
+						bool authorized = false;
 
-						anx_sha256(pk_blob, pk_blob_len,
-							   fp);
-						kprintf("sshd: pubkey auth OK "
-							"for '");
-						for (i = 0; i < user_len && i < 64; i++)
-							kputc((char)user[i]);
-						kprintf("' fp=SHA256:");
-						for (i = 0; i < 8; i++)
-							kprintf("%02x", fp[i]);
-						kprintf("...\n");
+						if (anx_credential_exists("ssh-authorized-keys")) {
+							anx_credential_read(
+								"ssh-authorized-keys",
+								authkeys,
+								sizeof(authkeys),
+								&ak_len);
+							if (ak_len % 32 != 0)
+								ak_len = 0;
+							for (ki = 0; ki + 32 <= ak_len; ki += 32) {
+								if (anx_memcmp(authkeys + ki, pk, 32) == 0) {
+									authorized = true;
+									break;
+								}
+							}
+						} else {
+							/* No authorized_keys — dev mode, accept with warning */
+							kprintf("sshd: WARNING: no authorized_keys set, accepting any valid key\n");
+							authorized = true;
+						}
+
+						if (!authorized) {
+							kprintf("sshd: pubkey not in authorized_keys\n");
+							anx_free(signed_data);
+							anx_free(payload);
+							ret = sshd_send_userauth_failure(s);
+							if (ret != ANX_OK)
+								return ret;
+							continue;
+						}
+
+						{
+							uint8_t fp[32];
+							uint32_t i;
+
+							anx_sha256(pk_blob, pk_blob_len, fp);
+							kprintf("sshd: pubkey auth OK for '");
+							for (i = 0; i < user_len && i < 64; i++)
+								kputc((char)user[i]);
+							kprintf("' fp=SHA256:");
+							for (i = 0; i < 8; i++)
+								kprintf("%02x", fp[i]);
+							kprintf("...\n");
+						}
 						anx_free(payload);
 						return sshd_send_userauth_success(s);
 					}

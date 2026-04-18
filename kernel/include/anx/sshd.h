@@ -11,6 +11,9 @@
 
 #include <anx/types.h>
 
+/* Max authorized public keys per user in the credential store */
+#define ANX_AUTHORIZED_KEYS_MAX	8
+
 /* Initialize SSH server on the given port (default 22) */
 int anx_sshd_init(uint16_t port);
 

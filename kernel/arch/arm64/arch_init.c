@@ -333,3 +333,9 @@ void arch_wmb(void)
 {
 	__asm__ volatile("dsb st" ::: "memory");
 }
+
+const char *arch_boot_cmdline(void)
+{
+	/* ARM64 QEMU virt has no multiboot cmdline; use device tree in future */
+	return NULL;
+}

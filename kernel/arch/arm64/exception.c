@@ -9,6 +9,7 @@
 
 #include <anx/types.h>
 #include <anx/arch.h>
+#include <anx/irq.h>
 #include <anx/kprintf.h>
 
 /* --- GICv2 register map (QEMU virt) --- */
@@ -40,6 +41,13 @@ static inline uint32_t mmio_read32(uint64_t addr)
 {
 	return *(volatile uint32_t *)addr;
 }
+
+/* --- Dynamic IRQ dispatch table --- */
+
+#define ANX_IRQ_MAX	16
+
+static anx_irq_handler_t irq_handlers[ANX_IRQ_MAX];
+static void              *irq_args[ANX_IRQ_MAX];
 
 /* --- Timer state --- */
 
@@ -135,6 +143,10 @@ void anx_exception_handler(uint64_t type, uint64_t esr,
 
 		if (irq == TIMER_IRQ) {
 			timer_isr();
+		} else if (irq >= 32 && irq < 32 + ANX_IRQ_MAX &&
+		           irq_handlers[irq - 32] != NULL) {
+			irq_handlers[irq - 32]((uint32_t)(irq - 32),
+			                       irq_args[irq - 32]);
 		} else if (irq < 1020) {
 			kprintf("IRQ %u (unhandled)\n", irq);
 		}
@@ -197,4 +209,37 @@ void arch_exception_init(void)
 uint64_t arch_timer_ticks(void)
 {
 	return timer_ticks;
+}
+
+/* --- Dynamic IRQ dispatch (GICv2 SPIs, INTIDs 32-1019) --- */
+
+int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
+{
+	if (irq >= ANX_IRQ_MAX || handler == NULL)
+		return -1;
+	irq_handlers[irq] = handler;
+	irq_args[irq]     = arg;
+	return 0;
+}
+
+void anx_irq_unmask(uint8_t irq)
+{
+	/* SPI base = INTID 32; enable in GICD_ISENABLER word 1 */
+	uint32_t intid = 32 + irq;
+
+	if (irq >= ANX_IRQ_MAX)
+		return;
+	mmio_write32(GICD_BASE + 0x100 + (intid / 32) * 4,
+	             1U << (intid % 32));
+}
+
+void anx_irq_mask(uint8_t irq)
+{
+	uint32_t intid = 32 + irq;
+
+	if (irq >= ANX_IRQ_MAX)
+		return;
+	/* GICD_ICENABLER: clear-enable */
+	mmio_write32(GICD_BASE + 0x180 + (intid / 32) * 4,
+	             1U << (intid % 32));
 }
