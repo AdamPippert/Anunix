@@ -13,9 +13,8 @@
 #include <anx/hashtable.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
+#include <anx/crypto.h>
 
-/* Forward declaration */
-void anx_sha256(const void *data, uint64_t len, struct anx_hash *out);
 int anx_lifecycle_transition(struct anx_state_object *obj,
 			     enum anx_object_state new_state);
 
@@ -89,7 +88,8 @@ static void objstore_remove(struct anx_state_object *obj)
 static void compute_content_hash(struct anx_state_object *obj)
 {
 	if (obj->payload && obj->payload_size > 0)
-		anx_sha256(obj->payload, obj->payload_size, &obj->content_hash);
+		anx_sha256(obj->payload, (uint32_t)obj->payload_size,
+			   obj->content_hash.bytes);
 	else
 		anx_memset(&obj->content_hash, 0, sizeof(obj->content_hash));
 }
