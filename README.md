@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.4.16-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.4.18-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-12%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-17%20passing-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -32,11 +32,62 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
 
-## Release: 2026.4.16
+## Release: 2026.4.18
 
-### Milestone: First Claude API Call from Bare Metal
+### Milestone: Tensor-native kernel + HTTP API + SSH server
 
-Anunix can now talk to Claude. From a cold boot, the kernel initializes its own networking stack, reads API credentials from a kernel-enforced secret store, builds a JSON request, sends it over TCP through a TLS proxy, parses the response, and displays Claude's answer — all in ~17,000 lines of C running on bare metal with no libc, no OS underneath.
+Anunix now treats **tensors as first-class kernel citizens** (RFC-0013) and speaks both **HTTP and SSH** to the outside world.  Agents and humans can connect to a running instance over the network, create tensors, run operations, inspect state, and script workflows end-to-end.
+
+```
+$ ssh -i ~/.ssh/id_ed25519 -p 12222 anunix@jekyll -- tensor stats default:/weights
+  shape: [128, 64], dtype: int8
+  mean:     63.500
+  variance: 1365.250
+  l2_norm:  44216320.000
+  sparsity: 0.062
+  min:      0.000
+  max:      127.000
+
+$ curl -X POST http://jekyll:18080/api/v1/exec \
+    -d '{"command": "tensor matmul default:/a default:/b default:/c"}'
+{"status": "ok", "output": "matmul -> [4,4] int8 (0 cycles)\n"}
+```
+
+### What's new in 2026.4.18
+
+**Tensors (RFC-0013)** — four phases of tensor + model support
+- `ANX_OBJ_TENSOR` State Object with shape, dtype, and BRIN statistics
+- Softfloat IEEE 754 arithmetic via integer registers (`-mgeneral-regs-only`)
+- `tensor create|info|stats|fill|slice|diff|quantize|search|matmul|relu|transpose|softmax`
+- Model namespace (`models:/<name>/layers/...`) with safetensors import
+- CPU reference math engine, operation dispatch through the Routing Plane
+- SGD optimizer step with provenance, checkpoint/verify
+
+**HTTP API server** on port 8080
+- `GET /api/v1/health` — liveness probe
+- `POST /api/v1/exec` — run any ansh command, returns JSON with captured output
+- Output capture hooks into kprintf for structured responses
+
+**SSH-2.0 server** on port 22
+- curve25519-sha256 key exchange, ssh-ed25519 host key, chacha20-poly1305 transport
+- Password and public-key authentication
+- Interactive shell + `ssh host -- cmd` exec mode
+- Host key persisted in the kernel credential store
+
+**Crypto primitives** in `kernel/lib/crypto/`
+- SHA-256 (streaming), SHA-512, HMAC-SHA-256
+- ChaCha20, Poly1305, AES-256-CTR
+- Curve25519 ECDH, Ed25519 sign/verify
+- CSPRNG with RDRAND detection + TSC fallback
+- RFC 8032 and RFC 7539 test vectors pass; fuzzed against Python reference
+
+**Claude Code skills** in `.claude/skills/`
+- `/anunix-build`, `/anunix-deploy`, `/anunix-exec`, `/anunix-test`
+- Package the build-deploy-test loop into one-shot slash commands
+
+### Earlier milestone: First Claude API call from bare metal (2026.4.16)
+
+Anunix can talk to Claude from a cold boot. The kernel initializes its own networking stack, reads API credentials from a kernel-enforced secret store, builds a JSON request, sends it over TCP through a TLS proxy, parses the response, and displays Claude's answer — all in ~25,000 lines of C running on bare metal with no libc, no OS underneath.
 
 ```
 anx> secret set anthropic-api-key sk-ant-api03-...
@@ -50,7 +101,7 @@ Hello! How can I help you today?
 [32 in / 12 out tokens]
 ```
 
-### What's in this release
+### What's in the 2026.4.16 release
 
 **Kernel Subsystems (RFC-0001 through RFC-0008)**
 - State Object Layer, Execution Cell Runtime, Memory Control Plane
@@ -169,6 +220,27 @@ anx> model-init anthropic-api-key 10.0.2.2 8080
 anx> ask What is the meaning of life?
 ```
 
+### HTTP and SSH access
+
+Boot with port forwarding to get programmatic + shell access from the host:
+
+```sh
+qemu-system-x86_64 -m 512M -nographic -no-reboot -serial mon:stdio \
+  -netdev user,id=n0,hostfwd=tcp::18080-:8080,hostfwd=tcp::12222-:22 \
+  -device virtio-net-pci,netdev=n0 \
+  -kernel build/x86_64/anunix-qemu.elf &
+
+# HTTP API:
+curl http://localhost:18080/api/v1/health
+curl -X POST http://localhost:18080/api/v1/exec \
+  -H 'Content-Type: application/json' \
+  -d '{"command": "tensor create default:/w 4,4 int8"}'
+
+# SSH (password "anunix" or pubkey):
+ssh -p 12222 anunix@localhost -- sysinfo
+ssh -i ~/.ssh/id_ed25519 -p 12222 anunix@localhost   # interactive shell
+```
+
 ## Project Structure
 
 ```
@@ -184,26 +256,39 @@ kernel/
     sched/            Unified Scheduler                 (RFC-0005)
     net/              Network Plane                     (RFC-0006)
     cap/              Capability Objects                (RFC-0007)
-    agent/            Model API client                  (new)
-    install/          GPT partitioning                  (new)
+    tensor/           Tensor Objects + math engine      (RFC-0013)
+    tools/            ansh command handlers (ls, tensor, model, etc.)
+    agent/            Model API client
+    install/          GPT partitioning
     credential.c      Credential Store                  (RFC-0008)
-    auth.c            Multi-key Authentication          (new)
-    shell.c           Interactive kernel monitor
+    auth.c            Multi-key Authentication
+    shell.c           Interactive kernel monitor (ansh)
     main.c            Kernel entry point
   drivers/
     fb/               Framebuffer + console
     pci/              PCI bus enumeration
     virtio/           Virtio transport, net, blk drivers
     net/              IP stack (Eth/ARP/IPv4/ICMP/UDP/TCP/DNS/HTTP)
+                        tcp_server.c — server-side TCP (listen/accept)
+                        httpd.c      — HTTP API endpoint
+                        sshd.c       — SSH-2.0 server
     acpi/             ACPI table parsing
   include/anx/        Public kernel headers
-  lib/                Kernel support (kprintf, alloc, json, font, etc.)
-tests/                Host-native unit tests
+  lib/
+    crypto/           SHA-256/512, ChaCha20, Poly1305, AES, Curve25519, Ed25519
+    (kprintf, alloc, json, font, hashtable, jpeg, etc.)
+tests/                Host-native unit tests (17 suites)
 tools/                Build scripts
+.claude/skills/       Claude Code slash commands for Anunix workflows
 assets/               Brand assets (logo)
 docs/rfcs/            Design specifications
 config/               GRUB boot configuration
 ```
+
+## Companion repos
+
+- `~/Development/Anunix-tools/` — deployment scripts, integration tests, SSH protocol diagnostic
+- `~/Development/Anunix-Browser/` — collaborative web browser daemon with Anunix bridge
 
 ## Design Documents
 
@@ -217,6 +302,7 @@ config/               GRUB boot configuration
 | [RFC-0006](docs/rfcs/RFC-0006-network-plane.md) | Network Plane and Federated Execution | Draft |
 | [RFC-0007](docs/rfcs/RFC-0007-capability-objects.md) | Capability Objects | Draft |
 | [RFC-0008](docs/rfcs/RFC-0008-credential-objects.md) | Credential Objects and Secrets Management | Draft |
+| [RFC-0013](docs/rfcs/RFC-0013-tensor-objects.md) | Tensor Objects and Model Representation | Draft (impl complete) |
 
 ## Roadmap
 
