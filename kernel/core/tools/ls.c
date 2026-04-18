@@ -32,6 +32,7 @@ static const char *obj_type_str(enum anx_object_type t)
 	case ANX_OBJ_EXECUTION_TRACE:	return "trace";
 	case ANX_OBJ_CAPABILITY:	return "cap";
 	case ANX_OBJ_CREDENTIAL:	return "cred";
+	case ANX_OBJ_TENSOR:		return "tensor";
 	default:			return "?";
 	}
 }

@@ -39,6 +39,8 @@
 #include <anx/tools.h>
 #include <anx/installer.h>
 #include <anx/acpi.h>
+#include <anx/httpd.h>
+#include <anx/sshd.h>
 
 /* --- Line input with history --- */
 
@@ -121,10 +123,13 @@ static int kgetline(char *buf, size_t size)
 	while (pos < size - 1) {
 		int c;
 
-		/* Poll for input, updating clock and repainting surfaces */
+		/* Poll for input, updating clock, repainting, and servicing HTTP */
 		while (!arch_console_has_input()) {
 			anx_gui_update_time();
 			anx_iface_compositor_repaint();
+			anx_net_poll();
+			anx_httpd_poll();
+			anx_sshd_poll();
 		}
 
 		c = arch_console_getc();
@@ -274,6 +279,9 @@ static void cmd_help(int argc, char **argv)
 	kputs("  ntp [server-ip]            Sync time from NTP server\n");
 	kputs("  install -i                 Interactive OS installer\n");
 	kputs("  meta show|set|get <path>   Object metadata editor\n");
+	kputs("  tensor create|info|stats|fill  Tensor operations\n");
+	kputs("  tensor slice|diff|quantize|search  Tensor ops (Phase 2)\n");
+	kputs("  model info|layers|diff|import  Model namespace\n");
 	kputs("  echo <text...>             Print text ($? for return code)\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
@@ -356,6 +364,7 @@ static const char *obj_type_name(enum anx_object_type t)
 	case ANX_OBJ_MODEL_OUTPUT:	return "model_output";
 	case ANX_OBJ_EXECUTION_TRACE:	return "execution_trace";
 	case ANX_OBJ_CAPABILITY:	return "capability";
+	case ANX_OBJ_TENSOR:		return "tensor";
 	default:			return "unknown";
 	}
 }
@@ -1692,6 +1701,7 @@ static void dispatch(int argc, char **argv)
 		}
 	} else if (anx_strcmp(argv[0], "reboot") == 0) {
 		kputs("rebooting...\n");
+#ifdef __x86_64__
 		/* Keyboard controller reset (PS/2 port 0x64) */
 		anx_outb(0xFE, 0x64);
 		/* If that didn't work, triple-fault */
@@ -1701,6 +1711,10 @@ static void dispatch(int argc, char **argv)
 			__asm__ volatile("lidt %0" : : "m"(null_idt));
 			__asm__ volatile("int3");
 		}
+#else
+		/* ARM64: PSCI system reset or spin */
+		arch_halt();
+#endif
 	} else if (anx_strcmp(argv[0], "ntp") == 0) {
 		if (argc >= 2) {
 			uint32_t ntp_ip = parse_ip(argv[1]);
@@ -1730,6 +1744,10 @@ static void dispatch(int argc, char **argv)
 		}
 	} else if (anx_strcmp(argv[0], "meta") == 0) {
 		cmd_meta(argc, argv);
+	} else if (anx_strcmp(argv[0], "tensor") == 0) {
+		cmd_tensor(argc, argv);
+	} else if (anx_strcmp(argv[0], "model") == 0) {
+		cmd_model(argc, argv);
 	} else if (anx_strcmp(argv[0], "echo") == 0) {
 		int ei;
 
@@ -1761,6 +1779,11 @@ static void execute_line(const char *input)
 	argc = parse_args(line_copy, argv, MAX_ARGS);
 	if (argc > 0)
 		dispatch(argc, argv);
+}
+
+void anx_shell_execute(const char *command)
+{
+	execute_line(command);
 }
 
 void anx_shell_run(void)
