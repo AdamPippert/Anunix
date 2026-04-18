@@ -264,11 +264,17 @@ static void ps2_aux_write(uint8_t val)
 	anx_outb(val, KBD_DATA_PORT);
 }
 
-static uint8_t ps2_ctrl_read(void)
+static int ps2_ctrl_read_timeout(uint8_t *val)
 {
-	while (!(anx_inb(KBD_STATUS_PORT) & 0x01))
-		;
-	return anx_inb(KBD_DATA_PORT);
+	uint32_t i;
+
+	for (i = 0; i < 100000; i++) {
+		if (anx_inb(KBD_STATUS_PORT) & 0x01) {
+			*val = anx_inb(KBD_DATA_PORT);
+			return 0;
+		}
+	}
+	return -1;
 }
 
 static void mouse_irq_handler(uint32_t irq, void *arg)
@@ -304,7 +310,6 @@ static void mouse_irq_handler(uint32_t irq, void *arg)
 
 	{
 		struct anx_hid_mouse_report rpt;
-		struct anx_fb_info fbi;
 		uint32_t sw = 1920, sh = 1080;
 
 		/* Y is inverted in PS/2 (positive = up in PS/2 = down on screen) */
@@ -313,27 +318,26 @@ static void mouse_irq_handler(uint32_t irq, void *arg)
 		rpt.y       = -dy;
 		rpt.wheel   = 0;
 
-		arch_fb_detect(&fbi);
-		if (fbi.available) { sw = fbi.width; sh = fbi.height; }
-
+		/* Use 1920x1080 as default; anx_usb_mouse_report clamps to this */
 		anx_usb_mouse_report(&rpt, sw, sh);
 	}
 }
 
 static void mouse_init(void)
 {
-	uint8_t status;
+	uint8_t status, ack;
 
 	/* Enable aux port */
 	while (anx_inb(KBD_STATUS_PORT) & 0x02)
 		;
 	anx_outb(0xA8, KBD_STATUS_PORT);
 
-	/* Enable aux IRQ: get compaq status, set bit 1, write back */
+	/* Enable aux IRQ: read compaq status, set bit 1, write back */
 	while (anx_inb(KBD_STATUS_PORT) & 0x02)
 		;
 	anx_outb(0x20, KBD_STATUS_PORT);		/* read config byte */
-	status = ps2_ctrl_read();
+	if (ps2_ctrl_read_timeout(&status) < 0)
+		return;					/* no PS/2 controller response */
 	status |= 0x02;					/* enable aux IRQ */
 	status &= ~0x20;				/* clear aux clock disable */
 	while (anx_inb(KBD_STATUS_PORT) & 0x02)
@@ -343,9 +347,10 @@ static void mouse_init(void)
 		;
 	anx_outb(status, KBD_DATA_PORT);
 
-	/* Enable streaming */
+	/* Enable streaming — if mouse not present, ACK won't arrive */
 	ps2_aux_write(0xF4);
-	ps2_ctrl_read();				/* ACK */
+	if (ps2_ctrl_read_timeout(&ack) < 0 || ack != 0xFA)
+		return;					/* no mouse or no ACK — non-fatal */
 
 	mouse_packet_idx = 0;
 
