@@ -255,6 +255,14 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 		(uint32_t)vector,
 		vector < 22 ? exception_names[vector] : "Unknown");
 	kprintf("  Error code: 0x%x\n", (uint32_t)error_code);
+	/* Dump RIP for debugging.  frame points to saved GP regs (15 qwords),
+	 * then vector (8), error code (8), then CPU-pushed RIP/CS/RFLAGS/... */
+	{
+		uint64_t *stack = (uint64_t *)frame;
+		uint64_t rip = stack[17];
+
+		kprintf("  RIP:  0x%x\n", (uint32_t)rip);
+	}
 	kprintf("Halting.\n");
 	arch_halt();
 }
