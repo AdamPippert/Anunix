@@ -18,11 +18,11 @@
 /* Event ring buffer                                                    */
 /* ------------------------------------------------------------------ */
 
-#define EV_RING_SIZE  256u   /* must be power of two */
+#define EV_RING_SIZE  ANX_IFACE_EVENT_RING_SIZE
 #define EV_RING_MASK  (EV_RING_SIZE - 1)
 
-static struct anx_event  ev_ring[EV_RING_SIZE];
-static uint32_t          ev_write;   /* producer index (never wraps to 0 mod SIZE) */
+static struct anx_event    ev_ring[EV_RING_SIZE];
+static uint32_t            ev_write;   /* producer index */
 static struct anx_spinlock ev_lock;
 
 /* ------------------------------------------------------------------ */
@@ -38,21 +38,55 @@ struct anx_ev_sub {
 	bool       active;
 };
 
-static struct anx_ev_sub subs[EV_SUBS_MAX];
-static uint32_t          sub_count;
+static struct anx_ev_sub   subs[EV_SUBS_MAX];
+static uint32_t            sub_count;
 static struct anx_spinlock sub_lock;
 
+/* Telemetry */
+static uint64_t            ev_posted;
+static uint64_t            ev_overflow_drops;
+
+void
+anx_iface_event_reset(void)
+{
+	bool flags;
+
+	anx_spin_lock_irqsave(&ev_lock, &flags);
+	anx_memset(ev_ring, 0, sizeof(ev_ring));
+	ev_write = 0;
+	ev_posted = 0;
+	ev_overflow_drops = 0;
+	anx_spin_unlock_irqrestore(&ev_lock, flags);
+
+	anx_spin_lock_irqsave(&sub_lock, &flags);
+	anx_memset(subs, 0, sizeof(subs));
+	sub_count = 0;
+	anx_spin_unlock_irqrestore(&sub_lock, flags);
+}
+
+void
+anx_iface_event_stats(struct anx_iface_event_stats *out)
+{
+	bool flags;
+
+	if (!out)
+		return;
+
+	anx_spin_lock_irqsave(&ev_lock, &flags);
+	out->posted = ev_posted;
+	out->overflow_drops = ev_overflow_drops;
+	anx_spin_unlock_irqrestore(&ev_lock, flags);
+}
+
 /* ------------------------------------------------------------------ */
-/* Internal init (called by anx_iface_init)                            */
+/* Internal init                                                        */
 /* ------------------------------------------------------------------ */
 
-/* Not exported — iface.c calls via anx_iface_init() which calls this
- * implicitly through the static zero-init of ev_write and sub_count.
- * Locks are explicitly initialised here for clarity.                  */
 static void __attribute__((constructor)) event_queue_init(void)
 {
 	anx_spin_init(&ev_lock);
 	anx_spin_init(&sub_lock);
+	anx_iface_event_reset();
 }
 
 /* ------------------------------------------------------------------ */
@@ -72,6 +106,9 @@ anx_iface_event_post(struct anx_event *ev)
 	anx_uuid_generate(&ev->oid);
 
 	anx_spin_lock_irqsave(&ev_lock, &flags);
+	ev_posted++;
+	if (ev_write >= EV_RING_SIZE)
+		ev_overflow_drops++;
 	slot = ev_write & EV_RING_MASK;
 	ev_ring[slot] = *ev;
 	ev_write++;
@@ -152,6 +189,8 @@ anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out)
 {
 	uint32_t i;
 	bool flags;
+	uint32_t write_snapshot;
+	uint32_t floor;
 
 	if (!out)
 		return ANX_EINVAL;
@@ -166,16 +205,22 @@ anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out)
 		if (anx_uuid_compare(&sub->cell_cid, &cell_cid) != 0)
 			continue;
 
+		write_snapshot = ev_write;
+		floor = (write_snapshot > EV_RING_SIZE)
+			? (write_snapshot - EV_RING_SIZE)
+			: 0;
+		if (sub->read_idx < floor)
+			sub->read_idx = floor;
+
 		/* Walk forward from sub->read_idx looking for a matching event */
-		while (sub->read_idx != ev_write) {
+		while (sub->read_idx != write_snapshot) {
 			uint32_t slot = sub->read_idx & EV_RING_MASK;
 			struct anx_event *ev = &ev_ring[slot];
 
 			sub->read_idx++;
 
 			/* Is this event addressed to a surface this cell subscribes to? */
-			if (anx_uuid_compare(&ev->target_surf,
-			                     &sub->surf_oid) == 0) {
+			if (anx_uuid_compare(&ev->target_surf, &sub->surf_oid) == 0) {
 				*out = *ev;
 				anx_spin_unlock_irqrestore(&sub_lock, flags);
 				return ANX_OK;

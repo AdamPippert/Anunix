@@ -35,6 +35,7 @@ int test_model(void);
 int test_tensor_ops(void);
 int test_crypto(void);
 int test_sshd_crypto(void);
+int test_input_routing(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -54,6 +55,7 @@ static struct test_case tests[] = {
 	{ "tensor_ops",		test_tensor_ops },
 	{ "crypto",		test_crypto },
 	{ "sshd_crypto",	test_sshd_crypto },
+	{ "input_routing",	test_input_routing },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
