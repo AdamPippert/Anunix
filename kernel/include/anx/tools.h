@@ -37,4 +37,10 @@ void cmd_hwd(int argc, char **argv);
 /* Metadata tool (Phase 2) */
 void cmd_meta(int argc, char **argv);
 
+/* Tensor tool (RFC-0013) */
+void cmd_tensor(int argc, char **argv);
+
+/* Model tool (RFC-0013) */
+void cmd_model(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */
