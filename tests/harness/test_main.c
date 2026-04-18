@@ -34,6 +34,7 @@ int test_tensor(void);
 int test_model(void);
 int test_tensor_ops(void);
 int test_crypto(void);
+int test_sshd_crypto(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -52,6 +53,7 @@ static struct test_case tests[] = {
 	{ "model",		test_model },
 	{ "tensor_ops",		test_tensor_ops },
 	{ "crypto",		test_crypto },
+	{ "sshd_crypto",	test_sshd_crypto },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

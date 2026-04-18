@@ -328,7 +328,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_tensor.c \
                tests/test_model.c \
                tests/test_tensor_ops.c \
-               tests/test_crypto.c
+               tests/test_crypto.c \
+               tests/test_sshd_crypto.c
 TEST_BIN    := build/test/anunix_test
 
 test:
