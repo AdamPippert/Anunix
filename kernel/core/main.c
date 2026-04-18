@@ -196,10 +196,13 @@ void kernel_main(void)
 		anx_iface_env_define("headless-agent",
 		                      "anx:env/headless-agent/v1",
 		                      ANX_ENGINE_RENDERER_HEADLESS);
-		if (anx_fb_available())
+		if (anx_fb_available()) {
 			anx_iface_env_activate("visual-desktop");
-		else
+			anx_iface_compositor_start("visual-desktop");
+		} else {
 			anx_iface_env_activate("headless-agent");
+			anx_iface_compositor_start("headless-agent");
+		}
 		kprintf("interface plane initialized\n");
 	}
 

@@ -330,7 +330,10 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_tensor_ops.c \
                tests/test_crypto.c \
                tests/test_sshd_crypto.c \
-               tests/test_input_routing.c
+               tests/test_input_routing.c \
+               tests/test_compositor_cell.c \
+               tests/test_shm_ipc.c \
+               tests/test_conformance_harness.c
 TEST_BIN    := build/test/anunix_test
 
 test:
@@ -339,6 +342,11 @@ test:
 	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(DRIVER_C_ALL) $(LIB_C) -o $(TEST_BIN)
 	@echo "  Running tests..."
 	@$(TEST_BIN)
+
+conformance:
+	@echo "  Running deterministic conformance harness..."
+	@mkdir -p build/conformance
+	@python3 tools/conformance_harness.py --out-dir build/conformance
 
 # --- Python prototype (legacy) ---
 proto-install:
