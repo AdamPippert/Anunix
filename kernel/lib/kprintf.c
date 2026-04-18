@@ -15,11 +15,44 @@ typedef __builtin_va_list va_list;
 #define va_arg(ap, type)	__builtin_va_arg(ap, type)
 #define va_end(ap)		__builtin_va_end(ap)
 
+/* Output capture — when active, kprintf also writes to a buffer */
+static char *capture_buf;
+static uint32_t capture_size;
+static uint32_t capture_pos;
+
+void anx_kprintf_capture_start(char *buf, uint32_t buf_size)
+{
+	capture_buf = buf;
+	capture_size = buf_size;
+	capture_pos = 0;
+	if (buf && buf_size > 0)
+		buf[0] = '\0';
+}
+
+uint32_t anx_kprintf_capture_stop(void)
+{
+	uint32_t n = capture_pos;
+
+	/* Null-terminate if there's space */
+	if (capture_buf && capture_pos < capture_size)
+		capture_buf[capture_pos] = '\0';
+	capture_buf = NULL;
+	capture_size = 0;
+	capture_pos = 0;
+	return n;
+}
+
 static void putc(char c)
 {
 	arch_console_putc(c);
 	if (anx_fbcon_active())
 		anx_fbcon_putc(c);
+
+	/* Tee to capture buffer if active */
+	if (capture_buf && capture_pos + 1 < capture_size) {
+		capture_buf[capture_pos++] = c;
+		capture_buf[capture_pos] = '\0';
+	}
 }
 
 /* Public single-char output for shell echo */
@@ -84,6 +117,18 @@ int kprintf(const char *fmt, ...)
 
 		fmt++; /* skip '%' */
 
+		/* Optional width specifier, e.g., "%02x" for 2-digit hex */
+		int width = 0;
+		char pad = ' ';
+		if (*fmt == '0') {
+			pad = '0';
+			fmt++;
+		}
+		while (*fmt >= '0' && *fmt <= '9') {
+			width = width * 10 + (*fmt - '0');
+			fmt++;
+		}
+
 		switch (*fmt) {
 		case 's': {
 			const char *s = va_arg(ap, const char *);
@@ -99,12 +144,12 @@ int kprintf(const char *fmt, ...)
 		}
 		case 'u': {
 			uint64_t val = va_arg(ap, unsigned int);
-			put_uint(val, 10, 0, '0');
+			put_uint(val, 10, width, pad);
 			break;
 		}
 		case 'x': {
 			uint64_t val = va_arg(ap, unsigned int);
-			put_uint(val, 16, 0, '0');
+			put_uint(val, 16, width, pad);
 			break;
 		}
 		case 'p': {

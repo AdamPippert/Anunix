@@ -181,8 +181,12 @@ void anx_tcp_recv_segment(const void *data, uint32_t len, uint32_t src_ip)
 	payload_len = len - data_off;
 
 	conn = tcp_find_conn(src_ip, src_port, dst_port);
-	if (!conn)
+	if (!conn) {
+		/* Try the server-side listener path */
+		if (anx_tcp_srv_input(data, len, src_ip))
+			return;
 		return;
+	}
 
 	switch (conn->state) {
 	case ANX_TCP_SYN_SENT:
