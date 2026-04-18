@@ -20,8 +20,8 @@
 #include <anx/shell.h>
 
 #define HTTPD_REQ_BUF_SIZE	4096
-#define HTTPD_RESP_BUF_SIZE	8192
-#define HTTPD_CAPTURE_SIZE	4096
+#define HTTPD_RESP_BUF_SIZE	65536
+#define HTTPD_CAPTURE_SIZE	32768
 #define HTTPD_RECV_TIMEOUT_MS	5000
 
 /* Current pending connection for request processing */
