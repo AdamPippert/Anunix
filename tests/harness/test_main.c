@@ -30,6 +30,10 @@ int test_engine_lifecycle(void);
 int test_resource_lease(void);
 int test_model_server(void);
 int test_posix(void);
+int test_tensor(void);
+int test_model(void);
+int test_tensor_ops(void);
+int test_crypto(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -44,6 +48,10 @@ static struct test_case tests[] = {
 	{ "resource_lease",	test_resource_lease },
 	{ "model_server",	test_model_server },
 	{ "posix",		test_posix },
+	{ "tensor",		test_tensor },
+	{ "model",		test_model },
+	{ "tensor_ops",		test_tensor_ops },
+	{ "crypto",		test_crypto },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

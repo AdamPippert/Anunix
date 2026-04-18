@@ -122,7 +122,7 @@ LINK_LD     := $(ARCH_DIR)/link.ld
 ARCH_C    := $(wildcard $(ARCH_DIR)/*.c)
 ARCH_S    := $(filter-out %/qemu_boot.S, $(wildcard $(ARCH_DIR)/*.S))
 CORE_C    := $(shell find $(CORE_DIR) -name '*.c' 2>/dev/null)
-LIB_C     := $(wildcard $(LIB_DIR)/*.c)
+LIB_C     := $(shell find $(LIB_DIR) -name '*.c' 2>/dev/null)
 DRIVER_C  := $(shell find $(DRIVER_DIR) -name '*.c' 2>/dev/null)
 DRIVER_S  := $(shell find $(DRIVER_DIR) -name '*.S' 2>/dev/null)
 
@@ -168,7 +168,7 @@ $(BUILD_DIR)/core/%.o: $(CORE_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Compile C files from lib/
+# Compile C files from lib/ (recursive, handles subdirs like crypto/)
 $(BUILD_DIR)/lib/%.o: $(LIB_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -324,7 +324,11 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_engine_lifecycle.c \
                tests/test_resource_lease.c \
                tests/test_model_server.c \
-               tests/test_posix.c
+               tests/test_posix.c \
+               tests/test_tensor.c \
+               tests/test_model.c \
+               tests/test_tensor_ops.c \
+               tests/test_crypto.c
 TEST_BIN    := build/test/anunix_test
 
 test:

@@ -23,8 +23,8 @@
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
-/* 4 MiB static heap for test builds */
-#define MOCK_HEAP_SIZE	(4 * 1024 * 1024)
+/* 8 MiB static heap for test builds */
+#define MOCK_HEAP_SIZE	(8 * 1024 * 1024)
 static uint8_t mock_heap[MOCK_HEAP_SIZE]
 	__attribute__((aligned(4096)));
 
@@ -211,6 +211,10 @@ bool anx_virtio_net_ready(void) { return false; }
 /* Mock network stack — excluded from test build */
 void anx_net_stack_init(const struct anx_net_config *c) { (void)c; }
 void anx_net_poll(void) {}
+int anx_httpd_init(uint16_t p) { (void)p; return 0; }
+void anx_httpd_poll(void) {}
+int anx_sshd_init(uint16_t p) { (void)p; return 0; }
+void anx_sshd_poll(void) {}
 void anx_eth_recv(const void *f, uint32_t l) { (void)f; (void)l; }
 int anx_eth_send(const uint8_t d[6], uint16_t e, const void *p, uint32_t l)
 { (void)d; (void)e; (void)p; (void)l; return ANX_EIO; }

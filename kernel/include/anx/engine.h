@@ -78,6 +78,13 @@ struct anx_model_desc {
 #define ANX_CAP_TOOL_EXECUTION		(1U << 9)
 #define ANX_CAP_MULTIMODAL_INPUT	(1U << 10)
 
+/* Tensor compute capabilities (RFC-0013) */
+#define ANX_CAP_TENSOR_INT8		(1U << 16)
+#define ANX_CAP_TENSOR_INT32		(1U << 17)
+#define ANX_CAP_TENSOR_FP32		(1U << 18)
+#define ANX_CAP_TENSOR_BF16		(1U << 19)
+#define ANX_CAP_TENSOR_GPU		(1U << 20)
+
 /* Forward declaration for lease pointer */
 struct anx_engine_lease;
 
