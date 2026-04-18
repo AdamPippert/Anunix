@@ -17,6 +17,9 @@ void anx_route_planner_init(void)
 	/* Nothing to initialize yet — planner is stateless */
 }
 
+#define ANX_ROUTE_TOPOLOGY_OVERLAP_BONUS	25
+#define ANX_ROUTE_TOPOLOGY_MISMATCH_PENALTY	15
+
 /*
  * Score a single engine against a cell's requirements.
  *
@@ -25,6 +28,7 @@ void anx_route_planner_init(void)
  *   +locality   (local preferred by default)
  *   -cost       (higher gpu/cpu weight = more expensive)
  *   +policy fit (private data support, network constraints)
+ *   +topology   (engine affinity overlaps cell's boundary-key range)
  */
 int32_t anx_route_score_engine(struct anx_cell *cell,
 			       struct anx_engine *engine)
@@ -56,6 +60,28 @@ int32_t anx_route_score_engine(struct anx_cell *cell,
 	/* Private data bonus if engine supports it */
 	if (engine->supports_private_data)
 		score += 10;
+
+	/*
+	 * Topology affinity. When the cell declares a boundary-key
+	 * range of interest and the engine declares one it serves,
+	 * reward intervals that overlap and penalize engines that
+	 * have specialized elsewhere. Engines without a declared
+	 * affinity are treated as generalists (neutral on this axis).
+	 */
+	if (cell->constraints.topology_bk_set &&
+	    engine->has_topology_affinity) {
+		uint64_t ce_lo = cell->constraints.topology_bk_lo;
+		uint64_t ce_hi = cell->constraints.topology_bk_hi;
+		uint64_t eg_lo = engine->topology_bk_lo;
+		uint64_t eg_hi = engine->topology_bk_hi;
+		uint64_t olap_lo = (ce_lo > eg_lo) ? ce_lo : eg_lo;
+		uint64_t olap_hi = (ce_hi < eg_hi) ? ce_hi : eg_hi;
+
+		if (olap_lo <= olap_hi)
+			score += ANX_ROUTE_TOPOLOGY_OVERLAP_BONUS;
+		else
+			score -= ANX_ROUTE_TOPOLOGY_MISMATCH_PENALTY;
+	}
 
 	return score;
 }

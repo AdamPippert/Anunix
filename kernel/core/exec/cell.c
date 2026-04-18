@@ -186,6 +186,29 @@ int anx_cell_add_dependency(struct anx_cell *cell,
 	return ANX_OK;
 }
 
+int anx_cell_set_topology(struct anx_cell *cell,
+			  uint64_t bk_lo, uint64_t bk_hi)
+{
+	if (!cell)
+		return ANX_EINVAL;
+	if (bk_hi < bk_lo)
+		return ANX_EINVAL;
+
+	cell->constraints.topology_bk_lo = bk_lo;
+	cell->constraints.topology_bk_hi = bk_hi;
+	cell->constraints.topology_bk_set = true;
+	return ANX_OK;
+}
+
+void anx_cell_clear_topology(struct anx_cell *cell)
+{
+	if (!cell)
+		return;
+	cell->constraints.topology_bk_set = false;
+	cell->constraints.topology_bk_lo = 0;
+	cell->constraints.topology_bk_hi = 0;
+}
+
 int anx_cell_deps_satisfied(const struct anx_cell *cell)
 {
 	uint32_t i;
