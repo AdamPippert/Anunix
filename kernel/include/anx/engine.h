@@ -83,7 +83,9 @@ struct anx_model_desc {
 #define ANX_CAP_TENSOR_INT32		(1U << 17)
 #define ANX_CAP_TENSOR_FP32		(1U << 18)
 #define ANX_CAP_TENSOR_BF16		(1U << 19)
-#define ANX_CAP_TENSOR_GPU		(1U << 20)
+#define ANX_CAP_TENSOR_GPU		(1U << 20)	/* discrete GPU (NVIDIA/AMD) */
+#define ANX_CAP_TENSOR_NPU		(1U << 21)	/* dedicated NPU (AMD XDNA, ANE) */
+#define ANX_CAP_TENSOR_SIMD		(1U << 22)	/* CPU SIMD (AVX-512/NEON) */
 
 /* Forward declaration for lease pointer */
 struct anx_engine_lease;

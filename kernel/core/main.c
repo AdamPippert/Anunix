@@ -32,6 +32,8 @@
 #include <anx/virtio_net.h>
 #include <anx/virtio_blk.h>
 #include <anx/objstore_disk.h>
+#include <anx/e1000.h>
+#include <anx/xdna.h>
 #include <anx/net.h>
 #include <anx/splash.h>
 #include <anx/perf.h>
@@ -321,29 +323,36 @@ void kernel_main(void)
 			kprintf("disk: store init failed (%d)\n", ds_ret);
 	}
 
-	/* 11. Network device and IP stack */
-	if (anx_virtio_net_init() == ANX_OK) {
-		struct anx_net_config net_cfg;
+	/* 11. AI accelerators (non-fatal — hardware may not be present) */
+	anx_xdna_init();	/* AMD XDNA NPU (Ryzen AI) */
 
-		/* Initialize minimal stack for DHCP */
-		anx_arp_init();
-		anx_udp_init();
+	/* 12. Network device and IP stack (virtio-net preferred; E1000 fallback) */
+	{
+		bool net_up = (anx_virtio_net_init() == ANX_OK);
 
-		/* Try DHCP first (5s timeout) */
-		PERF_BEGIN("dhcp_discover");
-		kprintf("dhcp: discovering...\n");
-		if (anx_dhcp_discover(&net_cfg) != ANX_OK) {
-			/* Fall back to QEMU user-mode defaults */
-			net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
-			net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
-			net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
-			net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
-			kprintf("dhcp: timeout, using static 10.0.2.15\n");
+		if (!net_up)
+			net_up = (anx_e1000_init() == ANX_OK);
+
+		if (net_up) {
+			struct anx_net_config net_cfg;
+
+			anx_arp_init();
+			anx_udp_init();
+
+			PERF_BEGIN("dhcp_discover");
+			kprintf("dhcp: discovering...\n");
+			if (anx_dhcp_discover(&net_cfg) != ANX_OK) {
+				net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
+				net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
+				net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
+				net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
+				kprintf("dhcp: timeout, using static 10.0.2.15\n");
+			}
+			PERF_END();
+			PERF_BEGIN("net_stack_init");
+			anx_net_stack_init(&net_cfg);
+			PERF_END();
 		}
-		PERF_END();
-		PERF_BEGIN("net_stack_init");
-		anx_net_stack_init(&net_cfg);
-		PERF_END();
 	}
 
 	/* Start HTTP API server (after network init) */
