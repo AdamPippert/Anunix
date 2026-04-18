@@ -44,6 +44,7 @@
 #define SSH_MSG_USERAUTH_FAILURE		51
 #define SSH_MSG_USERAUTH_SUCCESS		52
 #define SSH_MSG_USERAUTH_BANNER			53
+#define SSH_MSG_USERAUTH_PK_OK			60
 #define SSH_MSG_GLOBAL_REQUEST			80
 #define SSH_MSG_REQUEST_SUCCESS			81
 #define SSH_MSG_REQUEST_FAILURE			82
@@ -1130,7 +1131,7 @@ static int sshd_send_userauth_failure(struct sshd_state *s)
 
 	buf_init(&b, buf, sizeof(buf));
 	buf_u8(&b, SSH_MSG_USERAUTH_FAILURE);
-	buf_cstr(&b, "password,none");
+	buf_cstr(&b, "publickey,password,none");
 	buf_u8(&b, 0);	/* partial_success */
 	if (b.overflow)
 		return ANX_ENOMEM;
@@ -1200,20 +1201,14 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 		}
 
 		if (str_eq(method, method_len, "none")) {
-			/* Accept "none" to advertise available methods.
-			 * In production this should fail and force a real
-			 * method — we warn and allow it for ease of
-			 * bringup. */
-			kprintf("sshd: WARNING — accepting 'none' auth from user '");
-			{
-				uint32_t i;
-
-				for (i = 0; i < user_len && i < 64; i++)
-					kputc((char)user[i]);
-			}
-			kprintf("'\n");
+			/* 'none' auth always fails — its only purpose is to
+			 * elicit the list of supported methods from us via
+			 * SSH_MSG_USERAUTH_FAILURE. */
 			anx_free(payload);
-			return sshd_send_userauth_success(s);
+			ret = sshd_send_userauth_failure(s);
+			if (ret != ANX_OK)
+				return ret;
+			continue;
 		}
 
 		if (str_eq(method, method_len, "password")) {
@@ -1246,6 +1241,235 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 			}
 
 			kprintf("sshd: password auth failed\n");
+			anx_free(payload);
+			ret = sshd_send_userauth_failure(s);
+			if (ret != ANX_OK)
+				return ret;
+			continue;
+		}
+
+		if (str_eq(method, method_len, "publickey")) {
+			const uint8_t *algo;
+			uint32_t algo_len;
+			const uint8_t *pk_blob;
+			uint32_t pk_blob_len;
+			uint8_t has_sig;
+
+			/* byte has_signature; string algo; string pk_blob */
+			if (off >= payload_len) {
+				anx_free(payload);
+				return ANX_EIO;
+			}
+			has_sig = payload[off++];
+			if (pkt_get_string(payload, payload_len, &off,
+					    &algo, &algo_len) != ANX_OK ||
+			    pkt_get_string(payload, payload_len, &off,
+					    &pk_blob, &pk_blob_len) != ANX_OK) {
+				anx_free(payload);
+				return ANX_EIO;
+			}
+
+			/* We only support ssh-ed25519 for now */
+			if (!str_eq(algo, algo_len, "ssh-ed25519")) {
+				anx_free(payload);
+				ret = sshd_send_userauth_failure(s);
+				if (ret != ANX_OK)
+					return ret;
+				continue;
+			}
+
+			/* pk_blob is: string "ssh-ed25519"; string pubkey(32) */
+			{
+				uint32_t pbo = 0;
+				const uint8_t *pk_algo;
+				uint32_t pk_algo_len;
+				const uint8_t *pk;
+				uint32_t pk_len;
+
+				if (pkt_get_string(pk_blob, pk_blob_len, &pbo,
+						    &pk_algo, &pk_algo_len)
+					    != ANX_OK ||
+				    pkt_get_string(pk_blob, pk_blob_len, &pbo,
+						    &pk, &pk_len) != ANX_OK ||
+				    !str_eq(pk_algo, pk_algo_len, "ssh-ed25519") ||
+				    pk_len != 32) {
+					anx_free(payload);
+					ret = sshd_send_userauth_failure(s);
+					if (ret != ANX_OK)
+						return ret;
+					continue;
+				}
+
+				if (!has_sig) {
+					/* Query: tell client we accept this key
+					 * type.  Client will follow up with a
+					 * signed request. */
+					uint8_t ok[256];
+					struct ssh_buf ob;
+
+					buf_init(&ob, ok, sizeof(ok));
+					buf_u8(&ob, SSH_MSG_USERAUTH_PK_OK);
+					buf_string(&ob, algo, algo_len);
+					buf_string(&ob, pk_blob, pk_blob_len);
+					anx_free(payload);
+					ret = sshd_send_packet(s, ob.data,
+							       ob.len);
+					if (ret != ANX_OK)
+						return ret;
+					continue;
+				}
+
+				/* Real auth request — verify signature.
+				 *
+				 * Data that was signed (RFC 4252 §7):
+				 *   string session_id
+				 *   byte   SSH_MSG_USERAUTH_REQUEST
+				 *   string user
+				 *   string "ssh-connection"
+				 *   string "publickey"
+				 *   bool   TRUE
+				 *   string algo
+				 *   string pk_blob
+				 */
+				{
+					const uint8_t *sig_blob;
+					uint32_t sig_blob_len;
+					uint8_t *signed_data;
+					uint32_t sd_cap;
+					uint32_t sd_len = 0;
+					uint8_t hdr[4];
+					uint8_t ed_sig[64];
+					uint32_t sbo = 0;
+					const uint8_t *sig_algo;
+					uint32_t sig_algo_len;
+					const uint8_t *sig_bytes;
+					uint32_t sig_bytes_len;
+					int verify_ret;
+
+					if (pkt_get_string(payload, payload_len,
+							    &off, &sig_blob,
+							    &sig_blob_len)
+						    != ANX_OK) {
+						anx_free(payload);
+						return ANX_EIO;
+					}
+
+					/* Parse signature blob:
+					 *   string "ssh-ed25519"
+					 *   string sig(64)
+					 */
+					if (pkt_get_string(sig_blob, sig_blob_len,
+							    &sbo, &sig_algo,
+							    &sig_algo_len)
+						    != ANX_OK ||
+					    pkt_get_string(sig_blob, sig_blob_len,
+							    &sbo, &sig_bytes,
+							    &sig_bytes_len)
+						    != ANX_OK ||
+					    !str_eq(sig_algo, sig_algo_len,
+						    "ssh-ed25519") ||
+					    sig_bytes_len != 64) {
+						anx_free(payload);
+						ret = sshd_send_userauth_failure(s);
+						if (ret != ANX_OK)
+							return ret;
+						continue;
+					}
+					anx_memcpy(ed_sig, sig_bytes, 64);
+
+					/* Build signed_data */
+					sd_cap = 4 + 32		/* session_id */
+					       + 1		/* msg byte */
+					       + 4 + user_len
+					       + 4 + 14		/* ssh-connection */
+					       + 4 + 9		/* publickey */
+					       + 1		/* TRUE */
+					       + 4 + algo_len
+					       + 4 + pk_blob_len
+					       + 64;
+					signed_data = anx_alloc(sd_cap);
+					if (!signed_data) {
+						anx_free(payload);
+						return ANX_ENOMEM;
+					}
+
+					put_u32(hdr, 32);
+					anx_memcpy(signed_data + sd_len, hdr, 4);
+					sd_len += 4;
+					anx_memcpy(signed_data + sd_len,
+						   s->session_id, 32);
+					sd_len += 32;
+
+					signed_data[sd_len++] =
+						SSH_MSG_USERAUTH_REQUEST;
+
+					put_u32(hdr, user_len);
+					anx_memcpy(signed_data + sd_len, hdr, 4);
+					sd_len += 4;
+					anx_memcpy(signed_data + sd_len,
+						   user, user_len);
+					sd_len += user_len;
+
+					put_u32(hdr, 14);
+					anx_memcpy(signed_data + sd_len, hdr, 4);
+					sd_len += 4;
+					anx_memcpy(signed_data + sd_len,
+						   "ssh-connection", 14);
+					sd_len += 14;
+
+					put_u32(hdr, 9);
+					anx_memcpy(signed_data + sd_len, hdr, 4);
+					sd_len += 4;
+					anx_memcpy(signed_data + sd_len,
+						   "publickey", 9);
+					sd_len += 9;
+
+					signed_data[sd_len++] = 1;	/* TRUE */
+
+					put_u32(hdr, algo_len);
+					anx_memcpy(signed_data + sd_len, hdr, 4);
+					sd_len += 4;
+					anx_memcpy(signed_data + sd_len,
+						   algo, algo_len);
+					sd_len += algo_len;
+
+					put_u32(hdr, pk_blob_len);
+					anx_memcpy(signed_data + sd_len, hdr, 4);
+					sd_len += 4;
+					anx_memcpy(signed_data + sd_len,
+						   pk_blob, pk_blob_len);
+					sd_len += pk_blob_len;
+
+					verify_ret = anx_ed25519_verify(
+						ed_sig, signed_data, sd_len, pk);
+					anx_free(signed_data);
+
+					if (verify_ret == 0) {
+						/* Log the pubkey fingerprint
+						 * for audit.  Any valid
+						 * Ed25519 sig is accepted
+						 * for now — production should
+						 * check authorized_keys. */
+						uint8_t fp[32];
+						uint32_t i;
+
+						anx_sha256(pk_blob, pk_blob_len,
+							   fp);
+						kprintf("sshd: pubkey auth OK "
+							"for '");
+						for (i = 0; i < user_len && i < 64; i++)
+							kputc((char)user[i]);
+						kprintf("' fp=SHA256:");
+						for (i = 0; i < 8; i++)
+							kprintf("%02x", fp[i]);
+						kprintf("...\n");
+						anx_free(payload);
+						return sshd_send_userauth_success(s);
+					}
+					kprintf("sshd: pubkey signature verify failed\n");
+				}
+			}
+
 			anx_free(payload);
 			ret = sshd_send_userauth_failure(s);
 			if (ret != ANX_OK)
