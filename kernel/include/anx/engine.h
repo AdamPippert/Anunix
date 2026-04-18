@@ -107,6 +107,21 @@ struct anx_engine {
 	/* Locality */
 	bool is_local;
 
+	/*
+	 * Topology affinity (RFC-0005 extension).
+	 *
+	 * Engines that specialize in a boundary-key range — for example,
+	 * a retrieval service holding a specific vindex shard, or a model
+	 * server co-located with a layer-band slice — declare the range
+	 * they serve. The planner boosts scores when a cell's topology
+	 * intent overlaps, and penalizes when the engine is specialized
+	 * elsewhere. Engines without affinity declared are treated as
+	 * generalists and are scored neutrally on this axis.
+	 */
+	bool has_topology_affinity;
+	uint64_t topology_bk_lo;
+	uint64_t topology_bk_hi;		/* inclusive */
+
 	/* Model descriptor (valid for LOCAL_MODEL / REMOTE_MODEL) */
 	struct anx_model_desc model;
 
@@ -156,5 +171,15 @@ int anx_engine_register_model(const char *name,
 
 /* Unregister an engine */
 int anx_engine_unregister(struct anx_engine *engine);
+
+/*
+ * Declare a topology affinity range on an engine. Both endpoints
+ * are inclusive. Returns ANX_EINVAL on null engine or bk_hi < bk_lo.
+ */
+int anx_engine_set_topology(struct anx_engine *engine,
+			    uint64_t bk_lo, uint64_t bk_hi);
+
+/* Clear any declared topology affinity. */
+void anx_engine_clear_topology(struct anx_engine *engine);
 
 #endif /* ANX_ENGINE_H */

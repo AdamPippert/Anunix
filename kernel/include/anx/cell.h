@@ -97,6 +97,16 @@ struct anx_cell_constraints {
 	enum anx_locality locality;
 	uint32_t max_recursion_depth;
 	uint32_t max_child_cells;
+
+	/*
+	 * Topology intent: the boundary-key range this cell expects
+	 * to read or write. The planner uses this to prefer engines
+	 * whose declared affinity overlaps. Both bounds inclusive.
+	 * Set topology_bk_set before the range is meaningful.
+	 */
+	bool topology_bk_set;
+	uint64_t topology_bk_lo;
+	uint64_t topology_bk_hi;
 };
 
 /* --- Routing policy (RFC-0003 Section 11) --- */
@@ -315,5 +325,16 @@ int anx_cell_add_dependency(struct anx_cell *cell,
  *  <0   a predecessor has FAILED/CANCELLED (cell must fail)
  */
 int anx_cell_deps_satisfied(const struct anx_cell *cell);
+
+/*
+ * Declare the cell's topology intent (boundary-key range). The route
+ * planner boosts engines whose declared affinity overlaps.
+ * Returns ANX_EINVAL on null cell or bk_hi < bk_lo.
+ */
+int anx_cell_set_topology(struct anx_cell *cell,
+			  uint64_t bk_lo, uint64_t bk_hi);
+
+/* Clear any declared topology intent. */
+void anx_cell_clear_topology(struct anx_cell *cell);
 
 #endif /* ANX_CELL_H */
