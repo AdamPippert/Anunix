@@ -205,9 +205,16 @@ static int ge_frombytes(struct ge25519 *p, const uint8_t s[32])
 	fe_sub(check, check, u);
 
 	if (!fe_iszero(check)) {
-		/* Try with sqrt(-1) */
+		/*
+		 * check = v*x^2 - u was non-zero. Try v*x^2 + u == 0 instead
+		 * (i.e. x was computed as sqrt(-u/v) rather than sqrt(u/v)).
+		 * We add 2*u to check, but fe_add does not carry — the limbs
+		 * can grow to roughly 3*2^51, which overflows fe_tobytes's
+		 * canonicalisation inside fe_iszero. Carry-reduce first.
+		 */
 		fe_add(check, check, u);
 		fe_add(check, check, u);
+		fe_carry(check);
 		if (!fe_iszero(check))
 			return -1; /* Not on curve */
 
