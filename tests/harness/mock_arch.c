@@ -16,6 +16,8 @@
 #include <anx/jpeg.h>
 #include <anx/virtio_net.h>
 #include <anx/net.h>
+#include <anx/e1000.h>
+#include <anx/xdna.h>
 #include <anx/http.h>
 #include <anx/page.h>
 #include <anx/fb.h>
@@ -275,3 +277,21 @@ int anx_http_post_authed(const char *h, uint16_t p, const char *pa,
 void anx_http_response_free(struct anx_http_response *r)
 { if(r) { r->body=NULL; r->body_len=0; } }
 int anx_ntp_sync(uint32_t ip) { (void)ip; return ANX_ETIMEDOUT; }
+
+/* Mock E1000 NIC — hardware excluded from test build */
+int anx_e1000_init(void) { return ANX_ENODEV; }
+bool anx_e1000_ready(void) { return false; }
+int anx_e1000_tx(const void *f, uint16_t l) { (void)f; (void)l; return ANX_EIO; }
+void anx_e1000_poll(void) {}
+const uint8_t *anx_e1000_mac(void) { static uint8_t z[6]; return z; }
+void anx_e1000_info(void) {}
+
+/* Mock XDNA NPU — hardware excluded from test build */
+int anx_xdna_init(void) { return ANX_ENODEV; }
+bool anx_xdna_ready(void) { return false; }
+int anx_xdna_load_firmware(void) { return ANX_ENODEV; }
+int anx_xdna_submit(const void *in, uint32_t in_len, void *out, uint32_t out_sz,
+		    uint32_t part, uint32_t flags)
+{ (void)in; (void)in_len; (void)out; (void)out_sz; (void)part; (void)flags;
+  return ANX_ENODEV; }
+void anx_xdna_info(void) {}
