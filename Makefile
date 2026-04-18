@@ -324,7 +324,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_engine_lifecycle.c \
                tests/test_resource_lease.c \
                tests/test_model_server.c \
-               tests/test_posix.c
+               tests/test_posix.c \
+               tests/test_rlm.c
 TEST_BIN    := build/test/anunix_test
 
 test:
