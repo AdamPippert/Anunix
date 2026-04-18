@@ -10,10 +10,15 @@
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
 #include <anx/input.h>
+#include <anx/usb_mouse.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
 extern char _heap_end[];
+
+/* Forward declarations for init helpers defined later in this file */
+static void kbd_init(void);
+static void mouse_init(void);
 
 /* --- Serial port (COM1) --- */
 
@@ -77,8 +82,9 @@ void arch_init(void)
 	/* IDT, GDT, PIC, PIT timer */
 	arch_exception_init();
 
-	/* PS/2 keyboard (IRQ1) */
+	/* PS/2 keyboard (IRQ1) and mouse (IRQ12) */
 	kbd_init();
+	mouse_init();
 }
 
 void arch_probe_hw(struct anx_hw_inventory *inv)
@@ -223,6 +229,128 @@ static void kbd_init(void)
 	/* Register IRQ1 handler and unmask */
 	anx_irq_register(1, kbd_irq_handler, NULL);
 	anx_irq_unmask(1);
+}
+
+/* --- PS/2 Mouse (auxiliary PS/2 port, IRQ 12) --- */
+
+/*
+ * The PS/2 controller shares data (0x60) and status/command (0x64) ports with
+ * the keyboard.  Mouse bytes are tagged by the controller — bit 5 of status is
+ * set when the byte in the output buffer came from the aux port.
+ *
+ * Standard PS/2 mouse sends 3-byte packets:
+ *   Byte 0: flags (buttons, overflow, sign bits)
+ *   Byte 1: X movement (signed, 9-bit with sign in byte 0 bit 4)
+ *   Byte 2: Y movement (signed, 9-bit with sign in byte 0 bit 5)
+ *
+ * Initialization sequence:
+ *   1. Enable auxiliary device (command 0xA8 to controller).
+ *   2. Get compaq status byte, set bit 1 (enable aux IRQ), send back.
+ *   3. Send "enable streaming" command (0xF4) to mouse.
+ *   4. Register IRQ 12 handler and unmask.
+ */
+
+static uint8_t  mouse_packet[3];
+static uint32_t mouse_packet_idx;
+
+static void ps2_aux_write(uint8_t val)
+{
+	/* Wait for controller input buffer empty */
+	while (anx_inb(KBD_STATUS_PORT) & 0x02)
+		;
+	anx_outb(0xD4, KBD_STATUS_PORT);	/* "write to aux device" */
+	while (anx_inb(KBD_STATUS_PORT) & 0x02)
+		;
+	anx_outb(val, KBD_DATA_PORT);
+}
+
+static uint8_t ps2_ctrl_read(void)
+{
+	while (!(anx_inb(KBD_STATUS_PORT) & 0x01))
+		;
+	return anx_inb(KBD_DATA_PORT);
+}
+
+static void mouse_irq_handler(uint32_t irq, void *arg)
+{
+	uint8_t data;
+	int8_t  dx, dy;
+	uint8_t flags;
+
+	(void)irq;
+	(void)arg;
+
+	/* Discard if byte came from keyboard (aux bit clear) */
+	if (!(anx_inb(KBD_STATUS_PORT) & 0x20)) {
+		anx_inb(KBD_DATA_PORT);
+		return;
+	}
+
+	data = anx_inb(KBD_DATA_PORT);
+	mouse_packet[mouse_packet_idx++] = data;
+
+	if (mouse_packet_idx < 3)
+		return;
+
+	mouse_packet_idx = 0;
+
+	flags  = mouse_packet[0];
+	dx     = (int8_t)mouse_packet[1];
+	dy     = (int8_t)mouse_packet[2];
+
+	/* Discard packet if overflow bits are set */
+	if (flags & 0xC0)
+		return;
+
+	{
+		struct anx_hid_mouse_report rpt;
+		struct anx_fb_info fbi;
+		uint32_t sw = 1920, sh = 1080;
+
+		/* Y is inverted in PS/2 (positive = up in PS/2 = down on screen) */
+		rpt.buttons = flags & 0x07;
+		rpt.x       = dx;
+		rpt.y       = -dy;
+		rpt.wheel   = 0;
+
+		arch_fb_detect(&fbi);
+		if (fbi.available) { sw = fbi.width; sh = fbi.height; }
+
+		anx_usb_mouse_report(&rpt, sw, sh);
+	}
+}
+
+static void mouse_init(void)
+{
+	uint8_t status;
+
+	/* Enable aux port */
+	while (anx_inb(KBD_STATUS_PORT) & 0x02)
+		;
+	anx_outb(0xA8, KBD_STATUS_PORT);
+
+	/* Enable aux IRQ: get compaq status, set bit 1, write back */
+	while (anx_inb(KBD_STATUS_PORT) & 0x02)
+		;
+	anx_outb(0x20, KBD_STATUS_PORT);		/* read config byte */
+	status = ps2_ctrl_read();
+	status |= 0x02;					/* enable aux IRQ */
+	status &= ~0x20;				/* clear aux clock disable */
+	while (anx_inb(KBD_STATUS_PORT) & 0x02)
+		;
+	anx_outb(0x60, KBD_STATUS_PORT);		/* write config byte */
+	while (anx_inb(KBD_STATUS_PORT) & 0x02)
+		;
+	anx_outb(status, KBD_DATA_PORT);
+
+	/* Enable streaming */
+	ps2_aux_write(0xF4);
+	ps2_ctrl_read();				/* ACK */
+
+	mouse_packet_idx = 0;
+
+	anx_irq_register(12, mouse_irq_handler, NULL);
+	anx_irq_unmask(12);
 }
 
 /* --- Console I/O --- */
