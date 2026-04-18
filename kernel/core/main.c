@@ -38,6 +38,8 @@
 #include <anx/interface_plane.h>
 #include <anx/usb_mouse.h>
 #include <anx/shell.h>
+#include <anx/httpd.h>
+#include <anx/sshd.h>
 
 #define ANX_VERSION "2026.4.17"
 
@@ -319,6 +321,12 @@ void kernel_main(void)
 		anx_net_stack_init(&net_cfg);
 		PERF_END();
 	}
+
+	/* Start HTTP API server (after network init) */
+	anx_httpd_init(8080);
+
+	/* Start SSH server (after network + credential store) */
+	anx_sshd_init(22);
 
 	kprintf("kernel init complete -- all subsystems online\n");
 
