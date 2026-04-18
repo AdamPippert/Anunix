@@ -31,6 +31,7 @@
 #include <anx/auth.h>
 #include <anx/virtio_net.h>
 #include <anx/virtio_blk.h>
+#include <anx/objstore_disk.h>
 #include <anx/net.h>
 #include <anx/splash.h>
 #include <anx/perf.h>
@@ -300,10 +301,25 @@ void kernel_main(void)
 	anx_pci_init();
 	PERF_END();
 
-	/* 10. Block device */
+	/* 10. Block device + disk object store */
 	PERF_BEGIN("virtio_blk_init");
 	anx_virtio_blk_init();
 	PERF_END();
+	if (anx_blk_ready()) {
+		int ds_ret = anx_disk_store_init();
+
+		if (ds_ret != ANX_OK) {
+			/* First boot on this disk — format automatically */
+			kprintf("disk: no store found, formatting...\n");
+			ds_ret = anx_disk_format("anunix");
+			if (ds_ret == ANX_OK)
+				ds_ret = anx_disk_store_init();
+		}
+		if (ds_ret == ANX_OK)
+			kprintf("disk: object store mounted\n");
+		else
+			kprintf("disk: store init failed (%d)\n", ds_ret);
+	}
 
 	/* 11. Network device and IP stack */
 	if (anx_virtio_net_init() == ANX_OK) {
