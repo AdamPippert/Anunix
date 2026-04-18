@@ -74,6 +74,7 @@ anx_iface_init(void)
 	anx_memset(envs,       0, sizeof(envs));
 
 	anx_input_init();
+	anx_iface_event_reset();
 
 	return ANX_OK;
 }

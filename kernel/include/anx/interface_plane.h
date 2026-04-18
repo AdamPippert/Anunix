@@ -226,6 +226,17 @@ int anx_iface_event_unsubscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
 /* Poll for the next event addressed to cell_cid; returns ANX_ENOENT if empty */
 int anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out);
 
+#define ANX_IFACE_EVENT_RING_SIZE 256u
+
+struct anx_iface_event_stats {
+	uint64_t posted;
+	uint64_t overflow_drops;
+};
+
+/* Resets event queue state (ring + subscriptions + counters). */
+void anx_iface_event_reset(void);
+void anx_iface_event_stats(struct anx_iface_event_stats *out);
+
 /* Renderer registration */
 int       anx_iface_renderer_register(int renderer_class,
                                        const struct anx_renderer_ops *ops,
