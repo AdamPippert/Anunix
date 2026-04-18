@@ -1,0 +1,54 @@
+version: 1
+name: anxbrowser-graphical-userspace-prereqs
+mode: advisory-planning-only
+
+phases:
+  - phase: P0
+    file: 10-p0-ticket-plan.md
+    tickets:
+      - id: P0-001
+        title: Userspace process isolation baseline
+      - id: P0-002
+        title: Executable loader + syscall ABI v0
+      - id: P0-003
+        title: Compositor as Execution Cell (minimum viable)
+      - id: P0-004
+        title: Input routing hardening
+      - id: P0-005
+        title: Browser-grade TLS trust baseline
+      - id: P0-006
+        title: Browser profile/cache storage primitives
+      - id: P0-007
+        title: Shared-memory IPC v0
+      - id: P0-008
+        title: Conformance/perf harness integration
+
+  - phase: P1
+    file: 20-p1-ticket-plan.md
+    tickets:
+      - id: P1-001
+        title: Dirty-rect compositor + frame pacing
+      - id: P1-002
+        title: Multi-window/tab surface model hardening
+      - id: P1-003
+        title: Clipboard, drag/drop, file-pick contracts
+      - id: P1-004
+        title: Text/font shaping correctness baseline
+      - id: P1-005
+        title: Download pipeline + object policy integration
+      - id: P1-006
+        title: Event queue QoS and telemetry
+
+  - phase: P2
+    file: 30-p2-ticket-plan.md
+    tickets:
+      - id: P2-001
+        title: Accessibility object model and assistive hooks
+      - id: P2-002
+        title: Media path baseline
+      - id: P2-003
+        title: Site/process isolation hardening profile
+      - id: P2-004
+        title: WPT-class conformance gate integration
+      - id: P2-005
+        title: Crash diagnostics + performance observability
