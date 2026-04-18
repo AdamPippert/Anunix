@@ -41,6 +41,7 @@
 #include <anx/acpi.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/base64.h>
 
 /* --- Line input with history --- */
 
@@ -317,6 +318,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  login <user>               Login with password\n");
 	kputs("  logout                     End session\n");
 	kputs("  useradd <user> <pass>      Create user account\n");
+	kputs("  ssh-addkey <b64-blob>      Authorize an SSH public key\n");
 	kputs("  store format [label]       Format disk with object store\n");
 	kputs("  store mount                Mount existing object store\n");
 	kputs("  store stats                Show store statistics\n");
@@ -1474,6 +1476,115 @@ static void cmd_useradd(int argc, char **argv)
 	kprintf("user '%s' created with admin scope\n", argv[1]);
 }
 
+/* --- SSH authorized-key management --- */
+
+static void cmd_ssh_addkey(int argc, char **argv)
+{
+	/*
+	 * ssh-addkey <base64-blob>
+	 *
+	 * Accepts the blob portion of an OpenSSH public key line:
+	 *   ssh-ed25519 AAAA...base64... optional-comment
+	 *
+	 * The blob decodes to: string "ssh-ed25519" + string pubkey(32).
+	 * We extract the 32-byte raw pubkey and append it to the
+	 * ssh-authorized-keys credential.
+	 */
+	const char *b64;
+	uint8_t decoded[256];
+	uint32_t dec_len = 0;
+	uint8_t current[ANX_AUTHORIZED_KEYS_MAX * 32];
+	uint32_t cur_len = 0;
+	uint32_t pbo = 0;
+	uint32_t key_type_len, pk_len;
+	const uint8_t *pk;
+	uint32_t new_len;
+	uint32_t i;
+	int ret;
+
+	if (argc < 2) {
+		kputs("usage: ssh-addkey <base64-blob>\n");
+		kputs("  Get blob: ssh-keygen -e -m pkcs8 ... or copy from authorized_keys\n");
+		return;
+	}
+
+	/* Accept either full "ssh-ed25519 BLOB comment" or just "BLOB" */
+	b64 = argv[1];
+	if (anx_strncmp(b64, "ssh-ed25519", 11) == 0 && argc >= 3)
+		b64 = argv[2];
+
+	ret = anx_base64_decode(b64, (uint32_t)anx_strlen(b64),
+				decoded, sizeof(decoded), &dec_len);
+	if (ret != ANX_OK || dec_len < 4) {
+		kputs("ssh-addkey: base64 decode failed\n");
+		return;
+	}
+
+	/* Blob: uint32_be key_type_len; key_type; uint32_be pk_len; pk */
+	key_type_len = ((uint32_t)decoded[pbo] << 24) |
+	               ((uint32_t)decoded[pbo+1] << 16) |
+	               ((uint32_t)decoded[pbo+2] << 8) |
+	               (uint32_t)decoded[pbo+3];
+	pbo += 4;
+	if (key_type_len > dec_len - pbo || key_type_len != 11 ||
+	    anx_strncmp((const char *)(decoded + pbo), "ssh-ed25519", 11) != 0) {
+		kputs("ssh-addkey: not an ssh-ed25519 key\n");
+		return;
+	}
+	pbo += key_type_len;
+
+	if (pbo + 4 > dec_len) { kputs("ssh-addkey: truncated blob\n"); return; }
+	pk_len = ((uint32_t)decoded[pbo] << 24) |
+	         ((uint32_t)decoded[pbo+1] << 16) |
+	         ((uint32_t)decoded[pbo+2] << 8) |
+	         (uint32_t)decoded[pbo+3];
+	pbo += 4;
+	if (pk_len != 32 || pbo + 32 > dec_len) {
+		kputs("ssh-addkey: unexpected pubkey length\n");
+		return;
+	}
+	pk = decoded + pbo;
+
+	/* Read existing keys */
+	anx_credential_read("ssh-authorized-keys", current,
+			    sizeof(current), &cur_len);
+	if (cur_len % 32 != 0) cur_len = 0;	/* corrupt — reset */
+
+	/* Check for duplicate */
+	for (i = 0; i + 32 <= cur_len; i += 32) {
+		if (anx_memcmp(current + i, pk, 32) == 0) {
+			kputs("ssh-addkey: key already authorized\n");
+			return;
+		}
+	}
+
+	if (cur_len + 32 > (uint32_t)(ANX_AUTHORIZED_KEYS_MAX * 32)) {
+		kprintf("ssh-addkey: max %d keys reached\n",
+			ANX_AUTHORIZED_KEYS_MAX);
+		return;
+	}
+
+	anx_memcpy(current + cur_len, pk, 32);
+	new_len = cur_len + 32;
+
+	if (anx_credential_exists("ssh-authorized-keys")) {
+		ret = anx_credential_rotate("ssh-authorized-keys",
+					    current, new_len);
+	} else {
+		ret = anx_credential_create("ssh-authorized-keys",
+					    ANX_CRED_OPAQUE,
+					    current, new_len);
+	}
+
+	if (ret != ANX_OK) {
+		kprintf("ssh-addkey: store failed (%d)\n", ret);
+		return;
+	}
+
+	kprintf("ssh-addkey: authorized key added (%u total)\n",
+		new_len / 32);
+}
+
 /* --- Store commands --- */
 
 static void cmd_store(int argc, char **argv)
@@ -1663,6 +1774,8 @@ static void dispatch(int argc, char **argv)
 		kputs("logged out\n");
 	} else if (anx_strcmp(argv[0], "useradd") == 0) {
 		cmd_useradd(argc, argv);
+	} else if (anx_strcmp(argv[0], "ssh-addkey") == 0) {
+		cmd_ssh_addkey(argc, argv);
 	} else if (anx_strcmp(argv[0], "store") == 0) {
 		cmd_store(argc, argv);
 	} else if (anx_strcmp(argv[0], "disk") == 0) {
