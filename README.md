@@ -81,6 +81,16 @@ $ curl -X POST http://jekyll:18080/api/v1/exec \
 - CSPRNG with RDRAND detection + TSC fallback
 - RFC 8032 and RFC 7539 test vectors pass; fuzzed against Python reference
 
+**Hardware platform support** (RFC-0014)
+- Intel E1000/E1000e NIC driver — 10 device IDs covering QEMU (8086:100E), VMware (8086:100F), 82574L, I219/I210/I211 real hardware; MMIO-only, 64-entry RX/TX rings; auto-detected as NIC fallback when virtio-net is absent
+- AMD XDNA NPU skeleton — Ryzen AI SoCs (Phoenix 1022:1502, Strix Point 1022:17f0); PSP mailbox firmware load, DMA descriptor rings; registers as `ANX_ENGINE_DEVICE_SERVICE` with `ANX_CAP_TENSOR_NPU`; use `xdna load` after storing firmware in credential store
+- PS/2 mouse driver — IRQ 12 aux port, 3-byte packet assembly, feeds into existing cursor/input system; non-fatal if no mouse present
+
+**Documentation** in `docs/hardware/`
+- `RFC-0014-hardware-platform.md` — hardware support strategy, IRQ architecture, device support matrix
+- `xdna-driver-guide.md` — XDNA internals, PSP mailbox protocol, DMA rings, firmware acquisition
+- `apple-silicon-guide.md` — M1/M2 status, ARM64 specifics, six-phase bare-metal roadmap
+
 **Claude Code skills** in `.claude/skills/`
 - `/anunix-build`, `/anunix-deploy`, `/anunix-exec`, `/anunix-test`
 - Package the build-deploy-test loop into one-shot slash commands
