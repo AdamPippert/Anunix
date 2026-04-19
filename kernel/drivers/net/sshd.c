@@ -2090,26 +2090,17 @@ static void sshd_handle_session(struct anx_tcp_conn *conn)
 
 	s->phase = SSHD_PHASE_CONNECTION;
 	ret = sshd_do_connection(s);
-	if (ret != ANX_OK)
+	if (ret != ANX_OK) {
 		kprintf("sshd: connection ended (%d)\n", ret);
-
-	/*
-	 * Drain the network stack before sending SSH_MSG_DISCONNECT.
-	 * Without this, the disconnect message races the CHANNEL_DATA
-	 * delivery: OpenSSH aborts on disconnect before reading buffered
-	 * channel output, causing silent output loss.
-	 *
-	 * Poll for ~200ms (20 ticks at 100Hz PIT) to let the client ACK
-	 * all channel data before we force-close the session.
-	 */
-	{
-		uint64_t _start = arch_timer_ticks();
-
-		while (arch_timer_ticks() - _start < 20)
-			anx_net_poll();
+		sshd_send_disconnect(s, SSH_DISCONNECT_BY_APPLICATION, "bye");
 	}
-
-	sshd_send_disconnect(s, SSH_DISCONNECT_BY_APPLICATION, "bye");
+	/*
+	 * On clean exec/shell exit: skip SSH_MSG_DISCONNECT. The channel
+	 * close sequence (CHANNEL_EOF + EXIT_STATUS + CHANNEL_CLOSE) is
+	 * enough — the client drains all buffered output before seeing the
+	 * TCP FIN. Sending DISCONNECT races the client reading CHANNEL_DATA
+	 * and causes intermittent output loss.
+	 */
 
 done:
 	anx_tcp_srv_close(conn);
