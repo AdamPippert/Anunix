@@ -334,7 +334,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_input_routing.c \
                tests/test_compositor_cell.c \
                tests/test_shm_ipc.c \
-               tests/test_conformance_harness.c
+               tests/test_conformance_harness.c \
+               tests/test_userspace_prereqs.c
 TEST_BIN    := build/test/anunix_test
 
 test:
