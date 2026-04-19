@@ -2092,6 +2092,18 @@ static void sshd_handle_session(struct anx_tcp_conn *conn)
 	if (ret != ANX_OK)
 		kprintf("sshd: connection ended (%d)\n", ret);
 
+	/*
+	 * Drain the network stack before sending SSH_MSG_DISCONNECT.
+	 * Without this, the disconnect message races the CHANNEL_DATA
+	 * delivery: OpenSSH aborts on disconnect before reading buffered
+	 * channel output, causing silent output loss.
+	 */
+	{
+		int _i;
+		for (_i = 0; _i < 32; _i++)
+			anx_net_poll();
+	}
+
 	sshd_send_disconnect(s, SSH_DISCONNECT_BY_APPLICATION, "bye");
 
 done:
