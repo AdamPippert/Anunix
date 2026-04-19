@@ -18,6 +18,14 @@
 /* --- Limits --- */
 
 #define ANX_POSIX_FD_MAX	64
+#define ANX_POSIX_PROC_MAX	32
+
+/* Syscall ABI v0 numbers */
+#define ANX_SYSCALL_OPEN	0
+#define ANX_SYSCALL_READ	1
+#define ANX_SYSCALL_WRITE	2
+#define ANX_SYSCALL_CLOSE	3
+#define ANX_SYSCALL_TIME	4
 
 /* --- File open flags --- */
 
@@ -41,7 +49,20 @@ struct anx_posix_fd {
 
 struct anx_posix_proc {
 	anx_cid_t cid;
+	bool in_use;
+	uint64_t vm_descriptor_root;
+	uint64_t page_map_id;
+	uint64_t map_generation;
+	int exit_status;
+	bool faulted;
+	char image_path[64];
 	struct anx_posix_fd fd_table[ANX_POSIX_FD_MAX];
+};
+
+struct anx_posix_exec_result {
+	char stdout_text[64];
+	size_t stdout_len;
+	int exit_status;
 };
 
 /* --- Stat buffer --- */
@@ -69,6 +90,16 @@ anx_cid_t anx_posix_fork(void);
 int anx_posix_exec(const char *path);
 void anx_posix_exit(int status);
 int anx_posix_wait(anx_cid_t cid, int *status_out);
+
+/* Userspace prerequisite APIs (P0-001/P0-002) */
+int anx_posix_spawn_isolated(struct anx_posix_proc **proc_out);
+int anx_posix_proc_fault(struct anx_posix_proc *proc, int fault_code);
+int anx_posix_proc_exit_status(struct anx_posix_proc *proc, int status);
+int anx_posix_exec_in_proc(struct anx_posix_proc *proc, const char *path);
+int anx_posix_loader_validate(const void *binary, size_t binary_size);
+long anx_posix_syscall(struct anx_posix_proc *proc, uint64_t nr,
+		      uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3);
+int anx_posix_exec_last_result(struct anx_posix_exec_result *out);
 
 /* Metadata */
 int anx_posix_stat(const char *path, struct anx_posix_stat *buf);
