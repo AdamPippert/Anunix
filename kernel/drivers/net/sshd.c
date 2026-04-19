@@ -151,6 +151,7 @@ struct sshd_state {
 	uint32_t client_max_packet;
 	bool channel_open;
 	bool shell_mode;
+	bool sent_channel_close;	/* exec branch already sent CHANNEL_CLOSE */
 
 	/* Shell line buffer */
 	char line[SSHD_LINE_MAX];
@@ -1837,16 +1838,22 @@ static int sshd_do_connection(struct sshd_state *s)
 	 * (e.g. "no-more-sessions@openssh.com"). */
 	while (payload_len >= 1 &&
 	       payload[0] == SSH_MSG_GLOBAL_REQUEST) {
-		uint8_t want;
+		/* want_reply is after: type(1) + name_len(4) + name_bytes
+		 * For "no-more-sessions@openssh.com" (28 bytes): offset = 33. */
+		uint8_t want = 0;
+		uint32_t gr_off = 1;
+		uint32_t nm_len;
+		const uint8_t *nm;
+
+		if (pkt_get_string(payload, payload_len, &gr_off,
+				   &nm, &nm_len) == ANX_OK &&
+		    gr_off < payload_len)
+			want = payload[gr_off];
+
 		anx_free(payload);
 		payload = NULL;
-		/* want_reply is byte at offset 5 (after type + 4-byte name len) */
-		if (payload_len >= 6) {
-			want = 0; /* can't read after free — reply failure anyway */
-		}
-		(void)want;
-		/* send request-failure if want_reply (safe to always send) */
-		{
+
+		if (want) {
 			uint8_t msg = SSH_MSG_REQUEST_FAILURE;
 			sshd_send_packet(s, &msg, 1);
 		}
@@ -2002,7 +2009,10 @@ static int sshd_do_connection(struct sshd_state *s)
 				sshd_send_channel_eof(s);
 				sshd_send_exit_status(s, 0);
 				sshd_send_channel_close(s);
-				s->channel_open = false;
+				s->sent_channel_close = true;
+				/* Don't exit yet — wait for client's CHANNEL_CLOSE
+				 * so TCP FIN goes out only after client has processed
+				 * all our CHANNEL_DATA. */
 				continue;
 			}
 
@@ -2030,7 +2040,8 @@ static int sshd_do_connection(struct sshd_state *s)
 		if (payload[0] == SSH_MSG_CHANNEL_EOF ||
 		    payload[0] == SSH_MSG_CHANNEL_CLOSE) {
 			anx_free(payload);
-			sshd_send_channel_close(s);
+			if (!s->sent_channel_close)
+				sshd_send_channel_close(s);
 			s->channel_open = false;
 			break;
 		}
