@@ -20,6 +20,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/arch.h>
 #include <anx/sshd.h>
 #include <anx/net.h>
 #include <anx/alloc.h>
@@ -150,6 +151,7 @@ struct sshd_state {
 	uint32_t client_max_packet;
 	bool channel_open;
 	bool shell_mode;
+	bool sent_channel_close;	/* exec branch already sent CHANNEL_CLOSE */
 
 	/* Shell line buffer */
 	char line[SSHD_LINE_MAX];
@@ -1832,8 +1834,38 @@ static int sshd_do_connection(struct sshd_state *s)
 		}
 	}
 
+	/* Skip global requests that OpenSSH sends before CHANNEL_OPEN
+	 * (e.g. "no-more-sessions@openssh.com"). */
+	while (payload_len >= 1 &&
+	       payload[0] == SSH_MSG_GLOBAL_REQUEST) {
+		/* want_reply is after: type(1) + name_len(4) + name_bytes
+		 * For "no-more-sessions@openssh.com" (28 bytes): offset = 33. */
+		uint8_t want = 0;
+		uint32_t gr_off = 1;
+		uint32_t nm_len;
+		const uint8_t *nm;
+
+		if (pkt_get_string(payload, payload_len, &gr_off,
+				   &nm, &nm_len) == ANX_OK &&
+		    gr_off < payload_len)
+			want = payload[gr_off];
+
+		anx_free(payload);
+		payload = NULL;
+
+		if (want) {
+			uint8_t msg = SSH_MSG_REQUEST_FAILURE;
+			sshd_send_packet(s, &msg, 1);
+		}
+		ret = sshd_recv_packet(s, &payload, &payload_len);
+		if (ret != ANX_OK)
+			return ret;
+	}
+
 	/* --- Expect SSH_MSG_CHANNEL_OPEN --- */
 	if (payload_len < 1 || payload[0] != SSH_MSG_CHANNEL_OPEN) {
+		kprintf("sshd: expected CHANNEL_OPEN, got msg %u\n",
+			payload_len >= 1 ? (unsigned)payload[0] : 0);
 		anx_free(payload);
 		return ANX_EIO;
 	}
@@ -1977,7 +2009,10 @@ static int sshd_do_connection(struct sshd_state *s)
 				sshd_send_channel_eof(s);
 				sshd_send_exit_status(s, 0);
 				sshd_send_channel_close(s);
-				s->channel_open = false;
+				s->sent_channel_close = true;
+				/* Don't exit yet — wait for client's CHANNEL_CLOSE
+				 * so TCP FIN goes out only after client has processed
+				 * all our CHANNEL_DATA. */
 				continue;
 			}
 
@@ -2005,7 +2040,8 @@ static int sshd_do_connection(struct sshd_state *s)
 		if (payload[0] == SSH_MSG_CHANNEL_EOF ||
 		    payload[0] == SSH_MSG_CHANNEL_CLOSE) {
 			anx_free(payload);
-			sshd_send_channel_close(s);
+			if (!s->sent_channel_close)
+				sshd_send_channel_close(s);
 			s->channel_open = false;
 			break;
 		}
@@ -2089,10 +2125,18 @@ static void sshd_handle_session(struct anx_tcp_conn *conn)
 
 	s->phase = SSHD_PHASE_CONNECTION;
 	ret = sshd_do_connection(s);
-	if (ret != ANX_OK)
+	kprintf("sshd: do_connection ret=%d\n", ret);
+	if (ret != ANX_OK) {
 		kprintf("sshd: connection ended (%d)\n", ret);
-
-	sshd_send_disconnect(s, SSH_DISCONNECT_BY_APPLICATION, "bye");
+		sshd_send_disconnect(s, SSH_DISCONNECT_BY_APPLICATION, "bye");
+	}
+	/*
+	 * On clean exec/shell exit: skip SSH_MSG_DISCONNECT. The channel
+	 * close sequence (CHANNEL_EOF + EXIT_STATUS + CHANNEL_CLOSE) is
+	 * enough — the client drains all buffered output before seeing the
+	 * TCP FIN. Sending DISCONNECT races the client reading CHANNEL_DATA
+	 * and causes intermittent output loss.
+	 */
 
 done:
 	anx_tcp_srv_close(conn);

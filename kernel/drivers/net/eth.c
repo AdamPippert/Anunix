@@ -1,14 +1,15 @@
 /*
  * eth.c — Ethernet frame dispatch and construction.
  *
- * Receives raw frames from the virtio-net driver, parses the
- * Ethernet header, and dispatches to ARP or IPv4 handlers.
+ * Receives raw frames from the NIC (virtio-net preferred, e1000 fallback),
+ * parses the Ethernet header, and dispatches to ARP or IPv4 handlers.
  * Provides frame construction for outbound packets.
  */
 
 #include <anx/types.h>
 #include <anx/net.h>
 #include <anx/virtio_net.h>
+#include <anx/e1000.h>
 #include <anx/string.h>
 
 /* Callback registered with virtio-net poll */
@@ -53,14 +54,26 @@ int anx_eth_send(const uint8_t dst[6], uint16_t ethertype,
 		return ANX_EINVAL;
 
 	anx_memcpy(hdr->dst, dst, ANX_ETH_ALEN);
-	anx_virtio_net_mac(hdr->src);
 	hdr->ethertype = anx_htons(ethertype);
 	anx_memcpy(frame + ANX_ETH_HLEN, payload, len);
 
-	return anx_virtio_net_send(frame, ANX_ETH_HLEN + len);
+	if (anx_virtio_net_ready()) {
+		anx_virtio_net_mac(hdr->src);
+		return anx_virtio_net_send(frame, ANX_ETH_HLEN + len);
+	}
+
+	if (anx_e1000_ready()) {
+		anx_memcpy(hdr->src, anx_e1000_mac(), ANX_ETH_ALEN);
+		return anx_e1000_tx(frame, (uint16_t)(ANX_ETH_HLEN + len));
+	}
+
+	return ANX_EIO;
 }
 
 void anx_net_poll(void)
 {
-	anx_virtio_net_poll(eth_recv_cb, NULL);
+	if (anx_virtio_net_ready())
+		anx_virtio_net_poll(eth_recv_cb, NULL);
+	else
+		anx_e1000_poll();
 }
