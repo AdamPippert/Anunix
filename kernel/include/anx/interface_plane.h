@@ -226,6 +226,17 @@ int anx_iface_event_unsubscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
 /* Poll for the next event addressed to cell_cid; returns ANX_ENOENT if empty */
 int anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out);
 
+#define ANX_IFACE_EVENT_RING_SIZE 256u
+
+struct anx_iface_event_stats {
+	uint64_t posted;
+	uint64_t overflow_drops;
+};
+
+/* Resets event queue state (ring + subscriptions + counters). */
+void anx_iface_event_reset(void);
+void anx_iface_event_stats(struct anx_iface_event_stats *out);
+
 /* Renderer registration */
 int       anx_iface_renderer_register(int renderer_class,
                                        const struct anx_renderer_ops *ops,
@@ -248,14 +259,60 @@ int anx_renderer_gpu_register(void);
 int anx_renderer_headless_register(void);
 
 /* ------------------------------------------------------------------ */
+/* Shared-memory IPC v0 (userspace <-> compositor)                     */
+/* ------------------------------------------------------------------ */
+
+#define ANX_IFACE_SHM_MAX            32u
+#define ANX_IFACE_SHM_MAX_BYTES      (1024u * 1024u)
+#define ANX_IFACE_SHM_RIGHT_PRODUCE  (1u << 0)
+#define ANX_IFACE_SHM_RIGHT_CONSUME  (1u << 1)
+
+/* Create a shared buffer owned by owner_cid. */
+int anx_iface_shm_create(anx_cid_t owner_cid, uint32_t size_bytes, anx_oid_t *out_oid);
+/* Owner grants rights to another cell. */
+int anx_iface_shm_grant(anx_oid_t shm_oid, anx_cid_t owner_cid,
+                        anx_cid_t grantee_cid, uint32_t rights_mask);
+/* Map requires granted rights; returns raw pointer and size for zero-copy access. */
+int anx_iface_shm_map(anx_oid_t shm_oid, anx_cid_t cell_cid, uint32_t required_right,
+                      void **out_ptr, uint32_t *out_size, uint32_t *out_sequence);
+/* Producer updates payload and bumps sequence. */
+int anx_iface_shm_publish(anx_oid_t shm_oid, anx_cid_t producer_cid,
+                          const void *data, uint32_t len, uint32_t *out_sequence);
+/* Consumer copies latest payload + sequence. */
+int anx_iface_shm_consume(anx_oid_t shm_oid, anx_cid_t consumer_cid,
+                          void *out, uint32_t out_max,
+                          uint32_t *out_len, uint32_t *out_sequence);
+
+/* ------------------------------------------------------------------ */
 /* Compositor support                                                   */
 /* ------------------------------------------------------------------ */
 
-/*
- * Walk all surfaces back-to-front, commit every ANX_SURF_VISIBLE surface,
- * and set keyboard focus to the topmost visible surface.
- * Returns number of surfaces committed, negative on error.
- */
+#define ANX_IFACE_COMPOSITOR_MAX 4u
+
+struct anx_iface_compositor_stats {
+	char domain[ANX_ENV_NAME_MAX];
+	anx_cid_t cell_cid;
+	bool running;
+	bool crashed;
+	uint64_t repaint_cycles;
+	uint64_t committed_surfaces;
+	uint32_t last_cycle_commits;
+};
+
+/* Start compositor cell for a domain. Exactly one per domain. */
+int anx_iface_compositor_start(const char *domain);
+/* Stop a running compositor cell for a domain. */
+int anx_iface_compositor_stop(const char *domain);
+/* Simulate compositor cell crash for recovery tests. */
+int anx_iface_compositor_crash(const char *domain);
+/* Restart crashed compositor cell while preserving surface registry. */
+int anx_iface_compositor_restart(const char *domain);
+/* Run one deterministic repaint cycle through compositor cell runtime. */
+int anx_iface_compositor_tick(const char *domain, uint32_t *committed_out);
+/* Query compositor cell state and counters. */
+int anx_iface_compositor_stats(const char *domain, struct anx_iface_compositor_stats *out);
+
+/* Legacy helper: repaint via visual-desktop compositor domain. */
 int anx_iface_compositor_repaint(void);
 
 /* ------------------------------------------------------------------ */
