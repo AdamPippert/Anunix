@@ -65,6 +65,39 @@ struct anx_posix_exec_result {
 	int exit_status;
 };
 
+#define ANX_TLS_MAX_DNS_NAME	64
+#define ANX_TLS_MAX_SUBJECT	64
+#define ANX_TLS_MAX_CHAIN	8
+#define ANX_TLS_MAX_TRUST_ANCHORS	8
+
+#define ANX_TLS_ERR_NONE		0
+#define ANX_TLS_ERR_CHAIN_MALFORMED	1
+#define ANX_TLS_ERR_CHAIN_UNTRUSTED	2
+#define ANX_TLS_ERR_HOSTNAME_MISMATCH	3
+#define ANX_TLS_ERR_ENDPOINT_UNKNOWN	4
+
+struct anx_tls_cert {
+	char subject[ANX_TLS_MAX_SUBJECT];
+	char issuer[ANX_TLS_MAX_SUBJECT];
+	char dns_name[ANX_TLS_MAX_DNS_NAME];
+	bool is_ca;
+};
+
+#define ANX_PROFILE_NAME_MAX	32
+#define ANX_PROFILE_BLOB_MAX	256
+
+struct anx_profile_record {
+	char name[ANX_PROFILE_NAME_MAX];
+	uint8_t committed_blob[ANX_PROFILE_BLOB_MAX];
+	size_t committed_len;
+	uint8_t committed_hash[32];
+	uint8_t staged_blob[ANX_PROFILE_BLOB_MAX];
+	size_t staged_len;
+	bool staged_valid;
+	bool lock_held;
+	anx_cid_t lock_owner;
+};
+
 /* --- Stat buffer --- */
 
 struct anx_posix_stat {
@@ -100,6 +133,27 @@ int anx_posix_loader_validate(const void *binary, size_t binary_size);
 long anx_posix_syscall(struct anx_posix_proc *proc, uint64_t nr,
 		      uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3);
 int anx_posix_exec_last_result(struct anx_posix_exec_result *out);
+
+/* TLS trust baseline APIs (P0-005) */
+void anx_tls_trust_store_reset(void);
+int anx_tls_trust_anchor_add(const char *subject);
+int anx_tls_validate_chain(const struct anx_tls_cert *chain, size_t chain_len,
+		      int *tls_error_out);
+int anx_tls_verify_hostname(const struct anx_tls_cert *leaf,
+		    const char *hostname, int *tls_error_out);
+int anx_tls_https_get(const char *url, char *response_out, size_t response_len,
+	     int *status_out, int *tls_error_out);
+
+/* Profile/cache storage APIs (P0-006) */
+void anx_profile_store_init(void);
+int anx_profile_lock_acquire(struct anx_posix_proc *proc, const char *name);
+int anx_profile_lock_release(struct anx_posix_proc *proc, const char *name);
+int anx_profile_stage_write(struct anx_posix_proc *proc, const char *name,
+		    const void *blob, size_t blob_len);
+int anx_profile_commit(struct anx_posix_proc *proc, const char *name);
+int anx_profile_read(const char *name, void *out, size_t out_len,
+	     size_t *blob_len_out, uint8_t hash_out[32]);
+int anx_profile_simulate_crash(const char *name);
 
 /* Metadata */
 int anx_posix_stat(const char *path, struct anx_posix_stat *buf);
