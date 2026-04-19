@@ -148,6 +148,16 @@ anx_oid_t anx_input_focus_get(void);
  *   unicode  — resolved character (0 if non-printable) */
 void anx_input_ps2_key(uint8_t scancode, uint32_t unicode);
 
+/* Input telemetry for deterministic routing tests and diagnostics. */
+struct anx_input_stats {
+	uint64_t delivered;
+	uint64_t dropped_no_focus;
+	uint64_t last_timestamp_ns;
+};
+
+void anx_input_stats_get(struct anx_input_stats *out);
+void anx_input_stats_reset(void);
+
 /* Generic key event injection (USB HID, synthetic) */
 void anx_input_key_down(uint32_t hid_key, uint32_t modifiers, uint32_t unicode);
 void anx_input_key_up(uint32_t hid_key, uint32_t modifiers);
