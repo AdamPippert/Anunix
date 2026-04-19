@@ -2097,10 +2097,14 @@ static void sshd_handle_session(struct anx_tcp_conn *conn)
 	 * Without this, the disconnect message races the CHANNEL_DATA
 	 * delivery: OpenSSH aborts on disconnect before reading buffered
 	 * channel output, causing silent output loss.
+	 *
+	 * Poll for ~200ms (20 ticks at 100Hz PIT) to let the client ACK
+	 * all channel data before we force-close the session.
 	 */
 	{
-		int _i;
-		for (_i = 0; _i < 32; _i++)
+		uint64_t _start = arch_timer_ticks();
+
+		while (arch_timer_ticks() - _start < 20)
 			anx_net_poll();
 	}
 
