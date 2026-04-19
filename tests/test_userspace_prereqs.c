@@ -8,6 +8,7 @@
 #include <anx/namespace.h>
 #include <anx/cell.h>
 #include <anx/string.h>
+#include <anx/crypto.h>
 
 #define ASSERT(cond, code) do { if (!(cond)) return (code); } while (0)
 
@@ -297,6 +298,224 @@ static int test_abi_smoke(void)
 	return 0;
 }
 
+/* P0-005-U01 */
+static int test_cert_chain_validation(void)
+{
+	struct anx_tls_cert valid_chain[3];
+	struct anx_tls_cert malformed_chain[3];
+	struct anx_tls_cert untrusted_chain[3];
+	int tls_err;
+	int rc;
+
+	anx_tls_trust_store_reset();
+	rc = anx_tls_trust_anchor_add("ANX Root CA");
+	ASSERT(rc == ANX_OK, -300);
+
+	anx_memset(valid_chain, 0, sizeof(valid_chain));
+	anx_strlcpy(valid_chain[0].subject, "good.anx.test", sizeof(valid_chain[0].subject));
+	anx_strlcpy(valid_chain[0].issuer, "ANX Intermediate CA", sizeof(valid_chain[0].issuer));
+	anx_strlcpy(valid_chain[0].dns_name, "good.anx.test", sizeof(valid_chain[0].dns_name));
+	valid_chain[1].is_ca = true;
+	anx_strlcpy(valid_chain[1].subject, "ANX Intermediate CA", sizeof(valid_chain[1].subject));
+	anx_strlcpy(valid_chain[1].issuer, "ANX Root CA", sizeof(valid_chain[1].issuer));
+	valid_chain[2].is_ca = true;
+	anx_strlcpy(valid_chain[2].subject, "ANX Root CA", sizeof(valid_chain[2].subject));
+	anx_strlcpy(valid_chain[2].issuer, "ANX Root CA", sizeof(valid_chain[2].issuer));
+
+	tls_err = -1;
+	rc = anx_tls_validate_chain(valid_chain, 3, &tls_err);
+	ASSERT(rc == ANX_OK, -301);
+	ASSERT(tls_err == ANX_TLS_ERR_NONE, -302);
+
+	malformed_chain[0] = valid_chain[0];
+	malformed_chain[1] = valid_chain[1];
+	malformed_chain[2] = valid_chain[2];
+	anx_strlcpy(malformed_chain[0].issuer, "Wrong Issuer", sizeof(malformed_chain[0].issuer));
+	tls_err = -1;
+	rc = anx_tls_validate_chain(malformed_chain, 3, &tls_err);
+	ASSERT(rc == ANX_EINVAL, -303);
+	ASSERT(tls_err == ANX_TLS_ERR_CHAIN_MALFORMED, -304);
+
+	untrusted_chain[0] = valid_chain[0];
+	untrusted_chain[1] = valid_chain[1];
+	untrusted_chain[2] = valid_chain[2];
+	anx_strlcpy(untrusted_chain[2].subject, "Unknown Root", sizeof(untrusted_chain[2].subject));
+	anx_strlcpy(untrusted_chain[2].issuer, "Unknown Root", sizeof(untrusted_chain[2].issuer));
+	anx_strlcpy(untrusted_chain[1].issuer, "Unknown Root", sizeof(untrusted_chain[1].issuer));
+	tls_err = -1;
+	rc = anx_tls_validate_chain(untrusted_chain, 3, &tls_err);
+	ASSERT(rc == ANX_EPERM, -305);
+	ASSERT(tls_err == ANX_TLS_ERR_CHAIN_UNTRUSTED, -306);
+	return 0;
+}
+
+/* P0-005-U02 */
+static int test_hostname_verification(void)
+{
+	struct anx_tls_cert leaf;
+	int tls_err;
+	int rc;
+
+	anx_memset(&leaf, 0, sizeof(leaf));
+	anx_strlcpy(leaf.dns_name, "good.anx.test", sizeof(leaf.dns_name));
+
+	tls_err = -1;
+	rc = anx_tls_verify_hostname(&leaf, "good.anx.test", &tls_err);
+	ASSERT(rc == ANX_OK, -310);
+	ASSERT(tls_err == ANX_TLS_ERR_NONE, -311);
+
+	tls_err = -1;
+	rc = anx_tls_verify_hostname(&leaf, "wrong.anx.test", &tls_err);
+	ASSERT(rc == ANX_EPERM, -312);
+	ASSERT(tls_err == ANX_TLS_ERR_HOSTNAME_MISMATCH, -313);
+	return 0;
+}
+
+/* P0-005-I01 */
+static int test_https_success_path(void)
+{
+	char response[64];
+	int status;
+	int tls_err;
+	int rc;
+
+	anx_tls_trust_store_reset();
+	rc = anx_tls_trust_anchor_add("ANX Root CA");
+	ASSERT(rc == ANX_OK, -320);
+	anx_memset(response, 0, sizeof(response));
+	status = 0;
+	tls_err = -1;
+	rc = anx_tls_https_get("https://good.anx.test/", response, sizeof(response),
+			       &status, &tls_err);
+	ASSERT(rc == ANX_OK, -321);
+	ASSERT(status == 200, -322);
+	ASSERT(tls_err == ANX_TLS_ERR_NONE, -323);
+	ASSERT(anx_strcmp(response, "ok:https-good") == 0, -324);
+	return 0;
+}
+
+/* P0-005-I02 */
+static int test_https_invalid_cert_path(void)
+{
+	char response[64];
+	int status;
+	int tls_err;
+	int rc;
+
+	anx_tls_trust_store_reset();
+	rc = anx_tls_trust_anchor_add("ANX Root CA");
+	ASSERT(rc == ANX_OK, -330);
+	anx_memset(response, 0, sizeof(response));
+	status = 0;
+	tls_err = -1;
+	rc = anx_tls_https_get("https://badcert.anx.test/", response, sizeof(response),
+			       &status, &tls_err);
+	ASSERT(rc == ANX_EPERM, -331);
+	ASSERT(tls_err == ANX_TLS_ERR_CHAIN_UNTRUSTED, -332);
+	ASSERT(status == 0, -333);
+	return 0;
+}
+
+/* P0-006-U01 */
+static int test_atomic_commit(void)
+{
+	struct anx_posix_proc *proc;
+	char out[64];
+	size_t out_len;
+	int rc;
+
+	rc = anx_posix_spawn_isolated(&proc);
+	ASSERT(rc == ANX_OK, -340);
+	rc = anx_profile_lock_acquire(proc, "profile.atomic");
+	ASSERT(rc == ANX_OK, -341);
+	rc = anx_profile_stage_write(proc, "profile.atomic", "v1-profile", 10);
+	ASSERT(rc == ANX_OK, -342);
+	rc = anx_profile_commit(proc, "profile.atomic");
+	ASSERT(rc == ANX_OK, -343);
+	rc = anx_profile_lock_release(proc, "profile.atomic");
+	ASSERT(rc == ANX_OK, -344);
+
+	rc = anx_profile_lock_acquire(proc, "profile.atomic");
+	ASSERT(rc == ANX_OK, -345);
+	rc = anx_profile_stage_write(proc, "profile.atomic", "v2-partial", 10);
+	ASSERT(rc == ANX_OK, -346);
+	rc = anx_profile_simulate_crash("profile.atomic");
+	ASSERT(rc == ANX_OK, -347);
+
+	anx_memset(out, 0, sizeof(out));
+	out_len = 0;
+	rc = anx_profile_read("profile.atomic", out, sizeof(out), &out_len, NULL);
+	ASSERT(rc == ANX_OK, -348);
+	ASSERT(out_len == 10, -349);
+	ASSERT(anx_memcmp(out, "v1-profile", 10) == 0, -350);
+	return 0;
+}
+
+/* P0-006-U02 */
+static int test_lock_contention(void)
+{
+	struct anx_posix_proc *proc_a;
+	struct anx_posix_proc *proc_b;
+	int rc;
+
+	rc = anx_posix_spawn_isolated(&proc_a);
+	ASSERT(rc == ANX_OK, -360);
+	rc = anx_posix_spawn_isolated(&proc_b);
+	ASSERT(rc == ANX_OK, -361);
+
+	rc = anx_profile_lock_acquire(proc_a, "profile.lock");
+	ASSERT(rc == ANX_OK, -362);
+	rc = anx_profile_lock_acquire(proc_b, "profile.lock");
+	ASSERT(rc == ANX_EBUSY, -363);
+	rc = anx_profile_lock_release(proc_a, "profile.lock");
+	ASSERT(rc == ANX_OK, -364);
+	rc = anx_profile_lock_acquire(proc_b, "profile.lock");
+	ASSERT(rc == ANX_OK, -365);
+	rc = anx_profile_lock_release(proc_b, "profile.lock");
+	ASSERT(rc == ANX_OK, -366);
+	return 0;
+}
+
+/* P0-006-I01 */
+static int test_crash_recovery_profile(void)
+{
+	struct anx_posix_proc *proc;
+	char out[64];
+	size_t out_len;
+	uint8_t hash[32];
+	uint8_t expected_hash[32];
+	int rc;
+
+	rc = anx_posix_spawn_isolated(&proc);
+	ASSERT(rc == ANX_OK, -370);
+	rc = anx_profile_lock_acquire(proc, "profile.recovery");
+	ASSERT(rc == ANX_OK, -371);
+	rc = anx_profile_stage_write(proc, "profile.recovery", "state-v1", 8);
+	ASSERT(rc == ANX_OK, -372);
+	rc = anx_profile_commit(proc, "profile.recovery");
+	ASSERT(rc == ANX_OK, -373);
+	rc = anx_profile_lock_release(proc, "profile.recovery");
+	ASSERT(rc == ANX_OK, -374);
+
+	rc = anx_profile_lock_acquire(proc, "profile.recovery");
+	ASSERT(rc == ANX_OK, -375);
+	rc = anx_profile_stage_write(proc, "profile.recovery", "state-v2-partial", 16);
+	ASSERT(rc == ANX_OK, -376);
+	rc = anx_profile_simulate_crash("profile.recovery");
+	ASSERT(rc == ANX_OK, -377);
+
+	anx_memset(out, 0, sizeof(out));
+	anx_memset(hash, 0, sizeof(hash));
+	out_len = 0;
+	rc = anx_profile_read("profile.recovery", out, sizeof(out), &out_len, hash);
+	ASSERT(rc == ANX_OK, -378);
+	ASSERT(out_len == 8, -379);
+	ASSERT(anx_memcmp(out, "state-v1", 8) == 0, -380);
+	anx_sha256("state-v1", 8, expected_hash);
+	ASSERT(anx_memcmp(hash, expected_hash, 32) == 0, -381);
+	return 0;
+}
+
 int test_userspace_prereqs(void)
 {
 	int rc;
@@ -323,6 +542,27 @@ int test_userspace_prereqs(void)
 	if (rc != 0)
 		return rc;
 	rc = test_abi_smoke();
+	if (rc != 0)
+		return rc;
+	rc = test_cert_chain_validation();
+	if (rc != 0)
+		return rc;
+	rc = test_hostname_verification();
+	if (rc != 0)
+		return rc;
+	rc = test_https_success_path();
+	if (rc != 0)
+		return rc;
+	rc = test_https_invalid_cert_path();
+	if (rc != 0)
+		return rc;
+	rc = test_atomic_commit();
+	if (rc != 0)
+		return rc;
+	rc = test_lock_contention();
+	if (rc != 0)
+		return rc;
+	rc = test_crash_recovery_profile();
 	if (rc != 0)
 		return rc;
 	return 0;
