@@ -1833,8 +1833,32 @@ static int sshd_do_connection(struct sshd_state *s)
 		}
 	}
 
+	/* Skip global requests that OpenSSH sends before CHANNEL_OPEN
+	 * (e.g. "no-more-sessions@openssh.com"). */
+	while (payload_len >= 1 &&
+	       payload[0] == SSH_MSG_GLOBAL_REQUEST) {
+		uint8_t want;
+		anx_free(payload);
+		payload = NULL;
+		/* want_reply is byte at offset 5 (after type + 4-byte name len) */
+		if (payload_len >= 6) {
+			want = 0; /* can't read after free — reply failure anyway */
+		}
+		(void)want;
+		/* send request-failure if want_reply (safe to always send) */
+		{
+			uint8_t msg = SSH_MSG_REQUEST_FAILURE;
+			sshd_send_packet(s, &msg, 1);
+		}
+		ret = sshd_recv_packet(s, &payload, &payload_len);
+		if (ret != ANX_OK)
+			return ret;
+	}
+
 	/* --- Expect SSH_MSG_CHANNEL_OPEN --- */
 	if (payload_len < 1 || payload[0] != SSH_MSG_CHANNEL_OPEN) {
+		kprintf("sshd: expected CHANNEL_OPEN, got msg %u\n",
+			payload_len >= 1 ? (unsigned)payload[0] : 0);
 		anx_free(payload);
 		return ANX_EIO;
 	}
@@ -2090,6 +2114,7 @@ static void sshd_handle_session(struct anx_tcp_conn *conn)
 
 	s->phase = SSHD_PHASE_CONNECTION;
 	ret = sshd_do_connection(s);
+	kprintf("sshd: do_connection ret=%d\n", ret);
 	if (ret != ANX_OK) {
 		kprintf("sshd: connection ended (%d)\n", ret);
 		sshd_send_disconnect(s, SSH_DISCONNECT_BY_APPLICATION, "bye");
