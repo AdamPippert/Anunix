@@ -13,6 +13,7 @@
 #include <anx/cell.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/crypto.h>
 
 #define ANX_ELF_MAGIC0 0x7f
 #define ANX_ELF_MAGIC1 'E'
@@ -22,6 +23,15 @@
 #define ANX_ELFDATA2LSB 1
 #define ANX_PT_LOAD 1
 #define ANX_POSIX_TIME_NS 123456789ULL
+#define ANX_PROFILE_STORE_MAX 8
+
+struct anx_tls_endpoint {
+	const char *url;
+	const char *response;
+	int status;
+	struct anx_tls_cert chain[ANX_TLS_MAX_CHAIN];
+	size_t chain_len;
+};
 
 struct anx_elf64_ehdr {
 	uint8_t e_ident[16];
@@ -57,6 +67,64 @@ static struct anx_posix_proc proc_table[ANX_POSIX_PROC_MAX];
 static uint64_t next_vm_descriptor_root;
 static uint64_t next_page_map_id;
 static struct anx_posix_exec_result last_exec_result;
+static char tls_trust_anchors[ANX_TLS_MAX_TRUST_ANCHORS][ANX_TLS_MAX_SUBJECT];
+static size_t tls_trust_anchor_count;
+static struct anx_profile_record profile_store[ANX_PROFILE_STORE_MAX];
+
+static const struct anx_tls_endpoint tls_endpoints[] = {
+	{
+		.url = "https://good.anx.test/",
+		.response = "ok:https-good",
+		.status = 200,
+		.chain = {
+			{
+				.subject = "good.anx.test",
+				.issuer = "ANX Intermediate CA",
+				.dns_name = "good.anx.test",
+				.is_ca = false,
+			},
+			{
+				.subject = "ANX Intermediate CA",
+				.issuer = "ANX Root CA",
+				.dns_name = "",
+				.is_ca = true,
+			},
+			{
+				.subject = "ANX Root CA",
+				.issuer = "ANX Root CA",
+				.dns_name = "",
+				.is_ca = true,
+			},
+		},
+		.chain_len = 3,
+	},
+	{
+		.url = "https://badcert.anx.test/",
+		.response = "",
+		.status = 0,
+		.chain = {
+			{
+				.subject = "badcert.anx.test",
+				.issuer = "Unknown Intermediate",
+				.dns_name = "badcert.anx.test",
+				.is_ca = false,
+			},
+			{
+				.subject = "Unknown Intermediate",
+				.issuer = "Unknown Root",
+				.dns_name = "",
+				.is_ca = true,
+			},
+			{
+				.subject = "Unknown Root",
+				.issuer = "Unknown Root",
+				.dns_name = "",
+				.is_ca = true,
+			},
+		},
+		.chain_len = 3,
+	},
+};
 
 void anx_posix_init(void)
 {
@@ -80,6 +148,8 @@ void anx_posix_init(void)
 	next_vm_descriptor_root = 2;
 	next_page_map_id = 2;
 	anx_memset(&last_exec_result, 0, sizeof(last_exec_result));
+	anx_tls_trust_store_reset();
+	anx_profile_store_init();
 }
 
 /* Find a free file descriptor slot */
@@ -462,6 +532,342 @@ int anx_posix_exec_last_result(struct anx_posix_exec_result *out)
 	if (!out)
 		return ANX_EINVAL;
 	*out = last_exec_result;
+	return ANX_OK;
+}
+
+void anx_tls_trust_store_reset(void)
+{
+	anx_memset(tls_trust_anchors, 0, sizeof(tls_trust_anchors));
+	tls_trust_anchor_count = 0;
+}
+
+int anx_tls_trust_anchor_add(const char *subject)
+{
+	size_t i;
+
+	if (!subject || !subject[0])
+		return ANX_EINVAL;
+	for (i = 0; i < tls_trust_anchor_count; i++) {
+		if (anx_strcmp(tls_trust_anchors[i], subject) == 0)
+			return ANX_OK;
+	}
+	if (tls_trust_anchor_count >= ANX_TLS_MAX_TRUST_ANCHORS)
+		return ANX_EFULL;
+	anx_strlcpy(tls_trust_anchors[tls_trust_anchor_count], subject,
+		    sizeof(tls_trust_anchors[0]));
+	tls_trust_anchor_count++;
+	return ANX_OK;
+}
+
+static bool tls_anchor_trusted(const char *subject)
+{
+	size_t i;
+
+	for (i = 0; i < tls_trust_anchor_count; i++) {
+		if (anx_strcmp(tls_trust_anchors[i], subject) == 0)
+			return true;
+	}
+	return false;
+}
+
+int anx_tls_validate_chain(const struct anx_tls_cert *chain, size_t chain_len,
+		      int *tls_error_out)
+{
+	size_t i;
+
+	if (tls_error_out)
+		*tls_error_out = ANX_TLS_ERR_NONE;
+	if (!chain || chain_len < 2 || chain_len > ANX_TLS_MAX_CHAIN) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_CHAIN_MALFORMED;
+		return ANX_EINVAL;
+	}
+	if (chain[0].is_ca) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_CHAIN_MALFORMED;
+		return ANX_EINVAL;
+	}
+	for (i = 1; i < chain_len; i++) {
+		if (!chain[i].is_ca) {
+			if (tls_error_out)
+				*tls_error_out = ANX_TLS_ERR_CHAIN_MALFORMED;
+			return ANX_EINVAL;
+		}
+	}
+	for (i = 0; i < (chain_len - 1); i++) {
+		if (anx_strcmp(chain[i].issuer, chain[i + 1].subject) != 0) {
+			if (tls_error_out)
+				*tls_error_out = ANX_TLS_ERR_CHAIN_MALFORMED;
+			return ANX_EINVAL;
+		}
+	}
+	if (anx_strcmp(chain[chain_len - 1].issuer,
+		       chain[chain_len - 1].subject) != 0) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_CHAIN_MALFORMED;
+		return ANX_EINVAL;
+	}
+	if (!tls_anchor_trusted(chain[chain_len - 1].subject)) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_CHAIN_UNTRUSTED;
+		return ANX_EPERM;
+	}
+	return ANX_OK;
+}
+
+int anx_tls_verify_hostname(const struct anx_tls_cert *leaf,
+		    const char *hostname, int *tls_error_out)
+{
+	if (tls_error_out)
+		*tls_error_out = ANX_TLS_ERR_NONE;
+	if (!leaf || !hostname || !hostname[0]) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_HOSTNAME_MISMATCH;
+		return ANX_EINVAL;
+	}
+	if (anx_strcmp(leaf->dns_name, hostname) != 0) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_HOSTNAME_MISMATCH;
+		return ANX_EPERM;
+	}
+	return ANX_OK;
+}
+
+static const struct anx_tls_endpoint *tls_endpoint_find(const char *url)
+{
+	size_t i;
+
+	for (i = 0; i < (sizeof(tls_endpoints) / sizeof(tls_endpoints[0])); i++) {
+		if (anx_strcmp(tls_endpoints[i].url, url) == 0)
+			return &tls_endpoints[i];
+	}
+	return NULL;
+}
+
+static const char *tls_hostname_from_url(const char *url)
+{
+	const char *start;
+	const char *p;
+	char ch;
+
+	if (anx_strncmp(url, "https://", 8) != 0)
+		return NULL;
+	start = url + 8;
+	for (p = start; ; p++) {
+		ch = *p;
+		if (!ch || ch == '/')
+			break;
+	}
+	return start;
+}
+
+int anx_tls_https_get(const char *url, char *response_out, size_t response_len,
+	     int *status_out, int *tls_error_out)
+{
+	const struct anx_tls_endpoint *ep;
+	const char *host;
+	char hostname[ANX_TLS_MAX_DNS_NAME];
+	size_t host_len;
+	int rc;
+
+	if (tls_error_out)
+		*tls_error_out = ANX_TLS_ERR_NONE;
+	if (status_out)
+		*status_out = 0;
+	if (!url || !response_out || response_len == 0)
+		return ANX_EINVAL;
+
+	host = tls_hostname_from_url(url);
+	if (!host) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_ENDPOINT_UNKNOWN;
+		return ANX_EINVAL;
+	}
+	host_len = 0;
+	while (host[host_len] && host[host_len] != '/')
+		host_len++;
+	if (host_len == 0 || host_len >= sizeof(hostname)) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_ENDPOINT_UNKNOWN;
+		return ANX_EINVAL;
+	}
+	anx_memcpy(hostname, host, host_len);
+	hostname[host_len] = '\0';
+
+	ep = tls_endpoint_find(url);
+	if (!ep) {
+		if (tls_error_out)
+			*tls_error_out = ANX_TLS_ERR_ENDPOINT_UNKNOWN;
+		return ANX_ENOENT;
+	}
+
+	rc = anx_tls_validate_chain(ep->chain, ep->chain_len, tls_error_out);
+	if (rc != ANX_OK)
+		return rc;
+	rc = anx_tls_verify_hostname(&ep->chain[0], hostname, tls_error_out);
+	if (rc != ANX_OK)
+		return rc;
+
+	if (anx_strlen(ep->response) + 1 > response_len)
+		return ANX_ENOMEM;
+	anx_strlcpy(response_out, ep->response, response_len);
+	if (status_out)
+		*status_out = ep->status;
+	return ANX_OK;
+}
+
+void anx_profile_store_init(void)
+{
+	anx_memset(profile_store, 0, sizeof(profile_store));
+}
+
+static bool cid_equal(const anx_cid_t *a, const anx_cid_t *b)
+{
+	return a->hi == b->hi && a->lo == b->lo;
+}
+
+static struct anx_profile_record *profile_find(const char *name)
+{
+	size_t i;
+
+	for (i = 0; i < ANX_PROFILE_STORE_MAX; i++) {
+		if (profile_store[i].name[0] &&
+		    anx_strcmp(profile_store[i].name, name) == 0)
+			return &profile_store[i];
+	}
+	return NULL;
+}
+
+static struct anx_profile_record *profile_find_or_create(const char *name)
+{
+	struct anx_profile_record *slot;
+	size_t i;
+
+	slot = profile_find(name);
+	if (slot)
+		return slot;
+	for (i = 0; i < ANX_PROFILE_STORE_MAX; i++) {
+		if (!profile_store[i].name[0]) {
+			anx_strlcpy(profile_store[i].name, name,
+			    sizeof(profile_store[i].name));
+			return &profile_store[i];
+		}
+	}
+	return NULL;
+}
+
+int anx_profile_lock_acquire(struct anx_posix_proc *proc, const char *name)
+{
+	struct anx_profile_record *rec;
+
+	if (!proc || !name || !name[0])
+		return ANX_EINVAL;
+	rec = profile_find_or_create(name);
+	if (!rec)
+		return ANX_EFULL;
+	if (rec->lock_held && !cid_equal(&rec->lock_owner, &proc->cid))
+		return ANX_EBUSY;
+	rec->lock_held = true;
+	rec->lock_owner = proc->cid;
+	return ANX_OK;
+}
+
+int anx_profile_lock_release(struct anx_posix_proc *proc, const char *name)
+{
+	struct anx_profile_record *rec;
+
+	if (!proc || !name || !name[0])
+		return ANX_EINVAL;
+	rec = profile_find(name);
+	if (!rec)
+		return ANX_ENOENT;
+	if (!rec->lock_held)
+		return ANX_EINVAL;
+	if (!cid_equal(&rec->lock_owner, &proc->cid))
+		return ANX_EPERM;
+	rec->lock_held = false;
+	anx_memset(&rec->lock_owner, 0, sizeof(rec->lock_owner));
+	return ANX_OK;
+}
+
+int anx_profile_stage_write(struct anx_posix_proc *proc, const char *name,
+		    const void *blob, size_t blob_len)
+{
+	struct anx_profile_record *rec;
+
+	if (!proc || !name || !name[0] || !blob)
+		return ANX_EINVAL;
+	if (blob_len > ANX_PROFILE_BLOB_MAX)
+		return ANX_EINVAL;
+	rec = profile_find(name);
+	if (!rec)
+		return ANX_ENOENT;
+	if (!rec->lock_held || !cid_equal(&rec->lock_owner, &proc->cid))
+		return ANX_EPERM;
+	if (blob_len > 0)
+		anx_memcpy(rec->staged_blob, blob, blob_len);
+	rec->staged_len = blob_len;
+	rec->staged_valid = true;
+	return ANX_OK;
+}
+
+int anx_profile_commit(struct anx_posix_proc *proc, const char *name)
+{
+	struct anx_profile_record *rec;
+
+	if (!proc || !name || !name[0])
+		return ANX_EINVAL;
+	rec = profile_find(name);
+	if (!rec)
+		return ANX_ENOENT;
+	if (!rec->lock_held || !cid_equal(&rec->lock_owner, &proc->cid))
+		return ANX_EPERM;
+	if (!rec->staged_valid)
+		return ANX_EINVAL;
+	if (rec->staged_len > 0)
+		anx_memcpy(rec->committed_blob, rec->staged_blob, rec->staged_len);
+	rec->committed_len = rec->staged_len;
+	anx_sha256(rec->committed_blob, (uint32_t)rec->committed_len,
+		   rec->committed_hash);
+	rec->staged_valid = false;
+	rec->staged_len = 0;
+	return ANX_OK;
+}
+
+int anx_profile_read(const char *name, void *out, size_t out_len,
+	     size_t *blob_len_out, uint8_t hash_out[32])
+{
+	struct anx_profile_record *rec;
+
+	if (!name || !name[0] || !out)
+		return ANX_EINVAL;
+	rec = profile_find(name);
+	if (!rec)
+		return ANX_ENOENT;
+	if (rec->committed_len > out_len)
+		return ANX_ENOMEM;
+	if (rec->committed_len > 0)
+		anx_memcpy(out, rec->committed_blob, rec->committed_len);
+	if (blob_len_out)
+		*blob_len_out = rec->committed_len;
+	if (hash_out)
+		anx_memcpy(hash_out, rec->committed_hash, 32);
+	return ANX_OK;
+}
+
+int anx_profile_simulate_crash(const char *name)
+{
+	struct anx_profile_record *rec;
+
+	if (!name || !name[0])
+		return ANX_EINVAL;
+	rec = profile_find(name);
+	if (!rec)
+		return ANX_ENOENT;
+	rec->staged_valid = false;
+	rec->staged_len = 0;
+	rec->lock_held = false;
+	anx_memset(&rec->lock_owner, 0, sizeof(rec->lock_owner));
 	return ANX_OK;
 }
 
