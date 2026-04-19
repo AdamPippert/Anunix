@@ -130,26 +130,32 @@ static void pic_init(void)
 	anx_outb(pic2_mask, PIC2_DATA);
 }
 
-/* --- Dynamic IRQ handler table --- */
+/* --- Dynamic IRQ handler table (shared IRQ support) --- */
 
-#define PIC_IRQ_COUNT	16
-#define PIC_IRQ_BASE	32	/* vector offset for IRQ 0 */
+#define PIC_IRQ_COUNT		16
+#define PIC_IRQ_BASE		32	/* vector offset for IRQ 0 */
+#define IRQ_HANDLERS_PER_LINE	4	/* max shared handlers per IRQ */
 
 static struct {
 	anx_irq_handler_t handler;
 	void *arg;
-} irq_handlers[PIC_IRQ_COUNT];
+} irq_handlers[PIC_IRQ_COUNT][IRQ_HANDLERS_PER_LINE];
 
 int anx_irq_register(uint8_t irq, anx_irq_handler_t handler, void *arg)
 {
-	if (irq >= PIC_IRQ_COUNT)
-		return ANX_EINVAL;
-	if (irq_handlers[irq].handler)
-		return ANX_EEXIST;
+	uint32_t slot;
 
-	irq_handlers[irq].handler = handler;
-	irq_handlers[irq].arg = arg;
-	return ANX_OK;
+	if (irq >= PIC_IRQ_COUNT || handler == NULL)
+		return ANX_EINVAL;
+
+	for (slot = 0; slot < IRQ_HANDLERS_PER_LINE; slot++) {
+		if (!irq_handlers[irq][slot].handler) {
+			irq_handlers[irq][slot].handler = handler;
+			irq_handlers[irq][slot].arg     = arg;
+			return ANX_OK;
+		}
+	}
+	return ANX_ENOMEM;	/* all slots full */
 }
 
 void anx_irq_unmask(uint8_t irq)
@@ -228,8 +234,14 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 		if (irq == 0) {
 			/* Timer IRQ — always handled internally */
 			pit_ticks++;
-		} else if (irq_handlers[irq].handler) {
-			irq_handlers[irq].handler(irq, irq_handlers[irq].arg);
+		} else {
+			uint32_t slot;
+
+			for (slot = 0; slot < IRQ_HANDLERS_PER_LINE; slot++) {
+				if (irq_handlers[irq][slot].handler)
+					irq_handlers[irq][slot].handler(
+						irq, irq_handlers[irq][slot].arg);
+			}
 		}
 
 		/* EOI */

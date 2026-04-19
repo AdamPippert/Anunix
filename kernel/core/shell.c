@@ -42,6 +42,8 @@
 #include <anx/httpd.h>
 #include <anx/sshd.h>
 #include <anx/base64.h>
+#include <anx/e1000.h>
+#include <anx/xdna.h>
 
 /* --- Line input with history --- */
 
@@ -131,6 +133,7 @@ static int kgetline(char *buf, size_t size)
 			anx_net_poll();
 			anx_httpd_poll();
 			anx_sshd_poll();
+			anx_e1000_poll();
 		}
 
 		c = arch_console_getc();
@@ -283,6 +286,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  tensor create|info|stats|fill  Tensor operations\n");
 	kputs("  tensor slice|diff|quantize|search  Tensor ops (Phase 2)\n");
 	kputs("  model info|layers|diff|import  Model namespace\n");
+	kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
 	kputs("  echo <text...>             Print text ($? for return code)\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
@@ -1861,6 +1865,15 @@ static void dispatch(int argc, char **argv)
 		cmd_tensor(argc, argv);
 	} else if (anx_strcmp(argv[0], "model") == 0) {
 		cmd_model(argc, argv);
+	} else if (anx_strcmp(argv[0], "xdna") == 0) {
+		if (argc >= 2 && anx_strcmp(argv[1], "load") == 0) {
+			int xr = anx_xdna_load_firmware();
+
+			if (xr != ANX_OK)
+				kprintf("xdna: load failed (%d)\n", xr);
+		} else {
+			anx_xdna_info();
+		}
 	} else if (anx_strcmp(argv[0], "echo") == 0) {
 		int ei;
 
