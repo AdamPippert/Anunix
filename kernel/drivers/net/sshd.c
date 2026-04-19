@@ -20,6 +20,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/arch.h>
 #include <anx/sshd.h>
 #include <anx/net.h>
 #include <anx/alloc.h>
