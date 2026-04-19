@@ -441,6 +441,16 @@ int anx_tcp_srv_close(struct anx_tcp_conn *conn)
 {
 	uint64_t start;
 
+	/* Wait up to 1s for all sent data to be ACKed before sending FIN.
+	 * Ensures the client has received all TCP segments, so FIN only
+	 * appears after data in the byte stream. */
+	start = arch_timer_ticks();
+	while (conn->snd_una != conn->snd_nxt &&
+	       conn->state == ANX_TCP_ESTABLISHED &&
+	       arch_timer_ticks() - start < 100) {
+		anx_net_poll();
+	}
+
 	if (conn->state == ANX_TCP_ESTABLISHED) {
 		conn->state = ANX_TCP_FIN_WAIT_1;
 		tcp_srv_send_segment(conn, ANX_TCP_FIN | ANX_TCP_ACK, NULL, 0);
