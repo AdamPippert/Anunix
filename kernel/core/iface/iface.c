@@ -7,6 +7,7 @@
 
 #include <anx/interface_plane.h>
 #include <anx/input.h>
+#include <anx/cell.h>
 #include <anx/hashtable.h>
 #include <anx/alloc.h>
 #include <anx/uuid.h>
@@ -50,6 +51,22 @@ static struct anx_environment envs[ANX_ENV_MAX];
 static uint32_t               env_count;
 
 /* ------------------------------------------------------------------ */
+/* Compositor cell registry                                             */
+/* ------------------------------------------------------------------ */
+
+struct anx_compositor_slot {
+	char domain[ANX_ENV_NAME_MAX];
+	struct anx_cell *cell;
+	bool running;
+	bool crashed;
+	uint64_t repaint_cycles;
+	uint64_t committed_surfaces;
+	uint32_t last_cycle_commits;
+};
+
+static struct anx_compositor_slot compositors[ANX_IFACE_COMPOSITOR_MAX];
+
+/* ------------------------------------------------------------------ */
 /* Init                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -72,8 +89,10 @@ anx_iface_init(void)
 	anx_memset(surf_used,  0, sizeof(surf_used));
 	anx_memset(renderers,  0, sizeof(renderers));
 	anx_memset(envs,       0, sizeof(envs));
+	anx_memset(compositors, 0, sizeof(compositors));
 
 	anx_input_init();
+	anx_iface_event_reset();
 
 	return ANX_OK;
 }
@@ -496,48 +515,265 @@ anx_wayland_surface_wrap(void *pixels, uint32_t width, uint32_t height,
 /* Compositor support                                                   */
 /* ------------------------------------------------------------------ */
 
-/*
- * Walk all surfaces in z-order (back to front) and commit every visible
- * surface. Returns the number of surfaces committed, or a negative error.
- * Also sets input focus to the topmost ANX_SURF_VISIBLE surface.
- */
-int
-anx_iface_compositor_repaint(void)
+static struct anx_compositor_slot *
+compositor_find_slot(const char *domain)
+{
+	uint32_t i;
+
+	for (i = 0; i < ANX_IFACE_COMPOSITOR_MAX; i++) {
+		if (compositors[i].domain[0] == '\0')
+			continue;
+		if (anx_strcmp(compositors[i].domain, domain) == 0)
+			return &compositors[i];
+	}
+	return NULL;
+}
+
+static struct anx_compositor_slot *
+compositor_alloc_slot(const char *domain)
+{
+	uint32_t i;
+
+	for (i = 0; i < ANX_IFACE_COMPOSITOR_MAX; i++) {
+		if (compositors[i].domain[0] != '\0')
+			continue;
+		anx_memset(&compositors[i], 0, sizeof(compositors[i]));
+		anx_strlcpy(compositors[i].domain, domain,
+			    sizeof(compositors[i].domain));
+		return &compositors[i];
+	}
+	return NULL;
+}
+
+static int
+compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 {
 	struct anx_list_head *pos;
 	anx_oid_t topmost_focus;
-	bool found_focus = false;
-	int committed = 0;
+	bool found_focus;
+	uint32_t committed;
 	bool flags;
 
-	topmost_focus.hi = 0;
-	topmost_focus.lo = 0;
+	topmost_focus = ANX_UUID_NIL;
+	found_focus = false;
+	committed = 0;
 
 	anx_spin_lock_irqsave(&iface_lock, &flags);
-
 	ANX_LIST_FOR_EACH(pos, &surf_zlist) {
-		struct anx_surface *s =
-			ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
+		struct anx_surface *s;
 
+		s = ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
 		if (s->state != ANX_SURF_VISIBLE)
 			continue;
-
 		if (s->renderer_ops && s->renderer_ops->commit) {
 			anx_spin_unlock_irqrestore(&iface_lock, flags);
 			s->renderer_ops->commit(s);
 			anx_spin_lock_irqsave(&iface_lock, &flags);
 			committed++;
 		}
-
-		/* Topmost visible surface gets keyboard focus */
 		if (!found_focus) {
 			topmost_focus = s->oid;
 			found_focus = true;
 		}
 	}
-
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
 
 	anx_input_focus_set(topmost_focus);
-	return committed;
+	slot->repaint_cycles++;
+	slot->committed_surfaces += committed;
+	slot->last_cycle_commits = committed;
+	if (committed_out)
+		*committed_out = committed;
+	return ANX_OK;
+}
+
+int
+anx_iface_compositor_start(const char *domain)
+{
+	struct anx_compositor_slot *slot;
+	struct anx_environment env;
+	struct anx_cell_intent intent;
+	struct anx_cell *cell;
+	bool flags;
+	int rc;
+
+	if (!domain)
+		return ANX_EINVAL;
+	if (anx_iface_env_query(domain, &env) != ANX_OK)
+		return ANX_ENOENT;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot = compositor_find_slot(domain);
+	if (slot && slot->running) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_EEXIST;
+	}
+	if (!slot)
+		slot = compositor_alloc_slot(domain);
+	if (!slot) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_EFULL;
+	}
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	anx_memset(&intent, 0, sizeof(intent));
+	anx_strlcpy(intent.name, "iface-compositor", sizeof(intent.name));
+	anx_strlcpy(intent.objective, domain, sizeof(intent.objective));
+	intent.priority = 10;
+
+	rc = anx_cell_create(ANX_CELL_TASK_SCHEDULER_BINDING, &intent, &cell);
+	if (rc != ANX_OK)
+		return rc;
+
+	rc = anx_cell_transition(cell, ANX_CELL_ADMITTED);
+	if (rc == ANX_OK)
+		rc = anx_cell_transition(cell, ANX_CELL_PLANNING);
+	if (rc == ANX_OK)
+		rc = anx_cell_transition(cell, ANX_CELL_PLANNED);
+	if (rc == ANX_OK)
+		rc = anx_cell_transition(cell, ANX_CELL_QUEUED);
+	if (rc == ANX_OK)
+		rc = anx_cell_transition(cell, ANX_CELL_RUNNING);
+	if (rc != ANX_OK) {
+		anx_cell_destroy(cell);
+		return rc;
+	}
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot->cell = cell;
+	slot->running = true;
+	slot->crashed = false;
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int
+anx_iface_compositor_stop(const char *domain)
+{
+	struct anx_compositor_slot *slot;
+	bool flags;
+
+	if (!domain)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot = compositor_find_slot(domain);
+	if (!slot || !slot->running || !slot->cell) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_ENOENT;
+	}
+	anx_cell_transition(slot->cell, ANX_CELL_CANCELLED);
+	anx_cell_destroy(slot->cell);
+	slot->cell = NULL;
+	slot->running = false;
+	slot->crashed = false;
+	anx_memset(slot->domain, 0, sizeof(slot->domain));
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int
+anx_iface_compositor_crash(const char *domain)
+{
+	struct anx_compositor_slot *slot;
+	bool flags;
+
+	if (!domain)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot = compositor_find_slot(domain);
+	if (!slot || !slot->running || !slot->cell) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_ENOENT;
+	}
+	anx_cell_transition(slot->cell, ANX_CELL_FAILED);
+	anx_cell_destroy(slot->cell);
+	slot->cell = NULL;
+	slot->running = false;
+	slot->crashed = true;
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int
+anx_iface_compositor_restart(const char *domain)
+{
+	struct anx_compositor_slot *slot;
+	bool flags;
+
+	if (!domain)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot = compositor_find_slot(domain);
+	if (!slot || !slot->crashed) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_ENOENT;
+	}
+	slot->running = false;
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	return anx_iface_compositor_start(domain);
+}
+
+int
+anx_iface_compositor_tick(const char *domain, uint32_t *committed_out)
+{
+	struct anx_compositor_slot *slot;
+	bool flags;
+
+	if (!domain)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot = compositor_find_slot(domain);
+	if (!slot || !slot->running || !slot->cell) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_ENOENT;
+	}
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	return compositor_run_cycle(slot, committed_out);
+}
+
+int
+anx_iface_compositor_stats(const char *domain, struct anx_iface_compositor_stats *out)
+{
+	struct anx_compositor_slot *slot;
+	bool flags;
+
+	if (!domain || !out)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	slot = compositor_find_slot(domain);
+	if (!slot) {
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		return ANX_ENOENT;
+	}
+
+	anx_memset(out, 0, sizeof(*out));
+	anx_strlcpy(out->domain, slot->domain, sizeof(out->domain));
+	out->running = slot->running;
+	out->crashed = slot->crashed;
+	out->repaint_cycles = slot->repaint_cycles;
+	out->committed_surfaces = slot->committed_surfaces;
+	out->last_cycle_commits = slot->last_cycle_commits;
+	if (slot->cell)
+		out->cell_cid = slot->cell->cid;
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int
+anx_iface_compositor_repaint(void)
+{
+	uint32_t committed;
+	int rc;
+
+	rc = anx_iface_compositor_tick("visual-desktop", &committed);
+	if (rc == ANX_OK)
+		return (int)committed;
+	return rc;
 }
