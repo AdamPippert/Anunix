@@ -39,6 +39,7 @@ int test_input_routing(void);
 int test_compositor_cell(void);
 int test_shm_ipc(void);
 int test_conformance_harness(void);
+int test_userspace_prereqs(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -62,6 +63,7 @@ static struct test_case tests[] = {
 	{ "compositor_cell",	test_compositor_cell },
 	{ "shm_ipc",		test_shm_ipc },
 	{ "conformance_harness", test_conformance_harness },
+	{ "userspace_prereqs", test_userspace_prereqs },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
