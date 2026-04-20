@@ -43,6 +43,9 @@ void arch_exception_init(void);
 /* Timer tick count (monotonically increasing) */
 uint64_t arch_timer_ticks(void);
 
+/* Register a callback fired on every PIT tick (IRQ context, keep it short) */
+void arch_set_timer_callback(void (*fn)(void));
+
 /* Hardware capability probing */
 struct anx_hw_inventory;
 void arch_probe_hw(struct anx_hw_inventory *inv);

@@ -12,6 +12,10 @@
 
 static struct anx_fb_info fb;
 
+static struct anx_gop_mode gop_modes[ANX_GOP_MODES_MAX];
+static uint8_t gop_mode_count;
+static uint8_t gop_current_mode;
+
 int anx_fb_init(const struct anx_fb_info *info)
 {
 	if (!info || !info->available || info->addr == 0)
@@ -75,6 +79,33 @@ void anx_fb_fill_rect(uint32_t x, uint32_t y,
 void anx_fb_clear(uint32_t color)
 {
 	anx_fb_fill_rect(0, 0, fb.width, fb.height, color);
+}
+
+void anx_fb_set_gop_modes(const struct anx_gop_mode *modes,
+			   uint8_t count, uint8_t current_idx)
+{
+	uint8_t i;
+
+	if (!modes || count == 0)
+		return;
+	if (count > ANX_GOP_MODES_MAX)
+		count = ANX_GOP_MODES_MAX;
+
+	for (i = 0; i < count; i++)
+		gop_modes[i] = modes[i];
+
+	gop_mode_count   = count;
+	gop_current_mode = current_idx;
+}
+
+const struct anx_gop_mode *anx_fb_get_gop_modes(uint8_t *count_out,
+						  uint8_t *current_out)
+{
+	if (count_out)
+		*count_out = gop_mode_count;
+	if (current_out)
+		*current_out = gop_current_mode;
+	return gop_modes;
 }
 
 void anx_fb_scroll(uint32_t rows, uint32_t fill_color)
