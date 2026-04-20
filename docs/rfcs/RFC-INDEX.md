@@ -27,6 +27,10 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0010](RFC-0010-userland-utilities.md) | Userland Utility Layer — POSIX Port and Anunix Adaptation | Draft | Adam Pippert | 0001–0008 |
 | [0011](RFC-0011-agent-native-utilities.md) | Agent-Native Utilities and Hardware Discovery | Draft | Adam Pippert | 0001–0010 |
 | [0012](RFC-0012-interface-plane.md) | Interface Plane — Kernel-Level Abstraction for Interactive Environments | Draft | Adam Pippert | 0001–0008 |
+| [0013](RFC-0013-tensor-objects.md) | Tensor Objects and AnuTorch Translation Layer | Draft | Adam Pippert | 0002–0007 |
+| [0014](RFC-0014-hardware-platform.md) | Hardware Platform Targets and Driver Model | Draft | Adam Pippert | 0001–0004 |
+| [0015](RFC-0015-kernel-network-data-plane.md) | Kernel Network Data Plane — Zero-Copy, Multi-Queue, Flow Objects | Draft | Adam Pippert | 0004, 0006, 0007 |
+| [0016](RFC-0016-cell-execution-language.md) | Cell Execution Language (CEXL) — Lisp IR for Recursive Cell Orchestration | Draft | Adam Pippert | 0002, 0003, 0009 |
 
 ## Dependency Graph
 
