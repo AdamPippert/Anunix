@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.4.18-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.4.19-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-17%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-22%20passing-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -31,6 +31,35 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | `chmod`/ACLs | **Capabilities** | Object-level, unforgeable, delegatable |
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
+
+## Release: 2026.4.19
+
+### Milestone: QEMU graphical browser rendering
+
+Anunix can now render a live Chromium browser session directly to the framebuffer. The new **Browser Renderer Cell** streams JPEG frames from an [anxbrowserd](https://github.com/anunix/Anunix-Browser) instance running on the QEMU host, decodes them with the built-in JPEG decoder, and blits them to the display at ~30 FPS.
+
+```
+anx> browser_init          # connect to anxbrowserd at 10.0.2.2:9090
+anx> browser https://example.com
+# live render appears on screen
+anx> browser_stop
+```
+
+**What's new in 2026.4.19**
+
+- **Browser Renderer Cell** (`kernel/core/exec/browser_cell.c`) — TCP streaming client + JPEG framebuffer blit
+- **GOP mode enumeration** — EFI stub picks highest-res BGRX8888 mode automatically; `gop_list` shows all modes
+- **DPI-aware font scaling** — 1×/2×/3×/4× font scale computed from framebuffer width at boot
+- **PIT frame scheduler** — compositor runs at 30 FPS via PIT IRQ0 callback, not busy-poll
+- **Display diagnostics** — `fb_info`, `gop_list`, `fb_test` shell commands for SSH debugging
+- **QEMU networking** — e1000 NIC + `hostfwd=tcp::8080-:8080` so kernel reaches host anxbrowserd
+- **HTTP API display endpoints** — `GET /api/v1/fb` and `GET /api/v1/display/modes`
+- **PCI bus scan** extended to 8 buses (was 1) for real-hardware AMD FCH USB + GPU discovery
+- **22 tests passing** (up from 17)
+
+See [`RELEASE-2026.4.19.md`](RELEASE-2026.4.19.md) for full details.
+
+---
 
 ## Release: 2026.4.18
 

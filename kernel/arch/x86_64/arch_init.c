@@ -12,6 +12,11 @@
 #include <anx/input.h>
 #include <anx/usb_mouse.h>
 
+/* Boot block GOP mode list layout (mirrors efi_stub.c anx_boot_info) */
+#define MB1_GOP_COUNT_ADDR	0x1040
+#define MB1_GOP_CURRENT_ADDR	0x1041
+#define MB1_GOP_MODES_ADDR	0x1044	/* array of 16 × 16-byte entries */
+
 /* Linker-defined heap region */
 extern char _heap_start[];
 extern char _heap_end[];
@@ -522,6 +527,28 @@ static bool fb_detect_mb1(struct anx_fb_info *info)
 	info->height = *(volatile uint32_t *)MB1_FB_HEIGHT_ADDR;
 	info->bpp    = *(volatile uint8_t *)MB1_FB_BPP_ADDR;
 	info->available = (info->addr != 0 && info->bpp == 32);
+
+	/* Load GOP mode list stored by efi_stub before ExitBootServices */
+	{
+		uint8_t count   = *(volatile uint8_t *)MB1_GOP_COUNT_ADDR;
+		uint8_t current = *(volatile uint8_t *)MB1_GOP_CURRENT_ADDR;
+
+		if (count > 0 && count <= ANX_GOP_MODES_MAX) {
+			struct anx_gop_mode modes[ANX_GOP_MODES_MAX];
+			volatile uint32_t  *src =
+				(volatile uint32_t *)MB1_GOP_MODES_ADDR;
+			uint8_t i;
+
+			for (i = 0; i < count; i++) {
+				modes[i].width        = src[i * 4 + 0];
+				modes[i].height       = src[i * 4 + 1];
+				modes[i].pixel_format = src[i * 4 + 2];
+				modes[i].mode_number  = src[i * 4 + 3];
+			}
+			anx_fb_set_gop_modes(modes, count, current);
+		}
+	}
+
 	return info->available;
 }
 

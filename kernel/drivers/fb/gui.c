@@ -34,10 +34,11 @@ static uint32_t term_w, term_h;	/* pixel size of terminal area */
 static uint32_t term_cols, term_rows;	/* character grid */
 static uint32_t cur_col, cur_row;	/* cursor position in chars */
 
-#define TERM_FONT_SCALE	1	/* 1x = 8x16, 2x = 16x32 */
-#define TERM_CHAR_W	(ANX_FONT_WIDTH * TERM_FONT_SCALE)
-#define TERM_CHAR_H	(ANX_FONT_HEIGHT * TERM_FONT_SCALE)
-#define TIME_FONT_SCALE	2	/* 2x for top bar time */
+/* Computed at init time from framebuffer width; see anx_gui_init() */
+static uint32_t term_font_scale;
+static uint32_t time_font_scale;
+static uint32_t term_char_w;
+static uint32_t term_char_h;
 
 /* --- Scaled font rendering --- */
 
@@ -166,19 +167,19 @@ void anx_gui_update_time(void)
 	timebuf[5] = '\0';
 
 	/* Center the time string in the top bar */
-	time_w = 5 * ANX_FONT_WIDTH * TIME_FONT_SCALE;
+	time_w = 5 * ANX_FONT_WIDTH * time_font_scale;
 	time_x = (screen_w - time_w) / 2;
 
 	/* Clear the time area */
 	anx_fb_fill_rect(time_x - 4, 4, time_w + 8,
-			  ANX_FONT_HEIGHT * TIME_FONT_SCALE + 4,
+			  ANX_FONT_HEIGHT * time_font_scale + 4,
 			  ANX_COLOR_MIDNIGHT);
 
 	anx_gui_draw_string_scaled(time_x,
 				    (ANX_GUI_TOPBAR_HEIGHT -
-				     ANX_FONT_HEIGHT * TIME_FONT_SCALE) / 2,
+				     ANX_FONT_HEIGHT * time_font_scale) / 2,
 				    timebuf, ANX_COLOR_WHITE,
-				    ANX_COLOR_MIDNIGHT, TIME_FONT_SCALE);
+				    ANX_COLOR_MIDNIGHT, time_font_scale);
 }
 
 /* --- Terminal output --- */
@@ -195,18 +196,18 @@ static void terminal_scroll(void)
 
 	line_bytes = info->pitch;
 
-	/* Move each row up by TERM_CHAR_H pixels */
-	for (y = term_y; y < term_y + term_h - TERM_CHAR_H; y++) {
+	/* Move each row up by term_char_h pixels */
+	for (y = term_y; y < term_y + term_h - term_char_h; y++) {
 		uint8_t *dst = (uint8_t *)(uintptr_t)info->addr +
 			       y * line_bytes;
-		uint8_t *src = dst + TERM_CHAR_H * line_bytes;
+		uint8_t *src = dst + term_char_h * line_bytes;
 
 		anx_memcpy(dst + term_x * 4, src + term_x * 4, term_w * 4);
 	}
 
 	/* Clear the last line */
-	anx_fb_fill_rect(term_x, term_y + term_h - TERM_CHAR_H,
-			  term_w, TERM_CHAR_H, ANX_COLOR_MIDNIGHT);
+	anx_fb_fill_rect(term_x, term_y + term_h - term_char_h,
+			  term_w, term_char_h, ANX_COLOR_MIDNIGHT);
 }
 
 static void terminal_newline(void)
@@ -236,12 +237,12 @@ void anx_gui_terminal_putc(char c)
 	case '\b':
 		if (cur_col > 0) {
 			cur_col--;
-			px = term_x + cur_col * TERM_CHAR_W;
-			py = term_y + cur_row * TERM_CHAR_H;
+			px = term_x + cur_col * term_char_w;
+			py = term_y + cur_row * term_char_h;
 			anx_gui_draw_char_scaled(px, py, ' ',
 						  ANX_COLOR_WHITE,
 						  ANX_COLOR_MIDNIGHT,
-						  TERM_FONT_SCALE);
+						  term_font_scale);
 		}
 		return;
 	case '\t': {
@@ -259,12 +260,12 @@ void anx_gui_terminal_putc(char c)
 	if (c < 0x20 || c >= 0x7F)
 		return;
 
-	px = term_x + cur_col * TERM_CHAR_W;
-	py = term_y + cur_row * TERM_CHAR_H;
+	px = term_x + cur_col * term_char_w;
+	py = term_y + cur_row * term_char_h;
 
 	anx_gui_draw_char_scaled(px, py, c,
 				  ANX_COLOR_WHITE, ANX_COLOR_MIDNIGHT,
-				  TERM_FONT_SCALE);
+				  term_font_scale);
 
 	cur_col++;
 	if (cur_col >= term_cols)
@@ -284,14 +285,27 @@ void anx_gui_init(void)
 	screen_w = info->width;
 	screen_h = info->height;
 
+	/* DPI-aware scale: pick readable font size for this resolution */
+	if (screen_w >= 3840)
+		term_font_scale = 4;
+	else if (screen_w >= 2560)
+		term_font_scale = 3;
+	else if (screen_w >= 1920)
+		term_font_scale = 2;
+	else
+		term_font_scale = 1;
+	time_font_scale = term_font_scale + 1;
+	term_char_w     = ANX_FONT_WIDTH  * term_font_scale;
+	term_char_h     = ANX_FONT_HEIGHT * term_font_scale;
+
 	/* Calculate terminal geometry */
 	term_x = ANX_GUI_MARGIN;
 	term_y = ANX_GUI_TOPBAR_HEIGHT + ANX_GUI_MARGIN;
 	term_w = screen_w - 2 * ANX_GUI_MARGIN;
 	term_h = screen_h - ANX_GUI_TOPBAR_HEIGHT - 2 * ANX_GUI_MARGIN;
 
-	term_cols = term_w / TERM_CHAR_W;
-	term_rows = term_h / TERM_CHAR_H;
+	term_cols = term_w / term_char_w;
+	term_rows = term_h / term_char_h;
 
 	cur_col = 0;
 	cur_row = 0;

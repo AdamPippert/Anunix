@@ -108,6 +108,11 @@ uint64_t arch_timer_ticks(void)
 	return 0;
 }
 
+void arch_set_timer_callback(void (*fn)(void))
+{
+	(void)fn; /* no-op in test harness */
+}
+
 void arch_probe_hw(struct anx_hw_inventory *inv)
 {
 	/* Mock: 4 CPUs, 16 GiB RAM, 1 GPU */

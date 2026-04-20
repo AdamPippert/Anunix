@@ -20,6 +20,16 @@ struct anx_fb_info {
 	bool     available;	/* true if framebuffer was set up */
 };
 
+/* GOP mode entry (populated from EFI boot block before ExitBootServices) */
+struct anx_gop_mode {
+	uint32_t width;
+	uint32_t height;
+	uint32_t pixel_format;	/* 1 = BGRX8888 */
+	uint32_t mode_number;	/* EFI GOP mode index */
+};
+
+#define ANX_GOP_MODES_MAX	16
+
 /* Initialize framebuffer subsystem with hardware-provided info */
 int anx_fb_init(const struct anx_fb_info *info);
 
@@ -44,5 +54,13 @@ void anx_fb_scroll(uint32_t rows, uint32_t fill_color);
 
 /* Direct pointer to pixel row (for bulk operations) */
 uint32_t *anx_fb_row_ptr(uint32_t y);
+
+/* Store GOP mode list from boot block (called by arch_fb_detect) */
+void anx_fb_set_gop_modes(const struct anx_gop_mode *modes,
+			   uint8_t count, uint8_t current_idx);
+
+/* Query GOP mode list (count = 0 if not populated) */
+const struct anx_gop_mode *anx_fb_get_gop_modes(uint8_t *count_out,
+						  uint8_t *current_out);
 
 #endif /* ANX_FB_H */

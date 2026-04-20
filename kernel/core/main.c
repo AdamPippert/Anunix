@@ -202,6 +202,7 @@ void kernel_main(void)
 		if (anx_fb_available()) {
 			anx_iface_env_activate("visual-desktop");
 			anx_iface_compositor_start("visual-desktop");
+			anx_iface_frame_scheduler_init(30);
 		} else {
 			anx_iface_env_activate("headless-agent");
 			anx_iface_compositor_start("headless-agent");

@@ -191,6 +191,7 @@ void anx_irq_mask(uint8_t irq)
 #define TARGET_HZ	100
 
 static volatile uint64_t pit_ticks;
+static void (*pit_callback)(void);
 
 static void pit_init(void)
 {
@@ -232,8 +233,9 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 		uint8_t irq = (uint8_t)(vector - PIC_IRQ_BASE);
 
 		if (irq == 0) {
-			/* Timer IRQ — always handled internally */
 			pit_ticks++;
+			if (pit_callback)
+				pit_callback();
 		} else {
 			uint32_t slot;
 
@@ -318,4 +320,9 @@ void arch_exception_init(void)
 uint64_t arch_timer_ticks(void)
 {
 	return pit_ticks;
+}
+
+void arch_set_timer_callback(void (*fn)(void))
+{
+	pit_callback = fn;
 }

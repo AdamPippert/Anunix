@@ -30,7 +30,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.4.17
+ANX_VERSION := 2026.4.19
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -59,7 +59,10 @@ ifeq ($(ARCH),arm64)
   else
     QEMU  := qemu-system-aarch64
   endif
-  QFLAGS  := -M virt -cpu cortex-a72 -m 512M -nographic -serial mon:stdio -kernel
+  QFLAGS  := -M virt -cpu cortex-a72 -m 512M -nographic -serial mon:stdio \
+             -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+             -device virtio-net-device,netdev=net0 \
+             -kernel
 else ifeq ($(ARCH),x86_64)
   TARGET  := x86_64-none-elf
   ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-x86_64),)
@@ -67,7 +70,10 @@ else ifeq ($(ARCH),x86_64)
   else
     QEMU  := qemu-system-x86_64
   endif
-  QFLAGS  := -m 512M -nographic -no-reboot -serial mon:stdio -kernel
+  QFLAGS  := -m 512M -nographic -no-reboot -serial mon:stdio \
+             -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+             -device e1000,netdev=net0 \
+             -kernel
 else ifeq ($(ARCH),heteris)
   # Heteris: RV64IM cross-compilation using xPack riscv-none-elf-gcc
   # Install toolchain: download xPack to tools/ or set RISCV_PREFIX
@@ -207,9 +213,15 @@ qemu: $(QEMU_KERNEL)
 
 # QEMU with framebuffer display (serial on stdio + graphical window)
 ifeq ($(ARCH),arm64)
-  QFLAGS_FB := -M virt -cpu cortex-a72 -m 512M -serial mon:stdio -device ramfb -kernel
+  QFLAGS_FB := -M virt -cpu cortex-a72 -m 512M -serial mon:stdio -device ramfb \
+               -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+               -device virtio-net-device,netdev=net0 \
+               -kernel
 else ifeq ($(ARCH),x86_64)
-  QFLAGS_FB := -m 512M -serial mon:stdio -no-reboot -vga std -kernel
+  QFLAGS_FB := -m 512M -serial mon:stdio -no-reboot -vga std \
+               -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+               -device e1000,netdev=net0 \
+               -kernel
 else
   QFLAGS_FB := $(QFLAGS)
 endif

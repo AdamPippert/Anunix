@@ -13,6 +13,7 @@
 #include <anx/uuid.h>
 #include <anx/string.h>
 #include <anx/types.h>
+#include <anx/arch.h>
 
 /* ------------------------------------------------------------------ */
 /* Surface store                                                        */
@@ -776,4 +777,32 @@ anx_iface_compositor_repaint(void)
 	if (rc == ANX_OK)
 		return (int)committed;
 	return rc;
+}
+
+/* ------------------------------------------------------------------ */
+/* PIT-driven frame scheduler                                           */
+/* ------------------------------------------------------------------ */
+
+static volatile uint32_t frame_tick_counter;
+static uint32_t          frame_repaint_interval; /* PIT ticks per frame */
+
+static void iface_frame_tick(void)
+{
+	frame_tick_counter++;
+	if (frame_tick_counter >= frame_repaint_interval) {
+		frame_tick_counter = 0;
+		anx_iface_compositor_repaint();
+	}
+}
+
+void anx_iface_frame_scheduler_init(uint32_t target_fps)
+{
+	if (target_fps == 0)
+		target_fps = 30;
+	/* PIT runs at 100 Hz; round up to at least 1 tick */
+	frame_repaint_interval = 100u / target_fps;
+	if (frame_repaint_interval == 0)
+		frame_repaint_interval = 1;
+	frame_tick_counter = 0;
+	arch_set_timer_callback(iface_frame_tick);
 }

@@ -15,7 +15,7 @@
 #define PCI_CONFIG_ADDR		0xCF8
 #define PCI_CONFIG_DATA		0xCFC
 
-#define PCI_MAX_BUS		1	/* scan bus 0 only for now */
+#define PCI_MAX_BUS		8
 #define PCI_MAX_SLOT		32
 #define PCI_MAX_FUNC		8
 
