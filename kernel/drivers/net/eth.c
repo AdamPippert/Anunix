@@ -10,6 +10,7 @@
 #include <anx/net.h>
 #include <anx/virtio_net.h>
 #include <anx/e1000.h>
+#include <anx/mt7925.h>
 #include <anx/string.h>
 
 /* Callback registered with virtio-net poll */
@@ -67,6 +68,11 @@ int anx_eth_send(const uint8_t dst[6], uint16_t ethertype,
 		return anx_e1000_tx(frame, (uint16_t)(ANX_ETH_HLEN + len));
 	}
 
+	if (anx_mt7925_ready()) {
+		anx_memcpy(hdr->src, anx_mt7925_mac(), ANX_ETH_ALEN);
+		return anx_mt7925_tx(frame, (uint16_t)(ANX_ETH_HLEN + len));
+	}
+
 	return ANX_EIO;
 }
 
@@ -74,6 +80,8 @@ void anx_net_poll(void)
 {
 	if (anx_virtio_net_ready())
 		anx_virtio_net_poll(eth_recv_cb, NULL);
-	else
+	else if (anx_e1000_ready())
 		anx_e1000_poll();
+	else
+		anx_mt7925_poll();
 }

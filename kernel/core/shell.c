@@ -43,6 +43,7 @@
 #include <anx/sshd.h>
 #include <anx/base64.h>
 #include <anx/e1000.h>
+#include <anx/mt7925.h>
 #include <anx/xdna.h>
 #include <anx/browser_cell.h>
 
@@ -135,6 +136,7 @@ static int kgetline(char *buf, size_t size)
 			anx_httpd_poll();
 			anx_sshd_poll();
 			anx_e1000_poll();
+			anx_mt7925_poll();
 			anx_browser_cell_tick();
 		}
 
@@ -281,6 +283,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET → object\n");
 	kputs("  cells                      List execution cells\n");
 	kputs("  sysinfo                    System overview\n");
+	kputs("  wifi status|connect|disconnect|mac  WiFi management\n");
 	kputs("  netinfo                    Network configuration\n");
 	kputs("  ntp [server-ip]            Sync time from NTP server\n");
 	kputs("  install -i                 Interactive OS installer\n");
@@ -1729,6 +1732,8 @@ static void dispatch(int argc, char **argv)
 		cmd_gop_list(argc, argv);
 	} else if (anx_strcmp(argv[0], "fb_test") == 0) {
 		cmd_fb_test(argc, argv);
+	} else if (anx_strcmp(argv[0], "wifi") == 0) {
+		cmd_wifi(argc, argv);
 	} else if (anx_strcmp(argv[0], "netinfo") == 0) {
 		cmd_netinfo(argc, argv);
 	} else if (anx_strcmp(argv[0], "search") == 0) {
