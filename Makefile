@@ -72,7 +72,7 @@ else ifeq ($(ARCH),x86_64)
   endif
   QFLAGS  := -m 512M -nographic -no-reboot -serial mon:stdio \
              -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
-             -device e1000,netdev=net0 \
+             -device virtio-net-pci,netdev=net0 \
              -kernel
 else ifeq ($(ARCH),heteris)
   # Heteris: RV64IM cross-compilation using xPack riscv-none-elf-gcc
@@ -220,7 +220,7 @@ ifeq ($(ARCH),arm64)
 else ifeq ($(ARCH),x86_64)
   QFLAGS_FB := -m 512M -serial mon:stdio -no-reboot -vga std \
                -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
-               -device e1000,netdev=net0 \
+               -device virtio-net-pci,netdev=net0 \
                -kernel
 else
   QFLAGS_FB := $(QFLAGS)
