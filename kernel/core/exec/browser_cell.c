@@ -154,20 +154,27 @@ int anx_browser_cell_init(const char *host, uint16_t port)
 		return ANX_EIO;
 	}
 
-	/* Parse "id" from JSON response */
+	/* Parse "session_id" from JSON response */
+	kprintf("browser_cell: http %d, body_len=%u\n",
+		resp.status_code, resp.body_len);
 	ret = anx_json_parse(resp.body, resp.body_len, &root);
-	anx_http_response_free(&resp);
 	if (ret != ANX_OK) {
 		kprintf("browser_cell: JSON parse failed (%d)\n", ret);
+		kprintf("browser_cell: body: %s\n",
+			resp.body ? resp.body : "(null)");
+		anx_http_response_free(&resp);
 		return ANX_EIO;
 	}
-	id_val = anx_json_get(&root, "id");
+	id_val = anx_json_get(&root, "session_id");
 	id_str = id_val ? anx_json_string(id_val) : NULL;
 	if (!id_str || id_str[0] == '\0') {
+		kprintf("browser_cell: no session_id in body: %s\n",
+			resp.body ? resp.body : "(null)");
 		anx_json_free(&root);
-		kprintf("browser_cell: response missing 'id'\n");
+		anx_http_response_free(&resp);
 		return ANX_EIO;
 	}
+	anx_http_response_free(&resp);
 	anx_strlcpy(bc_sid, id_str, sizeof(bc_sid));
 	anx_json_free(&root);
 	kprintf("browser_cell: session %s created\n", bc_sid);
@@ -181,13 +188,14 @@ int anx_browser_cell_init(const char *host, uint16_t port)
 
 	/* Send GET request for the binary stream endpoint */
 	p = 0;
+	/* HTTP/1.0 so the server responds without Transfer-Encoding: chunked */
 	p = sa(stream_req, p, sizeof(stream_req), "GET /api/v1/sessions/");
 	p = sa(stream_req, p, sizeof(stream_req), bc_sid);
-	p = sa(stream_req, p, sizeof(stream_req), "/stream_raw HTTP/1.1\r\nHost: ");
+	p = sa(stream_req, p, sizeof(stream_req), "/stream_raw HTTP/1.0\r\nHost: ");
 	p = sa(stream_req, p, sizeof(stream_req), bc_host);
 	p = sa(stream_req, p, sizeof(stream_req), ":");
 	p = ua(stream_req, p, sizeof(stream_req), bc_port);
-	p = sa(stream_req, p, sizeof(stream_req), "\r\nConnection: keep-alive\r\n\r\n");
+	p = sa(stream_req, p, sizeof(stream_req), "\r\n\r\n");
 
 	ret = anx_tcp_send(bc_stream, stream_req, p);
 	if (ret != ANX_OK) {
@@ -283,6 +291,7 @@ void anx_browser_cell_tick(void)
 
 		if (end == 0)
 			return;
+		kprintf("browser_cell: headers done, body at %u\n", end);
 		bc_buf_len -= end;
 		if (bc_buf_len > 0)
 			anx_memmove(bc_buf, bc_buf + end, bc_buf_len);
@@ -303,10 +312,19 @@ void anx_browser_cell_tick(void)
 			     (uint32_t)bc_buf[3];
 
 		if (frame_len == 0 || frame_len > (BC_RECV_BUF_SIZE - 4)) {
-			kprintf("browser_cell: bad frame len %u, reset\n",
-				frame_len);
-			bc_buf_len  = 0;
-			bc_hdr_done = false;
+			/* Frame boundary lost — scan forward for next \x00\x00
+			 * pair, which marks the high bytes of a plausible frame
+			 * length prefix (valid JPEGs are < 64 KB). */
+			uint32_t skip = 1;
+
+			while (skip + 1 < bc_buf_len) {
+				if (bc_buf[skip] == 0x00 && bc_buf[skip + 1] == 0x00)
+					break;
+				skip++;
+			}
+			bc_buf_len -= skip;
+			if (bc_buf_len > 0)
+				anx_memmove(bc_buf, bc_buf + skip, bc_buf_len);
 			return;
 		}
 
