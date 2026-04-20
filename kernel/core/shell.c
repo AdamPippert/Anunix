@@ -13,6 +13,7 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 #include <anx/state_object.h>
+#include <anx/tensor.h>
 #include <anx/cell.h>
 #include <anx/cell_plan.h>
 #include <anx/cell_trace.h>
@@ -283,6 +284,10 @@ static void cmd_help(int argc, char **argv)
 	kputs("  state show <oid-prefix>    Show object details\n");
 	kputs("  state seal <oid-prefix>    Seal an object\n");
 	kputs("  state delete <oid-prefix>  Delete an object\n");
+	kputs("  tensor create <dtype> <vals...>  Create 1-D tensor\n");
+	kputs("  tensor seal <oid-prefix>         Seal + compute BRIN stats\n");
+	kputs("  tensor stats <oid-prefix>        Show tensor metadata + BRIN\n");
+	kputs("  tensor search <min-sp> [max-sp]  Find tensors by sparsity\n");
 	kputs("  cell create <name>         Create an execution cell\n");
 	kputs("  cell run <cid-prefix>      Run a cell through pipeline\n");
 	kputs("  cell show <cid-prefix>     Show cell details\n");
@@ -356,6 +361,7 @@ static const char *obj_type_name(enum anx_object_type t)
 	case ANX_OBJ_MODEL_OUTPUT:	return "model_output";
 	case ANX_OBJ_EXECUTION_TRACE:	return "execution_trace";
 	case ANX_OBJ_CAPABILITY:	return "capability";
+	case ANX_OBJ_TENSOR:		return "tensor";
 	default:			return "unknown";
 	}
 }
@@ -385,6 +391,411 @@ static struct anx_state_object *find_obj_by_prefix(const char *prefix)
 		}
 	}
 	return NULL;
+}
+
+/* --- Tensor Object commands (RFC-0013) --- */
+
+static const char *tensor_dtype_name_or(const char *s,
+					enum anx_tensor_dtype *out)
+{
+	if (anx_strcmp(s, "float32") == 0 || anx_strcmp(s, "f32") == 0)
+		*out = ANX_DTYPE_FLOAT32;
+	else if (anx_strcmp(s, "float64") == 0 || anx_strcmp(s, "f64") == 0)
+		*out = ANX_DTYPE_FLOAT64;
+	else if (anx_strcmp(s, "float16") == 0 || anx_strcmp(s, "f16") == 0)
+		*out = ANX_DTYPE_FLOAT16;
+	else if (anx_strcmp(s, "bfloat16") == 0 || anx_strcmp(s, "bf16") == 0)
+		*out = ANX_DTYPE_BFLOAT16;
+	else if (anx_strcmp(s, "int8") == 0 || anx_strcmp(s, "i8") == 0)
+		*out = ANX_DTYPE_INT8;
+	else if (anx_strcmp(s, "uint8") == 0 || anx_strcmp(s, "u8") == 0)
+		*out = ANX_DTYPE_UINT8;
+	else if (anx_strcmp(s, "int32") == 0 || anx_strcmp(s, "i32") == 0)
+		*out = ANX_DTYPE_INT32;
+	else
+		return NULL;
+	return s;
+}
+
+/* Parse a signed decimal into int32_t. Returns false on error. */
+static bool sh_parse_i32(const char *s, int32_t *out)
+{
+	int32_t sign = 1;
+	int32_t v = 0;
+
+	if (!s || !*s)
+		return false;
+	if (*s == '-') {
+		sign = -1;
+		s++;
+	} else if (*s == '+') {
+		s++;
+	}
+	if (!*s)
+		return false;
+	while (*s) {
+		if (*s < '0' || *s > '9')
+			return false;
+		v = v * 10 + (*s - '0');
+		s++;
+	}
+	*out = sign * v;
+	return true;
+}
+
+#ifdef ANX_HAVE_FLOAT
+/* Parse a simple decimal float ("1.5", "-0.3", "42"). Returns false
+ * on error. No exponent notation support — sufficient for shell use.
+ * Only compiled in host builds where float arithmetic is available. */
+static bool sh_parse_f32(const char *s, float *out)
+{
+	float sign = 1.0f;
+	float ipart = 0.0f;
+	float fpart = 0.0f;
+	float fdiv = 1.0f;
+	bool seen_int = false;
+	bool seen_frac = false;
+
+	if (!s || !*s)
+		return false;
+	if (*s == '-') {
+		sign = -1.0f;
+		s++;
+	} else if (*s == '+') {
+		s++;
+	}
+	while (*s && *s != '.') {
+		if (*s < '0' || *s > '9')
+			return false;
+		ipart = ipart * 10.0f + (float)(*s - '0');
+		seen_int = true;
+		s++;
+	}
+	if (*s == '.') {
+		s++;
+		while (*s) {
+			if (*s < '0' || *s > '9')
+				return false;
+			fpart = fpart * 10.0f + (float)(*s - '0');
+			fdiv *= 10.0f;
+			seen_frac = true;
+			s++;
+		}
+	}
+	if (!seen_int && !seen_frac)
+		return false;
+	*out = sign * (ipart + fpart / fdiv);
+	return true;
+}
+
+/* Print a float with three decimal places (kprintf has no %f). */
+static void sh_print_f32(float v)
+{
+	int32_t whole;
+	int32_t frac;
+	bool neg = v < 0.0f;
+
+	if (neg)
+		v = -v;
+	whole = (int32_t)v;
+	frac = (int32_t)((v - (float)whole) * 1000.0f + 0.5f);
+	if (frac >= 1000) {
+		whole++;
+		frac -= 1000;
+	}
+	kprintf("%s%d.%d%d%d", neg ? "-" : "", whole,
+		(frac / 100) % 10, (frac / 10) % 10, frac % 10);
+}
+#endif  /* ANX_HAVE_FLOAT */
+
+static void cmd_tensor(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: tensor <create|stats|seal|search> [args]\n");
+		return;
+	}
+
+	if (anx_strcmp(argv[1], "create") == 0) {
+		/* tensor create <dtype> <val1> <val2> ... */
+		enum anx_tensor_dtype dtype;
+		struct anx_tensor_meta meta;
+		struct anx_state_object *obj;
+		uint32_t n;
+		int ret;
+		char oid_str[37];
+
+		if (argc < 4) {
+			kputs("usage: tensor create <dtype> <val1> [val2 ...]\n");
+			return;
+		}
+		if (!tensor_dtype_name_or(argv[2], &dtype)) {
+			kprintf("error: unknown dtype '%s'\n", argv[2]);
+			return;
+		}
+
+		n = (uint32_t)(argc - 3);
+		anx_memset(&meta, 0, sizeof(meta));
+		meta.ndim = 1;
+		meta.shape[0] = n;
+		meta.dtype = dtype;
+
+		/* Build raw payload from argv floats. Max 64 elements. */
+		{
+			uint8_t buf[64 * 8];
+			uint64_t bsz;
+			uint32_t i;
+
+			if (n > 64) {
+				kputs("error: tensor create limited to 64 elements\n");
+				return;
+			}
+			bsz = anx_tensor_compute_byte_size(dtype, n);
+			if (bsz == 0 || bsz > sizeof(buf)) {
+				kputs("error: unsupported dtype for shell create\n");
+				return;
+			}
+			for (i = 0; i < n; i++) {
+				switch (dtype) {
+#ifdef ANX_HAVE_FLOAT
+				case ANX_DTYPE_FLOAT32: {
+					float f;
+
+					if (!sh_parse_f32(argv[3 + i], &f)) {
+						kprintf("error: bad number '%s'\n",
+							argv[3 + i]);
+						return;
+					}
+					anx_memcpy(buf + i * 4, &f, 4);
+					break;
+				}
+				case ANX_DTYPE_FLOAT64: {
+					float f;
+					double d;
+
+					if (!sh_parse_f32(argv[3 + i], &f)) {
+						kprintf("error: bad number '%s'\n",
+							argv[3 + i]);
+						return;
+					}
+					d = (double)f;
+					anx_memcpy(buf + i * 8, &d, 8);
+					break;
+				}
+				case ANX_DTYPE_BFLOAT16: {
+					union { float f; uint32_t u; } c;
+					uint16_t bf;
+
+					if (!sh_parse_f32(argv[3 + i], &c.f)) {
+						kprintf("error: bad number '%s'\n",
+							argv[3 + i]);
+						return;
+					}
+					bf = (uint16_t)(c.u >> 16);
+					anx_memcpy(buf + i * 2, &bf, 2);
+					break;
+				}
+#else
+				case ANX_DTYPE_FLOAT32:
+				case ANX_DTYPE_FLOAT64:
+				case ANX_DTYPE_BFLOAT16:
+				case ANX_DTYPE_FLOAT16:
+					kputs("error: float dtypes need a compute engine (Phase 4)\n");
+					return;
+#endif
+				case ANX_DTYPE_INT8: {
+					int32_t v;
+
+					if (!sh_parse_i32(argv[3 + i], &v)) {
+						kprintf("error: bad int '%s'\n",
+							argv[3 + i]);
+						return;
+					}
+					buf[i] = (uint8_t)(int8_t)v;
+					break;
+				}
+				case ANX_DTYPE_UINT8: {
+					int32_t v;
+
+					if (!sh_parse_i32(argv[3 + i], &v)) {
+						kprintf("error: bad int '%s'\n",
+							argv[3 + i]);
+						return;
+					}
+					buf[i] = (uint8_t)v;
+					break;
+				}
+				case ANX_DTYPE_INT32: {
+					int32_t v;
+
+					if (!sh_parse_i32(argv[3 + i], &v)) {
+						kprintf("error: bad int '%s'\n",
+							argv[3 + i]);
+						return;
+					}
+					anx_memcpy(buf + i * 4, &v, 4);
+					break;
+				}
+				default:
+					kputs("error: dtype not supported in shell\n");
+					return;
+				}
+			}
+			ret = anx_tensor_create(&meta, buf, bsz, &obj);
+		}
+
+		if (ret != ANX_OK) {
+			kprintf("error: create failed (%d)\n", ret);
+			return;
+		}
+		if (shell_oid_count < MAX_SHELL_OBJECTS)
+			shell_oids[shell_oid_count++] = obj->oid;
+		anx_uuid_to_string(&obj->oid, oid_str, sizeof(oid_str));
+		kprintf("created tensor [%s, %u elems]: %s\n",
+			anx_tensor_dtype_name(dtype), n, oid_str);
+		anx_objstore_release(obj);
+
+	} else if (anx_strcmp(argv[1], "seal") == 0) {
+		struct anx_state_object *obj;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: tensor seal <oid-prefix>\n");
+			return;
+		}
+		obj = find_obj_by_prefix(argv[2]);
+		if (!obj) {
+			kprintf("error: no object matching '%s'\n", argv[2]);
+			return;
+		}
+		if (obj->object_type != ANX_OBJ_TENSOR) {
+			kputs("error: not a tensor object\n");
+			anx_objstore_release(obj);
+			return;
+		}
+		{
+			anx_oid_t oid = obj->oid;
+
+			anx_objstore_release(obj);
+			ret = anx_tensor_seal(&oid);
+			if (ret != ANX_OK)
+				kprintf("error: seal failed (%d)\n", ret);
+			else
+				kputs("sealed; BRIN summary computed\n");
+		}
+
+	} else if (anx_strcmp(argv[1], "stats") == 0) {
+		struct anx_state_object *obj;
+		struct anx_tensor_meta meta;
+		anx_oid_t oid;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: tensor stats <oid-prefix>\n");
+			return;
+		}
+		obj = find_obj_by_prefix(argv[2]);
+		if (!obj) {
+			kprintf("error: no object matching '%s'\n", argv[2]);
+			return;
+		}
+		if (obj->object_type != ANX_OBJ_TENSOR) {
+			kputs("error: not a tensor object\n");
+			anx_objstore_release(obj);
+			return;
+		}
+		oid = obj->oid;
+		anx_objstore_release(obj);
+
+		ret = anx_tensor_get_meta(&oid, &meta);
+		if (ret != ANX_OK) {
+			kprintf("error: get_meta failed (%d)\n", ret);
+			return;
+		}
+		{
+			char buf[37];
+			uint32_t i;
+
+			anx_uuid_to_string(&oid, buf, sizeof(buf));
+			kprintf("oid:       %s\n", buf);
+			kprintf("dtype:     %s\n",
+				anx_tensor_dtype_name(meta.dtype));
+			kprintf("shape:     [");
+			for (i = 0; i < meta.ndim; i++)
+				kprintf("%s%u", i ? ", " : "",
+					(unsigned)meta.shape[i]);
+			kprintf("]\n");
+			kprintf("elements:  %u\n", (unsigned)meta.elem_count);
+			kprintf("bytes:     %u\n", (unsigned)meta.byte_size);
+			kprintf("brin:      %s\n",
+				meta.brin_valid ? "valid" : "pending");
+#ifdef ANX_HAVE_FLOAT
+			if (meta.brin_valid) {
+				kprintf("mean:      ");
+				sh_print_f32(meta.stat_mean);
+				kprintf("\nvariance:  ");
+				sh_print_f32(meta.stat_variance);
+				kprintf("\nl2_norm:   ");
+				sh_print_f32(meta.stat_l2_norm);
+				kprintf("\nsparsity:  ");
+				sh_print_f32(meta.stat_sparsity);
+				kprintf("\nmin:       ");
+				sh_print_f32(meta.stat_min);
+				kprintf("\nmax:       ");
+				sh_print_f32(meta.stat_max);
+				kputs("\n");
+			}
+#else
+			if (!meta.brin_valid)
+				kputs("note:      BRIN requires compute engine (Phase 4)\n");
+#endif
+		}
+
+	} else if (anx_strcmp(argv[1], "search") == 0) {
+#ifdef ANX_HAVE_FLOAT
+		float min_s = 0.0f;
+		float max_s = 1.0f;
+		anx_oid_t results[32];
+		uint32_t count = 0;
+		uint32_t i;
+
+		if (argc >= 3) {
+			if (!sh_parse_f32(argv[2], &min_s)) {
+				kprintf("error: bad sparsity '%s'\n", argv[2]);
+				return;
+			}
+		}
+		if (argc >= 4) {
+			if (!sh_parse_f32(argv[3], &max_s)) {
+				kprintf("error: bad sparsity '%s'\n", argv[3]);
+				return;
+			}
+		}
+
+		anx_tensor_search(min_s, max_s, ANX_DTYPE_COUNT,
+				  results, 32, &count);
+		kprintf("matched %u tensor(s) with sparsity in [",
+			(unsigned)count);
+		sh_print_f32(min_s);
+		kprintf(", ");
+		sh_print_f32(max_s);
+		kputs("]\n");
+		for (i = 0; i < count && i < 32; i++) {
+			char buf[37];
+
+			anx_uuid_to_string(&results[i], buf, sizeof(buf));
+			kprintf("  %s\n", buf);
+		}
+		if (count > 32)
+			kprintf("  ... (%u more)\n", (unsigned)(count - 32));
+#else
+		(void)argc;
+		(void)argv;
+		kputs("tensor search requires a compute engine to populate BRIN\n");
+#endif
+
+	} else {
+		kputs("usage: tensor <create|stats|seal|search> [args]\n");
+	}
 }
 
 static void cmd_state(int argc, char **argv)
@@ -1605,6 +2016,8 @@ static void dispatch(int argc, char **argv)
 			kputs("usage: mem stats\n");
 	} else if (anx_strcmp(argv[0], "state") == 0) {
 		cmd_state(argc, argv);
+	} else if (anx_strcmp(argv[0], "tensor") == 0) {
+		cmd_tensor(argc, argv);
 	} else if (anx_strcmp(argv[0], "cell") == 0) {
 		cmd_cell(argc, argv);
 	} else if (anx_strcmp(argv[0], "memplane") == 0) {

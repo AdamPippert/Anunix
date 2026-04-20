@@ -300,7 +300,8 @@ clean:
 # Host-native test build — uses system clang without freestanding/cross flags.
 # Excludes kernel/core/main.c (test_main.c provides kernel_main).
 TEST_CC     := clang
-TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
+TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include \
+               -DANX_HAVE_FLOAT
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 		  $(filter-out $(CORE_DIR)/agent/%, $(CORE_C)))
 # Exclude hardware-dependent drivers from host-native test builds.
@@ -325,7 +326,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_resource_lease.c \
                tests/test_model_server.c \
                tests/test_posix.c \
-               tests/test_rlm.c
+               tests/test_rlm.c \
+               tests/test_tensor.c
 TEST_BIN    := build/test/anunix_test
 
 test:

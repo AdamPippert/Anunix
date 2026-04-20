@@ -31,6 +31,7 @@ int test_resource_lease(void);
 int test_model_server(void);
 int test_posix(void);
 int test_rlm(void);
+int test_tensor(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -46,6 +47,7 @@ static struct test_case tests[] = {
 	{ "model_server",	test_model_server },
 	{ "posix",		test_posix },
 	{ "rlm",		test_rlm },
+	{ "tensor",		test_tensor },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

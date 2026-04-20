@@ -29,6 +29,7 @@ enum anx_object_type {
 	ANX_OBJ_CREDENTIAL,		/* RFC-0008 */
 	ANX_OBJ_SURFACE,		/* RFC-0012: Interface Plane surface */
 	ANX_OBJ_EVENT,			/* RFC-0012: Interface Plane event */
+	ANX_OBJ_TENSOR,			/* RFC-0013: Tensor Object */
 	ANX_OBJ_TYPE_COUNT,
 };
 
