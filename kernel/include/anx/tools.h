@@ -43,6 +43,9 @@ void cmd_tensor(int argc, char **argv);
 /* Model tool (RFC-0013) */
 void cmd_model(int argc, char **argv);
 
+/* WiFi management */
+void cmd_wifi(int argc, char **argv);
+
 /* Display diagnostics */
 void cmd_fb_info(int argc, char **argv);
 void cmd_gop_list(int argc, char **argv);
