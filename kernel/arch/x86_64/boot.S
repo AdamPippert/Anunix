@@ -82,6 +82,25 @@ mb2_start:
 	.long	8
 mb2_end:
 
+/* ---- Minimal boot GDT ---- */
+/*
+ * Loaded immediately on entry before any possible fault.
+ * Matches the selectors in exception.c (0x08 = code, 0x10 = data).
+ * Must live in .data (not .bss) so it is present at entry.
+ */
+.section .data
+.align 8
+.boot_gdt:
+	.quad	0x0000000000000000	/* 0x00: null */
+	.quad	0x00AF9A000000FFFF	/* 0x08: kernel code, 64-bit */
+	.quad	0x00CF92000000FFFF	/* 0x10: kernel data */
+.boot_gdt_end:
+
+.align 4
+.boot_gdt_ptr:
+	.word	.boot_gdt_end - .boot_gdt - 1
+	.quad	.boot_gdt
+
 /* ---- 64-bit entry point ---- */
 
 .section .text.boot
@@ -90,30 +109,32 @@ mb2_end:
 _start:
 	cli
 
-	/* Debug: white bar = kernel _start reached (use saved fb addr) */
-	movq	0x1008, %rdi
-	testq	%rdi, %rdi
-	jz	.Lno_dbg_f
-	/* Approximate: skip 50 rows worth of pixels (pitch unknown here,
-	 * assume 4096 bytes/row for common resolutions) */
-	addq	$(50 * 4096), %rdi
-	movl	$2000, %ecx
-	movl	$0x00FFFFFF, %eax	/* white */
-.Lfill_f:
-	movl	%eax, (%rdi)
-	addq	$4, %rdi
-	decl	%ecx
-	jnz	.Lfill_f
-.Lno_dbg_f:
-
-	/*
-	 * Save boot info before anything clobbers RAX/RBX.
-	 * Callee-saved registers survive BSS zeroing.
-	 */
-	movq	%rax, %r12	/* multiboot magic (or garbage from QEMU path) */
+	/* Stash boot info first — GDT reload clobbers RAX. */
+	movq	%rax, %r12	/* multiboot magic */
 	movq	%rbx, %r13	/* multiboot info pointer */
 
-	/* Set up stack pointer */
+	/*
+	 * Reload GDT immediately. Firmware's GDT is not guaranteed to use
+	 * the same selectors (0x08/0x10) the kernel expects. Any exception
+	 * before this would triple-fault on real hardware.
+	 *
+	 * UEFI's RSP is valid here (GRUB called us as an EFI function);
+	 * lretq uses two slots on it to flush the pipeline with the new CS.
+	 */
+	lgdt	.boot_gdt_ptr(%rip)
+	pushq	$0x08
+	leaq	.Lcs_reloaded(%rip), %rax
+	pushq	%rax
+	lretq
+.Lcs_reloaded:
+	movw	$0x10, %ax
+	movw	%ax, %ds
+	movw	%ax, %es
+	movw	%ax, %fs
+	movw	%ax, %gs
+	movw	%ax, %ss
+
+	/* Set up kernel stack (replaces UEFI stack) */
 	leaq	_stack_top(%rip), %rsp
 
 	/* Zero BSS */
@@ -144,7 +165,6 @@ _start:
  * Multiboot info saved by _start. Placed in .data (not .bss)
  * so BSS zeroing doesn't clobber them.
  */
-.section .data
 .global _mb_magic
 .global _mb_info
 _mb_magic:
