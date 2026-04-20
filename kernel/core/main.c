@@ -33,6 +33,7 @@
 #include <anx/virtio_blk.h>
 #include <anx/objstore_disk.h>
 #include <anx/e1000.h>
+#include <anx/mt7925.h>
 #include <anx/xdna.h>
 #include <anx/net.h>
 #include <anx/splash.h>
@@ -336,6 +337,9 @@ void kernel_main(void)
 
 		if (!net_up)
 			net_up = (anx_e1000_init() == ANX_OK);
+
+		if (!net_up)
+			net_up = (anx_mt7925_init() == ANX_OK);
 
 		if (net_up) {
 			struct anx_net_config net_cfg;
