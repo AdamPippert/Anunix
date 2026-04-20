@@ -263,7 +263,7 @@ int anx_renderer_headless_register(void);
 /* ------------------------------------------------------------------ */
 
 #define ANX_IFACE_SHM_MAX            32u
-#define ANX_IFACE_SHM_MAX_BYTES      (1024u * 1024u)
+#define ANX_IFACE_SHM_MAX_BYTES      (64u * 1024u * 1024u)
 #define ANX_IFACE_SHM_RIGHT_PRODUCE  (1u << 0)
 #define ANX_IFACE_SHM_RIGHT_CONSUME  (1u << 1)
 
@@ -314,6 +314,9 @@ int anx_iface_compositor_stats(const char *domain, struct anx_iface_compositor_s
 
 /* Legacy helper: repaint via visual-desktop compositor domain. */
 int anx_iface_compositor_repaint(void);
+
+/* Start a PIT-driven periodic compositor repaint at target_fps (≤100). */
+void anx_iface_frame_scheduler_init(uint32_t target_fps);
 
 /* ------------------------------------------------------------------ */
 /* Wayland compatibility bridge                                         */

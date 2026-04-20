@@ -44,6 +44,7 @@
 #include <anx/base64.h>
 #include <anx/e1000.h>
 #include <anx/xdna.h>
+#include <anx/browser_cell.h>
 
 /* --- Line input with history --- */
 
@@ -134,6 +135,7 @@ static int kgetline(char *buf, size_t size)
 			anx_httpd_poll();
 			anx_sshd_poll();
 			anx_e1000_poll();
+			anx_browser_cell_tick();
 		}
 
 		c = arch_console_getc();
@@ -332,13 +334,22 @@ static void cmd_help(int argc, char **argv)
 	kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
 	kputs("  reboot                     Reboot the system\n");
 	kputs("  halt                       Halt the system\n");
+	kputs("\nDisplay:\n");
+	kputs("  fb_info                    Framebuffer geometry (JSON)\n");
+	kputs("  gop_list                   List GOP modes available at boot\n");
+	kputs("  fb_test                    Paint 8-bar color test pattern\n");
+	kputs("\nBrowser:\n");
+	kputs("  browser_init [host [port]] Connect to anxbrowserd and start streaming\n");
+	kputs("  browser <url>              Navigate active session to URL\n");
+	kputs("  browser status             Show browser cell state\n");
+	kputs("  browser_stop               Stop streaming\n");
 }
 
 static void cmd_version(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Anunix 2026.4.17 (kernel monitor)\n");
+	kprintf("Anunix 2026.4.19 (kernel monitor)\n");
 }
 
 /* --- Memory commands --- */
@@ -1712,6 +1723,12 @@ static void dispatch(int argc, char **argv)
 		cmd_inspect(argc, argv);
 	} else if (anx_strcmp(argv[0], "sysinfo") == 0) {
 		cmd_sysinfo(argc, argv);
+	} else if (anx_strcmp(argv[0], "fb_info") == 0) {
+		cmd_fb_info(argc, argv);
+	} else if (anx_strcmp(argv[0], "gop_list") == 0) {
+		cmd_gop_list(argc, argv);
+	} else if (anx_strcmp(argv[0], "fb_test") == 0) {
+		cmd_fb_test(argc, argv);
 	} else if (anx_strcmp(argv[0], "netinfo") == 0) {
 		cmd_netinfo(argc, argv);
 	} else if (anx_strcmp(argv[0], "search") == 0) {
@@ -1886,6 +1903,18 @@ static void dispatch(int argc, char **argv)
 				kprintf(" ");
 		}
 		kprintf("\n");
+	} else if (anx_strcmp(argv[0], "fb_info") == 0) {
+		cmd_fb_info(argc, argv);
+	} else if (anx_strcmp(argv[0], "gop_list") == 0) {
+		cmd_gop_list(argc, argv);
+	} else if (anx_strcmp(argv[0], "fb_test") == 0) {
+		cmd_fb_test(argc, argv);
+	} else if (anx_strcmp(argv[0], "browser_init") == 0) {
+		cmd_browser_init(argc, argv);
+	} else if (anx_strcmp(argv[0], "browser") == 0) {
+		cmd_browser(argc, argv);
+	} else if (anx_strcmp(argv[0], "browser_stop") == 0) {
+		cmd_browser_stop(argc, argv);
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 		last_return_code = -1;

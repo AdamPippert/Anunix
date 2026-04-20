@@ -18,6 +18,7 @@
 #include <anx/kprintf.h>
 #include <anx/json.h>
 #include <anx/shell.h>
+#include <anx/fb.h>
 
 #define HTTPD_REQ_BUF_SIZE	4096
 #define HTTPD_RESP_BUF_SIZE	65536
@@ -243,6 +244,89 @@ static void handle_health(struct anx_tcp_conn *conn)
 			     "application/json", body, body_len);
 }
 
+/* Handle GET /api/v1/fb */
+static void handle_fb_info(struct anx_tcp_conn *conn)
+{
+	const struct anx_fb_info *fb = anx_fb_get_info();
+	char body[128];
+	uint32_t off = 0;
+
+	if (!fb || !fb->available) {
+		const char *s = "{\"available\":false}";
+
+		httpd_send_response(conn, 200, "OK",
+				     "application/json",
+				     s, (uint32_t)anx_strlen(s));
+		return;
+	}
+
+	buf_append(body, &off, sizeof(body), "{\"available\":true,\"width\":");
+	{ char n[12]; itoa_simple(fb->width,  n, sizeof(n)); buf_append(body, &off, sizeof(body), n); }
+	buf_append(body, &off, sizeof(body), ",\"height\":");
+	{ char n[12]; itoa_simple(fb->height, n, sizeof(n)); buf_append(body, &off, sizeof(body), n); }
+	buf_append(body, &off, sizeof(body), ",\"pitch\":");
+	{ char n[12]; itoa_simple(fb->pitch,  n, sizeof(n)); buf_append(body, &off, sizeof(body), n); }
+	buf_append(body, &off, sizeof(body), ",\"bpp\":");
+	{ char n[12]; itoa_simple((uint32_t)fb->bpp, n, sizeof(n)); buf_append(body, &off, sizeof(body), n); }
+	buf_append(body, &off, sizeof(body), "}");
+
+	httpd_send_response(conn, 200, "OK",
+			     "application/json", body, off);
+}
+
+/* Handle GET /api/v1/display/modes */
+static void handle_display_modes(struct anx_tcp_conn *conn)
+{
+	const struct anx_gop_mode *modes;
+	uint8_t  count, current;
+	char    *body;
+	uint32_t off = 0;
+	uint32_t cap = 64 + (uint32_t)ANX_GOP_MODES_MAX * 64;
+	uint8_t  i;
+
+	modes = anx_fb_get_gop_modes(&count, &current);
+
+	body = anx_alloc(cap);
+	if (!body) {
+		const char *err = "{\"error\":\"out of memory\"}";
+
+		httpd_send_response(conn, 500, "Internal Server Error",
+				     "application/json",
+				     err, (uint32_t)anx_strlen(err));
+		return;
+	}
+
+	buf_append(body, &off, cap, "{\"count\":");
+	{ char n[12]; itoa_simple((uint32_t)count, n, sizeof(n)); buf_append(body, &off, cap, n); }
+	buf_append(body, &off, cap, ",\"current\":");
+	{ char n[12]; itoa_simple((uint32_t)current, n, sizeof(n)); buf_append(body, &off, cap, n); }
+	buf_append(body, &off, cap, ",\"modes\":[");
+
+	for (i = 0; i < count; i++) {
+		char n[12];
+
+		if (i > 0)
+			buf_append(body, &off, cap, ",");
+		buf_append(body, &off, cap, "{\"index\":");
+		itoa_simple((uint32_t)i, n, sizeof(n));
+		buf_append(body, &off, cap, n);
+		buf_append(body, &off, cap, ",\"width\":");
+		itoa_simple(modes[i].width, n, sizeof(n));
+		buf_append(body, &off, cap, n);
+		buf_append(body, &off, cap, ",\"height\":");
+		itoa_simple(modes[i].height, n, sizeof(n));
+		buf_append(body, &off, cap, n);
+		buf_append(body, &off, cap, ",\"selected\":");
+		buf_append(body, &off, cap, (i == current) ? "true" : "false");
+		buf_append(body, &off, cap, "}");
+	}
+	buf_append(body, &off, cap, "]}");
+
+	httpd_send_response(conn, 200, "OK",
+			     "application/json", body, off);
+	anx_free(body);
+}
+
 /* Handle POST /api/v1/exec */
 static void handle_exec(struct anx_tcp_conn *conn,
 			 const char *body, uint32_t body_len)
@@ -416,6 +500,10 @@ static void httpd_handle_request(struct anx_tcp_conn *conn)
 		/* Check path */
 		if (anx_strncmp(req_buf + 4, "/api/v1/health", 14) == 0) {
 			handle_health(conn);
+		} else if (anx_strncmp(req_buf + 4, "/api/v1/fb", 10) == 0) {
+			handle_fb_info(conn);
+		} else if (anx_strncmp(req_buf + 4, "/api/v1/display/modes", 21) == 0) {
+			handle_display_modes(conn);
 		} else {
 			const char *err = "{\"status\": \"error\", \"output\": \"not found\"}";
 
