@@ -51,20 +51,20 @@ void anx_gui_draw_char_scaled(uint32_t px, uint32_t py, char c,
 	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
 		uint16_t bits = ((uint16_t)glyph[row * 2] << 8) | glyph[row * 2 + 1];
 
-		for (col = 0; col < ANX_FONT_WIDTH; col++) {
-			uint32_t color = (bits & (0x8000u >> col)) ? fg : bg;
+		for (sy = 0; sy < scale; sy++) {
+			uint32_t scan = py + row * scale + sy;
+			uint32_t *dst;
 
-			for (sy = 0; sy < scale; sy++) {
-				uint32_t y = py + row * scale + sy;
+			if (scan >= screen_h)
+				continue;
+			dst = anx_fb_row_ptr(scan);
+			for (col = 0; col < ANX_FONT_WIDTH; col++) {
+				uint32_t color = (bits & (0x8000u >> col)) ? fg : bg;
+				uint32_t bx = px + col * scale;
 
-				if (y >= screen_h)
-					continue;
 				for (sx = 0; sx < scale; sx++) {
-					uint32_t x = px + col * scale + sx;
-
-					if (x >= screen_w)
-						continue;
-					anx_fb_putpixel(x, y, color);
+					if (bx + sx < screen_w)
+						dst[bx + sx] = color;
 				}
 			}
 		}
