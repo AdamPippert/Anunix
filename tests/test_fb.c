@@ -148,7 +148,7 @@ static int test_fb_scroll(void)
 
 static int test_font_glyph_returns_data(void)
 {
-	const uint8_t *glyph;
+	const uint16_t *glyph;
 
 	glyph = anx_font_glyph('A');
 	ASSERT(glyph != NULL, "glyph for 'A' should not be NULL");
@@ -169,7 +169,7 @@ static int test_font_glyph_returns_data(void)
 
 static int test_font_glyph_space_is_blank(void)
 {
-	const uint8_t *glyph;
+	const uint16_t *glyph;
 	int i;
 
 	glyph = anx_font_glyph(' ');
@@ -183,7 +183,7 @@ static int test_font_glyph_space_is_blank(void)
 
 static int test_font_glyph_unprintable_returns_default(void)
 {
-	const uint8_t *glyph;
+	const uint16_t *glyph;
 	int nonzero = 0;
 	int i;
 
@@ -205,19 +205,20 @@ static int test_font_draw_char_pixels(void)
 {
 	uint32_t fg = 0x00FFFFFF;
 	uint32_t bg = 0x00000000;
-	const uint8_t *glyph;
+	const uint16_t *glyph;
 	uint32_t y;
 
 	anx_fb_clear(bg);
 	anx_font_draw_char(0, 0, 'A', fg, bg);
 
-	/* Verify that drawn pixels match the glyph bitmap */
+	/* Verify that drawn pixels match the glyph bitmap.
+	 * Each row is 12 bits; bit 11 (0x800) is the leftmost pixel. */
 	glyph = anx_font_glyph('A');
 	for (y = 0; y < ANX_FONT_HEIGHT; y++) {
 		uint32_t x;
 		for (x = 0; x < ANX_FONT_WIDTH; x++) {
 			uint32_t expected;
-			bool set = (glyph[y] >> (7 - x)) & 1;
+			bool set = (glyph[y] & (0x800u >> x)) != 0;
 			expected = set ? fg : bg;
 			ASSERT(read_pixel(x, y) == expected,
 			       "drawn char pixel mismatch");
