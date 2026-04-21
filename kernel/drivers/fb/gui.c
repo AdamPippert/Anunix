@@ -1,11 +1,11 @@
 /*
  * gui.c — Graphical user environment.
  *
- * Tiled window manager with:
- * - Light sky blue (#87CEEB) background
- * - Top bar with centered time in white (2x scale = 16x32 font)
- * - Midnight blue (#191970) terminal window with 30px margin
- * - White text in the terminal
+ * Aether design language:
+ * - Deep navy (#0B1A2B) desktop wallpaper
+ * - Floating topbar pill (navy-800, 10 px inset) with 1 px teal accent border
+ * - Navy-900 (#0E2338) terminal window, 14 px margins
+ * - Warm paper-white (#F7F5F1) terminal text
  * - Functional anx> shell
  */
 
@@ -39,6 +39,9 @@ static uint32_t term_font_scale;
 static uint32_t time_font_scale;
 static uint32_t term_char_w;
 static uint32_t term_char_h;
+
+static uint32_t topbar_inset;	/* pill gap from screen edges (px) */
+static uint32_t topbar_h;	/* pill height, computed at init */
 
 /* --- Scaled font rendering --- */
 
@@ -85,21 +88,27 @@ void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
 
 static void draw_background(void)
 {
-	anx_fb_clear(ANX_COLOR_SKY_BLUE);
+	anx_fb_clear(ANX_COLOR_AX_BG);
 }
 
 static void draw_topbar(void)
 {
-	/* Dark blue strip across the top for the clock */
-	anx_fb_fill_rect(0, 0, screen_w, ANX_GUI_TOPBAR_HEIGHT,
-			  ANX_COLOR_MIDNIGHT);
+	uint32_t bw = screen_w > 2 * topbar_inset
+		      ? screen_w - 2 * topbar_inset : screen_w;
+
+	/* Floating panel pill: inset from all screen edges */
+	anx_fb_fill_rect(topbar_inset, topbar_inset, bw, topbar_h,
+			  ANX_COLOR_AX_PANEL);
+	/* 1 px teal accent line at the bottom of the pill (E17-style bevel) */
+	anx_fb_fill_rect(topbar_inset, topbar_inset + topbar_h - 1, bw, 1,
+			  ANX_COLOR_AX_TEAL);
 }
 
 static void draw_terminal_frame(void)
 {
-	/* Fill the terminal area with midnight blue */
+	/* Fill the terminal area */
 	anx_fb_fill_rect(term_x, term_y, term_w, term_h,
-			  ANX_COLOR_MIDNIGHT);
+			  ANX_COLOR_AX_SURFACE);
 }
 
 /* --- Time display --- */
@@ -170,16 +179,16 @@ void anx_gui_update_time(void)
 	time_w = 5 * ANX_FONT_WIDTH * time_font_scale;
 	time_x = (screen_w - time_w) / 2;
 
-	/* Clear the time area */
-	anx_fb_fill_rect(time_x - 4, 4, time_w + 8,
-			  ANX_FONT_HEIGHT * time_font_scale + 4,
-			  ANX_COLOR_MIDNIGHT);
+	/* Clear the time area within the panel pill */
+	anx_fb_fill_rect(time_x - 4, topbar_inset + 2,
+			  time_w + 8, topbar_h - 4,
+			  ANX_COLOR_AX_PANEL);
 
 	anx_gui_draw_string_scaled(time_x,
-				    (ANX_GUI_TOPBAR_HEIGHT -
-				     ANX_FONT_HEIGHT * time_font_scale) / 2,
+				    topbar_inset +
+				    (topbar_h - ANX_FONT_HEIGHT * time_font_scale) / 2,
 				    timebuf, ANX_COLOR_WHITE,
-				    ANX_COLOR_MIDNIGHT, time_font_scale);
+				    ANX_COLOR_AX_PANEL, time_font_scale);
 }
 
 /* --- Terminal output --- */
@@ -208,7 +217,7 @@ static void terminal_scroll(void)
 
 	/* Clear the last character row */
 	anx_fb_fill_rect(term_x, term_y + term_h - term_char_h,
-			  term_w, term_char_h, ANX_COLOR_MIDNIGHT);
+			  term_w, term_char_h, ANX_COLOR_AX_SURFACE);
 }
 
 static void terminal_newline(void)
@@ -241,8 +250,8 @@ void anx_gui_terminal_putc(char c)
 			px = term_x + cur_col * term_char_w;
 			py = term_y + cur_row * term_char_h;
 			anx_gui_draw_char_scaled(px, py, ' ',
-						  ANX_COLOR_WHITE,
-						  ANX_COLOR_MIDNIGHT,
+						  ANX_COLOR_AX_TEXT,
+						  ANX_COLOR_AX_SURFACE,
 						  term_font_scale);
 		}
 		return;
@@ -265,7 +274,7 @@ void anx_gui_terminal_putc(char c)
 	py = term_y + cur_row * term_char_h;
 
 	anx_gui_draw_char_scaled(px, py, c,
-				  ANX_COLOR_WHITE, ANX_COLOR_MIDNIGHT,
+				  ANX_COLOR_AX_TEXT, ANX_COLOR_AX_SURFACE,
 				  term_font_scale);
 
 	cur_col++;
@@ -299,11 +308,15 @@ void anx_gui_init(void)
 	term_char_w     = ANX_FONT_WIDTH  * term_font_scale;
 	term_char_h     = ANX_FONT_HEIGHT * term_font_scale;
 
-	/* Calculate terminal geometry */
+	/* Topbar pill: 10 px inset from edges; height sized to fit the clock */
+	topbar_inset = 10;
+	topbar_h     = ANX_FONT_HEIGHT * time_font_scale + 16;
+
+	/* Terminal: below the pill, 14 px margins on all sides */
 	term_x = ANX_GUI_MARGIN;
-	term_y = ANX_GUI_TOPBAR_HEIGHT + ANX_GUI_MARGIN;
+	term_y = topbar_inset + topbar_h + ANX_GUI_MARGIN;
 	term_w = screen_w - 2 * ANX_GUI_MARGIN;
-	term_h = screen_h - ANX_GUI_TOPBAR_HEIGHT - 2 * ANX_GUI_MARGIN;
+	term_h = screen_h - term_y - ANX_GUI_MARGIN;
 
 	term_cols = term_w / term_char_w;
 	term_rows = term_h / term_char_h;

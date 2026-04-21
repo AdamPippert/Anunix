@@ -16,35 +16,37 @@ static struct anx_theme g_theme;
 /*
  * apply_pretty_defaults — load the Pretty preset into g_theme.
  *
- * GitHub Dark-inspired palette; rounded corners, subtle shadows,
- * smooth transitions. Targets GPU-accelerated display paths.
+ * Aether design language: deep navy-to-teal gradient palette pulled from
+ * the Anunix logo. Floating panels, 14 px corner radius, E17-style bevel
+ * highlights. Targets GPU-accelerated display paths.
  */
 static void
 apply_pretty_defaults(void)
 {
 	g_theme.mode = ANX_THEME_PRETTY;
 
-	g_theme.palette.background   = 0x000D1117;
-	g_theme.palette.surface      = 0x00161B22;
-	g_theme.palette.border       = 0x0030363D;
-	g_theme.palette.accent       = 0x00388BFD;
-	g_theme.palette.text_primary = 0x00E6EDF3;
-	g_theme.palette.text_dim     = 0x008B949E;
-	g_theme.palette.shadow       = 0x80000000;
-	g_theme.palette.success      = 0x003FB950;
-	g_theme.palette.warning      = 0x00D29922;
-	g_theme.palette.error        = 0x00F85149;
+	/* Navy-to-teal brand palette */
+	g_theme.palette.background   = 0x000B1A2B;  /* deep navy: desktop */
+	g_theme.palette.surface      = 0x00163454;  /* navy-800: panels */
+	g_theme.palette.border       = 0x003A94A6;  /* teal-500: accent border */
+	g_theme.palette.accent       = 0x004FB0BF;  /* teal-400: active elements */
+	g_theme.palette.text_primary = 0x00F7F5F1;  /* warm paper-white */
+	g_theme.palette.text_dim     = 0x007FC9D3;  /* teal-300: muted */
+	g_theme.palette.shadow       = 0xCC0B1A2B;  /* deep navy with alpha */
+	g_theme.palette.success      = 0x002D8A3E;  /* traffic-light green */
+	g_theme.palette.warning      = 0x00D69420;  /* traffic-light amber */
+	g_theme.palette.error        = 0x00CC3A2A;  /* traffic-light red */
 
-	g_theme.deco.corner_radius       = 8;
+	g_theme.deco.corner_radius       = 14;    /* --ax-radius: 14 px */
 	g_theme.deco.shadow_enabled      = true;
-	g_theme.deco.shadow_offset_x     = 2;
-	g_theme.deco.shadow_offset_y     = 4;
-	g_theme.deco.shadow_blur         = 8;
+	g_theme.deco.shadow_offset_x     = 4;
+	g_theme.deco.shadow_offset_y     = 8;
+	g_theme.deco.shadow_blur         = 12;
 	g_theme.deco.animation_enabled   = true;
-	g_theme.deco.animation_ms        = 150;
+	g_theme.deco.animation_ms        = 150;   /* 0.15 s transitions */
 	g_theme.deco.transparency_enabled = false;
 	g_theme.deco.window_opacity      = 255;
-	g_theme.deco.titlebar_height     = 28;
+	g_theme.deco.titlebar_height     = 34;    /* --ax-title-h: 34 px */
 	g_theme.deco.show_titlebar       = true;
 
 	g_theme.font.scale       = 2;
