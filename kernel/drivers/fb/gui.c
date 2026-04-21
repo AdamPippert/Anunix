@@ -186,26 +186,27 @@ void anx_gui_update_time(void)
 
 static void terminal_scroll(void)
 {
-	/* Scroll terminal content up by one line */
-	uint32_t line_bytes;
-	uint32_t y;
 	const struct anx_fb_info *info = anx_fb_get_info();
+	uint8_t *base;
+	uint32_t pitch;
 
 	if (!info)
 		return;
 
-	line_bytes = info->pitch;
+	pitch = info->pitch;
+	base  = (uint8_t *)(uintptr_t)info->addr;
 
-	/* Move each row up by term_char_h pixels */
-	for (y = term_y; y < term_y + term_h - term_char_h; y++) {
-		uint8_t *dst = (uint8_t *)(uintptr_t)info->addr +
-			       y * line_bytes;
-		uint8_t *src = dst + term_char_h * line_bytes;
+	/*
+	 * Bulk-move the entire terminal block (full pitch per row) in one call.
+	 * Copying the horizontal margins too is harmless since they are static
+	 * background that never changes.  This avoids (term_h - term_char_h)
+	 * individual per-scanline copies, which is the scroll-lag bottleneck.
+	 */
+	anx_memmove(base + term_y * pitch,
+		    base + (term_y + term_char_h) * pitch,
+		    (term_h - term_char_h) * pitch);
 
-		anx_memcpy(dst + term_x * 4, src + term_x * 4, term_w * 4);
-	}
-
-	/* Clear the last line */
+	/* Clear the last character row */
 	anx_fb_fill_rect(term_x, term_y + term_h - term_char_h,
 			  term_w, term_char_h, ANX_COLOR_MIDNIGHT);
 }
