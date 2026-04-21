@@ -64,9 +64,9 @@ int anx_tensor_validate(const struct anx_tensor_header *h)
 		return ANX_EINVAL;
 	if (h->flags != 0)
 		return ANX_EINVAL;
-	if (h->dtype >= ANX_DTYPE_COUNT)
+	if (h->dtype >= ANX_DTYPE_WIRE_COUNT)
 		return ANX_EINVAL;
-	if (h->ndim == 0 || h->ndim > ANX_TENSOR_MAX_DIMS)
+	if (h->ndim == 0 || h->ndim > ANX_TENSOR_MAX_WIRE_DIMS)
 		return ANX_EINVAL;
 	for (i = 0; i < h->ndim; i++) {
 		if (h->shape[i] == 0)
@@ -74,7 +74,7 @@ int anx_tensor_validate(const struct anx_tensor_header *h)
 	}
 	/* Unused trailing shape slots must be zero so two equal tensors
 	 * serialize identically. */
-	for (i = h->ndim; i < ANX_TENSOR_MAX_DIMS; i++) {
+	for (i = h->ndim; i < ANX_TENSOR_MAX_WIRE_DIMS; i++) {
 		if (h->shape[i] != 0)
 			return ANX_EINVAL;
 	}

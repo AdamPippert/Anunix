@@ -314,7 +314,8 @@ clean:
 TEST_CC     := clang
 TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
-		  $(filter-out $(CORE_DIR)/agent/%, $(CORE_C)))
+		  $(filter-out $(CORE_DIR)/agent/%, \
+		  $(filter-out $(CORE_DIR)/tools/wifi.c, $(CORE_C))))
 # Exclude hardware-dependent drivers from host-native test builds.
 # PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
 # Exclude hardware-dependent drivers from host-native test builds.
@@ -326,6 +327,7 @@ DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
+               tests/harness/mock_wifi.c \
                tests/test_state_object.c \
                tests/test_cell_lifecycle.c \
                tests/test_cell_runtime.c \
@@ -351,7 +353,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_rlm.c \
                tests/test_external_call.c \
                tests/test_disk_store.c \
-               tests/test_route_planner.c
+               tests/test_route_planner.c \
+               tests/test_vm_object.c
 TEST_BIN    := build/test/anunix_test
 
 test:

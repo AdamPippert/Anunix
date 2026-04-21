@@ -46,6 +46,7 @@
 #include <anx/mt7925.h>
 #include <anx/xdna.h>
 #include <anx/browser_cell.h>
+#include <anx/vm.h>
 
 /* --- Line input with history --- */
 
@@ -1920,6 +1921,8 @@ static void dispatch(int argc, char **argv)
 		cmd_browser(argc, argv);
 	} else if (anx_strcmp(argv[0], "browser_stop") == 0) {
 		cmd_browser_stop(argc, argv);
+	} else if (anx_strcmp(argv[0], "vm") == 0) {
+		cmd_vm(argc, argv);
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 		last_return_code = -1;

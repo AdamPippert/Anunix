@@ -56,4 +56,7 @@ void cmd_browser_init(int argc, char **argv);
 void cmd_browser(int argc, char **argv);
 void cmd_browser_stop(int argc, char **argv);
 
+/* VM management (RFC-0017) */
+int cmd_vm(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */

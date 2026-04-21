@@ -42,6 +42,7 @@
 #include <anx/interface_plane.h>
 #include <anx/usb_mouse.h>
 #include <anx/shell.h>
+#include <anx/vm.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
 
@@ -330,6 +331,10 @@ void kernel_main(void)
 
 	/* 11. AI accelerators (non-fatal — hardware may not be present) */
 	anx_xdna_init();	/* AMD XDNA NPU (Ryzen AI) */
+
+	/* 13. VM subsystem (RFC-0017) */
+	anx_vm_init();
+	kprintf("vm subsystem initialized\n");
 
 	/* 12. Network device and IP stack (virtio-net preferred; E1000 fallback) */
 	{

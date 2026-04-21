@@ -71,6 +71,9 @@ enum anx_cell_type {
 	/* Model hosting */
 	ANX_CELL_MODEL_SERVER,
 
+	/* Virtual machine (RFC-0017) */
+	ANX_CELL_VM,
+
 	ANX_CELL_TYPE_COUNT,
 };
 
