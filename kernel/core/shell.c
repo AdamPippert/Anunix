@@ -1923,6 +1923,12 @@ static void dispatch(int argc, char **argv)
 		cmd_browser_stop(argc, argv);
 	} else if (anx_strcmp(argv[0], "vm") == 0) {
 		cmd_vm(argc, argv);
+	} else if (anx_strcmp(argv[0], "workflow") == 0) {
+		cmd_workflow(argc, argv);
+	} else if (anx_strcmp(argv[0], "theme") == 0) {
+		cmd_theme(argc, argv);
+	} else if (anx_strcmp(argv[0], "kickstart") == 0) {
+		cmd_kickstart(argc, argv);
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 		last_return_code = -1;

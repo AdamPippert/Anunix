@@ -32,6 +32,8 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0015](RFC-0015-kernel-network-data-plane.md) | Kernel Network Data Plane — Zero-Copy, Multi-Queue, Flow Objects | Draft | Adam Pippert | 0004, 0006, 0007 |
 | [0016](RFC-0016-cell-execution-language.md) | Cell Execution Language (CEXL) — Lisp IR for Recursive Cell Orchestration | Draft | Adam Pippert | 0002, 0003, 0009 |
 | [0017](RFC-0017-vm-objects.md) | VM Objects — Dual-Nature Virtual Machine Primitives | Draft | Adam Pippert | 0001, 0002, 0003, 0005, 0007, 0008 |
+| [0018](RFC-0018-workflow-objects.md) | Workflow Objects — Graph-Structured Execution as First-Class Primitives | Draft | Adam Pippert | 0001, 0002, 0003, 0005, 0007, 0008, 0012, 0016 |
+| [0019](RFC-0019-theme-kickstart.md) | Visual Theme System and Kickstart Provisioning | Draft | Adam Pippert | 0001, 0002, 0012 |
 
 ## Dependency Graph
 
