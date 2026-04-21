@@ -215,9 +215,10 @@ static int test_font_draw_char_pixels(void)
 	glyph = anx_font_glyph('A');
 	for (y = 0; y < ANX_FONT_HEIGHT; y++) {
 		uint32_t x;
+		uint16_t bits = ((uint16_t)glyph[y * 2] << 8) | glyph[y * 2 + 1];
 		for (x = 0; x < ANX_FONT_WIDTH; x++) {
 			uint32_t expected;
-			bool set = (glyph[y] >> (7 - x)) & 1;
+			bool set = (bits & (0x8000u >> x)) ? 1 : 0;
 			expected = set ? fg : bg;
 			ASSERT(read_pixel(x, y) == expected,
 			       "drawn char pixel mismatch");

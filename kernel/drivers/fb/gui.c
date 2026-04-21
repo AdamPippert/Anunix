@@ -49,10 +49,10 @@ void anx_gui_draw_char_scaled(uint32_t px, uint32_t py, char c,
 	uint32_t row, col, sy, sx;
 
 	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
-		uint8_t bits = glyph[row];
+		uint16_t bits = ((uint16_t)glyph[row * 2] << 8) | glyph[row * 2 + 1];
 
 		for (col = 0; col < ANX_FONT_WIDTH; col++) {
-			uint32_t color = (bits & (0x80 >> col)) ? fg : bg;
+			uint32_t color = (bits & (0x8000u >> col)) ? fg : bg;
 
 			for (sy = 0; sy < scale; sy++) {
 				uint32_t y = py + row * scale + sy;

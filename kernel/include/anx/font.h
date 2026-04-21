@@ -1,8 +1,9 @@
 /*
  * anx/font.h — Bitmap font for framebuffer console.
  *
- * 8x16 VGA-style font covering printable ASCII (32-126).
- * Each glyph is 16 bytes: one byte per row, MSB = leftmost pixel.
+ * Spleen 12x24 — BSD-2-Clause, Frederic Cambus.
+ * Covers printable ASCII (32-126). Each glyph is 48 bytes:
+ * 24 rows × 2 bytes, pixels left-justified (MSB of byte[0] = leftmost).
  */
 
 #ifndef ANX_FONT_H
@@ -10,8 +11,10 @@
 
 #include <anx/types.h>
 
-#define ANX_FONT_WIDTH	 8
-#define ANX_FONT_HEIGHT	16
+#define ANX_FONT_WIDTH		12
+#define ANX_FONT_HEIGHT		24
+#define ANX_FONT_STRIDE		2		/* bytes per row */
+#define ANX_FONT_GLYPH_BYTES	(ANX_FONT_HEIGHT * ANX_FONT_STRIDE)
 
 /* Get pointer to 16-byte glyph bitmap for character c */
 const uint8_t *anx_font_glyph(char c);
