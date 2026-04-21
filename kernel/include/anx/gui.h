@@ -1,8 +1,9 @@
 /*
  * anx/gui.h — Graphical user environment.
  *
- * Simple tiled window manager with a time bar and terminal window.
- * Sky blue background, midnight blue terminal, white text.
+ * Aether design language: deep navy wallpaper, floating topbar pill with
+ * 1 px teal accent border, warm paper-white terminal text. Navy-to-teal
+ * gradient brand palette derived from the Anunix logo.
  */
 
 #ifndef ANX_GUI_H
@@ -10,15 +11,21 @@
 
 #include <anx/types.h>
 
-/* Color scheme */
-#define ANX_COLOR_SKY_BLUE	0x0087CEEB
-#define ANX_COLOR_MIDNIGHT	0x00191970
-#define ANX_COLOR_WHITE		0x00FFFFFF
-#define ANX_COLOR_BLACK		0x00000000
+/* Aether color palette — 0x00RRGGBB */
+#define ANX_COLOR_AX_BG       0x000B1A2B  /* deep navy:  desktop wallpaper */
+#define ANX_COLOR_AX_PANEL    0x00163454  /* navy-800:   topbar / floating panels */
+#define ANX_COLOR_AX_SURFACE  0x000E2338  /* navy-900:   terminal / window bg */
+#define ANX_COLOR_AX_TEAL     0x003A94A6  /* teal-500:   accent, active border */
+#define ANX_COLOR_AX_TEXT     0x00F7F5F1  /* warm white: terminal body text */
+#define ANX_COLOR_WHITE       0x00FFFFFF  /* pure white: clock, headings */
+#define ANX_COLOR_BLACK       0x00000000
 
-/* GUI padding */
-#define ANX_GUI_MARGIN		30
-#define ANX_GUI_TOPBAR_HEIGHT	40
+/* Legacy aliases used by renderer_gpu.c and other external callers */
+#define ANX_COLOR_SKY_BLUE    ANX_COLOR_AX_BG
+#define ANX_COLOR_MIDNIGHT    ANX_COLOR_AX_SURFACE
+
+/* Gap between shell elements — matches Aether 14 px grid spacing */
+#define ANX_GUI_MARGIN  14
 
 /* Initialize the graphical environment */
 void anx_gui_init(void);
