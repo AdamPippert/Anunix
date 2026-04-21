@@ -43,6 +43,9 @@
 #include <anx/usb_mouse.h>
 #include <anx/shell.h>
 #include <anx/vm.h>
+#include <anx/workflow.h>
+#include <anx/theme.h>
+#include <anx/kickstart.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
 
@@ -335,6 +338,14 @@ void kernel_main(void)
 	/* 13. VM subsystem (RFC-0017) */
 	anx_vm_init();
 	kprintf("vm subsystem initialized\n");
+
+	/* 14. Workflow Objects (RFC-0018) */
+	anx_wf_init();
+	kprintf("workflow subsystem initialized\n");
+
+	/* 15. Visual theme (RFC-0019) — default Pretty on FB, Boring headless */
+	anx_theme_init(anx_fb_available() ? ANX_THEME_PRETTY : ANX_THEME_BORING);
+	kprintf("theme subsystem initialized\n");
 
 	/* 12. Network device and IP stack (virtio-net preferred; E1000 fallback) */
 	{

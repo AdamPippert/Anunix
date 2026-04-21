@@ -59,4 +59,13 @@ void cmd_browser_stop(int argc, char **argv);
 /* VM management (RFC-0017) */
 int cmd_vm(int argc, char **argv);
 
+/* Workflow management (RFC-0018) */
+int cmd_workflow(int argc, char **argv);
+
+/* Theme control (RFC-0019) */
+int cmd_theme(int argc, char **argv);
+
+/* Kickstart provisioning */
+int cmd_kickstart(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */

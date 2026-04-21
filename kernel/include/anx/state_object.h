@@ -31,6 +31,7 @@ enum anx_object_type {
 	ANX_OBJ_EVENT,			/* RFC-0012: Interface Plane event */
 	ANX_OBJ_TENSOR,			/* RFC-0013: multi-dimensional array */
 	ANX_OBJ_VM,			/* RFC-0017: virtual machine object */
+	ANX_OBJ_WORKFLOW,		/* RFC-0018: workflow object */
 	ANX_OBJ_TYPE_COUNT,
 };
 
