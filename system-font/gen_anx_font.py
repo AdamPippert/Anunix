@@ -31,12 +31,16 @@ FONT_NAME   = 'ANXSchoolbook'
 FAMILY      = 'ANX Schoolbook'
 W           = 12      # glyph width (pixels)
 H           = 24      # glyph height (pixels)
-BL          = 18      # baseline row (0 = top)
+BL          = 16      # baseline row (0 = top).  Most letters sit on row 16.
 UPM         = 2400    # units per em  (100 units per pixel)
 PX          = 100     # units per pixel = UPM / H
 ADVANCE     = W * PX  # horizontal advance = 1200
-ASCENDER    = BL * PX                  # 1800
-DESCENDER   = -(H - BL - 1) * PX      # -500
+ASCENDER    = BL * PX                  # 1600  (rows 0-15 above baseline)
+DESCENDER   = -(H - BL - 1) * PX      # -700  (rows 17-23 below baseline)
+# x-height: lowercase 'o' top is at row 10  → 600 units above baseline
+# cap height: uppercase letters top at row 3 → 1300 units above baseline
+XHEIGHT     = (BL - 10) * PX   # 600
+CAPHEIGHT   = (BL -  3) * PX   # 1300
 FIRST       = 0x20
 LAST        = 0x7E
 
@@ -1644,18 +1648,23 @@ def write_ttf(path: Path) -> None:
     fb.setupHorizontalMetrics(metrics)
     fb.setupHorizontalHeader(ascent=ASCENDER, descent=DESCENDER)
     fb.setupNameTable({
-        'familyName': FAMILY,
-        'styleName': 'Regular',
-        'fullName': f'{FAMILY} Regular',
+        'familyName':           FAMILY,
+        'styleName':            'Regular',
+        'uniqueFontIdentifier': f'{FONT_NAME};1.000',
+        'fullName':             f'{FAMILY} Regular',
+        'version':              'Version 1.000',
+        'psName':               FONT_NAME,
     })
     fb.setupOS2(
-        sTypoAscender=ASCENDER,
-        sTypoDescender=DESCENDER,
-        sTypoLineGap=0,
-        usWinAscent=ASCENDER,
-        usWinDescent=-DESCENDER,
-        fsType=0,
-        achVendID='ANX ',
+        sTypoAscender  = ASCENDER,
+        sTypoDescender = DESCENDER,
+        sTypoLineGap   = 0,
+        usWinAscent    = ASCENDER,
+        usWinDescent   = -DESCENDER,
+        fsType         = 0,
+        achVendID      = 'ANX ',
+        sxHeight       = XHEIGHT,
+        sCapHeight     = CAPHEIGHT,
     )
     fb.setupPost(isFixedPitch=1)
     fb.font.save(str(path))
@@ -1727,7 +1736,7 @@ def main() -> None:
 
     print('ANX Schoolbook 12×24 — generating outputs ...')
     write_bdf(out / 'anx_schoolbook_12x24.bdf')
-    write_ttf(out / 'anx_schoolbook_12x24.otf')
+    write_ttf(out / 'anx_schoolbook_12x24.ttf')   # .ttf for TrueType outlines
     write_c_header(out / 'anx_schoolbook_12x24.h')
     print('done.')
 
