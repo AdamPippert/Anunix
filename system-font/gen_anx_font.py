@@ -1596,37 +1596,34 @@ def write_ttf(path: Path) -> None:
         glyph_order.append(name)
         cmap[cp] = name
 
+    def draw_pixel_cw(pen: 'TTGlyphPen', x0: int, y0: int) -> None:
+        """Draw one lit pixel as a clockwise unit square (TrueType outer contour).
+        TrueType fill rule: clockwise = outer (filled), CCW = inner (hole).
+        Traverse bottom-left → bottom-right → top-right → top-left."""
+        x1, y1 = x0 + PX, y0 + PX
+        pen.moveTo((x0, y0))
+        pen.lineTo((x1, y0))
+        pen.lineTo((x1, y1))
+        pen.lineTo((x0, y1))
+        pen.closePath()
+
     def draw_pixels(rows: list[int], pen: 'TTGlyphPen') -> None:
-        """Draw each lit pixel as a clockwise unit square."""
         for r, val in enumerate(rows):
             for c in range(W):
                 if val & (1 << (W - 1 - c)):
-                    x0 = c * PX
-                    y0 = (BL - r) * PX
-                    x1, y1 = x0 + PX, y0 + PX
-                    pen.moveTo((x0, y0))
-                    pen.lineTo((x0, y1))
-                    pen.lineTo((x1, y1))
-                    pen.lineTo((x1, y0))
-                    pen.closePath()
+                    draw_pixel_cw(pen, c * PX, (BL - r) * PX)
 
     metrics:  dict[str, tuple[int, int]] = {}
     glyf_tbl: dict[str, object]          = {}
 
-    # .notdef: hollow rectangle
+    # .notdef: hollow rectangle (CW outer, CCW inner)
     pen = TTGlyphPen(None)
     for r in (2, 22):
         for c in range(W):
-            x0 = c * PX; y0 = (BL - r) * PX
-            pen.moveTo((x0, y0)); pen.lineTo((x0, y0 + PX))
-            pen.lineTo((x0 + PX, y0 + PX)); pen.lineTo((x0 + PX, y0))
-            pen.closePath()
+            draw_pixel_cw(pen, c * PX, (BL - r) * PX)
     for r in range(3, 22):
         for c in (0, W - 1):
-            x0 = c * PX; y0 = (BL - r) * PX
-            pen.moveTo((x0, y0)); pen.lineTo((x0, y0 + PX))
-            pen.lineTo((x0 + PX, y0 + PX)); pen.lineTo((x0 + PX, y0))
-            pen.closePath()
+            draw_pixel_cw(pen, c * PX, (BL - r) * PX)
     glyf_tbl['.notdef'] = pen.glyph()
     metrics['.notdef']  = (ADVANCE, 0)
 
@@ -1637,6 +1634,10 @@ def write_ttf(path: Path) -> None:
         glyf_tbl[name] = pen.glyph()
         metrics[name]  = (ADVANCE, 0)
 
+    VERSION     = '1.000'
+    PS_NAME     = 'ANXSchoolbook-Regular'
+    UNIQUE_ID   = f'{VERSION};ANX ;{PS_NAME}'
+
     fb = FontBuilder(UPM, isTTF=True)
     fb.setupGlyphOrder(glyph_order)
     fb.setupCharacterMap(cmap)
@@ -1644,9 +1645,12 @@ def write_ttf(path: Path) -> None:
     fb.setupHorizontalMetrics(metrics)
     fb.setupHorizontalHeader(ascent=ASCENDER, descent=DESCENDER)
     fb.setupNameTable({
-        'familyName': FAMILY,
-        'styleName': 'Regular',
-        'fullName': f'{FAMILY} Regular',
+        'familyName':   FAMILY,
+        'styleName':    'Regular',
+        'uniqueFontIdentifier': UNIQUE_ID,
+        'fullName':     f'{FAMILY} Regular',
+        'version':      f'Version {VERSION}',
+        'psName':       PS_NAME,
     })
     fb.setupOS2(
         sTypoAscender=ASCENDER,
@@ -1655,9 +1659,12 @@ def write_ttf(path: Path) -> None:
         usWinAscent=ASCENDER,
         usWinDescent=-DESCENDER,
         fsType=0,
+        fsSelection=0x40,   # bit 6 = REGULAR
         achVendID='ANX ',
     )
     fb.setupPost(isFixedPitch=1)
+    # Set lowestRecPPEM to the design pixel size (24 px at UPM=2400 → 1 px = 100u)
+    fb.font['head'].lowestRecPPEM = H
     fb.font.save(str(path))
     print(f'  wrote {path}')
 
