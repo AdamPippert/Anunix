@@ -76,5 +76,6 @@ typedef uint64_t anx_time_t;
 #define ANX_ENOTIMPL	-12   /* not yet implemented */
 #define ANX_EFULL	-13   /* store or queue is full */
 #define ANX_ENODEV	-14   /* no such device */
+#define ANX_ENOTSUP	-15   /* operation not supported */
 
 #endif /* ANX_TYPES_H */
