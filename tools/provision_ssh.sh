@@ -11,7 +11,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PUBKEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIOJOuYrgXyolDi52yvbxX45wewKD1UzoM27kQcjhWmR hermes@adams-macbook-pro"
-SUDO_PASS="REDACTED"
+SUDO_PASS="${SUDO_PASS:-$(read -rsp "sudo password for Framework Desktop: " p; echo "$p")}"
 KVM="python3 tools/kvm/glkvm.py"
 
 log() { echo "[provision] $*"; }
