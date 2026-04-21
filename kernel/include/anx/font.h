@@ -1,8 +1,10 @@
 /*
  * anx/font.h — Bitmap font for framebuffer console.
  *
- * 8x16 VGA-style font covering printable ASCII (32-126).
- * Each glyph is 16 bytes: one byte per row, MSB = leftmost pixel.
+ * ANX Schoolbook 12×24: Century Schoolbook-inspired design with
+ * bracketed half-serifs and moderate stroke contrast.
+ * Covers printable ASCII (0x20–0x7E, 95 glyphs).
+ * Each glyph row is a uint16_t; bit 11 (0x800) = leftmost pixel.
  */
 
 #ifndef ANX_FONT_H
@@ -10,13 +12,14 @@
 
 #include <anx/types.h>
 
-#define ANX_FONT_WIDTH	 8
-#define ANX_FONT_HEIGHT	16
+#define ANX_FONT_WIDTH	12
+#define ANX_FONT_HEIGHT	24
 
-/* Get pointer to 16-byte glyph bitmap for character c */
-const uint8_t *anx_font_glyph(char c);
+/* Return pointer to 24-element uint16_t glyph bitmap for character c.
+ * Characters outside 0x20–0x7E return a filled-block fallback. */
+const uint16_t *anx_font_glyph(char c);
 
-/* Blit a character to the framebuffer at pixel position (x,y) */
+/* Blit a character to the framebuffer at pixel position (x, y). */
 void anx_font_draw_char(uint32_t x, uint32_t y,
 			char c, uint32_t fg, uint32_t bg);
 
