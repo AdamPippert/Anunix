@@ -257,12 +257,79 @@ int anx_tcp_send(struct anx_tcp_conn *c, const void *d, uint32_t l)
 int anx_tcp_recv(struct anx_tcp_conn *c, void *b, uint32_t l, uint32_t t)
 { (void)c; (void)b; (void)l; (void)t; return ANX_EIO; }
 int anx_tcp_close(struct anx_tcp_conn *c) { (void)c; return ANX_OK; }
-/* Mock virtio-blk */
+/*
+ * Mock virtio-blk: RAM-backed when test_mock_blk_init() is called,
+ * otherwise reports not-ready so unrelated tests see no device.
+ *
+ * The RAM buffer is sized for disk_store unit tests, which need the
+ * superblock + journal + index + a small data region.
+ */
+#include <anx/mock_blk.h>
+
+static uint8_t *mock_blk_mem;
+static uint64_t mock_blk_sectors;
+
+void test_mock_blk_init(uint64_t sectors)
+{
+	static uint8_t mock_blk_pool[512 * 2048]; /* 1 MiB default */
+
+	if (sectors == 0 || sectors > 2048)
+		sectors = 2048;
+	mock_blk_mem = mock_blk_pool;
+	mock_blk_sectors = sectors;
+	/* zero the backing store so mount sees a fresh disk */
+	{
+		uint64_t i;
+
+		for (i = 0; i < sectors * 512; i++)
+			mock_blk_mem[i] = 0;
+	}
+}
+
+void test_mock_blk_teardown(void)
+{
+	mock_blk_mem = NULL;
+	mock_blk_sectors = 0;
+}
+
 int anx_virtio_blk_init(void) { return ANX_ENOENT; }
-int anx_blk_read(uint64_t s, uint32_t c, void *b) { (void)s;(void)c;(void)b; return ANX_EIO; }
-int anx_blk_write(uint64_t s, uint32_t c, const void *b) { (void)s;(void)c;(void)b; return ANX_EIO; }
-uint64_t anx_blk_capacity(void) { return 0; }
-bool anx_blk_ready(void) { return false; }
+
+int anx_blk_read(uint64_t s, uint32_t c, void *b)
+{
+	if (!mock_blk_mem)
+		return ANX_EIO;
+	if (s + c > mock_blk_sectors)
+		return ANX_EIO;
+	{
+		uint32_t i;
+		uint8_t *dst = b;
+		const uint8_t *src = mock_blk_mem + s * 512;
+
+		for (i = 0; i < c * 512; i++)
+			dst[i] = src[i];
+	}
+	return ANX_OK;
+}
+
+int anx_blk_write(uint64_t s, uint32_t c, const void *b)
+{
+	if (!mock_blk_mem)
+		return ANX_EIO;
+	if (s + c > mock_blk_sectors)
+		return ANX_EIO;
+	{
+		uint32_t i;
+		uint8_t *dst = mock_blk_mem + s * 512;
+		const uint8_t *src = b;
+
+		for (i = 0; i < c * 512; i++)
+			dst[i] = src[i];
+	}
+	return ANX_OK;
+}
+
+uint64_t anx_blk_capacity(void) { return mock_blk_sectors; }
+bool anx_blk_ready(void) { return mock_blk_mem != NULL; }
 
 int anx_http_get(const char *h, uint16_t p, const char *pa, struct anx_http_response *r)
 { (void)h; (void)p; (void)pa; r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }

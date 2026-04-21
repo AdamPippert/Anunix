@@ -348,7 +348,10 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_shm_ipc.c \
                tests/test_conformance_harness.c \
                tests/test_userspace_prereqs.c \
-               tests/test_rlm.c
+               tests/test_rlm.c \
+               tests/test_external_call.c \
+               tests/test_disk_store.c \
+               tests/test_route_planner.c
 TEST_BIN    := build/test/anunix_test
 
 test:

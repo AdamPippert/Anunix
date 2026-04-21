@@ -262,3 +262,30 @@ int anx_engine_unregister(struct anx_engine *engine)
 	anx_free(engine);
 	return ANX_OK;
 }
+
+int anx_engine_set_topology(struct anx_engine *engine,
+			    uint64_t bk_lo, uint64_t bk_hi)
+{
+	if (!engine)
+		return ANX_EINVAL;
+	if (bk_hi < bk_lo)
+		return ANX_EINVAL;
+
+	anx_spin_lock(&engine->lock);
+	engine->topology_bk_lo = bk_lo;
+	engine->topology_bk_hi = bk_hi;
+	engine->has_topology_affinity = true;
+	anx_spin_unlock(&engine->lock);
+	return ANX_OK;
+}
+
+void anx_engine_clear_topology(struct anx_engine *engine)
+{
+	if (!engine)
+		return;
+	anx_spin_lock(&engine->lock);
+	engine->has_topology_affinity = false;
+	engine->topology_bk_lo = 0;
+	engine->topology_bk_hi = 0;
+	anx_spin_unlock(&engine->lock);
+}
