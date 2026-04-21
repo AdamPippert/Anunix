@@ -2,21 +2,33 @@
  * qemu_link.ld — Linker script for 32-bit multiboot QEMU wrapper.
  *
  * Layout:
- *   0x100000  .multiboot + .text + .rodata (wrapper entry code)
- *   0x200000  .bss (page tables + stack — safe from kernel copy)
- *   0x300000  .kernel (embedded 64-bit kernel binary)
- *   0x310000  .trampoline (copies kernel to 0x100000 and jumps)
+ *   0x090000  .bss  — page tables + stack (BELOW kernel copy range)
+ *   0x100000  .multiboot + .text + .rodata + .data (wrapper entry)
+ *   0x200000+  .kernel (embedded 64-bit kernel binary)
+ *   ALIGN     .trampoline (copies kernel to 0x100000 and jumps)
  *
- * The kernel binary is copied from 0x300000 to 0x100000 at boot.
- * The .multiboot header must be within the first 8 KiB of the file,
- * so it's placed at the lowest load address.
+ * Page tables live at 0x090000 so the kernel copy (0x100000...) never
+ * overwrites them. QEMU flushes softmmu TLBs when page-table pages are
+ * written; placing tables below 0x100000 avoids that flush entirely.
+ *
+ * Note: .bss must be the first LOAD segment so the multiboot header
+ * (in .multiboot at 0x100000) still lands within the first 8 KiB of
+ * the first CODE segment — QEMU scans each LOAD segment independently.
  */
 
 ENTRY(_start)
 OUTPUT_FORMAT(elf32-i386)
 
 SECTIONS {
-    /* Wrapper code at lowest address (multiboot in first 8 KiB) */
+    /* Page tables and stack — safely below the kernel copy range */
+    . = 0x090000;
+    .bss : {
+        *(.bss .bss.*)
+    }
+
+    /* Wrapper code — multiboot header must be within first 8 KiB of
+     * the file (QEMU scans for magic 0x1BADB002). We place it at
+     * the very start of the .multiboot section at 0x100000. */
     . = 0x100000;
 
     .multiboot : {
@@ -35,13 +47,7 @@ SECTIONS {
         *(.data .data.*)
     }
 
-    /* Page tables and stack well above kernel copy range */
-    . = 0x200000;
-    .bss : {
-        *(.bss .bss.*)
-    }
-
-    /* Kernel payload above BSS */
+    /* Kernel payload — immediately after wrapper data */
     . = ALIGN(4096);
     _kernel_payload = .;
     .kernel : {
@@ -50,7 +56,7 @@ SECTIONS {
     _kernel_payload_end = .;
     _kernel_size = _kernel_payload_end - _kernel_payload;
 
-    /* Trampoline above kernel payload */
+    /* Trampoline — above kernel payload, runs in 64-bit mode */
     . = ALIGN(4096);
     .trampoline : {
         *(.trampoline)
