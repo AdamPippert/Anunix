@@ -45,11 +45,11 @@ static uint32_t term_char_h;
 void anx_gui_draw_char_scaled(uint32_t px, uint32_t py, char c,
 			       uint32_t fg, uint32_t bg, uint32_t scale)
 {
-	const uint8_t *glyph = anx_font_glyph(c);
+	const uint16_t *glyph = anx_font_glyph(c);
 	uint32_t row, col, sy, sx;
 
 	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
-		uint16_t bits = ((uint16_t)glyph[row * 2] << 8) | glyph[row * 2 + 1];
+		uint16_t bits = glyph[row];
 
 		for (sy = 0; sy < scale; sy++) {
 			uint32_t scan = py + row * scale + sy;
@@ -59,7 +59,7 @@ void anx_gui_draw_char_scaled(uint32_t px, uint32_t py, char c,
 				continue;
 			dst = anx_fb_row_ptr(scan);
 			for (col = 0; col < ANX_FONT_WIDTH; col++) {
-				uint32_t color = (bits & (0x8000u >> col)) ? fg : bg;
+				uint32_t color = (bits & (0x800u >> col)) ? fg : bg;
 				uint32_t bx = px + col * scale;
 
 				for (sx = 0; sx < scale; sx++) {
