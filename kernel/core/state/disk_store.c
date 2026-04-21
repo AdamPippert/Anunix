@@ -151,9 +151,55 @@ static struct anx_disk_index_entry *find_index_entry(const anx_oid_t *oid)
 	return NULL;
 }
 
+/*
+ * Sort order: ascending by boundary_key, ties broken by OID (hi then
+ * lo). Callers rely on this ordering to walk a bk range contiguously.
+ */
+static int entry_cmp(const struct anx_disk_index_entry *a,
+		     const struct anx_disk_index_entry *b)
+{
+	if (a->boundary_key < b->boundary_key)
+		return -1;
+	if (a->boundary_key > b->boundary_key)
+		return 1;
+	if (a->oid.hi < b->oid.hi)
+		return -1;
+	if (a->oid.hi > b->oid.hi)
+		return 1;
+	if (a->oid.lo < b->oid.lo)
+		return -1;
+	if (a->oid.lo > b->oid.lo)
+		return 1;
+	return 0;
+}
+
+/*
+ * Binary-search for the first entry whose key is >= target in the
+ * sorted portion of the cache. Returns an insertion index in
+ * [0, index_count]. Only active entries are well-ordered here; caller
+ * code ensures we only sort/insert among active entries.
+ */
+static uint32_t index_lower_bound(const struct anx_disk_index_entry *target)
+{
+	uint32_t lo = 0;
+	uint32_t hi = index_count;
+
+	while (lo < hi) {
+		uint32_t mid = lo + (hi - lo) / 2;
+
+		if (entry_cmp(&index_cache[mid], target) < 0)
+			lo = mid + 1;
+		else
+			hi = mid;
+	}
+	return lo;
+}
+
 static int add_index_entry(const struct anx_disk_index_entry *entry)
 {
 	struct anx_disk_index_entry *new_cache;
+	uint32_t pos;
+	uint32_t i;
 
 	if (index_count >= ANX_INDEX_MAX_ENTRIES)
 		return ANX_ENOMEM;
@@ -163,16 +209,35 @@ static int add_index_entry(const struct anx_disk_index_entry *entry)
 	if (!new_cache)
 		return ANX_ENOMEM;
 
-	if (index_cache && index_count > 0)
-		anx_memcpy(new_cache, index_cache,
-			   index_count * sizeof(struct anx_disk_index_entry));
-	new_cache[index_count] = *entry;
+	pos = index_lower_bound(entry);
+
+	for (i = 0; i < pos; i++)
+		new_cache[i] = index_cache[i];
+	new_cache[pos] = *entry;
+	for (i = pos; i < index_count; i++)
+		new_cache[i + 1] = index_cache[i];
+
 	index_count++;
 
 	if (index_cache)
 		anx_free(index_cache);
 	index_cache = new_cache;
 	return ANX_OK;
+}
+
+/*
+ * Remove an entry at `pos`, preserving sort order. Used when an
+ * existing OID is rewritten with a different boundary_key.
+ */
+static void remove_index_entry_at(uint32_t pos)
+{
+	uint32_t i;
+
+	if (pos >= index_count)
+		return;
+	for (i = pos; i + 1 < index_count; i++)
+		index_cache[i] = index_cache[i + 1];
+	index_count--;
 }
 
 /* --- Journal --- */
@@ -336,8 +401,9 @@ int anx_disk_store_init(void)
 	return ANX_OK;
 }
 
-int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,
-			const void *payload, uint32_t payload_size)
+int anx_disk_write_obj_bk(const anx_oid_t *oid, uint32_t obj_type,
+			   uint64_t boundary_key,
+			   const void *payload, uint32_t payload_size)
 {
 	uint32_t sectors_needed;
 	uint64_t data_sector;
@@ -373,7 +439,7 @@ int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,
 	if (ret != ANX_OK)
 		return ret;
 
-	/* Update index */
+	/* Build the new index entry */
 	anx_memset(&idx_entry, 0, sizeof(idx_entry));
 	idx_entry.oid = *oid;
 	idx_entry.data_sector = data_sector;
@@ -381,15 +447,35 @@ int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,
 	idx_entry.payload_size = payload_size;
 	idx_entry.obj_type = obj_type;
 	idx_entry.flags = 0x1;	/* active */
+	idx_entry.boundary_key = boundary_key;
 
-	/* Check if this OID already exists (update in place) */
+	/*
+	 * If the OID already exists:
+	 *   - same boundary_key: update in place (sort order preserved)
+	 *   - different boundary_key: remove and re-insert at new
+	 *     sorted position so the index remains sorted
+	 */
 	{
-		struct anx_disk_index_entry *existing;
+		uint32_t i;
+		bool found = false;
 
-		existing = find_index_entry(oid);
-		if (existing) {
-			*existing = idx_entry;
-		} else {
+		for (i = 0; i < index_count; i++) {
+			if (index_cache[i].oid.hi == oid->hi &&
+			    index_cache[i].oid.lo == oid->lo) {
+				if (index_cache[i].boundary_key ==
+				    boundary_key) {
+					index_cache[i] = idx_entry;
+				} else {
+					remove_index_entry_at(i);
+					ret = add_index_entry(&idx_entry);
+					if (ret != ANX_OK)
+						return ret;
+				}
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
 			ret = add_index_entry(&idx_entry);
 			if (ret != ANX_OK)
 				return ret;
@@ -405,6 +491,65 @@ int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,
 		return ret;
 
 	return journal_commit();
+}
+
+int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,
+			const void *payload, uint32_t payload_size)
+{
+	return anx_disk_write_obj_bk(oid, obj_type, 0,
+				     payload, payload_size);
+}
+
+int anx_disk_get_boundary_key(const anx_oid_t *oid, uint64_t *bk_out)
+{
+	struct anx_disk_index_entry *entry;
+
+	if (!oid || !bk_out)
+		return ANX_EINVAL;
+	if (!mounted)
+		return ANX_EIO;
+
+	entry = find_index_entry(oid);
+	if (!entry)
+		return ANX_ENOENT;
+	*bk_out = entry->boundary_key;
+	return ANX_OK;
+}
+
+int anx_disk_range_scan(uint64_t bk_lo, uint64_t bk_hi,
+			anx_disk_scan_fn cb, void *arg)
+{
+	struct anx_disk_index_entry needle;
+	uint32_t i;
+
+	if (!cb)
+		return ANX_EINVAL;
+	if (!mounted)
+		return ANX_EIO;
+	if (bk_hi < bk_lo)
+		return ANX_EINVAL;
+
+	/*
+	 * Binary-search the first entry whose boundary_key >= bk_lo.
+	 * The sort order is (boundary_key, oid), so we synthesize a
+	 * minimal OID to land on the first match.
+	 */
+	anx_memset(&needle, 0, sizeof(needle));
+	needle.boundary_key = bk_lo;
+
+	for (i = index_lower_bound(&needle); i < index_count; i++) {
+		const struct anx_disk_index_entry *e = &index_cache[i];
+		int ret;
+
+		if (e->boundary_key > bk_hi)
+			break;
+		if (!(e->flags & 0x1))
+			continue;	/* inactive */
+		ret = cb(&e->oid, e->boundary_key, e->obj_type, arg);
+		if (ret != 0)
+			return ret;
+	}
+	return ANX_OK;
 }
 
 int anx_disk_read_obj(const anx_oid_t *oid,

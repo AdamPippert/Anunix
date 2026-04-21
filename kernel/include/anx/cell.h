@@ -97,6 +97,16 @@ struct anx_cell_constraints {
 	enum anx_locality locality;
 	uint32_t max_recursion_depth;
 	uint32_t max_child_cells;
+
+	/*
+	 * Topology intent: the boundary-key range this cell expects
+	 * to read or write. The planner uses this to prefer engines
+	 * whose declared affinity overlaps. Both bounds inclusive.
+	 * Set topology_bk_set before the range is meaningful.
+	 */
+	bool topology_bk_set;
+	uint64_t topology_bk_lo;
+	uint64_t topology_bk_hi;
 };
 
 /* --- Routing policy (RFC-0003 Section 11) --- */
@@ -182,6 +192,7 @@ struct anx_cell_input {
 #define ANX_MAX_CELL_INPUTS	16
 #define ANX_MAX_CELL_OUTPUTS	16
 #define ANX_MAX_CHILD_CELLS	32
+#define ANX_MAX_CELL_DEPS	16
 
 /* --- The Execution Cell --- */
 
@@ -213,6 +224,20 @@ struct anx_cell {
 	anx_cid_t child_cids[ANX_MAX_CHILD_CELLS];
 	uint32_t child_count;
 	uint32_t recursion_depth;
+
+	/*
+	 * DAG predecessors (RFC-0003 extension): cells that must reach
+	 * ANX_CELL_COMPLETED before this cell may run. Sibling edges
+	 * enable fan-in; fan-out is implicit (multiple cells can name
+	 * the same predecessor).
+	 */
+	anx_cid_t dep_cids[ANX_MAX_CELL_DEPS];
+	uint32_t dep_count;
+
+	/* External-call task payload (RFC-0003 Section 7: EXTERNAL_CALL).
+	 * Non-NULL iff cell_type == ANX_CELL_TASK_EXTERNAL_CALL and the
+	 * caller has set it. Owned by the cell's creator. */
+	struct anx_external_call *ext_call;
 
 	/* Plan and trace refs */
 	anx_pid_t plan_id;
@@ -275,5 +300,41 @@ int anx_cell_derive_child(struct anx_cell *parent,
 			  enum anx_cell_type type,
 			  const struct anx_cell_intent *intent,
 			  struct anx_cell **child_out);
+
+/* --- DAG composition --- */
+
+/*
+ * Declare that `cell` depends on `prereq_cid`. The cell will refuse
+ * to transition out of CREATED via anx_cell_run until the predecessor
+ * has reached COMPLETED. If the predecessor reaches FAILED, this cell
+ * is failed on its next run attempt.
+ *
+ * Returns:
+ *   ANX_OK       success
+ *   ANX_ENOMEM   dep slot limit reached
+ *   ANX_EINVAL   self-dependency, duplicate edge, or cycle detected
+ *   ANX_ENOENT   prereq_cid does not resolve in the cell store
+ */
+int anx_cell_add_dependency(struct anx_cell *cell,
+			    const anx_cid_t *prereq_cid);
+
+/*
+ * Dependency readiness. Returns:
+ *   1   all predecessors COMPLETED (cell may run)
+ *   0   one or more predecessors still pending
+ *  <0   a predecessor has FAILED/CANCELLED (cell must fail)
+ */
+int anx_cell_deps_satisfied(const struct anx_cell *cell);
+
+/*
+ * Declare the cell's topology intent (boundary-key range). The route
+ * planner boosts engines whose declared affinity overlaps.
+ * Returns ANX_EINVAL on null cell or bk_hi < bk_lo.
+ */
+int anx_cell_set_topology(struct anx_cell *cell,
+			  uint64_t bk_lo, uint64_t bk_hi);
+
+/* Clear any declared topology intent. */
+void anx_cell_clear_topology(struct anx_cell *cell);
 
 #endif /* ANX_CELL_H */
