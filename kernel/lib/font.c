@@ -710,12 +710,10 @@ void anx_font_draw_char(uint32_t x, uint32_t y,
 
 	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
 		uint16_t bits = ((uint16_t)glyph[row * 2] << 8) | glyph[row * 2 + 1];
+		uint32_t *dst = anx_fb_row_ptr(y + row) + x;
 		uint32_t col;
 
-		for (col = 0; col < ANX_FONT_WIDTH; col++) {
-			uint32_t color = (bits & (0x8000u >> col)) ? fg : bg;
-
-			anx_fb_putpixel(x + col, y + row, color);
-		}
+		for (col = 0; col < ANX_FONT_WIDTH; col++)
+			dst[col] = (bits & (0x8000u >> col)) ? fg : bg;
 	}
 }
