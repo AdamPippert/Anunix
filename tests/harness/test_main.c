@@ -31,6 +31,7 @@ int test_resource_lease(void);
 int test_model_server(void);
 int test_posix(void);
 int test_tensor(void);
+int test_tensor_codec(void);
 int test_model(void);
 int test_tensor_ops(void);
 int test_crypto(void);
@@ -41,6 +42,9 @@ int test_shm_ipc(void);
 int test_conformance_harness(void);
 int test_userspace_prereqs(void);
 int test_rlm(void);
+int test_external_call(void);
+int test_disk_store(void);
+int test_route_planner(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -56,6 +60,7 @@ static struct test_case tests[] = {
 	{ "model_server",	test_model_server },
 	{ "posix",		test_posix },
 	{ "tensor",		test_tensor },
+	{ "tensor_codec",	test_tensor_codec },
 	{ "model",		test_model },
 	{ "tensor_ops",		test_tensor_ops },
 	{ "crypto",		test_crypto },
@@ -66,6 +71,9 @@ static struct test_case tests[] = {
 	{ "conformance_harness", test_conformance_harness },
 	{ "userspace_prereqs", test_userspace_prereqs },
 	{ "rlm",		test_rlm },
+	{ "external_call",	test_external_call },
+	{ "disk_store",		test_disk_store },
+	{ "route_planner",	test_route_planner },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

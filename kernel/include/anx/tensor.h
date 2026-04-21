@@ -1,10 +1,16 @@
 /*
- * anx/tensor.h — Tensor Objects (RFC-0013).
+ * anx/tensor.h — Tensor Objects (RFC-0013) + wire codec.
  *
- * First-class multi-dimensional arrays with shape, dtype, and
- * BRIN statistical summaries. Tensors are State Objects that the
- * kernel understands semantically — enabling metadata queries,
- * sub-tensor access, and dtype-aware routing.
+ * Two distinct but related facilities:
+ *
+ * 1. Tensor Object Model (RFC-0013): first-class multi-dimensional arrays
+ *    as State Objects with shape, dtype, BRIN stats, and kernel semantics.
+ *    Lives in kernel/core/tensor/.
+ *
+ * 2. Wire Codec: compact self-describing header for the byte payload of
+ *    State Objects with type ANX_OBJ_EMBEDDING or ANX_OBJ_GRAPH_NODE.
+ *    Lives in kernel/lib/tensor.c. Used by LARQL vindex blocks and
+ *    embedding-plane residuals.
  */
 
 #ifndef ANX_TENSOR_H
@@ -15,7 +21,7 @@
 /* Forward declaration */
 struct anx_state_object;
 
-/* --- Tensor data types --- */
+/* --- Tensor data types (RFC-0013 full model) --- */
 
 enum anx_tensor_dtype {
 	ANX_DTYPE_FLOAT16,	/* IEEE 754 half-precision */
@@ -27,8 +33,9 @@ enum anx_tensor_dtype {
 	ANX_DTYPE_INT4,		/* packed 4-bit integer (2 per byte) */
 	ANX_DTYPE_INT32,	/* signed 32-bit integer */
 	ANX_DTYPE_BOOL,		/* 1-bit packed boolean */
-	ANX_DTYPE_COUNT,
+	ANX_TENSOR_DTYPE_COUNT,
 };
+#define ANX_DTYPE_COUNT ANX_TENSOR_DTYPE_COUNT	/* back-compat alias */
 
 #define ANX_TENSOR_MAX_DIMS	8
 
@@ -72,7 +79,7 @@ struct anx_tensor_brin_block {
 	uint32_t block_sparsity_bits;
 };
 
-/* --- API --- */
+/* --- RFC-0013 Tensor Object API --- */
 
 /* Get the byte size of a single element for a dtype */
 uint32_t anx_tensor_dtype_size(enum anx_tensor_dtype dtype);
@@ -132,5 +139,57 @@ uint32_t anx_sf_zero(void);
 /* Compute BRIN stats from tensor payload (streaming) */
 int anx_tensor_compute_brin(struct anx_state_object *obj,
 			     struct anx_tensor_meta *meta);
+
+/* ===== Wire Codec (kernel/lib/tensor.c) ===== */
+
+/* "ANXT" in ASCII — identifies the wire format in hex dumps. */
+#define ANX_TENSOR_MAGIC	0x414E5854u
+#define ANX_TENSOR_VERSION	1u
+#define ANX_TENSOR_MAX_WIRE_DIMS	4u
+
+enum anx_dtype {
+	ANX_DTYPE_F32  = 0,
+	ANX_DTYPE_F16  = 1,
+	ANX_DTYPE_BF16 = 2,
+	ANX_DTYPE_I8   = 3,
+	ANX_DTYPE_U8   = 4,
+	ANX_DTYPE_I4   = 5,	/* packed, two elements per byte */
+	ANX_DTYPE_WIRE_COUNT = 6
+};
+
+struct anx_tensor_header {
+	uint32_t magic;
+	uint16_t version;
+	uint16_t dtype;			/* enum anx_dtype */
+	uint16_t ndim;			/* 1..ANX_TENSOR_MAX_WIRE_DIMS */
+	uint16_t flags;			/* reserved, must be 0 */
+	uint32_t shape[ANX_TENSOR_MAX_WIRE_DIMS];
+} __attribute__((packed));
+
+#define ANX_TENSOR_HEADER_SIZE	28u
+
+/* Bits per element. 0 on invalid dtype. */
+uint32_t anx_tensor_dtype_bits(uint16_t dtype);
+
+/* Total element count = product of shape[0..ndim). */
+uint64_t anx_tensor_element_count(const struct anx_tensor_header *h);
+
+/* Byte count of the packed element data. */
+uint64_t anx_tensor_data_bytes(const struct anx_tensor_header *h);
+
+/* Validate magic/version/dtype/ndim/shape ranges. */
+int anx_tensor_validate(const struct anx_tensor_header *h);
+
+/* Encode header + data into out_buf. */
+int anx_tensor_encode(const struct anx_tensor_header *h,
+		      const void *data, uint64_t data_size,
+		      void *out_buf, uint64_t out_size,
+		      uint64_t *bytes_written);
+
+/* Decode a payload in place. out_data_ptr points into buf. */
+int anx_tensor_decode(const void *buf, uint64_t buf_size,
+		      struct anx_tensor_header *out_header,
+		      const void **out_data_ptr,
+		      uint64_t *out_data_size);
 
 #endif /* ANX_TENSOR_H */
