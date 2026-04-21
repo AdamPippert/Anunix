@@ -34,6 +34,7 @@ int test_external_call(void);
 int test_disk_store(void);
 int test_tensor(void);
 int test_route_planner(void);
+int test_decompile_pipeline(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -52,6 +53,7 @@ static struct test_case tests[] = {
 	{ "disk_store",		test_disk_store },
 	{ "tensor",		test_tensor },
 	{ "route_planner",	test_route_planner },
+	{ "decompile_pipeline",	test_decompile_pipeline },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

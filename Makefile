@@ -328,7 +328,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_external_call.c \
                tests/test_disk_store.c \
                tests/test_tensor.c \
-               tests/test_route_planner.c
+               tests/test_route_planner.c \
+               tests/test_decompile_pipeline.c
 TEST_BIN    := build/test/anunix_test
 
 test:
