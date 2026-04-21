@@ -589,6 +589,11 @@ void arch_fb_detect(struct anx_fb_info *info)
 
 const char *arch_boot_cmdline(void)
 {
+	volatile uint32_t *magic = (volatile uint32_t *)MB1_FB_MAGIC_ADDR;
+
+	if (*magic != MB1_FB_MAGIC_VAL)
+		return NULL;
+
 	volatile uint64_t *cmdline_ptr = (volatile uint64_t *)MB1_CMDLINE_ADDR;
 
 	if (*cmdline_ptr == 0)
