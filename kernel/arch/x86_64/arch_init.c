@@ -223,12 +223,14 @@ static void kbd_irq_handler(uint32_t irq, void *arg)
 
 static void kbd_init(void)
 {
+	uint32_t flush;
+
 	kbd_head = 0;
 	kbd_tail = 0;
 	kbd_shift = false;
 
-	/* Flush any pending scancodes */
-	while (anx_inb(KBD_STATUS_PORT) & 0x01)
+	/* Flush any pending scancodes (bounded: avoid spinning on broken HW) */
+	for (flush = 0; flush < 16 && (anx_inb(KBD_STATUS_PORT) & 0x01); flush++)
 		anx_inb(KBD_DATA_PORT);
 
 	/* Register IRQ1 handler and unmask */
@@ -258,15 +260,27 @@ static void kbd_init(void)
 static uint8_t  mouse_packet[3];
 static uint32_t mouse_packet_idx;
 
-static void ps2_aux_write(uint8_t val)
+/* Wait for PS/2 input buffer empty (IBF, bit 1). Returns 0 on success, -1 on timeout. */
+static int ps2_wait_ibf(void)
 {
-	/* Wait for controller input buffer empty */
-	while (anx_inb(KBD_STATUS_PORT) & 0x02)
-		;
+	uint32_t i;
+
+	for (i = 0; i < 100000; i++) {
+		if (!(anx_inb(KBD_STATUS_PORT) & 0x02))
+			return 0;
+	}
+	return -1;
+}
+
+static int ps2_aux_write(uint8_t val)
+{
+	if (ps2_wait_ibf() < 0)
+		return -1;
 	anx_outb(0xD4, KBD_STATUS_PORT);	/* "write to aux device" */
-	while (anx_inb(KBD_STATUS_PORT) & 0x02)
-		;
+	if (ps2_wait_ibf() < 0)
+		return -1;
 	anx_outb(val, KBD_DATA_PORT);
+	return 0;
 }
 
 static int ps2_ctrl_read_timeout(uint8_t *val)
@@ -332,30 +346,31 @@ static void mouse_init(void)
 {
 	uint8_t status, ack;
 
-	/* Enable aux port */
-	while (anx_inb(KBD_STATUS_PORT) & 0x02)
-		;
+	/* Enable aux port — bail if controller not responding */
+	if (ps2_wait_ibf() < 0)
+		return;
 	anx_outb(0xA8, KBD_STATUS_PORT);
 
 	/* Enable aux IRQ: read compaq status, set bit 1, write back */
-	while (anx_inb(KBD_STATUS_PORT) & 0x02)
-		;
+	if (ps2_wait_ibf() < 0)
+		return;
 	anx_outb(0x20, KBD_STATUS_PORT);		/* read config byte */
 	if (ps2_ctrl_read_timeout(&status) < 0)
-		return;					/* no PS/2 controller response */
+		return;					/* no PS/2 controller */
 	status |= 0x02;					/* enable aux IRQ */
 	status &= ~0x20;				/* clear aux clock disable */
-	while (anx_inb(KBD_STATUS_PORT) & 0x02)
-		;
+	if (ps2_wait_ibf() < 0)
+		return;
 	anx_outb(0x60, KBD_STATUS_PORT);		/* write config byte */
-	while (anx_inb(KBD_STATUS_PORT) & 0x02)
-		;
+	if (ps2_wait_ibf() < 0)
+		return;
 	anx_outb(status, KBD_DATA_PORT);
 
 	/* Enable streaming — if mouse not present, ACK won't arrive */
-	ps2_aux_write(0xF4);
+	if (ps2_aux_write(0xF4) < 0)
+		return;
 	if (ps2_ctrl_read_timeout(&ack) < 0 || ack != 0xFA)
-		return;					/* no mouse or no ACK — non-fatal */
+		return;					/* no mouse — non-fatal */
 
 	mouse_packet_idx = 0;
 

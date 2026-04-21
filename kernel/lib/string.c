@@ -122,3 +122,99 @@ size_t anx_strlcpy(char *dst, const char *src, size_t dstsize)
 	}
 	return srclen;
 }
+
+uint64_t anx_strtoull(const char *s, char **endp, int base)
+{
+	uint64_t val = 0;
+	const char *p = s;
+
+	while (*p == ' ' || *p == '\t')
+		p++;
+	if (base == 0 || base == 16) {
+		if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+			base = 16;
+			p += 2;
+		} else if (base == 0) {
+			base = (p[0] == '0') ? 8 : 10;
+		}
+	}
+	for (; *p; p++) {
+		int d;
+		if (*p >= '0' && *p <= '9')       d = *p - '0';
+		else if (*p >= 'a' && *p <= 'f')   d = *p - 'a' + 10;
+		else if (*p >= 'A' && *p <= 'F')   d = *p - 'A' + 10;
+		else break;
+		if (d >= base) break;
+		val = val * (uint64_t)base + (uint64_t)d;
+	}
+	if (endp)
+		*endp = (char *)p;
+	return val;
+}
+
+uint32_t anx_strtoul(const char *s, char **endp, int base)
+{
+	return (uint32_t)anx_strtoull(s, endp, base);
+}
+
+/* Write decimal representation of val into buf[size]. Returns chars written. */
+static uint32_t fmt_uint64(char *buf, uint32_t size, uint64_t val)
+{
+	char tmp[20];
+	uint32_t n = 0, i;
+
+	if (size == 0)
+		return 0;
+	if (val == 0) {
+		tmp[n++] = '0';
+	} else {
+		while (val > 0 && n < sizeof(tmp)) {
+			tmp[n++] = (char)('0' + val % 10);
+			val /= 10;
+		}
+	}
+	for (i = 0; i < n && i < size - 1; i++)
+		buf[i] = tmp[n - 1 - i];
+	buf[i] = '\0';
+	return i;
+}
+
+int anx_snprintf(char *buf, uint32_t size, const char *fmt, ...)
+{
+	__builtin_va_list ap;
+	uint32_t pos = 0;
+	const char *p = fmt;
+
+	if (!buf || size == 0)
+		return 0;
+
+	__builtin_va_start(ap, fmt);
+	while (*p && pos + 1 < size) {
+		if (*p != '%') {
+			buf[pos++] = *p++;
+			continue;
+		}
+		p++;
+		if (*p == 'u') {
+			uint32_t v = __builtin_va_arg(ap, unsigned int);
+			pos += fmt_uint64(buf + pos, size - pos, (uint64_t)v);
+			p++;
+		} else if (p[0] == 'l' && p[1] == 'l' && p[2] == 'u') {
+			uint64_t v = __builtin_va_arg(ap, unsigned long long);
+			pos += fmt_uint64(buf + pos, size - pos, v);
+			p += 3;
+		} else if (*p == 's') {
+			const char *s = __builtin_va_arg(ap, const char *);
+			while (*s && pos + 1 < size)
+				buf[pos++] = *s++;
+			p++;
+		} else {
+			buf[pos++] = '%';
+			if (*p && pos + 1 < size)
+				buf[pos++] = *p++;
+		}
+	}
+	__builtin_va_end(ap);
+	buf[pos] = '\0';
+	return (int)pos;
+}
