@@ -6,7 +6,7 @@
 #
 # Requires:
 #   - SSH access to adam@<TARGET_IP> (password or key)
-#   - sudo rights on target (password: REDACTED)
+#   - sudo rights on target (set SUDO_PASS env var or script will prompt)
 #   - build/x86_64/anunix.elf already built
 #
 # What this does:
@@ -22,7 +22,7 @@ set -euo pipefail
 
 TARGET="${1:-192.168.0.197}"
 USER="adam"
-SUDO_PASS="REDACTED"
+SUDO_PASS="${SUDO_PASS:-$(read -rsp "sudo password for $USER@$TARGET: " p; echo "$p")}"
 ELF="build/x86_64/anunix.elf"
 REMOTE_TMP="/tmp/anunix_deploy"
 HTTP_PORT=19871
