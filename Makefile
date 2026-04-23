@@ -309,7 +309,7 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 # fb/*.c included (tests need it) except gui.c (needs kernel GUI subsystem).
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
-		  ! -path '*/acpi/*' ! -path '*/accel/*' \
+		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/browser/*' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
 		  2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \

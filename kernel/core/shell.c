@@ -41,6 +41,7 @@
 #include <anx/acpi.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/browser.h>
 #include <anx/base64.h>
 #include <anx/e1000.h>
 #include <anx/xdna.h>
@@ -134,6 +135,7 @@ static int kgetline(char *buf, size_t size)
 			anx_httpd_poll();
 			anx_sshd_poll();
 			anx_e1000_poll();
+			anx_browser_poll();
 		}
 
 		c = arch_console_getc();
