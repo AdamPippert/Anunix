@@ -43,6 +43,7 @@
 #include <anx/shell.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/browser.h>
 
 #define ANX_VERSION "2026.4.17"
 
@@ -363,6 +364,9 @@ void kernel_main(void)
 
 	/* Start SSH server (after network + credential store) */
 	anx_sshd_init(22);
+
+	/* Start browser engine (ANX-Browser Protocol on port 9191) */
+	anx_browser_init(9191);
 
 	kprintf("kernel init complete -- all subsystems online\n");
 
