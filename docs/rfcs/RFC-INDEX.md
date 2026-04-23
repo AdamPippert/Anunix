@@ -34,6 +34,7 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0017](RFC-0017-vm-objects.md) | VM Objects — Dual-Nature Virtual Machine Primitives | Draft | Adam Pippert | 0001, 0002, 0003, 0005, 0007, 0008 |
 | [0018](RFC-0018-workflow-objects.md) | Workflow Objects — Graph-Structured Execution as First-Class Primitives | Draft | Adam Pippert | 0001, 0002, 0003, 0005, 0007, 0008, 0012, 0016 |
 | [0019](RFC-0019-theme-kickstart.md) | Visual Theme System and Kickstart Provisioning | Draft | Adam Pippert | 0001, 0002, 0012 |
+| [0020](RFC-0020-iterative-belief-action-loop.md) | Iterative Belief-Action Loop — EBM/JEPA/LLM Hybrid Execution Engine | Draft | Adam Pippert | 0002, 0003, 0004, 0005, 0007, 0009, 0013, 0016, 0018, JEPA |
 
 ## Dependency Graph
 

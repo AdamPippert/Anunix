@@ -11,6 +11,7 @@
 #include <anx/route.h>
 #include <anx/engine.h>
 #include <anx/string.h>
+#include <anx/jepa.h>
 
 void anx_route_planner_init(void)
 {
@@ -81,6 +82,18 @@ int32_t anx_route_score_engine(struct anx_cell *cell,
 			score += ANX_ROUTE_TOPOLOGY_OVERLAP_BONUS;
 		else
 			score -= ANX_ROUTE_TOPOLOGY_MISMATCH_PENALTY;
+	}
+
+	/*
+	 * JEPA world-model signal: add a bounded delta (±ANX_JEPA_ROUTE_DELTA_MAX)
+	 * derived from the predicted post-routing latent state quality.
+	 * Returns 0 when JEPA is unavailable or not yet trained.
+	 */
+	{
+		struct anx_route_candidate jepa_cand;
+		anx_memset(&jepa_cand, 0, sizeof(jepa_cand));
+		jepa_cand.engine_id = engine->eid;
+		score += anx_jepa_route_score_delta(&jepa_cand);
 	}
 
 	return score;

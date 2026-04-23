@@ -11,6 +11,8 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/hwprobe.h>
+#include <anx/engine_lease.h>
 
 static struct anx_wf_object	wf_table[ANX_WF_MAX_WFS];
 static uint32_t			wf_count;
@@ -120,15 +122,21 @@ anx_wf_create(const char *name, const char *description, anx_oid_t *oid_out)
 	wf->edge_count	= 0;
 	wf->run_state	= ANX_WF_RUN_IDLE;
 
-	wf->policy.max_parallel	= 4;
+	wf->policy.max_parallel	= 0;	/* 0 = derive from host resources */
 	wf->policy.timeout_ms	= 0;
 	wf->policy.auto_retry	= false;
 	wf->policy.max_retries	= 0;
 
+	wf->computed_cap	= anx_wf_cap_compute(&wf->policy);
+	wf->continuation	= NULL;
+	wf->trace_entries	= NULL;
+	wf->trace_entry_count	= 0;
+	wf->output_count	= 0;
+
 	*oid_out = wf->oid;
 	wf_count++;
 
-	kprintf("wf: created '%s'\n", wf->name);
+	kprintf("wf: created '%s' (cap %u)\n", wf->name, wf->computed_cap);
 	return ANX_OK;
 }
 
@@ -146,6 +154,8 @@ anx_wf_destroy(const anx_oid_t *oid)
 
 	anx_free(wf->nodes);
 	anx_free(wf->edges);
+	anx_free(wf->continuation);
+	anx_free(wf->trace_entries);
 
 	anx_memset(wf, 0, sizeof(*wf));
 	wf_count--;
@@ -311,4 +321,51 @@ anx_wf_run_state_get(const anx_oid_t *wf_oid, enum anx_wf_run_state *state_out)
 		return ANX_EINVAL;
 	*state_out = wf->run_state;
 	return ANX_OK;
+}
+
+/* Return the continuation for a SUSPENDED workflow, or NULL. */
+const struct anx_wf_continuation *
+anx_wf_continuation_get(const anx_oid_t *oid)
+{
+	struct anx_wf_object *wf = anx_wf_object_get(oid);
+
+	if (!wf || wf->run_state != ANX_WF_RUN_SUSPENDED)
+		return NULL;
+	return wf->continuation;
+}
+
+/*
+ * Compute the concurrency cap from host hardware.
+ * If policy->max_parallel > 0 it acts as a ceiling (user can restrict,
+ * never expand beyond what the hardware supports).
+ */
+uint32_t
+anx_wf_cap_compute(const struct anx_wf_policy *policy)
+{
+	const struct anx_hw_inventory *hw = anx_hwprobe_get();
+	uint32_t hw_cap;
+	uint32_t i;
+
+	if (!hw || hw->cpu_count == 0) {
+		hw_cap = 2;
+	} else {
+		hw_cap = hw->cpu_count / 2;
+		if (hw_cap < 1)
+			hw_cap = 1;
+		/* GPU/NPU accelerators can service additional concurrent cells */
+		for (i = 0; i < hw->accel_count; i++) {
+			if (hw->accels[i].type == ANX_ACCEL_GPU ||
+			    hw->accels[i].type == ANX_ACCEL_NPU)
+				hw_cap += 2;
+		}
+	}
+
+	if (hw_cap > (uint32_t)ANX_WF_MAX_NODES)
+		hw_cap = ANX_WF_MAX_NODES;
+
+	if (policy && policy->max_parallel > 0 &&
+	    policy->max_parallel < hw_cap)
+		return policy->max_parallel;
+
+	return hw_cap;
 }

@@ -65,6 +65,12 @@ int cmd_workflow(int argc, char **argv);
 /* Theme control (RFC-0019) */
 int cmd_theme(int argc, char **argv);
 
+/* Clear the terminal */
+void cmd_clear(int argc, char **argv);
+
+/* Switch visual mode: mode [pretty|boring] */
+int cmd_mode(int argc, char **argv);
+
 /* Kickstart provisioning */
 int cmd_kickstart(int argc, char **argv);
 

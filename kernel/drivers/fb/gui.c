@@ -337,3 +337,22 @@ bool anx_gui_active(void)
 {
 	return gui_ready;
 }
+
+void anx_gui_terminal_clear(void)
+{
+	if (!gui_ready)
+		return;
+	anx_fb_fill_rect(term_x, term_y, term_w, term_h, ANX_COLOR_AX_SURFACE);
+	cur_col = 0;
+	cur_row = 0;
+}
+
+void anx_gui_disable(void)
+{
+	gui_ready = false;
+}
+
+int32_t anx_gui_get_tz_offset(void)
+{
+	return utc_offset_hours;
+}

@@ -50,4 +50,13 @@ void anx_gui_set_tz_offset(int32_t hours);
 /* Check if GUI is active */
 bool anx_gui_active(void);
 
+/* Clear the GUI terminal area and reset the cursor */
+void anx_gui_terminal_clear(void);
+
+/* Disable the GUI (switches fbcon routing back to boring text mode) */
+void anx_gui_disable(void);
+
+/* Return the current UTC offset set via anx_gui_set_tz_offset() */
+int32_t anx_gui_get_tz_offset(void);
+
 #endif /* ANX_GUI_H */

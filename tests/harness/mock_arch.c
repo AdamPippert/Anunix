@@ -176,6 +176,9 @@ void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
 void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
     uint32_t fg, uint32_t bg, uint32_t scale)
 { (void)x;(void)y;(void)s;(void)fg;(void)bg;(void)scale; }
+void anx_gui_terminal_clear(void) {}
+void anx_gui_disable(void) {}
+int32_t anx_gui_get_tz_offset(void) { return 0; }
 
 /* Mock JPEG splash data (real jpeg.c from lib/ is compiled) */
 const uint8_t _splash_jpg_start[1] = {0};

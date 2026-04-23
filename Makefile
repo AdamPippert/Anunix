@@ -169,6 +169,19 @@ $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.S
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) -c $< -o $@
 
+# JEPA uses float for ML inference; omit -mgeneral-regs-only so the compiler
+# uses SSE2 hardware FP instead of soft-float library calls.  JEPA must never
+# run in interrupt context (no FPU state save/restore at interrupt entry).
+JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS))
+
+$(BUILD_DIR)/core/jepa/%.o: $(CORE_DIR)/jepa/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/core/loop/%.o: $(CORE_DIR)/loop/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
 # Compile C files from core/ (recursive)
 $(BUILD_DIR)/core/%.o: $(CORE_DIR)/%.c
 	@mkdir -p $(dir $@)

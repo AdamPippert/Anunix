@@ -137,6 +137,13 @@ anx_theme_set_color(uint32_t *slot, uint32_t color)
 	*slot = color;
 }
 
+/* Restore a previously captured theme snapshot. */
+void
+anx_theme_restore(const struct anx_theme *snapshot)
+{
+	g_theme = *snapshot;
+}
+
 /*
  * anx_theme_apply_config — parse semicolon-separated key=value config string.
  *

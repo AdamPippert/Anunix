@@ -74,6 +74,11 @@ enum anx_cell_type {
 	/* Virtual machine (RFC-0017) */
 	ANX_CELL_VM,
 
+	/* RFC-0020 IBAL loop cell types */
+	ANX_CELL_BELIEF_UPDATE,		/* recurrent workspace update with provenance */
+	ANX_CELL_ARBITRATION,		/* score aggregation and halting decision */
+	ANX_CELL_LOOP_SUPERVISOR,	/* loop session lifecycle management */
+
 	ANX_CELL_TYPE_COUNT,
 };
 

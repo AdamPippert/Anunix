@@ -47,6 +47,7 @@
 #include <anx/xdna.h>
 #include <anx/browser_cell.h>
 #include <anx/vm.h>
+#include <anx/loop.h>
 
 /* --- Line input with history --- */
 
@@ -1925,8 +1926,14 @@ static void dispatch(int argc, char **argv)
 		cmd_vm(argc, argv);
 	} else if (anx_strcmp(argv[0], "workflow") == 0) {
 		cmd_workflow(argc, argv);
+	} else if (anx_strcmp(argv[0], "loop") == 0) {
+		anx_loop_shell_dispatch(argc, (const char *const *)argv);
 	} else if (anx_strcmp(argv[0], "theme") == 0) {
 		cmd_theme(argc, argv);
+	} else if (anx_strcmp(argv[0], "clear") == 0) {
+		cmd_clear(argc, argv);
+	} else if (anx_strcmp(argv[0], "mode") == 0) {
+		last_return_code = cmd_mode(argc, argv);
 	} else if (anx_strcmp(argv[0], "kickstart") == 0) {
 		cmd_kickstart(argc, argv);
 	} else {
