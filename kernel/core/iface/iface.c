@@ -63,6 +63,7 @@ struct anx_compositor_slot {
 	uint64_t repaint_cycles;
 	uint64_t committed_surfaces;
 	uint32_t last_cycle_commits;
+	uint64_t last_cycle_ns;
 };
 
 static struct anx_compositor_slot compositors[ANX_IFACE_COMPOSITOR_MAX];
@@ -186,7 +187,13 @@ anx_iface_surface_map(struct anx_surface *surf)
 	}
 
 	anx_spin_lock_irqsave(&surf->lock, &flags);
-	surf->state = ANX_SURF_VISIBLE;
+	surf->state    = ANX_SURF_VISIBLE;
+	/* Initial damage covers the full surface so the first compositor tick renders it. */
+	surf->damage_x = 0;
+	surf->damage_y = 0;
+	surf->damage_w = surf->width;
+	surf->damage_h = surf->height;
+	surf->damage_valid = true;
 	anx_spin_unlock_irqrestore(&surf->lock, flags);
 
 	return ANX_OK;
@@ -196,23 +203,81 @@ int
 anx_iface_surface_damage(struct anx_surface *surf,
                           int32_t x, int32_t y, uint32_t w, uint32_t h)
 {
-	if (!surf || !surf->renderer_ops)
+	bool flags;
+	int32_t x2, y2, nx2, ny2, ux, uy;
+
+	if (!surf || w == 0 || h == 0)
 		return ANX_EINVAL;
-	if (surf->renderer_ops->damage)
+
+	anx_spin_lock_irqsave(&surf->lock, &flags);
+	if (!surf->damage_valid) {
+		surf->damage_x = x;
+		surf->damage_y = y;
+		surf->damage_w = w;
+		surf->damage_h = h;
+		surf->damage_valid = true;
+	} else {
+		/* Expand accumulated rect to union with new rect. */
+		x2  = surf->damage_x + (int32_t)surf->damage_w;
+		y2  = surf->damage_y + (int32_t)surf->damage_h;
+		nx2 = x + (int32_t)w;
+		ny2 = y + (int32_t)h;
+		ux  = (x  < surf->damage_x) ? x  : surf->damage_x;
+		uy  = (y  < surf->damage_y) ? y  : surf->damage_y;
+		surf->damage_x = ux;
+		surf->damage_y = uy;
+		surf->damage_w = (uint32_t)((nx2 > x2 ? nx2 : x2) - ux);
+		surf->damage_h = (uint32_t)((ny2 > y2 ? ny2 : y2) - uy);
+	}
+	anx_spin_unlock_irqrestore(&surf->lock, flags);
+
+	/* Forward hint to renderer (advisory; renderer may ignore). */
+	if (surf->renderer_ops && surf->renderer_ops->damage)
 		surf->renderer_ops->damage(surf, x, y, w, h);
+
 	return ANX_OK;
+}
+
+void
+anx_iface_surface_damage_query(struct anx_surface *surf,
+                                 int32_t *x_out, int32_t *y_out,
+                                 uint32_t *w_out, uint32_t *h_out,
+                                 bool *valid_out)
+{
+	bool flags;
+
+	if (!surf)
+		return;
+	anx_spin_lock_irqsave(&surf->lock, &flags);
+	if (x_out)     *x_out     = surf->damage_x;
+	if (y_out)     *y_out     = surf->damage_y;
+	if (w_out)     *w_out     = surf->damage_w;
+	if (h_out)     *h_out     = surf->damage_h;
+	if (valid_out) *valid_out = surf->damage_valid;
+	anx_spin_unlock_irqrestore(&surf->lock, flags);
 }
 
 int
 anx_iface_surface_commit(struct anx_surface *surf)
 {
+	bool flags;
+	int rc;
+
 	if (!surf)
 		return ANX_EINVAL;
 	if (surf->state != ANX_SURF_VISIBLE && surf->state != ANX_SURF_MAPPED)
 		return ANX_EINVAL;
 	if (!surf->renderer_ops)
 		return ANX_ENOENT;
-	return surf->renderer_ops->commit(surf);
+
+	rc = surf->renderer_ops->commit(surf);
+	if (rc == ANX_OK) {
+		anx_spin_lock_irqsave(&surf->lock, &flags);
+		surf->damage_valid = false;
+		surf->commit_count++;
+		anx_spin_unlock_irqrestore(&surf->lock, flags);
+	}
+	return rc;
 }
 
 int
@@ -554,10 +619,12 @@ compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 	bool found_focus;
 	uint32_t committed;
 	bool flags;
+	uint64_t t0, t1;
 
 	topmost_focus = ANX_UUID_NIL;
 	found_focus = false;
 	committed = 0;
+	t0 = arch_time_now();
 
 	anx_spin_lock_irqsave(&iface_lock, &flags);
 	ANX_LIST_FOR_EACH(pos, &surf_zlist) {
@@ -566,12 +633,21 @@ compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 		s = ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
 		if (s->state != ANX_SURF_VISIBLE)
 			continue;
+
+		/* P1-001: skip surfaces with no pending damage — zero-render fast path. */
+		if (!s->damage_valid)
+			goto check_focus;
+
 		if (s->renderer_ops && s->renderer_ops->commit) {
 			anx_spin_unlock_irqrestore(&iface_lock, flags);
 			s->renderer_ops->commit(s);
 			anx_spin_lock_irqsave(&iface_lock, &flags);
+			s->damage_valid = false;
+			s->commit_count++;
 			committed++;
 		}
+
+check_focus:
 		if (!found_focus) {
 			topmost_focus = s->oid;
 			found_focus = true;
@@ -579,10 +655,12 @@ compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 	}
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
 
+	t1 = arch_time_now();
 	anx_input_focus_set(topmost_focus);
 	slot->repaint_cycles++;
 	slot->committed_surfaces += committed;
 	slot->last_cycle_commits = committed;
+	slot->last_cycle_ns      = t1 - t0;
 	if (committed_out)
 		*committed_out = committed;
 	return ANX_OK;
@@ -758,9 +836,10 @@ anx_iface_compositor_stats(const char *domain, struct anx_iface_compositor_stats
 	anx_strlcpy(out->domain, slot->domain, sizeof(out->domain));
 	out->running = slot->running;
 	out->crashed = slot->crashed;
-	out->repaint_cycles = slot->repaint_cycles;
+	out->repaint_cycles     = slot->repaint_cycles;
 	out->committed_surfaces = slot->committed_surfaces;
 	out->last_cycle_commits = slot->last_cycle_commits;
+	out->last_cycle_ns      = slot->last_cycle_ns;
 	if (slot->cell)
 		out->cell_cid = slot->cell->cid;
 	anx_spin_unlock_irqrestore(&iface_lock, flags);

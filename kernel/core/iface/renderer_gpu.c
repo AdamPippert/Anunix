@@ -29,15 +29,35 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 	const uint32_t *src;
 	uint32_t        row, col;
 	uint32_t        dst_x, dst_y;
+	uint32_t        r0, r1, c0, c1;
 
 	if (!node->data || node->data_len < surf->width * surf->height * 4)
 		return;
 
 	src = (const uint32_t *)node->data;
 
-	for (row = 0; row < surf->height; row++) {
+	/* Clip to damage rect when available; fall back to full surface. */
+	if (surf->damage_valid && surf->damage_w && surf->damage_h) {
+		int32_t dr0 = surf->damage_y;
+		int32_t dr1 = dr0 + (int32_t)surf->damage_h;
+		int32_t dc0 = surf->damage_x;
+		int32_t dc1 = dc0 + (int32_t)surf->damage_w;
+		if (dr0 < 0) dr0 = 0;
+		if (dc0 < 0) dc0 = 0;
+		if (dr1 > (int32_t)surf->height) dr1 = (int32_t)surf->height;
+		if (dc1 > (int32_t)surf->width)  dc1 = (int32_t)surf->width;
+		if (dr1 <= dr0 || dc1 <= dc0)
+			return;
+		r0 = (uint32_t)dr0;  r1 = (uint32_t)dr1;
+		c0 = (uint32_t)dc0;  c1 = (uint32_t)dc1;
+	} else {
+		r0 = 0;  r1 = surf->height;
+		c0 = 0;  c1 = surf->width;
+	}
+
+	for (row = r0; row < r1; row++) {
 		dst_y = (uint32_t)surf->y + row;
-		for (col = 0; col < surf->width; col++) {
+		for (col = c0; col < c1; col++) {
 			dst_x = (uint32_t)surf->x + col;
 			anx_fb_putpixel(dst_x, dst_y,
 			                src[row * surf->width + col]);
