@@ -39,6 +39,9 @@
 #include <anx/net.h>
 #include "session.h"
 #include "ws.h"
+#include "forms/forms.h"
+#include "layout/layout.h"
+#include "paint/paint.h"
 #include "pii/pii_filter.h"
 #include "pii/pii_whitelist.h"
 #include "../../lib/base64.h"
@@ -508,6 +511,90 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 					char url[SESSION_URL_LEN];
 					if (json_str(msg, "url", url, sizeof(url)))
 						session_navigate(s, url);
+
+				} else if (anx_strncmp(msg,
+						"{\"type\":\"click\"", 16) == 0) {
+					/* Mouse click: hit-test form fields */
+					char xstr[16], ystr[16];
+					if (json_str(msg, "x", xstr, sizeof(xstr)) &&
+					    json_str(msg, "y", ystr, sizeof(ystr))) {
+						int32_t cx = 0, cy = 0;
+						const char *p;
+						for (p = xstr; *p >= '0' && *p <= '9'; p++)
+							cx = cx * 10 + (*p - '0');
+						for (p = ystr; *p >= '0' && *p <= '9'; p++)
+							cy = cy * 10 + (*p - '0');
+						int32_t hit = form_click(&s->forms, cx, cy);
+						/* Re-render to show focus change */
+						if (hit >= 0) {
+							layout_init(&s->layout, SESSION_FB_W);
+							layout_document(&s->layout, &s->doc,
+								s->css_index_valid ? &s->css_index : NULL,
+								&s->forms);
+							/* Sync focus state into paint cmds */
+							{
+								uint32_t ci;
+								for (ci = 0; ci < s->layout.n_cmds; ci++) {
+									struct paint_cmd *pc = &s->layout.cmds[ci];
+									if (pc->field_idx == hit)
+										pc->focused = true;
+								}
+							}
+							paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,
+								     SESSION_FB_W * 4, 0x00EFECe6U);
+							paint_execute(&s->layout, s->fb,
+								       SESSION_FB_W, SESSION_FB_H,
+								       SESSION_FB_W * 4);
+							s->ws_dirty = true;
+						}
+					}
+
+				} else if (anx_strncmp(msg,
+						"{\"type\":\"keydown\"", 18) == 0) {
+					/* Keyboard input to focused form field */
+					char key[32];
+					if (json_str(msg, "key", key, sizeof(key))) {
+						bool consumed = form_key(&s->forms, key);
+						if (consumed) {
+							/* Update paint cmd text and re-render */
+							int32_t fidx = s->forms.focused_idx;
+							if (fidx >= 0) {
+								struct form_field *ff =
+									&s->forms.fields[fidx];
+								uint32_t ci;
+								for (ci = 0; ci < s->layout.n_cmds; ci++) {
+									struct paint_cmd *pc = &s->layout.cmds[ci];
+									if (pc->field_idx == fidx) {
+										anx_strlcpy(pc->text, ff->value,
+											     PAINT_MAX_TEXT);
+										pc->cursor_pos = ff->cursor_pos;
+									}
+								}
+							}
+							paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,
+								     SESSION_FB_W * 4, 0x00EFECe6U);
+							paint_execute(&s->layout, s->fb,
+								       SESSION_FB_W, SESSION_FB_H,
+								       SESSION_FB_W * 4);
+							s->ws_dirty = true;
+						}
+						/* Enter in a submit field = form submission */
+						if (!consumed &&
+						    anx_strcmp(key, "Enter") == 0 &&
+						    s->forms.focused_idx >= 0) {
+							struct form_field *ff =
+								&s->forms.fields[s->forms.focused_idx];
+							if (ff->type == FORM_TYPE_SUBMIT ||
+							    ff->type == FORM_TYPE_RESET) {
+								/* Treat as navigate with form data */
+								char qbuf[1024];
+								form_collect(&s->forms, qbuf, sizeof(qbuf));
+								/* For now, just log; full form submit
+								   requires knowing the action URL */
+								kprintf("browser: form submit: %s\n", qbuf);
+							}
+						}
+					}
 
 				} else if (anx_strncmp(msg,
 						"{\"type\":\"pii_response\"", 22) == 0) {

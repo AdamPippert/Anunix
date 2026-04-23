@@ -11,6 +11,7 @@
 
 #include "layout.h"
 #include "../css/css_cascade.h"
+#include "../forms/forms.h"
 #include <anx/string.h>
 #include <anx/alloc.h>
 
@@ -124,6 +125,8 @@ struct walk_state {
 	/* Ancestor chain for selector matching */
 	const struct dom_node           *ancestors[ANCESTOR_MAX];
 	uint32_t                         n_ancestors;
+	/* Form state — populated during walk, may be NULL */
+	struct form_state               *fs;
 	struct css_bloom                 bloom;
 };
 
@@ -147,6 +150,131 @@ static void walk_node(struct layout_ctx *ctx,
 	}
 
 	/* ── Element nodes ───────────────────────────────────────────── */
+
+	/* ── Form elements: render specially and register in form_state ── */
+	const char *tag = n->el.tag;
+	if ((anx_strcmp(tag, "input")    == 0 ||
+	     anx_strcmp(tag, "textarea") == 0 ||
+	     anx_strcmp(tag, "button")   == 0 ||
+	     anx_strcmp(tag, "select")   == 0) && ws->fs) {
+		/* Newline before form field if not at line start */
+		if (ctx->cursor_x != (int32_t)ctx->indent)
+			emit_newline(ctx);
+
+		const char *ftype   = dom_attr(n, "type") ? dom_attr(n, "type") : "text";
+		const char *fname   = dom_attr(n, "name")        ? dom_attr(n, "name")        : "";
+		const char *fvalue  = dom_attr(n, "value")       ? dom_attr(n, "value")       : "";
+		const char *fpholder= dom_attr(n, "placeholder") ? dom_attr(n, "placeholder") : "";
+
+		/* Determine field type */
+		uint8_t field_type = FORM_TYPE_TEXT;
+		uint8_t pcmd_type  = PCMD_INPUT_FIELD;
+
+		if (anx_strcmp(tag, "textarea") == 0) {
+			field_type = FORM_TYPE_TEXTAREA;
+			pcmd_type  = PCMD_TEXTAREA;
+		} else if (anx_strcmp(tag, "select") == 0) {
+			field_type = FORM_TYPE_SELECT;
+			pcmd_type  = PCMD_INPUT_FIELD;
+		} else if (anx_strcmp(tag, "button") == 0) {
+			field_type = FORM_TYPE_SUBMIT;
+			pcmd_type  = PCMD_BUTTON;
+		} else if (anx_strcmp(ftype, "submit") == 0 ||
+		           anx_strcmp(ftype, "button") == 0) {
+			field_type = FORM_TYPE_SUBMIT;
+			pcmd_type  = PCMD_BUTTON;
+		} else if (anx_strcmp(ftype, "reset") == 0) {
+			field_type = FORM_TYPE_RESET;
+			pcmd_type  = PCMD_BUTTON;
+		} else if (anx_strcmp(ftype, "checkbox") == 0) {
+			field_type = FORM_TYPE_CHECKBOX;
+			pcmd_type  = PCMD_CHECKBOX;
+		} else if (anx_strcmp(ftype, "radio") == 0) {
+			field_type = FORM_TYPE_RADIO;
+			pcmd_type  = PCMD_CHECKBOX;
+		} else if (anx_strcmp(ftype, "password") == 0) {
+			field_type = FORM_TYPE_PASSWORD;
+		} else if (anx_strcmp(ftype, "hidden") == 0) {
+			/* Hidden inputs: register but don't render */
+			form_field_register(ws->fs, FORM_TYPE_HIDDEN,
+					     fname, fvalue, "", "", false,
+					     0, 0, 0, 0);
+			return;
+		}
+
+		/* Field dimensions */
+		uint32_t fw = (field_type == FORM_TYPE_CHECKBOX ||
+		               field_type == FORM_TYPE_RADIO) ? 16 :
+		              (field_type == FORM_TYPE_TEXTAREA)? 360 : 200;
+		uint32_t fh = (field_type == FORM_TYPE_TEXTAREA) ? 80 : 24;
+
+		/* Button label text */
+		char btn_label[256];
+		btn_label[0] = '\0';
+		if (pcmd_type == PCMD_BUTTON) {
+			if (fvalue[0])
+				anx_strlcpy(btn_label, fvalue, sizeof(btn_label));
+			else if (anx_strcmp(tag, "button") == 0) {
+				/* Collect button's text-node children */
+				uint32_t ci;
+				size_t   bpos = 0;
+				for (ci = 0; ci < n->el.n_children &&
+				             bpos < sizeof(btn_label) - 1; ci++) {
+					struct dom_node *ch = n->el.children[ci];
+					if (ch && ch->type == DOM_TEXT) {
+						size_t cl = anx_strlen(ch->txt.text);
+						if (cl > sizeof(btn_label) - bpos - 1)
+							cl = sizeof(btn_label) - bpos - 1;
+						anx_memcpy(btn_label + bpos,
+							   ch->txt.text, cl);
+						bpos += cl;
+					}
+				}
+				btn_label[bpos] = '\0';
+			}
+			if (!btn_label[0])
+				anx_strlcpy(btn_label,
+					     field_type == FORM_TYPE_RESET ?
+					       "Reset" : "Submit",
+					     sizeof(btn_label));
+		}
+
+		/* Register field and get index */
+		bool is_checked = (dom_attr(n, "checked") != NULL);
+		int32_t fidx = form_field_register(ws->fs, field_type,
+						    fname, fvalue, fpholder,
+						    btn_label, is_checked,
+						    ctx->cursor_x,
+						    ctx->cursor_y,
+						    fw, fh);
+
+		/* Emit paint command */
+		struct paint_cmd *c = emit_cmd(ctx);
+		if (c) {
+			c->type       = pcmd_type;
+			c->x          = ctx->cursor_x;
+			c->y          = ctx->cursor_y;
+			c->w          = fw;
+			c->h          = fh;
+			c->field_idx  = fidx;
+			c->focused    = false;
+			c->checked    = is_checked;
+			c->cursor_pos = 0;
+			if (pcmd_type == PCMD_BUTTON)
+				anx_strlcpy(c->text, btn_label, PAINT_MAX_TEXT);
+			else if (fvalue[0])
+				anx_strlcpy(c->text, fvalue, PAINT_MAX_TEXT);
+			else
+				anx_strlcpy(c->text, fpholder, PAINT_MAX_TEXT);
+			c->color = 0x001a2733u;
+		}
+
+		ctx->cursor_y += (int32_t)fh + 4;
+		ctx->cursor_x  = (int32_t)ctx->indent;
+		return;
+	}
+
+	/* ── Standard element style resolution ───────────────────────── */
 	struct computed_style st;
 	css_resolve(&st, n,
 		     ws->author_idx,
@@ -264,10 +392,14 @@ void layout_init(struct layout_ctx *ctx, uint32_t viewport_w)
 
 void layout_document(struct layout_ctx *ctx,
 		      const struct dom_doc *doc,
-		      const struct css_selector_index *author_idx)
+		      const struct css_selector_index *author_idx,
+		      struct form_state *fs)
 {
 	/* Ensure UA stylesheet is loaded */
 	css_ua_init();
+
+	/* Reset form state for this page */
+	if (fs) form_state_reset(fs);
 
 	/* Background fill */
 	emit_fill(ctx, 0, 0, ctx->viewport_w, 16384, ctx->bg_color);
@@ -277,6 +409,7 @@ void layout_document(struct layout_ctx *ctx,
 	struct walk_state ws;
 	anx_memset(&ws, 0, sizeof(ws));
 	ws.author_idx = author_idx;
+	ws.fs         = fs;
 	/* Initial parent style: body-like defaults */
 	ws.parent_style.display      = CSS_DISPLAY_BLOCK;
 	ws.parent_style.font_size_px = 14;

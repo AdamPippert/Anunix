@@ -15,6 +15,7 @@
 #include "layout/layout.h"
 #include "css/css_parser.h"
 #include "css/css_selector.h"
+#include "forms/forms.h"
 #include "pii/pii_filter.h"
 
 #define SESSION_MAX       4
@@ -46,6 +47,9 @@ struct browser_session {
 	struct css_sheet          css_sheet;
 	struct css_selector_index css_index;
 	bool                      css_index_valid;
+
+	/* Form element state */
+	struct form_state forms;
 
 	/* WebSocket streaming connection (NULL when no subscriber) */
 	struct anx_tcp_conn *ws_conn;
