@@ -1,7 +1,11 @@
-# P1 Ticket Plan — parity and usability expansion
+# P1 Ticket Plan — graphical userspace parity and usability expansion
 
 Status: advisory only (planning), no implementation in this phase.
-Goal: build on P0 substrate to reach practical graphical browser operation.
+Goal: build on P0 substrate to provide robust graphical userspace contracts for all applications and workflows.
+
+Boundary guardrail (mandatory):
+- This plan is constrained by `00-boundary-decision.md`.
+- P1 scope is reusable graphical userspace runtime substrate, not application-specific or browser-engine/product logic.
 
 ## Ticket P1-001: Dirty-rect compositor + frame pacing
 
@@ -23,30 +27,30 @@ Definition of done
 
 ---
 
-## Ticket P1-002: Multi-window/tab surface model hardening
+## Ticket P1-002: Multi-window/surface model hardening
 
 Objective
-- Add first-class support for multiple browser surfaces with robust z-order/focus semantics.
+- Add first-class support for multiple externally-managed application surfaces with robust z-order/focus semantics.
 
 Scope
 - Parent/child surface semantics validation.
 - Deterministic z-order operations (raise/lower/focus transfer).
-- Surface grouping for tab stacks.
+- Surface grouping for related windows/transient sets.
 
 Deterministic tests
 1) Unit: z-order operations produce expected ordering.
-2) Integration: focus follows active top-level tab surface.
-3) Integration: closing active tab transfers focus deterministically.
+2) Integration: focus follows active top-level surface.
+3) Integration: closing active surface transfers focus deterministically.
 
 Definition of done
-- Multi-surface browser session behavior is stable and test-covered.
+- Multi-surface application behavior is stable and test-covered.
 
 ---
 
 ## Ticket P1-003: Clipboard, drag/drop, file-pick interface contracts
 
 Objective
-- Provide minimum desktop interaction APIs expected by real web apps.
+- Provide minimum desktop interaction APIs expected by graphical applications and workflow UIs.
 
 Scope
 - Clipboard read/write API with capability checks.
@@ -59,7 +63,7 @@ Deterministic tests
 3) Integration: drag/drop file metadata reaches target surface.
 
 Definition of done
-- Core interaction APIs required by modern web flows are present.
+- Core interaction APIs required by modern graphical workflows/applications are present.
 
 ---
 
@@ -83,23 +87,23 @@ Definition of done
 
 ---
 
-## Ticket P1-005: Download pipeline + object policy integration
+## Ticket P1-005: Transfer/import/export policy hooks + object integration
 
 Objective
-- Browser downloads become first-class managed objects with policy controls.
+- Expose OS-level transfer/import/export policy hooks so applications can enforce artifact movement policy without embedding platform logic in Anunix.
 
 Scope
-- Download lifecycle state machine.
-- Destination policy and capability checks.
-- Partial download resume/retry policy.
+- Destination policy and capability checks for artifact writes.
+- Resume/retry storage contract primitives.
+- Metadata/provenance hooks for externally-managed transfer/import/export workflows.
 
 Deterministic tests
 1) Unit: invalid destination policy rejected.
-2) Integration: interrupted download resumes and final hash matches expected.
-3) Integration: object metadata/provenance recorded for completed downloads.
+2) Integration: interrupted transfer resumes and final hash matches expected.
+3) Integration: object metadata/provenance recorded for completed transfer/import/export artifacts.
 
 Definition of done
-- Download behavior is deterministic, auditable, and recoverable.
+- Transfer artifact behavior is deterministic, auditable, and recoverable via OS contracts.
 
 ---
 
@@ -127,10 +131,10 @@ Definition of done
 
 1. P1-006 Event queue QoS and telemetry
 2. P1-001 Dirty-rect compositor + frame pacing
-3. P1-002 Multi-window/tab surface model
+3. P1-002 Multi-window/surface model
 4. P1-003 Clipboard/drag-drop/file-pick
 5. P1-004 Text/font shaping baseline
-6. P1-005 Download pipeline
+6. P1-005 Transfer/import/export policy hooks
 
 Rationale
-- Observability and scheduling first, user-facing integrations after stability work.
+- Observability and scheduling first, then reusable application-facing integrations after stability work.

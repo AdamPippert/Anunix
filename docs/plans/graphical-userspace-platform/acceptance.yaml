@@ -1,5 +1,5 @@
 version: 1
-name: anxbrowser-graphical-userspace-acceptance
+name: graphical-userspace-platform-acceptance
 mode: advisory-planning-only
 
 global_rules:
@@ -11,6 +11,12 @@ global_rules:
     rule: "Performance tests must declare hardware/profile context and threshold budget."
   - id: GR-004
     rule: "Security-relevant tickets must include at least one negative (deny) test."
+  - id: GR-005
+    rule: "No ticket may introduce browser-engine/product logic into Anunix; scope must remain reusable graphical-userspace substrate."
+  - id: GR-006
+    rule: "Services planned here must be globally available to graphical applications/workflows and not private anxbrowserd dependencies."
+  - id: GR-007
+    rule: "Every ticket must name or imply at least one non-anxbrowserd consumer scenario (workflow UI, shell, editor, dashboard, viewer, or other graphical app)."
 
 phases:
   - phase: P0
@@ -93,7 +99,7 @@ phases:
             - "Input invariants are codified and pass in CI/QEMU profile."
 
       - id: P0-005
-        title: Browser-grade TLS trust baseline
+        title: TLS trust baseline for userspace applications
         acceptance:
           unit_tests:
             - id: P0-005-U01
@@ -113,21 +119,21 @@ phases:
             - "TLS path is self-sufficient with trust-store validation lifecycle."
 
       - id: P0-006
-        title: Browser profile/cache storage primitives
+        title: Durable application state/session/cache storage primitives
         acceptance:
           unit_tests:
             - id: P0-006-U01
               name: atomic_commit
-              check: "Interrupted write never leaves partially committed profile visible as current."
+              check: "Interrupted write never leaves partially committed application state visible as current."
             - id: P0-006-U02
               name: lock_contention
               check: "Concurrent writer conflict is deterministic (fail/retry path defined)."
           integration_tests:
             - id: P0-006-I01
-              name: crash_recovery_profile
-              check: "Post-reboot recovery yields last committed profile state and passes integrity hash check."
+              name: crash_recovery_application_state
+              check: "Post-reboot recovery yields last committed application state and passes integrity hash check."
           done_when:
-            - "Profile/cache durability guarantees are test-backed."
+            - "Application state/session/cache durability guarantees are test-backed."
 
       - id: P0-007
         title: Shared-memory IPC v0
@@ -147,7 +153,7 @@ phases:
             - "Secure low-copy IPC path exists for graphics data exchange."
 
       - id: P0-008
-        title: Conformance/perf harness integration
+        title: Graphical userspace conformance/perf harness integration
         acceptance:
           unit_tests:
             - id: P0-008-U01
@@ -186,7 +192,7 @@ phases:
             - "Damage-driven rendering and pacing metrics meet threshold."
 
       - id: P1-002
-        title: Multi-window/tab surface model hardening
+        title: Multi-window/surface model hardening
         acceptance:
           unit_tests:
             - id: P1-002-U01
@@ -194,11 +200,11 @@ phases:
               check: "Raise/lower/reorder operations produce expected deterministic order."
           integration_tests:
             - id: P1-002-I01
-              name: focus_with_tab_switch
-              check: "Active tab switch updates focus target deterministically."
+              name: focus_with_surface_activation
+              check: "Active surface activation updates focus target deterministically."
             - id: P1-002-I02
-              name: close_active_tab_focus_fallback
-              check: "Closing active tab transfers focus to defined fallback surface."
+              name: close_active_surface_focus_fallback
+              check: "Closing active surface transfers focus to defined fallback surface."
           done_when:
             - "Multi-surface semantics are stable and test-verified."
 
@@ -237,7 +243,7 @@ phases:
             - "Text path supports non-ASCII baselines with predictable fallback."
 
       - id: P1-005
-        title: Download pipeline + object policy integration
+        title: Transfer/import/export policy hooks + object integration
         acceptance:
           unit_tests:
             - id: P1-005-U01
@@ -246,12 +252,12 @@ phases:
           integration_tests:
             - id: P1-005-I01
               name: interrupted_resume_hash
-              check: "Interrupted download resumes; final hash equals expected fixture hash."
+              check: "Interrupted transfer resumes; final hash equals expected fixture hash."
             - id: P1-005-I02
               name: provenance_recording
-              check: "Completed download creates object metadata/provenance entries."
+              check: "Completed transfer/import/export creates object metadata/provenance entries."
           done_when:
-            - "Download lifecycle is recoverable and auditable."
+            - "Transfer/import/export lifecycle is recoverable and auditable."
 
       - id: P1-006
         title: Event queue QoS and telemetry
@@ -304,27 +310,27 @@ phases:
               name: seek_state_machine
               check: "Start/stop/seek transitions follow defined state machine without deadlock."
           done_when:
-            - "Media baseline supports common browser workloads deterministically."
+            - "Media-path contracts support common graphical workloads deterministically."
 
       - id: P2-003
-        title: Site/process isolation hardening profile
+        title: Untrusted application/process isolation hardening primitives
         acceptance:
           unit_tests:
             - id: P2-003-U01
-              name: cross_origin_shm_deny
-              check: "Cross-origin unauthorized shared-memory map attempt is denied."
+              name: cross_domain_shm_deny
+              check: "Cross-domain unauthorized shared-memory map attempt is denied."
           integration_tests:
             - id: P2-003-I01
-              name: compromised_renderer_containment
-              check: "Renderer compromise simulation cannot read unrelated origin state."
+              name: compromised_process_containment
+              check: "Compromised process simulation cannot read unrelated application state."
             - id: P2-003-I02
               name: policy_violation_audit
               check: "Isolation policy violations produce provenance-linked audit events."
           done_when:
-            - "Isolation profile materially constrains hostile-web blast radius."
+            - "Isolation primitives materially constrain untrusted graphical workload blast radius."
 
       - id: P2-004
-        title: WPT-class conformance gate integration
+        title: Graphical userspace conformance gate integration
         acceptance:
           unit_tests:
             - id: P2-004-U01
