@@ -378,6 +378,9 @@ int anx_iface_surface_raise(struct anx_surface *surf);
 /* Lower surface to back of z-order (appears behind all others). */
 int anx_iface_surface_lower(struct anx_surface *surf);
 
+/* Set the parent of child; child is repositioned just above parent in z-order. */
+int anx_iface_surface_set_parent(struct anx_surface *child, anx_oid_t parent_oid);
+
 /* Return topmost VISIBLE surface whose bounds contain (x, y), or NULL. */
 struct anx_surface *anx_iface_surface_at(int32_t x, int32_t y);
 

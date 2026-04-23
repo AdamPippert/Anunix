@@ -371,7 +371,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_workflow.c \
                tests/test_theme.c \
                tests/test_event_qos.c \
-               tests/test_compositor_dirty_rect.c
+               tests/test_compositor_dirty_rect.c \
+               tests/test_multi_surface.c
 TEST_BIN    := build/test/anunix_test
 
 test:
