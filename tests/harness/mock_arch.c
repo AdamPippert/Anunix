@@ -169,6 +169,8 @@ void anx_gui_init(void) {}
 bool anx_gui_active(void) { return false; }
 void anx_gui_terminal_putc(char c) { (void)c; }
 void anx_gui_update_time(void) {}
+void anx_gui_get_time(char *buf, uint32_t buflen)
+{ if (buf && buflen >= 6) { buf[0]='0';buf[1]='0';buf[2]=':';buf[3]='0';buf[4]='0';buf[5]='\0'; } }
 void anx_gui_set_tz_offset(int32_t h) { (void)h; }
 void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
     uint32_t fg, uint32_t bg, uint32_t scale)

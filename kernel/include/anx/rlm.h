@@ -62,7 +62,9 @@ struct anx_rlm_config {
 	char model[ANX_RLM_MODEL_NAME];
 	char system[ANX_RLM_MAX_CONTENT];
 	uint32_t max_steps;		/* hard cap on inference iterations */
-	uint32_t max_tokens;		/* per call */
+	uint32_t max_tokens;		/* per call (step 0 baseline) */
+	uint32_t min_tokens;		/* lower bound after lambda decay */
+	float lambda_decay;		/* lambda-RLM token decay per infer step */
 	bool persist_trace;		/* finalize trace as State Object */
 	bool admit_responses;		/* admit responses to memplane L1 */
 	enum anx_sched_priority priority;

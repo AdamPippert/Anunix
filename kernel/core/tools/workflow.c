@@ -23,7 +23,9 @@ static void wf_usage(void)
 	kprintf("  status   <name>\n");
 	kprintf("  add-node <wf-name> <kind> <label>\n");
 	kprintf("  add-edge <wf-name> <from-node-id> <to-node-id>\n");
-	kprintf("  dump     <name>\n");
+	kprintf("  show     <name>   — serialize to DSL text\n");
+	kprintf("  graph    <name>   — ASCII DAG diagram\n");
+	kprintf("  dump     <name>   — raw struct debug dump\n");
 	kprintf("  destroy  <name>\n");
 	kprintf("\n");
 	kprintf("  kinds: trigger state_ref cell_call model_call agent_call\n");
@@ -231,6 +233,66 @@ static int cmd_workflow_status(int argc, char **argv)
 	return ANX_OK;
 }
 
+/* ------------------------------------------------------------------ */
+/* show / graph — serialization                                        */
+/* ------------------------------------------------------------------ */
+
+#define WF_SERIAL_BUF 8192
+
+static int cmd_workflow_show(int argc, char **argv)
+{
+	anx_oid_t oid;
+	static char buf[WF_SERIAL_BUF];
+	int ret;
+
+	if (argc < 1) {
+		kprintf("workflow show: missing name\n");
+		return ANX_EINVAL;
+	}
+
+	ret = wf_find_by_name(argv[0], &oid);
+	if (ret != ANX_OK) {
+		kprintf("workflow show: '%s' not found\n", argv[0]);
+		return ANX_ENOENT;
+	}
+
+	ret = anx_wf_serialize(&oid, buf, sizeof(buf));
+	if (ret != ANX_OK) {
+		kprintf("workflow show: serialize failed (%d)\n", ret);
+		return ret;
+	}
+
+	kprintf("%s", buf);
+	return ANX_OK;
+}
+
+static int cmd_workflow_graph(int argc, char **argv)
+{
+	anx_oid_t oid;
+	static char buf[WF_SERIAL_BUF];
+	int ret;
+
+	if (argc < 1) {
+		kprintf("workflow graph: missing name\n");
+		return ANX_EINVAL;
+	}
+
+	ret = wf_find_by_name(argv[0], &oid);
+	if (ret != ANX_OK) {
+		kprintf("workflow graph: '%s' not found\n", argv[0]);
+		return ANX_ENOENT;
+	}
+
+	ret = anx_wf_render_ascii(&oid, buf, sizeof(buf));
+	if (ret != ANX_OK) {
+		kprintf("workflow graph: render failed (%d)\n", ret);
+		return ret;
+	}
+
+	kprintf("%s", buf);
+	return ANX_OK;
+}
+
 static int cmd_workflow_dump(int argc, char **argv)
 {
 	anx_oid_t oid;
@@ -416,6 +478,8 @@ int cmd_workflow(int argc, char **argv)
 	if (anx_strcmp(argv[1], "list")     == 0) return cmd_workflow_list();
 	if (anx_strcmp(argv[1], "run")      == 0) return cmd_workflow_run(argc - 2, argv + 2);
 	if (anx_strcmp(argv[1], "status")   == 0) return cmd_workflow_status(argc - 2, argv + 2);
+	if (anx_strcmp(argv[1], "show")     == 0) return cmd_workflow_show(argc - 2, argv + 2);
+	if (anx_strcmp(argv[1], "graph")    == 0) return cmd_workflow_graph(argc - 2, argv + 2);
 	if (anx_strcmp(argv[1], "dump")     == 0) return cmd_workflow_dump(argc - 2, argv + 2);
 	if (anx_strcmp(argv[1], "add-node") == 0) return cmd_workflow_add_node(argc - 2, argv + 2);
 	if (anx_strcmp(argv[1], "add-edge") == 0) return cmd_workflow_add_edge(argc - 2, argv + 2);

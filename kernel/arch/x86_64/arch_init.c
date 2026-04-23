@@ -149,6 +149,34 @@ anx_time_t arch_time_now(void)
 static char kbd_buf[KBD_BUF_SIZE];
 static volatile uint32_t kbd_head, kbd_tail;
 static bool kbd_shift;
+static bool kbd_e0;  /* E0 extended-scancode prefix received */
+
+/*
+ * Extended PS/2 Set 1 scancodes (after E0 prefix) → HID keycode.
+ * Returns ANX_KEY_NONE for unknown extended codes.
+ */
+static uint32_t sc1_ext_to_hid(uint8_t raw)
+{
+	switch (raw) {
+	case 0x1C: return ANX_KEY_ENTER;    /* KP Enter */
+	case 0x1D: return ANX_KEY_RCTRL;
+	case 0x35: return ANX_KEY_SLASH;    /* KP / */
+	case 0x38: return ANX_KEY_RALT;
+	case 0x47: return ANX_KEY_HOME;
+	case 0x48: return ANX_KEY_UP;
+	case 0x49: return ANX_KEY_PAGEUP;
+	case 0x4B: return ANX_KEY_LEFT;
+	case 0x4D: return ANX_KEY_RIGHT;
+	case 0x4F: return ANX_KEY_END;
+	case 0x50: return ANX_KEY_DOWN;
+	case 0x51: return ANX_KEY_PAGEDOWN;
+	case 0x52: return ANX_KEY_INSERT;
+	case 0x53: return ANX_KEY_DELETE;
+	case 0x5B: return ANX_KEY_LMETA;   /* Left Super/Windows */
+	case 0x5C: return ANX_KEY_RMETA;   /* Right Super/Windows */
+	default:   return ANX_KEY_NONE;
+	}
+}
 
 /* US QWERTY scancode set 1 → ASCII (lowercase) */
 static const char scancode_map[128] = {
@@ -177,6 +205,28 @@ static void kbd_irq_handler(uint32_t irq, void *arg)
 	(void)arg;
 
 	scancode = anx_inb(KBD_DATA_PORT);
+
+	/* E0 extended prefix — latch and wait for the real scancode byte */
+	if (scancode == 0xE0) {
+		kbd_e0 = true;
+		return;
+	}
+
+	/* Extended scancode (Super/Meta, arrows, Home/End, etc.) */
+	if (kbd_e0) {
+		bool is_release = (scancode & 0x80) != 0;
+		uint8_t raw = scancode & 0x7F;
+		uint32_t hid = sc1_ext_to_hid(raw);
+
+		kbd_e0 = false;
+		if (hid != ANX_KEY_NONE) {
+			if (is_release)
+				anx_input_key_up(hid, 0);
+			else
+				anx_input_key_down(hid, 0, 0);
+		}
+		return;
+	}
 
 	/* Handle shift key */
 	if (scancode == 0x2A || scancode == 0x36) {
@@ -228,6 +278,7 @@ static void kbd_init(void)
 	kbd_head = 0;
 	kbd_tail = 0;
 	kbd_shift = false;
+	kbd_e0    = false;
 
 	/* Flush any pending scancodes (bounded: avoid spinning on broken HW) */
 	for (flush = 0; flush < 16 && (anx_inb(KBD_STATUS_PORT) & 0x01); flush++)
@@ -329,7 +380,9 @@ static void mouse_irq_handler(uint32_t irq, void *arg)
 
 	{
 		struct anx_hid_mouse_report rpt;
-		uint32_t sw = 1920, sh = 1080;
+		const struct anx_fb_info *fb = anx_fb_get_info();
+		uint32_t sw = (fb && fb->available) ? fb->width  : 1920;
+		uint32_t sh = (fb && fb->available) ? fb->height : 1080;
 
 		/* Y is inverted in PS/2 (positive = up in PS/2 = down on screen) */
 		rpt.buttons = flags & 0x07;
@@ -337,7 +390,7 @@ static void mouse_irq_handler(uint32_t irq, void *arg)
 		rpt.y       = -dy;
 		rpt.wheel   = 0;
 
-		/* Use 1920x1080 as default; anx_usb_mouse_report clamps to this */
+		/* Clamp to actual screen dimensions */
 		anx_usb_mouse_report(&rpt, sw, sh);
 	}
 }

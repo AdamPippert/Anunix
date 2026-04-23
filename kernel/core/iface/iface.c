@@ -806,3 +806,73 @@ void anx_iface_frame_scheduler_init(uint32_t target_fps)
 	frame_tick_counter = 0;
 	arch_set_timer_callback(iface_frame_tick);
 }
+
+/* ------------------------------------------------------------------ */
+/* Window management helpers                                            */
+/* ------------------------------------------------------------------ */
+
+int anx_iface_surface_move(struct anx_surface *surf, int32_t x, int32_t y)
+{
+	bool flags;
+
+	if (!surf)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	surf->x = x;
+	surf->y = y;
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int anx_iface_surface_raise(struct anx_surface *surf)
+{
+	bool flags;
+
+	if (!surf)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	anx_list_del(&surf->z_node);
+	anx_list_add(&surf->z_node, &surf_zlist);	/* front = highest z */
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int anx_iface_surface_lower(struct anx_surface *surf)
+{
+	bool flags;
+
+	if (!surf)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	anx_list_del(&surf->z_node);
+	anx_list_add_tail(&surf->z_node, &surf_zlist);	/* tail = lowest z */
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+struct anx_surface *anx_iface_surface_at(int32_t x, int32_t y)
+{
+	struct anx_list_head *pos;
+	struct anx_surface   *found = NULL;
+	bool flags;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	/* Walk front-to-back; first hit is topmost */
+	ANX_LIST_FOR_EACH(pos, &surf_zlist) {
+		struct anx_surface *s =
+			ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
+
+		if (s->state != ANX_SURF_VISIBLE)
+			continue;
+		if (x >= s->x && x < s->x + (int32_t)s->width &&
+		    y >= s->y && y < s->y + (int32_t)s->height) {
+			found = s;
+			break;
+		}
+	}
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return found;
+}

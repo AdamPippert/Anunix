@@ -225,6 +225,8 @@ int anx_iface_event_subscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
 int anx_iface_event_unsubscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
 /* Poll for the next event addressed to cell_cid; returns ANX_ENOENT if empty */
 int anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out);
+/* Poll for next WM-targeted event (target_surf == null) — used by anx_wm_run() */
+int anx_iface_event_poll_wm(struct anx_event *out);
 
 #define ANX_IFACE_EVENT_RING_SIZE 256u
 
@@ -330,5 +332,17 @@ void anx_iface_frame_scheduler_init(uint32_t target_fps);
 int anx_wayland_surface_wrap(void *pixels, uint32_t width, uint32_t height,
                               int32_t x, int32_t y,
                               struct anx_surface **out);
+
+/* Move a surface to a new screen position without unmapping it. */
+int anx_iface_surface_move(struct anx_surface *surf, int32_t x, int32_t y);
+
+/* Raise surface to front of z-order (appears on top of all others). */
+int anx_iface_surface_raise(struct anx_surface *surf);
+
+/* Lower surface to back of z-order (appears behind all others). */
+int anx_iface_surface_lower(struct anx_surface *surf);
+
+/* Return topmost VISIBLE surface whose bounds contain (x, y), or NULL. */
+struct anx_surface *anx_iface_surface_at(int32_t x, int32_t y);
 
 #endif /* ANX_INTERFACE_PLANE_H */

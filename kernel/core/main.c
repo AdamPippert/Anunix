@@ -336,18 +336,21 @@ void kernel_main(void)
 			kprintf("disk: store init failed (%d)\n", ds_ret);
 	}
 
-	/* 11. AI accelerators (non-fatal — hardware may not be present) */
+	/* 11. Workflow Objects (RFC-0018) + built-in template library
+	 * Must come before JEPA: anx_jepa_init() registers agent workflows
+	 * via anx_wf_create(), which requires wf_initialized == true. */
+	anx_wf_init();
+	anx_wf_lib_init();
+	kprintf("workflow subsystem initialized\n");
+
+	/* 12. AI accelerators (non-fatal — hardware may not be present)
+	 * JEPA now runs after workflow init so jepa-agent-loop can register. */
 	anx_xdna_init();	/* AMD XDNA NPU (Ryzen AI) */
 	anx_jepa_init();	/* JEPA latent-state world model (non-fatal) */
 
 	/* 13. VM subsystem (RFC-0017) */
 	anx_vm_init();
 	kprintf("vm subsystem initialized\n");
-
-	/* 14. Workflow Objects (RFC-0018) + built-in template library */
-	anx_wf_init();
-	anx_wf_lib_init();
-	kprintf("workflow subsystem initialized\n");
 
 	/* 16. IBAL loop session primitive (RFC-0020) */
 	anx_loop_init();

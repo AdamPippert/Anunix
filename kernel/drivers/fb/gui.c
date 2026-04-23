@@ -128,52 +128,55 @@ static uint8_t bcd_to_bin(uint8_t bcd)
 
 static uint8_t last_drawn_min = 0xFF;
 
-void anx_gui_update_time(void)
+void anx_gui_get_time(char *buf, uint32_t buflen)
 {
-	uint8_t hrs, mins, secs;
-	uint8_t status_b;
-	char timebuf[16];
-	uint32_t time_w, time_x;
+	uint8_t hrs, mins, secs, status_b;
+	int32_t h;
 
-	if (!gui_ready)
+	if (buflen < 6)
 		return;
 
-	/* Read CMOS RTC (UTC) */
-	secs = rtc_read(0x00);
-	mins = rtc_read(0x02);
-	hrs  = rtc_read(0x04);
+	secs     = rtc_read(0x00);
+	mins     = rtc_read(0x02);
+	hrs      = rtc_read(0x04);
 	status_b = rtc_read(0x0B);
-
 	(void)secs;
 
-	/* Convert BCD to binary if needed */
 	if (!(status_b & 0x04)) {
-		secs = bcd_to_bin(secs);
 		mins = bcd_to_bin(mins);
 		hrs  = bcd_to_bin(hrs);
 	}
 
-	/* Apply timezone offset */
-	{
-		int32_t h = (int32_t)hrs + utc_offset_hours;
+	h = (int32_t)hrs + utc_offset_hours;
+	if (h < 0)  h += 24;
+	if (h >= 24) h -= 24;
 
-		if (h < 0) h += 24;
-		if (h >= 24) h -= 24;
-		hrs = (uint8_t)h;
-	}
+	buf[0] = '0' + (char)(h / 10);
+	buf[1] = '0' + (char)(h % 10);
+	buf[2] = ':';
+	buf[3] = '0' + (char)(mins / 10);
+	buf[4] = '0' + (char)(mins % 10);
+	buf[5] = '\0';
+}
+
+void anx_gui_update_time(void)
+{
+	char timebuf[16];
+	uint32_t time_w, time_x;
+	uint8_t mins;
+
+	if (!gui_ready)
+		return;
 
 	/* Only redraw when the minute changes */
+	mins = bcd_to_bin(rtc_read(0x02));
+	if (!(rtc_read(0x0B) & 0x04))
+		mins = bcd_to_bin(rtc_read(0x02));
 	if (mins == last_drawn_min)
 		return;
 	last_drawn_min = mins;
 
-	/* Format HH:MM */
-	timebuf[0] = '0' + (char)(hrs / 10);
-	timebuf[1] = '0' + (char)(hrs % 10);
-	timebuf[2] = ':';
-	timebuf[3] = '0' + (char)(mins / 10);
-	timebuf[4] = '0' + (char)(mins % 10);
-	timebuf[5] = '\0';
+	anx_gui_get_time(timebuf, sizeof(timebuf));
 
 	/* Center the time string in the top bar */
 	time_w = 5 * ANX_FONT_WIDTH * time_font_scale;
