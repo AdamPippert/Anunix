@@ -173,6 +173,17 @@ $(BUILD_DIR)/lib/%.o: $(LIB_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# browser/js and browser/fetch use double (NaN-boxing) — drop -mgeneral-regs-only
+CFLAGS_FP := $(filter-out -mgeneral-regs-only,$(CFLAGS))
+
+$(BUILD_DIR)/drivers/browser/js/%.o: $(DRIVER_DIR)/browser/js/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_FP) -c $< -o $@
+
+$(BUILD_DIR)/drivers/browser/fetch/%.o: $(DRIVER_DIR)/browser/fetch/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS_FP) -c $< -o $@
+
 # Compile C files from drivers/ (recursive)
 $(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.c
 	@mkdir -p $(dir $@)

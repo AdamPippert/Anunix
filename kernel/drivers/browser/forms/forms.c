@@ -174,7 +174,6 @@ bool form_key(struct form_state *fs, const char *key)
 	if (anx_strcmp(key, "Backspace") == 0) {
 		if (f->cursor_pos == 0) return true;
 		uint32_t prev = utf8_prev(f->value, f->cursor_pos);
-		uint32_t del_len = f->cursor_pos - prev;
 		/* Shift tail left */
 		anx_memmove(f->value + prev,
 			     f->value + f->cursor_pos,
@@ -186,7 +185,6 @@ bool form_key(struct form_state *fs, const char *key)
 	if (anx_strcmp(key, "Delete") == 0) {
 		if (f->cursor_pos >= (uint32_t)vlen) return true;
 		uint32_t next = utf8_next(f->value, f->cursor_pos);
-		uint32_t del_len = next - f->cursor_pos;
 		anx_memmove(f->value + f->cursor_pos,
 			     f->value + next,
 			     vlen - next + 1);
@@ -307,7 +305,7 @@ size_t form_collect(const struct form_state *fs, char *buf, size_t cap)
 	return pos;
 }
 
-bool form_submit_action(const struct form_state *fs,
+bool form_submit_action(const struct form_state *fs __attribute__((unused)),
 			  char *action_buf, size_t action_cap,
 			  char *method_buf, size_t method_cap)
 {

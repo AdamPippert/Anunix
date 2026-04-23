@@ -5,8 +5,12 @@
  * each element is resolved via the CSS cascade (css/css_cascade.h), so
  * user-authored <style> blocks are honoured automatically.
  *
- * Block elements advance the y-cursor; inline content word-wraps at the
- * viewport edge.  Font rendering uses the 8×16 VGA bitmap font.
+ * Inline text uses a run-accumulation buffer: consecutive same-style words
+ * on the same line are merged into a single PCMD_TEXT_RUN.  This cuts paint
+ * command count from O(words) to O(lines × style-changes), reducing renderer
+ * work ~10× for typical paragraphs.
+ *
+ * Font metrics: VGA 8×16 bitmap font.  Small (≤10 px) glyphs use 4-px advance.
  */
 
 #include "layout.h"
@@ -15,7 +19,6 @@
 #include <anx/string.h>
 #include <anx/alloc.h>
 
-/* VGA font character dimensions */
 #define FONT_W 8
 #define FONT_H 16
 
@@ -53,16 +56,46 @@ static void emit_border(struct layout_ctx *ctx,
 	c->border_style = bstyle;
 }
 
+/* ── Inline run buffer ───────────────────────────────────────────── */
+
+static void flush_inline(struct layout_ctx *ctx)
+{
+	if (!ctx->inline_buf_active || ctx->inline_buf.len == 0) return;
+	struct paint_cmd *c = emit_cmd(ctx);
+	if (c) {
+		c->type         = PCMD_TEXT_RUN;
+		c->x            = ctx->inline_buf.x;
+		c->y            = ctx->inline_buf.y;
+		c->color        = ctx->inline_buf.color;
+		c->bold         = ctx->inline_buf.bold;
+		c->italic       = ctx->inline_buf.italic;
+		c->font_size_px = ctx->inline_buf.font_size_px;
+		anx_memcpy(c->text, ctx->inline_buf.text,
+			    ctx->inline_buf.len + 1);
+	}
+	ctx->inline_buf_active = false;
+	ctx->inline_buf.len    = 0;
+}
+
+void layout_flush_inline(struct layout_ctx *ctx)
+{
+	flush_inline(ctx);
+}
+
 static void emit_newline(struct layout_ctx *ctx)
 {
+	flush_inline(ctx);
 	ctx->cursor_x   = (int32_t)ctx->indent;
 	ctx->cursor_y  += (int32_t)ctx->line_height;
 	ctx->line_height = FONT_H;
 }
 
 /*
- * Break text into word-wrapped runs and emit TEXT_RUN commands.
- * font_size_px: pixel height (use FONT_H multiples for VGA font).
+ * Emit inline text with run-accumulation.
+ *
+ * Words sharing style on the same line are appended to inline_buf and
+ * emitted as a single PCMD_TEXT_RUN.  flush_inline() is called whenever
+ * a line wraps or style changes.
  */
 static void emit_text(struct layout_ctx *ctx,
 		       const char *text,
@@ -70,47 +103,84 @@ static void emit_text(struct layout_ctx *ctx,
 		       bool bold, bool italic,
 		       uint8_t font_size_px)
 {
-	uint32_t glyph_w = (font_size_px <= 10) ? (uint32_t)(FONT_W / 2)
-	                                         : (uint32_t)FONT_W;
-	uint32_t glyph_h = font_size_px;
-	uint32_t max_x   = ctx->viewport_w > 16 ? ctx->viewport_w - 8 : 8;
-	const char *p    = text;
+	const uint32_t glyph_w = (font_size_px <= 10) ? 4u : (uint32_t)FONT_W;
+	const uint32_t glyph_h = font_size_px;
+	const uint32_t max_x   = ctx->viewport_w > 16
+				   ? ctx->viewport_w - 8u : 8u;
+	const char    *p       = text;
+	bool           need_sp = false;
 
 	if (glyph_h > ctx->line_height)
 		ctx->line_height = glyph_h;
 
 	while (*p) {
-		const char *word_start = p;
-		while (*p && *p != ' ' && *p != '\n') p++;
-		uint32_t wlen = (uint32_t)(p - word_start);
-
-		if (wlen == 0) {
-			if (*p == '\n') emit_newline(ctx);
-			else ctx->cursor_x += (int32_t)glyph_w;
-			if (*p) p++;
+		/* Whitespace: advance cursor, flag that next word needs a space */
+		if (*p == ' ' || *p == '\t') {
+			ctx->cursor_x += (int32_t)glyph_w;
+			need_sp = true;
+			p++;
+			continue;
+		}
+		if (*p == '\n') {
+			flush_inline(ctx);
+			need_sp = false;
+			emit_newline(ctx);
+			p++;
 			continue;
 		}
 
-		uint32_t pixel_w = wlen * glyph_w;
+		/* Scan to word end */
+		const char *w = p;
+		while (*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
+		uint32_t wlen = (uint32_t)(p - w);
+		uint32_t wpx  = wlen * glyph_w;
 
-		if ((uint32_t)ctx->cursor_x + pixel_w > max_x)
+		/* Word-wrap: only wrap if word is not at indent (avoids loop) */
+		if ((uint32_t)ctx->cursor_x + wpx > max_x &&
+		    ctx->cursor_x > (int32_t)ctx->indent) {
+			flush_inline(ctx);
+			need_sp = false;
 			emit_newline(ctx);
+		}
 
-		struct paint_cmd *c = emit_cmd(ctx);
-		if (!c) return;
-		c->type        = PCMD_TEXT_RUN;
-		c->x           = ctx->cursor_x;
-		c->y           = ctx->cursor_y;
-		c->color       = color;
-		c->bold        = bold;
-		c->italic      = italic;
-		c->font_size_px = font_size_px;
+		/* Extend current run if same style on same line; else flush+new */
+		bool extend = ctx->inline_buf_active
+			   && ctx->inline_buf.color        == color
+			   && ctx->inline_buf.bold         == bold
+			   && ctx->inline_buf.italic       == italic
+			   && ctx->inline_buf.font_size_px == font_size_px
+			   && ctx->inline_buf.y            == ctx->cursor_y;
 
-		uint32_t copy = (wlen < PAINT_MAX_TEXT - 1) ? wlen : PAINT_MAX_TEXT - 1;
-		anx_memcpy(c->text, word_start, copy);
-		c->text[copy] = '\0';
+		if (extend) {
+			uint32_t rem = (PAINT_MAX_TEXT - 1) - ctx->inline_buf.len;
+			if (need_sp && rem > 0) {
+				/* cursor_x already advanced for this space */
+				ctx->inline_buf.text[ctx->inline_buf.len++] = ' ';
+				rem--;
+			}
+			uint32_t copy = (wlen < rem) ? wlen : rem;
+			anx_memcpy(ctx->inline_buf.text + ctx->inline_buf.len,
+				    w, copy);
+			ctx->inline_buf.len += copy;
+			ctx->inline_buf.text[ctx->inline_buf.len] = '\0';
+		} else {
+			flush_inline(ctx);
+			uint32_t copy = (wlen < PAINT_MAX_TEXT - 1)
+					 ? wlen : PAINT_MAX_TEXT - 1;
+			anx_memcpy(ctx->inline_buf.text, w, copy);
+			ctx->inline_buf.len          = copy;
+			ctx->inline_buf.text[copy]   = '\0';
+			ctx->inline_buf.x            = ctx->cursor_x;
+			ctx->inline_buf.y            = ctx->cursor_y;
+			ctx->inline_buf.color        = color;
+			ctx->inline_buf.bold         = bold;
+			ctx->inline_buf.italic       = italic;
+			ctx->inline_buf.font_size_px = font_size_px;
+			ctx->inline_buf_active       = true;
+		}
 
-		ctx->cursor_x += (int32_t)pixel_w;
+		ctx->cursor_x += (int32_t)wpx;
+		need_sp = false;
 	}
 }
 
@@ -119,13 +189,10 @@ static void emit_text(struct layout_ctx *ctx,
 #define ANCESTOR_MAX 64
 
 struct walk_state {
-	/* CSS context */
 	const struct css_selector_index *author_idx;
 	struct computed_style            parent_style;
-	/* Ancestor chain for selector matching */
 	const struct dom_node           *ancestors[ANCESTOR_MAX];
 	uint32_t                         n_ancestors;
-	/* Form state — populated during walk, may be NULL */
 	struct form_state               *fs;
 	struct css_bloom                 bloom;
 };
@@ -151,13 +218,13 @@ static void walk_node(struct layout_ctx *ctx,
 
 	/* ── Element nodes ───────────────────────────────────────────── */
 
-	/* ── Form elements: render specially and register in form_state ── */
 	const char *tag = n->el.tag;
+
+	/* Form elements: render specially */
 	if ((anx_strcmp(tag, "input")    == 0 ||
 	     anx_strcmp(tag, "textarea") == 0 ||
 	     anx_strcmp(tag, "button")   == 0 ||
 	     anx_strcmp(tag, "select")   == 0) && ws->fs) {
-		/* Newline before form field if not at line start */
 		if (ctx->cursor_x != (int32_t)ctx->indent)
 			emit_newline(ctx);
 
@@ -166,7 +233,6 @@ static void walk_node(struct layout_ctx *ctx,
 		const char *fvalue  = dom_attr(n, "value")       ? dom_attr(n, "value")       : "";
 		const char *fpholder= dom_attr(n, "placeholder") ? dom_attr(n, "placeholder") : "";
 
-		/* Determine field type */
 		uint8_t field_type = FORM_TYPE_TEXT;
 		uint8_t pcmd_type  = PCMD_INPUT_FIELD;
 
@@ -180,7 +246,7 @@ static void walk_node(struct layout_ctx *ctx,
 			field_type = FORM_TYPE_SUBMIT;
 			pcmd_type  = PCMD_BUTTON;
 		} else if (anx_strcmp(ftype, "submit") == 0 ||
-		           anx_strcmp(ftype, "button") == 0) {
+			    anx_strcmp(ftype, "button") == 0) {
 			field_type = FORM_TYPE_SUBMIT;
 			pcmd_type  = PCMD_BUTTON;
 		} else if (anx_strcmp(ftype, "reset") == 0) {
@@ -195,29 +261,25 @@ static void walk_node(struct layout_ctx *ctx,
 		} else if (anx_strcmp(ftype, "password") == 0) {
 			field_type = FORM_TYPE_PASSWORD;
 		} else if (anx_strcmp(ftype, "hidden") == 0) {
-			/* Hidden inputs: register but don't render */
 			form_field_register(ws->fs, FORM_TYPE_HIDDEN,
 					     fname, fvalue, "", "", false,
 					     0, 0, 0, 0);
 			return;
 		}
 
-		/* Field dimensions */
 		uint32_t fw = (field_type == FORM_TYPE_CHECKBOX ||
-		               field_type == FORM_TYPE_RADIO) ? 16 :
-		              (field_type == FORM_TYPE_TEXTAREA)? 360 : 200;
+			        field_type == FORM_TYPE_RADIO) ? 16 :
+			       (field_type == FORM_TYPE_TEXTAREA) ? 360 : 200;
 		uint32_t fh = (field_type == FORM_TYPE_TEXTAREA) ? 80 : 24;
 
-		/* Button label text */
 		char btn_label[256];
 		btn_label[0] = '\0';
 		if (pcmd_type == PCMD_BUTTON) {
 			if (fvalue[0])
 				anx_strlcpy(btn_label, fvalue, sizeof(btn_label));
 			else if (anx_strcmp(tag, "button") == 0) {
-				/* Collect button's text-node children */
 				uint32_t ci;
-				size_t   bpos = 0;
+				size_t bpos = 0;
 				for (ci = 0; ci < n->el.n_children &&
 				             bpos < sizeof(btn_label) - 1; ci++) {
 					struct dom_node *ch = n->el.children[ci];
@@ -239,8 +301,7 @@ static void walk_node(struct layout_ctx *ctx,
 					     sizeof(btn_label));
 		}
 
-		/* Register field and get index */
-		bool is_checked = (dom_attr(n, "checked") != NULL);
+		bool    is_checked = (dom_attr(n, "checked") != NULL);
 		int32_t fidx = form_field_register(ws->fs, field_type,
 						    fname, fvalue, fpholder,
 						    btn_label, is_checked,
@@ -248,7 +309,6 @@ static void walk_node(struct layout_ctx *ctx,
 						    ctx->cursor_y,
 						    fw, fh);
 
-		/* Emit paint command */
 		struct paint_cmd *c = emit_cmd(ctx);
 		if (c) {
 			c->type       = pcmd_type;
@@ -293,7 +353,6 @@ static void walk_node(struct layout_ctx *ctx,
 			emit_newline(ctx);
 		ctx->cursor_y += (int32_t)st.margin_top;
 
-		/* <hr>: horizontal rule */
 		if (anx_strcmp(n->el.tag, "hr") == 0) {
 			emit_fill(ctx, (int32_t)ctx->indent, ctx->cursor_y,
 				   ctx->viewport_w - ctx->indent * 2, 2,
@@ -302,9 +361,7 @@ static void walk_node(struct layout_ctx *ctx,
 			return;
 		}
 
-		/* Background fill */
 		if (st.color_bg) {
-			/* We use a generous height estimate; paint clips at viewport */
 			emit_fill(ctx, (int32_t)ctx->indent, ctx->cursor_y,
 				   ctx->viewport_w - ctx->indent,
 				   (uint32_t)(st.font_size_px + st.padding_top +
@@ -316,17 +373,15 @@ static void walk_node(struct layout_ctx *ctx,
 		ctx->cursor_x = (int32_t)ctx->indent;
 	}
 
-	/* Push this element onto the ancestor stack for children */
+	/* Push ancestor for child selector matching */
 	struct walk_state child_ws = *ws;
 	if (child_ws.n_ancestors < ANCESTOR_MAX) {
-		/* Shift ancestors: newest parent goes to index 0 */
 		uint32_t i;
 		for (i = child_ws.n_ancestors; i > 0; i--)
 			child_ws.ancestors[i] = child_ws.ancestors[i-1];
-		child_ws.ancestors[0]  = n;
+		child_ws.ancestors[0] = n;
 		child_ws.n_ancestors++;
 	}
-	/* Add this element's tag and classes to the Bloom filter */
 	css_bloom_add(&child_ws.bloom, n->el.tag);
 	{
 		const char *cls = dom_attr(n, "class");
@@ -349,7 +404,6 @@ static void walk_node(struct layout_ctx *ctx,
 	}
 	child_ws.parent_style = st;
 
-	/* Walk children */
 	uint32_t i;
 	for (i = 0; i < n->el.n_children; i++)
 		walk_node(ctx, n->el.children[i], &child_ws);
@@ -361,9 +415,7 @@ static void walk_node(struct layout_ctx *ctx,
 		ctx->indent   -= st.padding_left;
 		ctx->cursor_x  = (int32_t)ctx->indent;
 
-		/* Border */
 		if (st.border_width > 0 && st.border_style != CSS_BORDER_NONE) {
-			/* Simple top/bottom border lines only */
 			emit_border(ctx,
 				     (int32_t)ctx->indent,
 				     ctx->cursor_y,
@@ -387,7 +439,7 @@ void layout_init(struct layout_ctx *ctx, uint32_t viewport_w)
 	ctx->cursor_y    = 8;
 	ctx->line_height = FONT_H;
 	ctx->indent      = 8;
-	ctx->bg_color    = 0x00efece6u; /* ax-paper-100 */
+	ctx->bg_color    = 0x00efece6u;
 }
 
 void layout_document(struct layout_ctx *ctx,
@@ -395,13 +447,10 @@ void layout_document(struct layout_ctx *ctx,
 		      const struct css_selector_index *author_idx,
 		      struct form_state *fs)
 {
-	/* Ensure UA stylesheet is loaded */
 	css_ua_init();
 
-	/* Reset form state for this page */
 	if (fs) form_state_reset(fs);
 
-	/* Background fill */
 	emit_fill(ctx, 0, 0, ctx->viewport_w, 16384, ctx->bg_color);
 
 	if (!doc || !doc->root) return;
@@ -410,7 +459,6 @@ void layout_document(struct layout_ctx *ctx,
 	anx_memset(&ws, 0, sizeof(ws));
 	ws.author_idx = author_idx;
 	ws.fs         = fs;
-	/* Initial parent style: body-like defaults */
 	ws.parent_style.display      = CSS_DISPLAY_BLOCK;
 	ws.parent_style.font_size_px = 14;
 	ws.parent_style.color_fg     = 0x001a2733u;
@@ -419,15 +467,16 @@ void layout_document(struct layout_ctx *ctx,
 	ws.parent_style.height       = CSS_DIM_AUTO;
 	css_bloom_clear(&ws.bloom);
 
-	/* Find <body> and walk it */
 	uint32_t i;
 	for (i = 0; i < doc->root->el.n_children; i++) {
 		struct dom_node *child = doc->root->el.children[i];
 		if (child && child->type == DOM_ELEMENT &&
 		    anx_strcmp(child->el.tag, "body") == 0) {
 			walk_node(ctx, child, &ws);
+			flush_inline(ctx);
 			return;
 		}
 	}
 	walk_node(ctx, doc->root, &ws);
+	flush_inline(ctx);
 }

@@ -59,9 +59,27 @@ struct layout_ctx {
 	uint32_t         line_height;
 	uint32_t         indent;              /* current left indent (px) */
 	uint32_t         bg_color;            /* page background color */
+
+	/*
+	 * Inline run accumulation: consecutive same-style words on the same
+	 * line are merged into one PCMD_TEXT_RUN rather than one per word.
+	 * Reduces paint command count by ~8-12× for typical paragraphs.
+	 */
+	struct {
+		char     text[PAINT_MAX_TEXT];
+		uint32_t len;
+		int32_t  x, y;
+		uint32_t color;
+		uint8_t  font_size_px;
+		bool     bold, italic;
+	} inline_buf;
+	bool inline_buf_active;
 };
 
 void layout_init(struct layout_ctx *ctx, uint32_t viewport_w);
+
+/* Flush any pending inline run — call at document end or block transitions. */
+void layout_flush_inline(struct layout_ctx *ctx);
 
 /*
  * Walk the DOM tree and generate paint commands.

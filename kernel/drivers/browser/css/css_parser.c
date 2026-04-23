@@ -15,7 +15,7 @@ static void skip_ws(const char **p)
 		(*p)++;
 }
 
-/* Skip whitespace and CSS block comments: /* ... * / */
+/* Skip whitespace and CSS block comments (slash-star ... star-slash) */
 static void skip_ws_comment(const char **p, const char *end)
 {
 	for (;;) {
