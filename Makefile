@@ -369,7 +369,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_route_planner.c \
                tests/test_vm_object.c \
                tests/test_workflow.c \
-               tests/test_theme.c
+               tests/test_theme.c \
+               tests/test_event_qos.c
 TEST_BIN    := build/test/anunix_test
 
 test:

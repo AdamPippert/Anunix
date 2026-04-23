@@ -18,6 +18,7 @@
 #include <anx/virtio_net.h>
 #include <anx/virtio_blk.h>
 #include <anx/sched.h>
+#include <anx/interface_plane.h>
 #include <anx/kprintf.h>
 #include <anx/list.h>
 
@@ -91,6 +92,23 @@ void cmd_sysinfo(int argc, char **argv)
 		anx_sched_queue_depth(ANX_QUEUE_BACKGROUND),
 		anx_sched_queue_depth(ANX_QUEUE_LATENCY_SENSITIVE),
 		anx_sched_queue_depth(ANX_QUEUE_BATCH));
+
+	/* Event queue telemetry */
+	{
+		struct anx_iface_event_stats es;
+		uint32_t thresh = anx_iface_event_backpressure_threshold();
+
+		anx_iface_event_stats_full(&es);
+		kprintf("Event Queue: depth=%u/%u drops=%u threshold=%u%%\n",
+			es.current_depth, ANX_IFACE_EVENT_RING_SIZE,
+			(uint32_t)es.overflow_drops,
+			(thresh * 100 + 128) / 256);
+		kprintf("  Latency: <1ms=%u 1-5ms=%u 5-10ms=%u >10ms=%u\n",
+			(uint32_t)es.latency_histogram[0],
+			(uint32_t)es.latency_histogram[1],
+			(uint32_t)es.latency_histogram[2],
+			(uint32_t)es.latency_histogram[3]);
+	}
 
 	kprintf("\n");
 }

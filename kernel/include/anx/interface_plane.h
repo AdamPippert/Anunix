@@ -161,10 +161,20 @@ enum anx_event_type {
 	ANX_EVENT_SURFACE_DESTROYED,
 };
 
+/* Event priority levels for QoS — ordered from highest to lowest for integer comparison */
+enum anx_event_prio {
+	ANX_EVENT_PRIO_CRITICAL = 0,  /* input events — pointer, key, touch; also default for uninit */
+	ANX_EVENT_PRIO_NORMAL = 1,     /* default for most events */
+	ANX_EVENT_PRIO_LOW = 2,        /* cosmetic updates — surface damage hints */
+	ANX_EVENT_PRIO_COUNT,          /* must be last */
+	ANX_EVENT_PRIO_UNSET = -1,     /* sentinel for uninitialized (outside valid range) */
+};
+
 struct anx_event {
 	anx_oid_t           oid;            /* event's own OID */
 	enum anx_event_type type;
-	uint64_t            timestamp_ns;
+	enum anx_event_prio priority;      /* QoS priority */
+	uint64_t            timestamp_ns;   /* posted timestamp */
 	anx_oid_t           target_surf;    /* surface this event targets */
 	anx_cid_t           source_cell;
 	uint32_t            device_id;
@@ -230,14 +240,28 @@ int anx_iface_event_poll_wm(struct anx_event *out);
 
 #define ANX_IFACE_EVENT_RING_SIZE 256u
 
+/* Latency histogram buckets (nanoseconds) */
+#define ANX_LAT_BUCKET_0_NS   1000000ULL   /* <1ms:     <1,000,000 ns */
+#define ANX_LAT_BUCKET_1_NS   5000000ULL   /* 1-5ms:    1,000,000-5,000,000 ns */
+#define ANX_LAT_BUCKET_2_NS  10000000ULL   /* 5-10ms:   5,000,000-10,000,000 ns */
+#define ANX_LAT_BUCKET_3_NS  10000001ULL   /* >10ms:    >=10,000,001 ns */
+#define ANX_LAT_BUCKETS       4
+
 struct anx_iface_event_stats {
 	uint64_t posted;
 	uint64_t overflow_drops;
+	uint32_t current_depth;               /* events currently in ring */
+	uint64_t latency_histogram[ANX_LAT_BUCKETS]; /* <1ms, 1-5ms, 5-10ms, >10ms */
 };
 
 /* Resets event queue state (ring + subscriptions + counters). */
 void anx_iface_event_reset(void);
 void anx_iface_event_stats(struct anx_iface_event_stats *out);
+void anx_iface_event_stats_full(struct anx_iface_event_stats *out);
+
+/* Backpressure threshold configuration (fraction of ring size, 1-255). */
+void anx_iface_event_set_backpressure_threshold(uint32_t fraction_of_ring);
+uint32_t anx_iface_event_backpressure_threshold(void);
 
 /* Renderer registration */
 int       anx_iface_renderer_register(int renderer_class,

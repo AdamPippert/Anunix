@@ -96,10 +96,13 @@ int anx_loop_session_create(const struct anx_loop_create_params *params,
 
 	anx_spin_lock(&g_loop_lock);
 
-	/* Find a free slot */
+	/* Find a free or completed slot (completed sessions are recycled) */
 	s = NULL;
 	for (i = 0; i < ANX_LOOP_MAX_SESSIONS; i++) {
-		if (!g_loop_sessions[i].in_use) {
+		if (!g_loop_sessions[i].in_use ||
+		    g_loop_sessions[i].status == ANX_LOOP_COMMITTED ||
+		    g_loop_sessions[i].status == ANX_LOOP_ABORTED  ||
+		    g_loop_sessions[i].status == ANX_LOOP_HALTED) {
 			s = &g_loop_sessions[i];
 			break;
 		}
@@ -417,6 +420,8 @@ int anx_loop_session_status_get(anx_oid_t session_oid,
 	info_out->capability_scope = s->capability_scope;
 	info_out->started_at_ns    = s->started_at_ns;
 	info_out->halted_at_ns     = s->halted_at_ns;
+	info_out->branch_depth       = s->branch_depth;
+	info_out->branch_child_count = s->branch_child_count;
 	anx_strlcpy(info_out->goal_text, s->goal_text, sizeof(info_out->goal_text));
 
 	if (s->score_hist_count > 0) {
