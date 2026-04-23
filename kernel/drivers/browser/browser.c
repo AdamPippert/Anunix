@@ -22,6 +22,14 @@
  *   ← {"type":"hello","actor":"...","role":"viewer"}
  *   ← {"type":"cursor","actor":"...","x":N,"y":N}
  *   ← {"type":"navigate","url":"..."}
+ *   ← {"type":"pii_response","action":"redact_once|bypass_once|bypass_always"}
+ *
+ * PII endpoints:
+ *   GET  /api/v1/sessions/{sid}/content   — page text (PII-filtered for agents)
+ *   POST /api/v1/sessions/{sid}/pii/bypass — approve one-time bypass
+ *   GET  /api/v1/pii/whitelist             — list whitelisted domains
+ *   POST /api/v1/pii/whitelist             — add domain
+ *   DELETE /api/v1/pii/whitelist           — remove domain
  */
 
 #include <anx/browser.h>
@@ -31,6 +39,8 @@
 #include <anx/net.h>
 #include "session.h"
 #include "ws.h"
+#include "pii/pii_filter.h"
+#include "pii/pii_whitelist.h"
 #include "../../lib/base64.h"
 
 /* ── TCP listener state ──────────────────────────────────────────── */
@@ -325,6 +335,111 @@ static void handle_release(struct anx_tcp_conn *conn, const char *sid)
 	send_204(conn);
 }
 
+/* ── PII endpoints ───────────────────────────────────────────────── */
+
+/* GET /api/v1/sessions/{sid}/content */
+static void handle_content(struct anx_tcp_conn *conn, const char *sid)
+{
+	struct browser_session *s = session_find(sid);
+	const char *text;
+	uint32_t    tlen;
+
+	if (!s) { send_404(conn); return; }
+
+	text = session_agent_content(s);
+	if (!text) {
+		send_json(conn, 204, "No Content", "");
+		return;
+	}
+
+	tlen = (uint32_t)anx_strlen(text);
+
+	/* Build response: {"text":"...", "pii_redacted": bool, "types":"..."} */
+	char *resp = (char *)anx_alloc(tlen * 2 + 256);
+	if (!resp) { send_500(conn, "oom"); return; }
+
+	sbuf sb = { resp, 0, tlen * 2 + 256 };
+	sb_str(&sb, "{\"text\":");
+	sb_json_str(&sb, text);
+	sb_str(&sb, ",\"pii_redacted\":");
+	sb_str(&sb, s->pii_redacted ? "true" : "false");
+	sb_str(&sb, ",\"types\":");
+	sb_json_str(&sb, s->pii_types);
+	sb_str(&sb, "}");
+	resp[sb.off] = '\0';
+
+	send_json(conn, 200, "OK", resp);
+	anx_free(resp);
+}
+
+/* POST /api/v1/sessions/{sid}/pii/bypass */
+static void handle_pii_bypass(struct anx_tcp_conn *conn, const char *sid)
+{
+	struct browser_session *s = session_find(sid);
+	if (!s) { send_404(conn); return; }
+	session_pii_bypass(s);
+	send_json(conn, 200, "OK",
+		   "{\"status\":\"bypass_approved\"}");
+}
+
+/* GET /api/v1/pii/whitelist */
+static void handle_whitelist_list(struct anx_tcp_conn *conn)
+{
+	char domains[PII_WHITELIST_MAX][PII_DOMAIN_MAX];
+	uint32_t n = anx_pii_whitelist_list(domains, PII_WHITELIST_MAX);
+	uint32_t i;
+
+	char  buf[PII_WHITELIST_MAX * PII_DOMAIN_MAX + 64];
+	sbuf  sb = { buf, 0, sizeof(buf) };
+
+	sb_str(&sb, "{\"domains\":[");
+	for (i = 0; i < n; i++) {
+		if (i) sb_str(&sb, ",");
+		sb_json_str(&sb, domains[i]);
+	}
+	sb_str(&sb, "]}");
+	buf[sb.off] = '\0';
+
+	send_json(conn, 200, "OK", buf);
+}
+
+/* POST /api/v1/pii/whitelist — body: {"domain":"example.com"} */
+static void handle_whitelist_add(struct anx_tcp_conn *conn,
+				  const char *body)
+{
+	char domain[PII_DOMAIN_MAX];
+	if (!json_str(body, "domain", domain, sizeof(domain))) {
+		send_json(conn, 400, "Bad Request",
+			   "{\"error\":\"missing domain\"}");
+		return;
+	}
+	if (anx_pii_whitelist_add(domain) != 0) {
+		send_json(conn, 409, "Conflict",
+			   "{\"error\":\"whitelist full or duplicate\"}");
+		return;
+	}
+	kprintf("pii: whitelisted %s\n", domain);
+	send_json(conn, 201, "Created",
+		   "{\"status\":\"added\"}");
+}
+
+/* DELETE /api/v1/pii/whitelist — body: {"domain":"example.com"} */
+static void handle_whitelist_remove(struct anx_tcp_conn *conn,
+				     const char *body)
+{
+	char domain[PII_DOMAIN_MAX];
+	if (!json_str(body, "domain", domain, sizeof(domain))) {
+		send_json(conn, 400, "Bad Request",
+			   "{\"error\":\"missing domain\"}");
+		return;
+	}
+	if (anx_pii_whitelist_remove(domain) != 0) {
+		send_404(conn);
+		return;
+	}
+	send_204(conn);
+}
+
 /* ── WebSocket stream ────────────────────────────────────────────── */
 
 /*
@@ -387,17 +502,77 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 				break;
 			}
 			if (in.opcode == WS_OP_TEXT && in.payload_len > 0) {
-				/* Handle incoming cursor / navigate messages */
-				if (anx_strncmp((char *)in.payload,
-					         "{\"type\":\"navigate\"", 18) == 0) {
+				char *msg = (char *)in.payload;
+
+				if (anx_strncmp(msg, "{\"type\":\"navigate\"", 18) == 0) {
 					char url[SESSION_URL_LEN];
-					if (json_str((char *)in.payload, "url",
-						      url, sizeof(url))) {
+					if (json_str(msg, "url", url, sizeof(url)))
 						session_navigate(s, url);
+
+				} else if (anx_strncmp(msg,
+						"{\"type\":\"pii_response\"", 22) == 0) {
+					char action[32];
+					if (json_str(msg, "action",
+						      action, sizeof(action))) {
+						if (anx_strcmp(action,
+							"bypass_once") == 0 ||
+						    anx_strcmp(action,
+							"bypass_always") == 0) {
+							if (anx_strcmp(action,
+								"bypass_always") == 0) {
+								/* Domain whitelist */
+								char dom[PII_DOMAIN_MAX];
+								anx_strlcpy(dom,
+									s->current_url,
+									sizeof(dom));
+								anx_pii_whitelist_add(dom);
+							}
+							session_pii_bypass(s);
+						}
+						/* "redact_once" → no action needed,
+						   redacted content already sent */
 					}
 				}
 			}
 			anx_free(in.payload);
+		}
+
+		/* Emit PII warning event once per page when PII is detected */
+		if (s->pii_checked && s->pii_redacted && !s->pii_event_sent) {
+			char ev[512];
+			sbuf esb = { ev, 0, sizeof(ev) };
+			char host[256];
+			/* extract domain from current URL for the warning */
+			{
+				const char *p = s->current_url;
+				if (anx_strncmp(p, "https://", 8) == 0) p += 8;
+				else if (anx_strncmp(p, "http://", 7) == 0) p += 7;
+				uint32_t hlen = 0;
+				while (p[hlen] && p[hlen] != '/' &&
+				       p[hlen] != ':') hlen++;
+				if (hlen >= sizeof(host)) hlen = sizeof(host) - 1;
+				anx_memcpy(host, p, hlen);
+				host[hlen] = '\0';
+			}
+			sb_str(&esb, "{\"type\":\"event\",\"kind\":\"pii_warning\","
+				       "\"payload\":{\"domain\":");
+			sb_json_str(&esb, host);
+			sb_str(&esb, ",\"types\":");
+			sb_json_str(&esb, s->pii_types);
+			sb_str(&esb, ",\"sid\":");
+			sb_json_str(&esb, s->session_id);
+			sb_str(&esb, "},\"seq\":");
+			{
+				char seq[12];
+				sbuf ns = { seq, 0, sizeof(seq) };
+				sb_u32(&ns, s->event_seq++);
+				seq[ns.off] = '\0';
+				sb_str(&esb, seq);
+			}
+			sb_str(&esb, ",\"ts\":0}");
+			ev[esb.off] = '\0';
+			anx_ws_send_text(conn, ev, esb.off);
+			s->pii_event_sent = true;
 		}
 
 		/* Send frame if dirty or every ~10 idle polls (200ms) */
@@ -560,12 +735,39 @@ headers_done:
 	}
 
 	/* ── REST routing ── */
+	/* Shared body extraction for POST/DELETE */
+	const char *body = "";
+	uint32_t    body_len = 0;
+	if (is_post || is_delete) {
+		uint32_t i;
+		for (i = 3; i < total; i++) {
+			if (req[i-3]=='\r' && req[i-2]=='\n' &&
+			    req[i-1]=='\r' && req[i]=='\n') {
+				body     = req + i + 1;
+				body_len = total - i - 1;
+				break;
+			}
+		}
+	}
+
 	if (is_get && anx_strcmp(path, "/api/v1/health") == 0) {
 		handle_health(conn);
 	} else if (is_get && anx_strcmp(path, "/api/v1/sessions") == 0) {
 		handle_list_sessions(conn);
 	} else if (is_post && anx_strcmp(path, "/api/v1/sessions") == 0) {
 		handle_create_session(conn);
+
+	/* PII whitelist endpoints (no {sid} prefix) */
+	} else if (is_get &&
+		    anx_strcmp(path, "/api/v1/pii/whitelist") == 0) {
+		handle_whitelist_list(conn);
+	} else if (is_post &&
+		    anx_strcmp(path, "/api/v1/pii/whitelist") == 0) {
+		handle_whitelist_add(conn, body);
+	} else if (is_delete &&
+		    anx_strcmp(path, "/api/v1/pii/whitelist") == 0) {
+		handle_whitelist_remove(conn, body);
+
 	} else {
 		char sid[SESSION_ID_LEN];
 		if (extract_sid(path, sid, sizeof(sid))) {
@@ -575,24 +777,20 @@ headers_done:
 
 			if (is_delete && anx_strcmp(suffix, "") == 0) {
 				handle_delete_session(conn, sid);
+			} else if (is_get &&
+				    anx_strcmp(suffix, "/content") == 0) {
+				handle_content(conn, sid);
+			} else if (is_post &&
+				    anx_strcmp(suffix, "/pii/bypass") == 0) {
+				handle_pii_bypass(conn, sid);
 			} else if (is_post &&
 				    anx_strcmp(suffix, "/navigate") == 0) {
-				/* Find body start */
-				const char *body = "";
-				uint32_t body_len = 0;
-				uint32_t i;
-				for (i = 3; i < total; i++) {
-					if (req[i-3]=='\r' && req[i-2]=='\n' &&
-					    req[i-1]=='\r' && req[i]=='\n') {
-						body = req + i + 1;
-						body_len = total - i - 1;
-						break;
-					}
-				}
 				handle_navigate(conn, sid, body, body_len);
-			} else if (is_post && anx_strcmp(suffix, "/claim") == 0) {
+			} else if (is_post &&
+				    anx_strcmp(suffix, "/claim") == 0) {
 				handle_claim(conn, sid);
-			} else if (is_post && anx_strcmp(suffix, "/release") == 0) {
+			} else if (is_post &&
+				    anx_strcmp(suffix, "/release") == 0) {
 				handle_release(conn, sid);
 			} else {
 				send_404(conn);
@@ -618,6 +816,8 @@ int anx_browser_init(uint16_t port)
 	int ret;
 
 	session_manager_init();
+	anx_pii_whitelist_init();
+	anx_pii_init(NULL);   /* auto-config: native if model client ready */
 	ret = anx_tcp_listen(port, browser_accept, NULL);
 	if (ret != 0) {
 		kprintf("browser: failed to listen on port %u\n",

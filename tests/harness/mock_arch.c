@@ -285,6 +285,7 @@ int anx_e1000_tx(const void *f, uint16_t l) { (void)f; (void)l; return ANX_EIO; 
 void anx_e1000_poll(void) {}
 const uint8_t *anx_e1000_mac(void) { static uint8_t z[6]; return z; }
 void anx_e1000_info(void) {}
+void anx_browser_poll(void) {}
 
 /* Mock XDNA NPU — hardware excluded from test build */
 int anx_xdna_init(void) { return ANX_ENODEV; }
