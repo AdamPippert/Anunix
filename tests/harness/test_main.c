@@ -48,6 +48,7 @@ int test_route_planner(void);
 int test_vm_object(void);
 int test_workflow(void);
 int test_theme(void);
+int test_event_qos(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -80,6 +81,7 @@ static struct test_case tests[] = {
 	{ "vm_object",		test_vm_object },
 	{ "workflow",		test_workflow },
 	{ "theme",		test_theme },
+	{ "event_qos",		test_event_qos },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

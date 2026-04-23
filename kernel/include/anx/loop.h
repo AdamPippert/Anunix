@@ -19,6 +19,7 @@
 #define ANX_LOOP_MAX_ITERATIONS   256
 #define ANX_LOOP_MAX_CANDIDATES    16
 #define ANX_LOOP_MAX_SCORE_HIST    64
+#define ANX_LOOP_MAX_BRANCHES       8   /* max parallel branch sessions */
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
@@ -101,6 +102,13 @@ struct anx_loop_session {
 	/* Timestamps (nanoseconds since boot) */
 	uint64_t   started_at_ns;
 	uint64_t   halted_at_ns;
+
+	/* Phase 4: branch/merge tracking */
+	anx_oid_t  branch_from_oid;			/* parent OID; zero for root */
+	uint32_t   branch_depth;			/* 0=root, 1=branch */
+	uint32_t   branch_id;				/* index within parent's list */
+	anx_oid_t  branch_child_oids[ANX_LOOP_MAX_BRANCHES];
+	uint32_t   branch_child_count;
 };
 
 /* ------------------------------------------------------------------ */
@@ -302,6 +310,8 @@ struct anx_loop_session_info {
 	char                          goal_text[512];	/* Phase 3 */
 	uint64_t                      started_at_ns;
 	uint64_t                      halted_at_ns;
+	uint32_t   branch_depth;
+	uint32_t   branch_child_count;
 };
 
 /* ------------------------------------------------------------------ */
@@ -356,5 +366,29 @@ struct anx_loop_session *anx_loop_session_get(anx_oid_t session_oid);
 
 /* Shell command entry point */
 int anx_loop_shell_dispatch(int argc, const char *const *argv);
+
+/* ------------------------------------------------------------------ */
+/* Branch/merge scheduler (Phase 4: loop_branch.c)                    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Create a child branch session that inherits parent's goal + world.
+ * branch_id is a caller-assigned index [0, ANX_LOOP_MAX_BRANCHES).
+ * branch_max_iterations sets the child's iteration budget.
+ */
+int anx_loop_branch_create(anx_oid_t parent_oid, uint32_t branch_id,
+			   uint32_t branch_max_iterations,
+			   anx_oid_t *child_oid_out);
+
+/*
+ * If child found a lower-energy candidate than parent's current best,
+ * adopt it into the parent session.
+ */
+int anx_loop_branch_merge(anx_oid_t parent_oid, anx_oid_t child_oid);
+
+/* List the OIDs of all child branches registered for parent. */
+int anx_loop_branch_list(anx_oid_t parent_oid,
+			 anx_oid_t *oids_out, uint32_t max_count,
+			 uint32_t *count_out);
 
 #endif /* ANX_LOOP_H */
