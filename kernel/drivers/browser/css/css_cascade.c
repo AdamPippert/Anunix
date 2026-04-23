@@ -377,8 +377,17 @@ static void apply_one(struct computed_style *s,
 
 	/* --- text-decoration --- */
 	if (anx_strcmp(pname, "text-decoration") == 0) {
-		s->text_decoration =
-			(anx_strstr(pval, "underline") != NULL) ?
+		/* Check if "underline" appears anywhere in pval */
+		bool has_underline = false;
+		const char *hp = pval;
+		const char *needle = "underline";
+		size_t nlen = 9;
+		while (*hp) {
+			if (anx_strncmp(hp, needle, nlen) == 0)
+				{ has_underline = true; break; }
+			hp++;
+		}
+		s->text_decoration = has_underline ?
 			CSS_TEXT_DECO_UNDERLINE : CSS_TEXT_DECO_NONE;
 		return;
 	}

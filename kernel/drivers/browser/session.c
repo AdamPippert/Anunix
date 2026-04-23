@@ -13,6 +13,7 @@
 #include "pii/pii_filter.h"
 #include "pii/pii_whitelist.h"
 #include "js/js_engine.h"
+#include "fetch/resource_loader.h"
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -338,33 +339,59 @@ int session_navigate(struct browser_session *s, const char *url)
 		goto render;
 	}
 
-	/* Parse HTML */
+	/*
+	 * Phase 1: Pre-scan HTML for external CSS/JS sub-resources and fetch
+	 * them before running the tokenizer/layout pipeline.  This ensures the
+	 * first paint has complete styles (no style-less flash).
+	 */
 	{
-		struct html_tokenizer tok;
-		struct dom_builder    builder;
-
-		dom_builder_init(&builder, &s->doc);
-		html_tokenizer_init(&tok, dom_builder_token, &builder);
-		html_tokenizer_feed(&tok, resp.body, anx_strlen(resp.body));
-		html_tokenizer_eof(&tok);
-
-		/* Copy title */
-		if (s->doc.title[0])
-			anx_strlcpy(s->title, s->doc.title, sizeof(s->title));
-		else
-			anx_strlcpy(s->title, url, sizeof(s->title));
-	}
-
-	/* Extract plain text for agent content delivery + PII checking */
-	s->page_text = dom_to_text(&s->doc);
-
-	/* Build author CSS index from <style> blocks in the parsed DOM */
-	css_sheet_free(&s->css_sheet);
-	css_sheet_init(&s->css_sheet);
-	css_index_clear(&s->css_index);
-	s->css_index_valid = false;
-	{
+		struct resource_queue rq;
 		uint32_t ni;
+
+		anx_memset(&rq, 0, sizeof(rq));
+		rq_prescan(&rq, url, resp.body, (uint32_t)anx_strlen(resp.body));
+		rq_fetch_blocking(&rq); /* CSS + JS fetched synchronously */
+
+		/* Parse HTML */
+		{
+			struct html_tokenizer tok;
+			struct dom_builder    builder;
+
+			dom_builder_init(&builder, &s->doc);
+			html_tokenizer_init(&tok, dom_builder_token, &builder);
+			html_tokenizer_feed(&tok, resp.body,
+					     anx_strlen(resp.body));
+			html_tokenizer_eof(&tok);
+
+			if (s->doc.title[0])
+				anx_strlcpy(s->title, s->doc.title,
+					     sizeof(s->title));
+			else
+				anx_strlcpy(s->title, url, sizeof(s->title));
+		}
+
+		/* Extract plain text for agent content delivery + PII checking */
+		s->page_text = dom_to_text(&s->doc);
+
+		/* CSS: inline <style> blocks + external sheets from rq */
+		css_sheet_free(&s->css_sheet);
+		css_sheet_init(&s->css_sheet);
+		css_index_clear(&s->css_index);
+		s->css_index_valid = false;
+
+		/* Inject fetched external CSS first (lower specificity baseline) */
+		{
+			uint32_t ri;
+			for (ri = 0; ri < rq.n_res; ri++) {
+				struct sub_resource *r = &rq.res[ri];
+				if (r->type == RES_TYPE_CSS && r->fetched && r->body)
+					css_parse(r->body, r->body_len,
+						   &s->css_sheet,
+						   CSS_ORIGIN_AUTHOR);
+			}
+		}
+
+		/* Then inline <style> blocks (same origin, appended later = wins ties) */
 		for (ni = 0; ni < s->doc.n_nodes; ni++) {
 			struct dom_node *node = &s->doc.nodes[ni];
 			if (node->type == DOM_ELEMENT &&
@@ -384,31 +411,41 @@ int session_navigate(struct browser_session *s, const char *url)
 		}
 		css_index_build(&s->css_index, &s->css_sheet);
 		s->css_index_valid = true;
-		kprintf("browser: CSS rules parsed: %u\n",
-			s->css_sheet.n_rules);
-	}
+		kprintf("browser: CSS rules: %u\n", s->css_sheet.n_rules);
 
-	/* JavaScript: init engine and execute all <script> blocks */
-	js_engine_destroy(&s->js);
-	anx_memset(&s->js_heap, 0, sizeof(s->js_heap));
-	js_engine_init(&s->js, &s->js_heap, &s->doc);
-	{
-		uint32_t ni;
+		/* JavaScript: init engine, run inline scripts, then external */
+		js_engine_destroy(&s->js);
+		anx_memset(&s->js_heap, 0, sizeof(s->js_heap));
+		js_engine_init(&s->js, &s->js_heap, &s->doc);
+
 		for (ni = 0; ni < s->doc.n_nodes; ni++) {
 			struct dom_node *node = &s->doc.nodes[ni];
 			if (node->type != DOM_ELEMENT) continue;
 			if (anx_strcmp(node->el.tag, "script") != 0) continue;
-			/* Find first text child */
 			uint32_t ci;
 			for (ci = 0; ci < node->el.n_children; ci++) {
 				struct dom_node *ch = node->el.children[ci];
-				if (ch && ch->type == DOM_TEXT && ch->txt.text[0]) {
+				if (ch && ch->type == DOM_TEXT &&
+				    ch->txt.text[0]) {
 					js_engine_load(&s->js, ch->txt.text,
-					               anx_strlen(ch->txt.text));
+						        anx_strlen(ch->txt.text));
 					break;
 				}
 			}
 		}
+
+		/* External JS (fetched by rq) runs after inline scripts */
+		{
+			uint32_t ri;
+			for (ri = 0; ri < rq.n_res; ri++) {
+				struct sub_resource *r = &rq.res[ri];
+				if (r->type == RES_TYPE_JS && r->fetched && r->body)
+					js_engine_load(&s->js, r->body,
+						        r->body_len);
+			}
+		}
+
+		rq_free(&rq);
 	}
 
 	anx_http_response_free(&resp);
