@@ -13,6 +13,9 @@
 #include <anx/net.h>
 #include "html/dom.h"
 #include "layout/layout.h"
+#include "css/css_parser.h"
+#include "css/css_selector.h"
+#include "pii/pii_filter.h"
 
 #define SESSION_MAX       4
 #define SESSION_ID_LEN   16
@@ -39,9 +42,28 @@ struct browser_session {
 	struct dom_doc    doc;
 	struct layout_ctx layout;
 
+	/* CSS engine: author stylesheet for the current page */
+	struct css_sheet          css_sheet;
+	struct css_selector_index css_index;
+	bool                      css_index_valid;
+
 	/* WebSocket streaming connection (NULL when no subscriber) */
 	struct anx_tcp_conn *ws_conn;
 	bool                 ws_dirty;  /* true when a new frame is ready */
+
+	/*
+	 * PII filter state.
+	 * page_text     — plain text extracted from DOM after navigate.
+	 * pii_redacted  — redacted version (heap-alloc, NULL if no PII found).
+	 * pii_types     — comma-separated PII categories found.
+	 * pii_bypass    — true when the user has approved one bypass.
+	 */
+	char *page_text;           /* heap-allocated; freed on next navigate */
+	char *pii_redacted;        /* heap-allocated; freed on next navigate */
+	char  pii_types[256];
+	bool  pii_checked;         /* true once PII filter has run on current page */
+	bool  pii_bypass;          /* user approved one-time bypass */
+	bool  pii_event_sent;      /* true after pii_warning WS event was emitted */
 };
 
 /* ── Session manager ─────────────────────────────────────────────── */
@@ -80,5 +102,21 @@ int session_navigate(struct browser_session *s, const char *url);
  */
 size_t session_snapshot_jpeg(struct browser_session *s,
 			       uint8_t *out_buf, size_t out_cap);
+
+/*
+ * Return the appropriate page text for an agent consumer.
+ * If PII was detected and no bypass is active, returns the redacted
+ * version.  If bypass is active (user approved), returns original and
+ * clears the one-shot bypass flag.
+ * Returns NULL when no page text is available.
+ * The returned pointer is owned by the session — do not free it.
+ */
+const char *session_agent_content(struct browser_session *s);
+
+/*
+ * Approve a one-time PII bypass for this session.
+ * The next call to session_agent_content() will return the original text.
+ */
+void session_pii_bypass(struct browser_session *s);
 
 #endif /* ANX_BROWSER_SESSION_H */
