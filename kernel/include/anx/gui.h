@@ -38,6 +38,9 @@ void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
 void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
 				 uint32_t fg, uint32_t bg, uint32_t scale);
 
+/* Fill buf with current local time as "HH:MM\0" (buflen >= 6) */
+void anx_gui_get_time(char *buf, uint32_t buflen);
+
 /* Update the time display in the top bar */
 void anx_gui_update_time(void);
 

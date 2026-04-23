@@ -58,9 +58,8 @@ void anx_fb_putpixel(uint32_t x, uint32_t y, uint32_t color)
 void anx_fb_fill_rect(uint32_t x, uint32_t y,
 		       uint32_t w, uint32_t h, uint32_t color)
 {
-	uint32_t row_y, col_x;
+	uint32_t row_y;
 
-	/* Clamp to screen bounds */
 	if (x >= fb.width || y >= fb.height)
 		return;
 	if (x + w > fb.width)
@@ -68,16 +67,45 @@ void anx_fb_fill_rect(uint32_t x, uint32_t y,
 	if (y + h > fb.height)
 		h = fb.height - y;
 
-	for (row_y = y; row_y < y + h; row_y++) {
-		uint32_t *row = anx_fb_row_ptr(row_y);
+	if (x == 0 && w == fb.width && fb.pitch == fb.width * 4) {
+		/*
+		 * Full-width rect aligned to pitch: one memset covers all rows.
+		 * The 64-bit anx_memset fills 8 bytes per iteration; for a
+		 * repeated 32-bit color value the 64-bit word is color|color<<32.
+		 * anx_memset operates on bytes, so pack the color into a byte
+		 * value — only works when all four bytes of color are equal
+		 * (e.g., 0x00000000, 0xFFFFFFFF). For the general case, fall
+		 * through to the per-row path which uses a 32-bit word loop.
+		 */
+		uint8_t b = (uint8_t)(color & 0xFF);
 
-		for (col_x = x; col_x < x + w; col_x++)
-			row[col_x] = color;
+		if (color == (uint32_t)((b << 24) | (b << 16) | (b << 8) | b)) {
+			anx_memset(anx_fb_row_ptr(y), (int)b, (size_t)w * 4 * h);
+			return;
+		}
+	}
+
+	{
+		/* Word-fill: pack two pixels into 64 bits, write 8B per iteration */
+		uint64_t c64  = (uint64_t)color | ((uint64_t)color << 32);
+		uint32_t even = w & ~1u;
+
+		for (row_y = y; row_y < y + h; row_y++) {
+			uint32_t *row = anx_fb_row_ptr(row_y);
+			uint64_t *r64 = (uint64_t *)(row + x);
+			uint32_t  i;
+
+			for (i = 0; i < even; i += 2, r64++)
+				*r64 = c64;
+			if (w & 1)
+				row[x + even] = color;
+		}
 	}
 }
 
 void anx_fb_clear(uint32_t color)
 {
+	/* Full-screen clear: single memmove-sized write via fill_rect */
 	anx_fb_fill_rect(0, 0, fb.width, fb.height, color);
 }
 
@@ -112,7 +140,6 @@ void anx_fb_scroll(uint32_t rows, uint32_t fill_color)
 {
 	uint8_t *base;
 	uint32_t copy_height;
-	uint32_t y;
 
 	if (!fb.available || rows == 0)
 		return;
@@ -128,12 +155,6 @@ void anx_fb_scroll(uint32_t rows, uint32_t fill_color)
 	/* Move rows up (overlapping regions, use memmove) */
 	anx_memmove(base, base + rows * fb.pitch, copy_height * fb.pitch);
 
-	/* Fill the gap at the bottom */
-	for (y = copy_height; y < fb.height; y++) {
-		uint32_t *row = anx_fb_row_ptr(y);
-		uint32_t x;
-
-		for (x = 0; x < fb.width; x++)
-			row[x] = fill_color;
-	}
+	/* Fill the vacated rows at the bottom */
+	anx_fb_fill_rect(0, copy_height, fb.width, rows, fill_color);
 }

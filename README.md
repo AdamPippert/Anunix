@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.4.19-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.4.22-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-22%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-30%20passing-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -58,6 +58,34 @@ anx> browser_stop
 - **22 tests passing** (up from 17)
 
 See [`RELEASE-2026.4.19.md`](RELEASE-2026.4.19.md) for full details.
+
+---
+
+## Release: 2026.4.22
+
+### Milestone: Desktop environment, window manager, and AI world model
+
+Anunix now boots into a full **graphical desktop session** — workspace management, global hotkeys, a menu bar, a visual workflow designer, and an object store browser — all written in C with no dependencies beyond the kernel itself.
+
+**Window manager** (`kernel/core/wm/`)
+- 9 virtual workspaces (Meta+1–9), focus cycling (Meta+Tab), fullscreen toggle (Meta+F)
+- Menu bar with workspace dots, network status, and power icon
+- Omarchy-style hotkeys: Meta+Q close, Meta+Enter shell, Meta+Space search, Meta+W workflow designer, Meta+O object viewer
+- Pointer-driven click-to-focus and workspace dot hit-testing
+
+**Desktop applications**
+- **Workflow Designer** — keyboard-driven node graph editor: view, edit, and execute workflows; serialize to DSL or ASCII graph
+- **Object Viewer** — live object store browser with type, size, refcount columns; inline delete with refcount guard
+
+**HTTP API extended** — workflow (list/create/run/show/graph), agent dispatch, and JEPA status endpoints; external agents can now drive the full workflow subsystem over REST
+
+**JEPA world model** (`kernel/core/jepa/`) — joint embedding predictive architecture observing scheduler, memory, and routing counters; feeds latent state into route scoring and the RLM policy loop
+
+**Iterative Belief-Action Loop** (RFC-0020) — continuous self-improvement loop with energy scoring and world-model rebuild on convergence stall
+
+**30/30 host-native tests passing.**
+
+See [`docs/releases/2026.4.22.md`](docs/releases/2026.4.22.md) for full details.
 
 ---
 

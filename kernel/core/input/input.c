@@ -16,6 +16,7 @@
 #include <anx/uuid.h>
 #include <anx/types.h>
 #include <anx/string.h>
+#include <anx/wm.h>
 
 /* ------------------------------------------------------------------ */
 /* State                                                                */
@@ -245,6 +246,11 @@ post_key_event(enum anx_event_type type,
 	if (!initialized)
 		return;
 
+	/* Global hotkeys — intercepted before surface delivery */
+	if (type == ANX_EVENT_KEY_DOWN &&
+	    anx_wm_hotkey_dispatch(mods, hid_key))
+		return;
+
 	anx_spin_lock_irqsave(&input_lock, &flags);
 	target = focused_surf;
 	anx_spin_unlock_irqrestore(&input_lock, flags);
@@ -340,30 +346,31 @@ anx_input_pointer_move(int32_t x, int32_t y, uint32_t buttons)
 
 	anx_spin_lock_irqsave(&input_lock, &flags);
 	target = focused_surf;
-	if (target.hi == 0 && target.lo == 0) {
-		input_stats.dropped_no_focus++;
-		anx_spin_unlock_irqrestore(&input_lock, flags);
-		return;
-	}
+	anx_spin_unlock_irqrestore(&input_lock, flags);
 
-	ev.type                  = ANX_EVENT_POINTER_MOVE;
-	ev.timestamp_ns          = next_timestamp_locked();
-	ev.target_surf           = target;
-	ev.source_cell.hi        = 0;
-	ev.source_cell.lo        = 0;
-	ev.device_id             = 0;
-	ev.oid.hi                = 0;
-	ev.oid.lo                = 0;
-	ev.data.pointer.x        = x;
-	ev.data.pointer.y        = y;
-	ev.data.pointer.buttons  = buttons;
+	/* Always post pointer moves with null target so the WM receives them
+	 * via anx_iface_event_poll_wm(), regardless of focus state. */
+	ev.type                   = ANX_EVENT_POINTER_MOVE;
+	ev.timestamp_ns           = next_timestamp_locked();
+	ev.target_surf.hi         = 0;
+	ev.target_surf.lo         = 0;
+	ev.source_cell.hi         = 0;
+	ev.source_cell.lo         = 0;
+	ev.device_id              = 0;
+	ev.oid.hi                 = 0;
+	ev.oid.lo                 = 0;
+	ev.data.pointer.x         = x;
+	ev.data.pointer.y         = y;
+	ev.data.pointer.buttons   = buttons;
 	ev.data.pointer.modifiers = current_modifiers;
-	anx_spin_unlock_irqrestore(&input_lock, flags);
-
 	anx_iface_event_post(&ev);
-	anx_spin_lock_irqsave(&input_lock, &flags);
 	input_stats.delivered++;
-	anx_spin_unlock_irqrestore(&input_lock, flags);
+
+	/* Also deliver to the focused surface if one exists */
+	if (target.hi != 0 || target.lo != 0) {
+		ev.target_surf = target;
+		anx_iface_event_post(&ev);
+	}
 }
 
 void
@@ -379,15 +386,13 @@ anx_input_pointer_button(int32_t x, int32_t y,
 
 	anx_spin_lock_irqsave(&input_lock, &flags);
 	target = focused_surf;
-	if (target.hi == 0 && target.lo == 0) {
-		input_stats.dropped_no_focus++;
-		anx_spin_unlock_irqrestore(&input_lock, flags);
-		return;
-	}
+	anx_spin_unlock_irqrestore(&input_lock, flags);
 
+	/* Always post button events with null target so the WM sees clicks. */
 	ev.type                   = ANX_EVENT_POINTER_BUTTON;
 	ev.timestamp_ns           = next_timestamp_locked();
-	ev.target_surf            = target;
+	ev.target_surf.hi         = 0;
+	ev.target_surf.lo         = 0;
 	ev.source_cell.hi         = 0;
 	ev.source_cell.lo         = 0;
 	ev.device_id              = 0;
@@ -397,10 +402,15 @@ anx_input_pointer_button(int32_t x, int32_t y,
 	ev.data.pointer.y         = y;
 	ev.data.pointer.buttons   = buttons;
 	ev.data.pointer.modifiers = modifiers;
-	anx_spin_unlock_irqrestore(&input_lock, flags);
-
 	anx_iface_event_post(&ev);
+
 	anx_spin_lock_irqsave(&input_lock, &flags);
 	input_stats.delivered++;
 	anx_spin_unlock_irqrestore(&input_lock, flags);
+
+	/* Also deliver to the focused surface if one exists */
+	if (target.hi != 0 || target.lo != 0) {
+		ev.target_surf = target;
+		anx_iface_event_post(&ev);
+	}
 }

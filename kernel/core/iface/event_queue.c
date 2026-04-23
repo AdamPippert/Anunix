@@ -118,6 +118,53 @@ anx_iface_event_post(struct anx_event *ev)
 }
 
 /* ------------------------------------------------------------------ */
+/* anx_iface_event_poll_wm                                             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Poll for the next WM-targeted event — i.e., any event whose
+ * target_surf is the null OID {0,0}.  Used by anx_wm_run() to
+ * receive pointer and key events without a surface subscription.
+ * Maintains a separate read cursor so the WM never misses events.
+ */
+
+static uint32_t wm_read_idx;
+
+int
+anx_iface_event_poll_wm(struct anx_event *out)
+{
+	bool flags;
+	uint32_t write_snapshot, floor;
+
+	if (!out)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&ev_lock, &flags);
+
+	write_snapshot = ev_write;
+	floor = (write_snapshot > EV_RING_SIZE)
+		? (write_snapshot - EV_RING_SIZE) : 0;
+	if (wm_read_idx < floor)
+		wm_read_idx = floor;
+
+	while (wm_read_idx != write_snapshot) {
+		uint32_t slot = wm_read_idx & EV_RING_MASK;
+		struct anx_event *ev = &ev_ring[slot];
+
+		wm_read_idx++;
+
+		if (ev->target_surf.hi == 0 && ev->target_surf.lo == 0) {
+			*out = *ev;
+			anx_spin_unlock_irqrestore(&ev_lock, flags);
+			return ANX_OK;
+		}
+	}
+
+	anx_spin_unlock_irqrestore(&ev_lock, flags);
+	return ANX_ENOENT;
+}
+
+/* ------------------------------------------------------------------ */
 /* anx_iface_event_subscribe / unsubscribe                             */
 /* ------------------------------------------------------------------ */
 
