@@ -392,7 +392,8 @@ render:
 	/* Layout */
 	layout_init(&s->layout, SESSION_FB_W);
 	layout_document(&s->layout, &s->doc,
-			  s->css_index_valid ? &s->css_index : NULL);
+			  s->css_index_valid ? &s->css_index : NULL,
+			  &s->forms);
 
 	/* Paint */
 	paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,
