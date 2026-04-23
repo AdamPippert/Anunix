@@ -87,6 +87,10 @@ struct anx_model_desc {
 #define ANX_CAP_TENSOR_NPU		(1U << 21)	/* dedicated NPU (AMD XDNA, ANE) */
 #define ANX_CAP_TENSOR_SIMD		(1U << 22)	/* CPU SIMD (AVX-512/NEON) */
 
+/* JEPA latent-state capabilities */
+#define ANX_CAP_JEPA			(1U << 23)	/* JEPA inference (encode + predict) */
+#define ANX_CAP_JEPA_TRAIN		(1U << 24)	/* JEPA training (VICReg + EMA update) */
+
 /* Forward declaration for lease pointer */
 struct anx_engine_lease;
 

@@ -59,7 +59,8 @@ enum anx_wf_port_dir {
 enum anx_wf_run_state {
 	ANX_WF_RUN_IDLE,
 	ANX_WF_RUN_RUNNING,
-	ANX_WF_RUN_WAITING_HUMAN,
+	ANX_WF_RUN_WAITING_HUMAN,	/* paused at a HUMAN_REVIEW node */
+	ANX_WF_RUN_SUSPENDED,		/* cell failed; agent intervention required */
 	ANX_WF_RUN_COMPLETED,
 	ANX_WF_RUN_FAILED,
 };
@@ -174,12 +175,64 @@ struct anx_wf_edge {
 };
 
 /* ------------------------------------------------------------------ */
+/* Trace entry                                                         */
+/* ------------------------------------------------------------------ */
+
+/* One record per executed node — collected into a trace state object. */
+struct anx_wf_trace_entry {
+	uint16_t	node_id;
+	uint8_t		node_kind;	/* enum anx_wf_node_kind — for JEPA action mapping */
+	uint8_t		_pad;
+	anx_cid_t	cell_cid;	/* CID of the cell dispatched (null for control nodes) */
+	anx_oid_t	trace_oid;	/* finalized cell trace state object */
+	int		result;
+	anx_time_t	started_at;
+	anx_time_t	completed_at;
+};
+
+/* ------------------------------------------------------------------ */
+/* Continuation                                                        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Saved executor state when a workflow suspends.
+ *
+ * The first three fields are agent-readable: they describe what failed
+ * and why.  The remaining arrays are the full executor snapshot needed
+ * to resume exactly where execution left off.
+ *
+ * Heap-allocated on suspension; freed on resume or destroy.
+ */
+struct anx_wf_continuation {
+	/* Agent-readable failure context */
+	uint16_t	failed_node_id;
+	int		error_code;
+	char		error_msg[256];
+
+	/* Executor state snapshot */
+	uint32_t	in_deg[ANX_WF_MAX_NODES];
+	bool		completed[ANX_WF_MAX_NODES];
+	anx_oid_t	port_oid[ANX_WF_MAX_NODES][ANX_WF_MAX_PORTS];
+};
+
+/* ------------------------------------------------------------------ */
+/* Resume action                                                       */
+/* ------------------------------------------------------------------ */
+
+enum anx_wf_resume_action {
+	ANX_WF_RESUME_RETRY,	  /* retry the failed node with the same spec */
+	ANX_WF_RESUME_SKIP,	  /* skip the failed node, continue with null outputs */
+	ANX_WF_RESUME_ABORT,	  /* abort and mark the workflow failed */
+	ANX_WF_RESUME_REPLACE,	  /* replace the failed node spec, then retry */
+};
+
+/* ------------------------------------------------------------------ */
 /* Policy                                                              */
 /* ------------------------------------------------------------------ */
 
 /* Execution policy for a workflow run. */
 struct anx_wf_policy {
-	uint32_t	max_parallel;	/* default 4 */
+	uint32_t	max_parallel;	/* 0 = derive from host resources */
 	uint32_t	timeout_ms;	/* 0 = no timeout */
 	bool		auto_retry;
 	uint8_t		max_retries;
@@ -211,6 +264,19 @@ struct anx_wf_object {
 	int			last_status;
 
 	struct anx_wf_policy	policy;
+
+	/* Phase 2: parallel executor state */
+	uint32_t		computed_cap;		/* hw-derived; set at run start */
+	struct anx_wf_continuation *continuation;	/* non-NULL when SUSPENDED */
+
+	/* Trace accumulation (heap-alloc'd at run start, sealed at completion) */
+	struct anx_wf_trace_entry *trace_entries;	/* ANX_WF_MAX_NODES entries */
+	uint32_t		trace_entry_count;
+	anx_oid_t		trace_oid;		/* sealed trace state object */
+
+	/* Outputs produced by ANX_WF_NODE_OUTPUT nodes */
+	anx_oid_t		output_oids[ANX_WF_MAX_PORTS];
+	uint8_t			output_count;
 };
 
 /* ------------------------------------------------------------------ */
@@ -256,5 +322,43 @@ struct anx_wf_object *anx_wf_object_get(const anx_oid_t *oid);
 /* Render the workflow node graph onto a pixel buffer (width x height, 32bpp). */
 int anx_wf_render_canvas(const anx_oid_t *wf_oid, uint32_t *pixels,
 			  uint32_t width, uint32_t height);
+
+/*
+ * Compute the hardware-derived concurrency cap for a workflow.
+ * If policy->max_parallel is non-zero it acts as a ceiling; the hw cap
+ * is the floor.  Never returns less than 1 or more than ANX_WF_MAX_NODES.
+ */
+uint32_t anx_wf_cap_compute(const struct anx_wf_policy *policy);
+
+/*
+ * Resume a suspended workflow.  REPLACE requires a non-NULL replacement
+ * node spec; all other actions ignore it.  Returns ANX_EINVAL if the
+ * workflow is not in ANX_WF_RUN_SUSPENDED state.
+ */
+int anx_wf_resume(const anx_oid_t *wf_oid,
+		  enum anx_wf_resume_action action,
+		  const struct anx_wf_node *replacement);
+
+/* Return the continuation for an SUSPENDED workflow, or NULL. */
+const struct anx_wf_continuation *anx_wf_continuation_get(const anx_oid_t *oid);
+
+/*
+ * Seal the accumulated per-node trace entries into an ANX_OBJ_EXECUTION_TRACE
+ * state object.  Sets wf->trace_oid; frees trace_entries.
+ * Returns ANX_ENOENT if no entries were recorded.
+ */
+int anx_wf_trace_seal(const anx_oid_t *wf_oid, anx_oid_t *trace_oid_out);
+
+/*
+ * Serialize a workflow to a human-readable/editable DSL string.
+ * buf must be at least size bytes; result is NUL-terminated.
+ */
+int anx_wf_serialize(const anx_oid_t *wf_oid, char *buf, uint32_t size);
+
+/*
+ * Render a workflow as a terminal ASCII DAG diagram.
+ * buf must be at least size bytes; result is NUL-terminated.
+ */
+int anx_wf_render_ascii(const anx_oid_t *wf_oid, char *buf, uint32_t size);
 
 #endif /* ANX_WORKFLOW_H */

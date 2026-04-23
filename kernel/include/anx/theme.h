@@ -80,4 +80,7 @@ void anx_theme_set_color(uint32_t *slot, uint32_t color);
  * Keys: mode, corner_radius, shadow, animation, opacity, font_scale */
 int anx_theme_apply_config(const char *config_str);
 
+/* Restore a previously captured theme snapshot into the active theme. */
+void anx_theme_restore(const struct anx_theme *snapshot);
+
 #endif /* ANX_THEME_H */

@@ -111,6 +111,18 @@ int anx_strncmp(const char *a, const char *b, size_t n)
 	return (unsigned char)*a - (unsigned char)*b;
 }
 
+char *anx_strncat(char *dst, const char *src, size_t n)
+{
+	char *p = dst;
+
+	while (*p)
+		p++;
+	while (n-- && *src)
+		*p++ = *src++;
+	*p = '\0';
+	return dst;
+}
+
 size_t anx_strlcpy(char *dst, const char *src, size_t dstsize)
 {
 	size_t srclen = anx_strlen(src);

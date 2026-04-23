@@ -43,11 +43,15 @@
 #include <anx/usb_mouse.h>
 #include <anx/shell.h>
 #include <anx/vm.h>
+#include <anx/wm.h>
 #include <anx/workflow.h>
+#include <anx/workflow_library.h>
 #include <anx/theme.h>
 #include <anx/kickstart.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/jepa.h>
+#include <anx/loop.h>
 
 #define ANX_VERSION "2026.4.17"
 
@@ -334,14 +338,19 @@ void kernel_main(void)
 
 	/* 11. AI accelerators (non-fatal — hardware may not be present) */
 	anx_xdna_init();	/* AMD XDNA NPU (Ryzen AI) */
+	anx_jepa_init();	/* JEPA latent-state world model (non-fatal) */
 
 	/* 13. VM subsystem (RFC-0017) */
 	anx_vm_init();
 	kprintf("vm subsystem initialized\n");
 
-	/* 14. Workflow Objects (RFC-0018) */
+	/* 14. Workflow Objects (RFC-0018) + built-in template library */
 	anx_wf_init();
+	anx_wf_lib_init();
 	kprintf("workflow subsystem initialized\n");
+
+	/* 16. IBAL loop session primitive (RFC-0020) */
+	anx_loop_init();
 
 	/* 15. Visual theme (RFC-0019) — default Pretty on FB, Boring headless */
 	anx_theme_init(anx_fb_available() ? ANX_THEME_PRETTY : ANX_THEME_BORING);
@@ -385,11 +394,20 @@ void kernel_main(void)
 	/* Start SSH server (after network + credential store) */
 	anx_sshd_init(22);
 
+	/* Window manager (after iface, theme, and network) */
+	if (anx_fb_available()) {
+		anx_wm_init();
+		kprintf("window manager initialized\n");
+	}
+
 	kprintf("kernel init complete -- all subsystems online\n");
 
 	/* Show boot performance profile */
 	anx_perf_report();
 
-	/* Enter interactive monitor shell */
-	anx_shell_run();
+	/* Boot into desktop on framebuffer hardware; fall back to shell */
+	if (anx_fb_available())
+		anx_wm_run();
+	else
+		anx_shell_run();
 }
