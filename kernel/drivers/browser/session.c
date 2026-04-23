@@ -12,6 +12,7 @@
 #include "paint/paint.h"
 #include "pii/pii_filter.h"
 #include "pii/pii_whitelist.h"
+#include "js/js_engine.h"
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -109,6 +110,7 @@ void session_destroy(struct browser_session *s)
 	}
 	css_sheet_free(&s->css_sheet);
 	s->css_index_valid = false;
+	js_engine_destroy(&s->js);
 
 	if (s->pii_redacted) {
 		anx_free(s->pii_redacted);
@@ -384,6 +386,29 @@ int session_navigate(struct browser_session *s, const char *url)
 		s->css_index_valid = true;
 		kprintf("browser: CSS rules parsed: %u\n",
 			s->css_sheet.n_rules);
+	}
+
+	/* JavaScript: init engine and execute all <script> blocks */
+	js_engine_destroy(&s->js);
+	anx_memset(&s->js_heap, 0, sizeof(s->js_heap));
+	js_engine_init(&s->js, &s->js_heap, &s->doc);
+	{
+		uint32_t ni;
+		for (ni = 0; ni < s->doc.n_nodes; ni++) {
+			struct dom_node *node = &s->doc.nodes[ni];
+			if (node->type != DOM_ELEMENT) continue;
+			if (anx_strcmp(node->el.tag, "script") != 0) continue;
+			/* Find first text child */
+			uint32_t ci;
+			for (ci = 0; ci < node->el.n_children; ci++) {
+				struct dom_node *ch = node->el.children[ci];
+				if (ch && ch->type == DOM_TEXT && ch->txt.text[0]) {
+					js_engine_load(&s->js, ch->txt.text,
+					               anx_strlen(ch->txt.text));
+					break;
+				}
+			}
+		}
 	}
 
 	anx_http_response_free(&resp);

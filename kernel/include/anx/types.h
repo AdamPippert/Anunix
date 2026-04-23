@@ -8,6 +8,14 @@
 #ifndef ANX_TYPES_H
 #define ANX_TYPES_H
 
+/* Integer literal suffixes for portable 64-bit constants */
+#ifndef UINT64_C
+#define UINT64_C(c)  (c ## ULL)
+#endif
+#ifndef INT64_C
+#define INT64_C(c)   (c ## LL)
+#endif
+
 /* Fixed-width integers — kernel freestanding, no libc */
 typedef unsigned char		uint8_t;
 typedef unsigned short		uint16_t;
