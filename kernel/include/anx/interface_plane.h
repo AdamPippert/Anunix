@@ -126,6 +126,12 @@ struct anx_surface {
 	uint32_t                 width, height;
 	uint32_t                 z_order;        /* higher = closer to front */
 
+	/* P1-001: Dirty-rect damage tracking (surface-relative coordinates). */
+	int32_t                  damage_x, damage_y;
+	uint32_t                 damage_w, damage_h;
+	bool                     damage_valid;   /* pending damage to render */
+	uint32_t                 commit_count;   /* incremented on each committed frame */
+
 	/* Hierarchy */
 	anx_oid_t                parent_oid;
 	struct anx_list_head     children;       /* child surfaces */
@@ -227,6 +233,11 @@ int anx_iface_surface_destroy(struct anx_surface *surf);
 /* Surface queries */
 int anx_iface_surface_list(anx_oid_t *oids_out, uint32_t max,
                             uint32_t *count_out);
+/* Query the current accumulated damage rect for a surface. */
+void anx_iface_surface_damage_query(struct anx_surface *surf,
+                                     int32_t *x_out, int32_t *y_out,
+                                     uint32_t *w_out, uint32_t *h_out,
+                                     bool *valid_out);
 int anx_iface_surface_lookup(anx_oid_t oid, struct anx_surface **out);
 
 /* Event routing */
@@ -323,6 +334,7 @@ struct anx_iface_compositor_stats {
 	uint64_t repaint_cycles;
 	uint64_t committed_surfaces;
 	uint32_t last_cycle_commits;
+	uint64_t last_cycle_ns;       /* wall time of last repaint cycle (ns) */
 };
 
 /* Start compositor cell for a domain. Exactly one per domain. */

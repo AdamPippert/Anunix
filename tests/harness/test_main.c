@@ -49,6 +49,7 @@ int test_vm_object(void);
 int test_workflow(void);
 int test_theme(void);
 int test_event_qos(void);
+int test_compositor_dirty_rect(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -82,6 +83,7 @@ static struct test_case tests[] = {
 	{ "workflow",		test_workflow },
 	{ "theme",		test_theme },
 	{ "event_qos",		test_event_qos },
+	{ "compositor_dirty_rect", test_compositor_dirty_rect },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
