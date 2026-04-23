@@ -17,6 +17,7 @@
 #include "css/css_selector.h"
 #include "forms/forms.h"
 #include "pii/pii_filter.h"
+#include "js/js_engine.h"
 
 #define SESSION_MAX       4
 #define SESSION_ID_LEN   16
@@ -50,6 +51,10 @@ struct browser_session {
 
 	/* Form element state */
 	struct form_state forms;
+
+	/* JavaScript engine */
+	struct js_engine  js;
+	struct js_heap    js_heap;
 
 	/* WebSocket streaming connection (NULL when no subscriber) */
 	struct anx_tcp_conn *ws_conn;
