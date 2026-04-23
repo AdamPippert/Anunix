@@ -20,6 +20,8 @@
 #define ANX_LOOP_MAX_CANDIDATES    16
 #define ANX_LOOP_MAX_SCORE_HIST    64
 #define ANX_LOOP_MAX_BRANCHES       8   /* max parallel branch sessions */
+#define ANX_MEMORY_ACT_COUNT     12   /* one entry per ANX_JEPA_ACT_* */
+#define ANX_MEMORY_WAYPOINTS      8   /* trajectory shape sample count */
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
@@ -315,6 +317,38 @@ struct anx_loop_session_info {
 };
 
 /* ------------------------------------------------------------------ */
+/* Memory consolidation (Phase 5)                                      */
+/* ------------------------------------------------------------------ */
+
+/* Per-action EMA statistics stored in the consolidation payload */
+struct anx_loop_action_stats {
+	float    avg_energy;      /* EMA average energy across iterations */
+	float    win_rate;        /* EMA fraction of iters this action won */
+	float    min_energy;      /* best (lowest) energy seen             */
+	uint32_t total_updates;   /* raw sample count (for cold-start gate) */
+};
+
+/* Payload stored as ANX_OBJ_MEMORY_CONSOLIDATION */
+struct anx_loop_memory_payload {
+	char     world_uri[128];
+	uint32_t session_version;        /* increments monotonically      */
+	uint32_t sessions_committed;     /* 0 or 1 for a single session   */
+	uint32_t sessions_aborted;       /* 0 or 1 for a single session   */
+	float    avg_final_energy;
+	float    avg_iters;
+	float    energy_waypoints[ANX_MEMORY_WAYPOINTS];
+	struct anx_loop_action_stats  action_stats[ANX_MEMORY_ACT_COUNT];
+};
+
+/* Per-session per-action stats passed to anx_loop_consolidate() */
+struct anx_loop_session_action_stats {
+	uint32_t  total_proposals; /* iterations where action was scored  */
+	uint32_t  win_count;       /* iterations where action had min energy */
+	float     energy_sum;      /* sum of final energies for this action  */
+	float     min_energy;      /* best energy seen this session          */
+};
+
+/* ------------------------------------------------------------------ */
 /* Goal alignment energy (Phase 3: loop_goal.c)                       */
 /* ------------------------------------------------------------------ */
 
@@ -363,6 +397,11 @@ int anx_loop_session_score_history(anx_oid_t session_oid,
 
 /* Internal accessor used by loop_*.c subsystems */
 struct anx_loop_session *anx_loop_session_get(anx_oid_t session_oid);
+
+/* Memory consolidation (Phase 5: loop_memory.c) */
+int anx_loop_consolidate(anx_oid_t session_oid,
+			 const struct anx_loop_session_action_stats *action_stats,
+			 uint32_t action_count);
 
 /* Shell command entry point */
 int anx_loop_shell_dispatch(int argc, const char *const *argv);

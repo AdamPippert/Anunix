@@ -283,22 +283,31 @@ anx_iface_surface_commit(struct anx_surface *surf)
 int
 anx_iface_surface_destroy(struct anx_surface *surf)
 {
+	struct anx_list_head *pos;
+	anx_oid_t focused, new_focus;
+	bool need_focus_transfer;
 	uint32_t i;
 	bool flags;
 
 	if (!surf)
 		return ANX_EINVAL;
 
-	/* Unmap from renderer first */
+	/* Cascade-destroy all children before removing the parent. */
+	for (i = 0; i < ANX_SURF_MAX; i++) {
+		if (surf_used[i] && &surf_pool[i] != surf &&
+		    anx_uuid_compare(&surf_pool[i].parent_oid, &surf->oid) == 0)
+			anx_iface_surface_destroy(&surf_pool[i]);
+	}
+
+	focused = anx_input_focus_get();
+	need_focus_transfer = (anx_uuid_compare(&focused, &surf->oid) == 0);
+
 	if (surf->renderer_ops && surf->renderer_ops->unmap)
 		surf->renderer_ops->unmap(surf);
 
 	anx_spin_lock_irqsave(&iface_lock, &flags);
-
 	anx_htable_del(&surf_ht, &surf->ht_node);
 	anx_list_del(&surf->z_node);
-
-	/* Find and free the pool slot */
 	for (i = 0; i < ANX_SURF_MAX; i++) {
 		if (&surf_pool[i] == surf) {
 			surf_used[i] = false;
@@ -306,8 +315,24 @@ anx_iface_surface_destroy(struct anx_surface *surf)
 		}
 	}
 	surf_count--;
-
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	if (need_focus_transfer) {
+		new_focus = ANX_UUID_NIL;
+		anx_spin_lock_irqsave(&iface_lock, &flags);
+		ANX_LIST_FOR_EACH(pos, &surf_zlist) {
+			struct anx_surface *s =
+				ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
+			if (s->state == ANX_SURF_VISIBLE &&
+			    anx_uuid_is_nil(&s->parent_oid)) {
+				new_focus = s->oid;
+				break;
+			}
+		}
+		anx_spin_unlock_irqrestore(&iface_lock, flags);
+		anx_input_focus_set(new_focus);
+	}
+
 	return ANX_OK;
 }
 
@@ -904,9 +929,25 @@ int anx_iface_surface_move(struct anx_surface *surf, int32_t x, int32_t y)
 	return ANX_OK;
 }
 
+/* Reassign z_order fields front-to-back; must be called under iface_lock. */
+static void
+z_renumber(void)
+{
+	struct anx_list_head *pos;
+	uint32_t z;
+
+	z = surf_count;
+	ANX_LIST_FOR_EACH(pos, &surf_zlist) {
+		struct anx_surface *s =
+			ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
+		s->z_order = --z;
+	}
+}
+
 int anx_iface_surface_raise(struct anx_surface *surf)
 {
 	bool flags;
+	bool is_toplevel;
 
 	if (!surf)
 		return ANX_EINVAL;
@@ -914,7 +955,13 @@ int anx_iface_surface_raise(struct anx_surface *surf)
 	anx_spin_lock_irqsave(&iface_lock, &flags);
 	anx_list_del(&surf->z_node);
 	anx_list_add(&surf->z_node, &surf_zlist);	/* front = highest z */
+	z_renumber();
+	is_toplevel = anx_uuid_is_nil(&surf->parent_oid);
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	/* Focus follows raise for top-level surfaces. */
+	if (is_toplevel)
+		anx_input_focus_set(surf->oid);
 	return ANX_OK;
 }
 
@@ -928,6 +975,31 @@ int anx_iface_surface_lower(struct anx_surface *surf)
 	anx_spin_lock_irqsave(&iface_lock, &flags);
 	anx_list_del(&surf->z_node);
 	anx_list_add_tail(&surf->z_node, &surf_zlist);	/* tail = lowest z */
+	z_renumber();
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+	return ANX_OK;
+}
+
+int anx_iface_surface_set_parent(struct anx_surface *child,
+                                   anx_oid_t parent_oid)
+{
+	struct anx_surface *parent;
+	bool flags;
+	int rc;
+
+	if (!child)
+		return ANX_EINVAL;
+
+	rc = anx_iface_surface_lookup(parent_oid, &parent);
+	if (rc != ANX_OK)
+		return rc;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	child->parent_oid = parent_oid;
+	/* Place child just above parent in z-order. */
+	anx_list_del(&child->z_node);
+	anx_list_add(&child->z_node, parent->z_node.prev);
+	z_renumber();
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
 	return ANX_OK;
 }
