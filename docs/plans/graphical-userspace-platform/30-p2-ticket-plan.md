@@ -1,7 +1,11 @@
-# P2 Ticket Plan — full-coverage hardening and ecosystem parity
+# P2 Ticket Plan — graphical userspace hardening and ecosystem parity
 
 Status: advisory only (planning), no implementation in this phase.
-Goal: complete the platform surface needed for broad web-compat and operational maturity.
+Goal: complete the graphical userspace surface needed for broad application compatibility and operational maturity.
+
+Boundary guardrail (mandatory):
+- This plan is constrained by `00-boundary-decision.md`.
+- P2 scope is platform hardening contracts; application behavior and browser-engine/product behavior remain outside Anunix core.
 
 ## Ticket P2-001: Accessibility object model and assistive hooks
 
@@ -26,7 +30,7 @@ Definition of done
 ## Ticket P2-002: Media path (audio/video) baseline
 
 Objective
-- Add platform support for modern media-heavy pages.
+- Add platform media-path contracts needed by modern graphical applications and workflow surfaces.
 
 Scope
 - Audio output pipeline with timing guarantees.
@@ -39,38 +43,38 @@ Deterministic tests
 3) Integration: start/stop/seek state transitions deterministic.
 
 Definition of done
-- Media playback baseline is reliable enough for common browser workloads.
+- Media playback baseline is reliable enough for common graphical workloads.
 
 ---
 
-## Ticket P2-003: Site/process isolation hardening profile
+## Ticket P2-003: Untrusted application/process isolation hardening primitives
 
 Objective
-- Introduce stronger security boundaries required for hostile-web threat model.
+- Introduce stronger security boundaries required for untrusted graphical and content-processing workloads.
 
 Scope
-- Isolated process classes per origin/site group policy.
-- Tight capability boundaries across browser component processes.
+- Isolated process classes per trust/content domain policy.
+- Tight capability boundaries across application component processes.
 - IPC policy matrix and deny-by-default enforcement.
 
 Deterministic tests
-1) Unit: forbidden cross-origin shared-memory map denied.
-2) Integration: compromised renderer simulation cannot access unrelated site data path.
+1) Unit: forbidden cross-domain shared-memory map denied.
+2) Integration: compromised process simulation cannot access unrelated application data path.
 3) Integration: policy violation events are logged with provenance.
 
 Definition of done
-- Isolation profile materially raises security posture for untrusted web content.
+- Isolation primitives materially raise security posture for untrusted graphical workloads.
 
 ---
 
-## Ticket P2-004: WPT-class conformance gate integration
+## Ticket P2-004: Graphical userspace conformance gate integration
 
 Objective
-- Move from ad-hoc parity checks to standardized compatibility gate.
+- Move from ad-hoc parity checks to a standardized graphical-userspace compatibility gate.
 
 Scope
-- Curated test corpus and runner integration.
-- Baseline comparison against Chromium/Firefox reference outputs.
+- Curated platform fixture corpus and runner integration.
+- Baseline comparison against reference application outputs (including browser-facing fixtures where relevant).
 - Regression budget policy (allowed deltas, fail thresholds).
 
 Deterministic tests
@@ -86,7 +90,7 @@ Definition of done
 ## Ticket P2-005: Crash diagnostics + performance observability
 
 Objective
-- Provide deep operational visibility for browser/platform failures.
+- Provide deep operational visibility for graphical userspace integration failures.
 
 Scope
 - Crash dump format and symbolized reporting.
@@ -106,10 +110,10 @@ Definition of done
 ## P2 execution order
 
 1. P2-005 Crash diagnostics + observability
-2. P2-003 Site/process isolation hardening
+2. P2-003 Untrusted application/process isolation hardening
 3. P2-001 Accessibility object model
 4. P2-002 Media path baseline
-5. P2-004 WPT-class conformance gate
+5. P2-004 Graphical userspace conformance gate
 
 Rationale
 - Operational and security foundation before expensive parity scaling.

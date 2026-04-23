@@ -1,6 +1,17 @@
 version: 1
-name: anxbrowser-graphical-userspace-prereqs
+name: graphical-userspace-platform-prereqs
 mode: advisory-planning-only
+boundary_doc: 00-boundary-decision.md
+application_platform_split_doc: 02-anxbrowserd-vs-platform-services.md
+contracts_doc: 05-integration-contracts.md
+portability_doc: 06-portability-and-adapter-requirements.md
+primary_consumer: anxbrowserd
+service_scope: globally-available-to-graphical-applications-and-workflows
+reference_consumers:
+  - anxbrowserd
+  - workflow_designer
+  - object_viewer
+  - shell_or_desktop_surfaces
 
 phases:
   - phase: P0
@@ -15,13 +26,13 @@ phases:
       - id: P0-004
         title: Input routing hardening
       - id: P0-005
-        title: Browser-grade TLS trust baseline
+        title: TLS trust baseline for userspace applications
       - id: P0-006
-        title: Browser profile/cache storage primitives
+        title: Durable application state/session/cache storage primitives
       - id: P0-007
         title: Shared-memory IPC v0
       - id: P0-008
-        title: Conformance/perf harness integration
+        title: Graphical userspace conformance/perf harness integration
 
   - phase: P1
     file: 20-p1-ticket-plan.md
@@ -29,13 +40,13 @@ phases:
       - id: P1-001
         title: Dirty-rect compositor + frame pacing
       - id: P1-002
-        title: Multi-window/tab surface model hardening
+        title: Multi-window/surface model hardening
       - id: P1-003
         title: Clipboard, drag/drop, file-pick contracts
       - id: P1-004
         title: Text/font shaping correctness baseline
       - id: P1-005
-        title: Download pipeline + object policy integration
+        title: Transfer/import/export policy hooks + object integration
       - id: P1-006
         title: Event queue QoS and telemetry
 
@@ -47,8 +58,8 @@ phases:
       - id: P2-002
         title: Media path baseline
       - id: P2-003
-        title: Site/process isolation hardening profile
+        title: Untrusted application/process isolation hardening primitives
       - id: P2-004
-        title: WPT-class conformance gate integration
+        title: Graphical userspace conformance gate integration
       - id: P2-005
         title: Crash diagnostics + performance observability

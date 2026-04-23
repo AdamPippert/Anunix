@@ -1,18 +1,24 @@
-# P0 Ticket Plan — Anunix userspace prerequisites for graphical browser
+# P0 Ticket Plan — Anunix graphical userspace platform prerequisites
 
 Status: advisory only (planning), no implementation in this phase.
-Goal: produce executable ticket/test specs for a lower-cost implementation agent.
+Goal: produce executable ticket/test specs for Anunix graphical userspace platform work.
+
+Boundary guardrail (mandatory):
+- This plan is constrained by `00-boundary-decision.md`.
+- Tickets in this file define reusable graphical userspace substrate only.
+- `anxbrowserd` is one consumer; browser engine/product logic remains in the standalone Anunix-Browser project.
+- Every completed capability here must be globally available to graphical applications and workflows.
 
 ## P0 principles
 
-- Build only enabling substrate; do not build browser features yet.
+- Build only enabling graphical userspace substrate; do not build application-specific features here.
 - Keep primitives deterministic and testable in kernel/unit + QEMU integration.
 - C/ASM-first for kernel and core userspace runtime.
 
 ## Ticket P0-001: Userspace process isolation baseline
 
 Objective
-- Introduce minimal process isolation model suitable for browser components (UI process, renderer process, network process) to run outside kernel builtins.
+- Introduce minimal process isolation model suitable for graphical application daemons/helpers (including `anxbrowserd`) to run outside kernel builtins.
 
 Current evidence
 - `docs/tool-plan.md`: kernel builtins in single address space.
@@ -61,7 +67,7 @@ Definition of done
 ## Ticket P0-003: Compositor as Execution Cell (minimum viable)
 
 Objective
-- Replace/augment direct repaint helper with compositor cell execution loop tied to Interface Plane registry.
+- Replace/augment direct repaint helper with compositor cell execution loop tied to the Interface Plane registry and usable by all graphical applications/workflows.
 
 Current evidence
 - `anx_iface_compositor_repaint()` exists as helper in `kernel/core/iface/iface.c`.
@@ -84,7 +90,7 @@ Definition of done
 ## Ticket P0-004: Input routing hardening for interactive apps
 
 Objective
-- Make keyboard/mouse event routing browser-safe and deterministic.
+- Make keyboard/mouse event routing deterministic and safe for graphical applications and workflow surfaces.
 
 Current evidence
 - Input path exists (`kernel/core/input/input.c`) but timestamps and policy depth are minimal.
@@ -106,10 +112,10 @@ Definition of done
 
 ---
 
-## Ticket P0-005: Browser-grade TLS trust baseline
+## Ticket P0-005: TLS trust baseline for userspace applications
 
 Objective
-- Provide secure outbound browser/network process path without proxy dependency.
+- Provide secure outbound network process path for userspace applications without proxy dependency.
 
 Current evidence
 - README roadmap points to in-kernel TLS as planned; current system relies on proxy flow for some model traffic.
@@ -129,30 +135,30 @@ Definition of done
 
 ---
 
-## Ticket P0-006: Browser profile/cache storage primitives
+## Ticket P0-006: Durable application state/session/cache storage primitives
 
 Objective
-- Ensure userspace browser can persist profile/session/cache safely.
+- Ensure graphical applications can persist state/session/cache safely using OS contracts.
 
 Scope
-- Atomic write contract for profile blobs.
+- Atomic write contract for application state blobs.
 - Locking semantics for concurrent open handles.
 - Crash recovery behavior for partially written state.
 
 Deterministic tests
-1) Unit: atomic rename/write commit leaves no torn profile.
+1) Unit: atomic rename/write commit leaves no torn application state snapshot.
 2) Unit: concurrent writer lock contention deterministic failure/retry path.
-3) Integration: forced reboot mid-write recovers last committed profile state.
+3) Integration: forced reboot mid-write recovers last committed application state.
 
 Definition of done
-- Profile durability and integrity guarantees documented and validated.
+- Application-state durability and integrity guarantees documented and validated.
 
 ---
 
-## Ticket P0-007: Shared-memory IPC v0 (userspace <-> compositor)
+## Ticket P0-007: Shared-memory IPC v0 (applications <-> compositor/services)
 
 Objective
-- Introduce low-copy IPC primitives needed for browser process decomposition.
+- Introduce low-copy IPC primitives needed for graphical application/service decomposition.
 
 Scope
 - Shared buffer object type and mapping control.
@@ -162,17 +168,17 @@ Scope
 Deterministic tests
 1) Unit: producer writes, consumer reads exact bytes + sequence id.
 2) Unit: unauthorized map attempt denied.
-3) Integration: userspace test process publishes frame buffer; compositor cell consumes and presents.
+3) Integration: userspace test process publishes frame buffer; compositor/service consumer consumes and presents.
 
 Definition of done
 - A minimal but secure shared-memory transport exists for graphics data flow.
 
 ---
 
-## Ticket P0-008: Conformance/perf harness integration (weekly)
+## Ticket P0-008: Graphical userspace conformance/perf harness integration (weekly)
 
 Objective
-- Integrate deterministic baseline harness into Anunix workflow for browser prerequisites.
+- Integrate deterministic baseline harness into Anunix workflow for graphical userspace platform prerequisites.
 
 Scope
 - Add harness entrypoint in test tooling.
@@ -185,7 +191,7 @@ Deterministic tests
 3) Integration: CI-style pass/fail gate on threshold breaches.
 
 Definition of done
-- Weekly deterministic conformance report generation is part of test workflow.
+- Weekly deterministic graphical-userspace conformance report generation is part of test workflow.
 
 ---
 
@@ -196,7 +202,7 @@ Definition of done
 3. P0-007 Shared-memory IPC v0
 4. P0-003 Compositor cell runtime
 5. P0-004 Input routing hardening
-6. P0-006 Profile/cache storage primitives
+6. P0-006 Durable application state/session/cache storage primitives
 7. P0-005 TLS trust baseline
 8. P0-008 Conformance/perf harness integration
 
