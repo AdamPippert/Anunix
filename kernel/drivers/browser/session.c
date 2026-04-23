@@ -7,7 +7,11 @@
 #include "html/tokenizer.h"
 #include "html/dom.h"
 #include "layout/layout.h"
+#include "css/css_parser.h"
+#include "css/css_selector.h"
 #include "paint/paint.h"
+#include "pii/pii_filter.h"
+#include "pii/pii_whitelist.h"
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -99,8 +103,118 @@ void session_destroy(struct browser_session *s)
 		anx_free(s->fb);
 		s->fb = NULL;
 	}
+	if (s->page_text) {
+		anx_free(s->page_text);
+		s->page_text = NULL;
+	}
+	css_sheet_free(&s->css_sheet);
+	s->css_index_valid = false;
+
+	if (s->pii_redacted) {
+		anx_free(s->pii_redacted);
+		s->pii_redacted = NULL;
+	}
 	kprintf("browser: destroyed session %s\n", s->session_id);
 	anx_memset(s, 0, sizeof(*s));
+}
+
+/* ── DOM text extraction ─────────────────────────────────────────── */
+
+/* Tags whose text content is not visible to the user or agent. */
+static bool is_invisible_tag(const char *tag)
+{
+	static const char *hidden[] = {
+		"head", "script", "style", "meta", "link",
+		"noscript", NULL
+	};
+	int i;
+	for (i = 0; hidden[i]; i++) {
+		if (anx_strcmp(tag, hidden[i]) == 0)
+			return true;
+	}
+	return false;
+}
+
+static bool is_block_tag(const char *tag)
+{
+	static const char *blocks[] = {
+		"p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+		"li", "blockquote", "pre", "section", "article",
+		"header", "footer", "main", "nav", "aside",
+		"table", "tr", "td", "th", NULL
+	};
+	int i;
+	for (i = 0; blocks[i]; i++) {
+		if (anx_strcmp(tag, blocks[i]) == 0)
+			return true;
+	}
+	return false;
+}
+
+static void extract_text_node(const struct dom_node *node,
+			       char *buf, size_t cap, size_t *pos)
+{
+	uint32_t i;
+
+	if (!node) return;
+
+	if (node->type == DOM_TEXT) {
+		const char *t = node->txt.text;
+		size_t tlen = anx_strlen(t);
+
+		/* Skip pure-whitespace text nodes */
+		bool has_content = false;
+		size_t j;
+		for (j = 0; j < tlen; j++) {
+			if (t[j] != ' ' && t[j] != '\t' &&
+			    t[j] != '\n' && t[j] != '\r') {
+				has_content = true;
+				break;
+			}
+		}
+		if (!has_content) return;
+
+		/* Append text with space separator */
+		if (*pos > 0 && buf[*pos - 1] != '\n' &&
+		    buf[*pos - 1] != ' ' && *pos < cap - 1)
+			buf[(*pos)++] = ' ';
+
+		for (j = 0; j < tlen && *pos < cap - 1; j++)
+			buf[(*pos)++] = t[j];
+		return;
+	}
+
+	if (node->type != DOM_ELEMENT) return;
+
+	if (is_invisible_tag(node->el.tag)) return;
+
+	/* Block elements get a newline before their content */
+	if (is_block_tag(node->el.tag) && *pos > 0 &&
+	    buf[*pos - 1] != '\n' && *pos < cap - 1)
+		buf[(*pos)++] = '\n';
+
+	for (i = 0; i < node->el.n_children; i++)
+		extract_text_node(node->el.children[i], buf, cap, pos);
+
+	/* Block elements get a newline after their content */
+	if (is_block_tag(node->el.tag) && *pos > 0 &&
+	    buf[*pos - 1] != '\n' && *pos < cap - 1)
+		buf[(*pos)++] = '\n';
+}
+
+/* Extract all visible text from the DOM into a heap-allocated string. */
+static char *dom_to_text(const struct dom_doc *doc)
+{
+	char    *buf;
+	size_t   cap = PII_MAX_CONTENT;
+	size_t   pos = 0;
+
+	buf = anx_alloc(cap);
+	if (!buf) return NULL;
+
+	extract_text_node(doc->root, buf, cap, &pos);
+	if (pos < cap) buf[pos] = '\0';
+	return buf;
 }
 
 uint32_t session_count(void)
@@ -191,6 +305,17 @@ int session_navigate(struct browser_session *s, const char *url)
 
 	if (!url || !s) return -1;
 
+	/* Reset per-page state */
+	if (s->page_text)    { anx_free(s->page_text);    s->page_text    = NULL; }
+	if (s->pii_redacted) { anx_free(s->pii_redacted); s->pii_redacted = NULL; }
+	s->pii_types[0]    = '\0';
+	s->pii_checked     = false;
+	s->pii_bypass      = false;
+	css_sheet_free(&s->css_sheet);
+	css_sheet_init(&s->css_sheet);
+	css_index_clear(&s->css_index);
+	s->css_index_valid = false;
+
 	anx_strlcpy(s->current_url, url, SESSION_URL_LEN);
 	kprintf("browser: navigating %s to %s\n", s->session_id, url);
 
@@ -228,12 +353,46 @@ int session_navigate(struct browser_session *s, const char *url)
 			anx_strlcpy(s->title, url, sizeof(s->title));
 	}
 
+	/* Extract plain text for agent content delivery + PII checking */
+	s->page_text = dom_to_text(&s->doc);
+
+	/* Build author CSS index from <style> blocks in the parsed DOM */
+	css_sheet_free(&s->css_sheet);
+	css_sheet_init(&s->css_sheet);
+	css_index_clear(&s->css_index);
+	s->css_index_valid = false;
+	{
+		uint32_t ni;
+		for (ni = 0; ni < s->doc.n_nodes; ni++) {
+			struct dom_node *node = &s->doc.nodes[ni];
+			if (node->type == DOM_ELEMENT &&
+			    anx_strcmp(node->el.tag, "style") == 0) {
+				uint32_t ci;
+				for (ci = 0; ci < node->el.n_children; ci++) {
+					struct dom_node *ch = node->el.children[ci];
+					if (ch && ch->type == DOM_TEXT &&
+					    ch->txt.text[0]) {
+						css_parse(ch->txt.text,
+							   anx_strlen(ch->txt.text),
+							   &s->css_sheet,
+							   CSS_ORIGIN_AUTHOR);
+					}
+				}
+			}
+		}
+		css_index_build(&s->css_index, &s->css_sheet);
+		s->css_index_valid = true;
+		kprintf("browser: CSS rules parsed: %u\n",
+			s->css_sheet.n_rules);
+	}
+
 	anx_http_response_free(&resp);
 
 render:
 	/* Layout */
 	layout_init(&s->layout, SESSION_FB_W);
-	layout_document(&s->layout, &s->doc);
+	layout_document(&s->layout, &s->doc,
+			  s->css_index_valid ? &s->css_index : NULL);
 
 	/* Paint */
 	paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,
@@ -252,4 +411,52 @@ size_t session_snapshot_jpeg(struct browser_session *s,
 	if (!s || !s->fb) return 0;
 	return anx_jpeg_encode(s->fb, SESSION_FB_W, SESSION_FB_H,
 			        SESSION_FB_W * 4, out_buf, out_cap);
+}
+
+/* ── PII-safe content delivery ───────────────────────────────────── */
+
+const char *session_agent_content(struct browser_session *s)
+{
+	if (!s || !s->page_text) return NULL;
+
+	/* Human session or whitelisted domain: pass through without checking */
+	if (!s->driver[0] || anx_pii_whitelist_check(s->current_url))
+		return s->page_text;
+
+	/* One-time bypass approved by user */
+	if (s->pii_bypass) {
+		s->pii_bypass = false;
+		return s->page_text;
+	}
+
+	/* Run PII check lazily on first agent read of this page */
+	if (!s->pii_checked) {
+		struct pii_result result;
+		int rc;
+
+		s->pii_checked = true;
+		rc = anx_pii_check(s->page_text, anx_strlen(s->page_text),
+				    &result);
+		if (rc == 0 && result.found && result.redacted) {
+			/* Store redacted version; keep original for bypass */
+			s->pii_redacted = result.redacted;
+			result.redacted = NULL;   /* transfer ownership */
+			anx_strlcpy(s->pii_types, result.types,
+				    sizeof(s->pii_types));
+		} else {
+			/* No PII or model unavailable — clear redacted */
+			if (s->pii_redacted) {
+				anx_free(s->pii_redacted);
+				s->pii_redacted = NULL;
+			}
+		}
+		anx_pii_result_free(&result);
+	}
+
+	return s->pii_redacted ? s->pii_redacted : s->page_text;
+}
+
+void session_pii_bypass(struct browser_session *s)
+{
+	if (s) s->pii_bypass = true;
 }
