@@ -374,7 +374,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_compositor_dirty_rect.c \
                tests/test_multi_surface.c \
                tests/test_clipboard.c \
-               tests/test_text_shaping.c
+               tests/test_text_shaping.c \
+               tests/test_transfer_policy.c
 TEST_BIN    := build/test/anunix_test
 
 test:
