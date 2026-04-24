@@ -6,6 +6,7 @@
  */
 
 #include <anx/interface_plane.h>
+#include <anx/clipboard.h>
 #include <anx/input.h>
 #include <anx/cell.h>
 #include <anx/hashtable.h>
@@ -95,6 +96,7 @@ anx_iface_init(void)
 
 	anx_input_init();
 	anx_iface_event_reset();
+	anx_clipboard_init();
 
 	return ANX_OK;
 }

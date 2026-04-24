@@ -51,6 +51,7 @@ int test_theme(void);
 int test_event_qos(void);
 int test_compositor_dirty_rect(void);
 int test_multi_surface(void);
+int test_clipboard(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -86,6 +87,7 @@ static struct test_case tests[] = {
 	{ "event_qos",		test_event_qos },
 	{ "compositor_dirty_rect", test_compositor_dirty_rect },
 	{ "multi_surface",	test_multi_surface },
+	{ "clipboard",		test_clipboard },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
