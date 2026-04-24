@@ -554,7 +554,8 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 								     SESSION_FB_W * 4, 0x00EFECe6U);
 							paint_execute(&s->layout, s->fb,
 								       SESSION_FB_W, SESSION_FB_H,
-								       SESSION_FB_W * 4);
+								       SESSION_FB_W * 4,
+								       s->scroll_y);
 							s->ws_dirty = true;
 						}
 					}
@@ -585,7 +586,8 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 								     SESSION_FB_W * 4, 0x00EFECe6U);
 							paint_execute(&s->layout, s->fb,
 								       SESSION_FB_W, SESSION_FB_H,
-								       SESSION_FB_W * 4);
+								       SESSION_FB_W * 4,
+								       s->scroll_y);
 							s->ws_dirty = true;
 						}
 						/* Enter in a submit field = form submission */
@@ -604,6 +606,20 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 								kprintf("browser: form submit: %s\n", qbuf);
 							}
 						}
+					}
+
+				} else if (anx_strncmp(msg,
+						"{\"type\":\"scroll\"", 17) == 0) {
+					char dystr[16];
+					if (json_str(msg, "dy", dystr, sizeof(dystr))) {
+						int32_t dy = 0;
+						bool neg = false;
+						const char *p = dystr;
+						if (*p == '-') { neg = true; p++; }
+						while (*p >= '0' && *p <= '9')
+							dy = dy * 10 + (*p++ - '0');
+						if (neg) dy = -dy;
+						session_scroll(s, dy);
 					}
 
 				} else if (anx_strncmp(msg,

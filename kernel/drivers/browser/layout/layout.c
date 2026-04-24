@@ -522,10 +522,11 @@ void layout_document(struct layout_ctx *ctx,
 		if (child && child->type == DOM_ELEMENT &&
 		    anx_strcmp(child->el.tag, "body") == 0) {
 			walk_node(ctx, child, &ws);
-			flush_inline(ctx);
-			return;
+			goto done;
 		}
 	}
 	walk_node(ctx, doc->root, &ws);
+done:
 	flush_inline(ctx);
+	ctx->content_h = (uint32_t)ctx->cursor_y;
 }
