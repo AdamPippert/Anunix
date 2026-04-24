@@ -15,6 +15,8 @@
 #include "js/js_engine.h"
 #include "fetch/resource_loader.h"
 #include "image/webp.h"
+#include "image/jpeg.h"
+#include "image/png.h"
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -468,38 +470,60 @@ int session_navigate(struct browser_session *s, const char *url)
 			}
 		}
 
-		/*
-		 * Phase 2: fetch image sub-resources, then decode any WebP images.
-		 * Non-WebP formats (JPEG, PNG) are silently skipped — they produce
-		 * an empty src-lookup in the layout engine, which just omits the img.
-		 */
+		/* Phase 2: fetch and decode image sub-resources */
 		rq_fetch_images(&rq);
 		{
 			uint32_t ri;
 			for (ri = 0; ri < rq.n_res; ri++) {
 				struct sub_resource *r = &rq.res[ri];
-				if (r->type != RES_TYPE_IMG || !r->fetched || !r->body)
+				uint32_t *px = NULL;
+				uint32_t  iw = 0, ih = 0;
+				const char *fmt = NULL;
+
+				if (r->type != RES_TYPE_IMG || !r->fetched ||
+				    !r->body || r->body_len < 8)
 					continue;
 				if (s->n_imgs >= SESSION_IMG_MAX)
 					break;
-				/* Check for RIFF...WEBP magic */
-				if (r->body_len < 12 ||
-				    r->body[0] != 'R' || r->body[1] != 'I' ||
-				    r->body[2] != 'F' || r->body[3] != 'F' ||
-				    r->body[8] != 'W' || r->body[9] != 'E' ||
-				    r->body[10] != 'B' || r->body[11] != 'P')
-					continue;
-				struct webp_image wimg;
-				if (webp_decode(r->body, r->body_len, &wimg) != 0)
+
+				if (r->body[0] == 0xFF && r->body[1] == 0xD8) {
+					/* JPEG: FF D8 */
+					struct jpeg_image ji;
+					if (jpeg_decode(r->body, r->body_len, &ji) == 0) {
+						px = ji.pixels; iw = ji.width; ih = ji.height;
+						fmt = "JPEG";
+					}
+				} else if (r->body[0] == 0x89 && r->body[1] == 'P' &&
+					    r->body[2] == 'N' && r->body[3] == 'G') {
+					/* PNG: 89 50 4E 47 */
+					struct png_image pi;
+					if (png_decode(r->body, r->body_len, &pi) == 0) {
+						px = pi.pixels; iw = pi.width; ih = pi.height;
+						fmt = "PNG";
+					}
+				} else if (r->body_len >= 12 &&
+					    r->body[0] == 'R' && r->body[1] == 'I' &&
+					    r->body[2] == 'F' && r->body[3] == 'F' &&
+					    r->body[8] == 'W' && r->body[9] == 'E' &&
+					    r->body[10] == 'B' && r->body[11] == 'P') {
+					/* WebP: RIFF....WEBP */
+					struct webp_image wi;
+					if (webp_decode(r->body, r->body_len, &wi) == 0) {
+						px = wi.pixels; iw = wi.width; ih = wi.height;
+						fmt = "WebP";
+					}
+				}
+
+				if (!px)
 					continue;
 				anx_strlcpy(s->imgs[s->n_imgs].url, r->url,
 					     sizeof(s->imgs[0].url));
-				s->imgs[s->n_imgs].pixels = wimg.pixels;
-				s->imgs[s->n_imgs].w      = wimg.width;
-				s->imgs[s->n_imgs].h      = wimg.height;
+				s->imgs[s->n_imgs].pixels = px;
+				s->imgs[s->n_imgs].w      = iw;
+				s->imgs[s->n_imgs].h      = ih;
 				s->n_imgs++;
-				kprintf("browser: decoded WebP %s (%ux%u)\n",
-					 r->url, wimg.width, wimg.height);
+				kprintf("browser: decoded %s %s (%ux%u)\n",
+					 fmt, r->url, iw, ih);
 			}
 		}
 
