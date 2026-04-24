@@ -54,6 +54,11 @@ int test_multi_surface(void);
 int test_clipboard(void);
 int test_text_shaping(void);
 int test_transfer_policy(void);
+int test_diag(void);
+int test_isolation(void);
+int test_a11y(void);
+int test_media(void);
+int test_conformance_gate(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -92,6 +97,11 @@ static struct test_case tests[] = {
 	{ "clipboard",		test_clipboard },
 	{ "text_shaping",	test_text_shaping },
 	{ "transfer_policy",	test_transfer_policy },
+	{ "diag",		test_diag },
+	{ "isolation",		test_isolation },
+	{ "a11y",		test_a11y },
+	{ "media",		test_media },
+	{ "conformance_gate",	test_conformance_gate },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
