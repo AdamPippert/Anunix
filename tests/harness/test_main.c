@@ -53,6 +53,7 @@ int test_compositor_dirty_rect(void);
 int test_multi_surface(void);
 int test_clipboard(void);
 int test_text_shaping(void);
+int test_transfer_policy(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -90,6 +91,7 @@ static struct test_case tests[] = {
 	{ "multi_surface",	test_multi_surface },
 	{ "clipboard",		test_clipboard },
 	{ "text_shaping",	test_text_shaping },
+	{ "transfer_policy",	test_transfer_policy },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
