@@ -14,6 +14,7 @@
 #include "pii/pii_whitelist.h"
 #include "js/js_engine.h"
 #include "fetch/resource_loader.h"
+#include "image/webp.h"
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -112,6 +113,16 @@ void session_destroy(struct browser_session *s)
 	css_sheet_free(&s->css_sheet);
 	s->css_index_valid = false;
 	js_engine_destroy(&s->js);
+	{
+		uint32_t ii;
+		for (ii = 0; ii < s->n_imgs; ii++) {
+			if (s->imgs[ii].pixels) {
+				anx_free(s->imgs[ii].pixels);
+				s->imgs[ii].pixels = NULL;
+			}
+		}
+		s->n_imgs = 0;
+	}
 
 	if (s->pii_redacted) {
 		anx_free(s->pii_redacted);
@@ -305,6 +316,8 @@ int session_navigate(struct browser_session *s, const char *url)
 	uint16_t port;
 	struct   anx_http_response resp;
 	int      ret;
+	struct layout_image limgs[SESSION_IMG_MAX];
+	uint32_t            ni2;
 
 	if (!url || !s) return -1;
 
@@ -318,6 +331,16 @@ int session_navigate(struct browser_session *s, const char *url)
 	css_sheet_init(&s->css_sheet);
 	css_index_clear(&s->css_index);
 	s->css_index_valid = false;
+	{
+		uint32_t ii;
+		for (ii = 0; ii < s->n_imgs; ii++) {
+			if (s->imgs[ii].pixels) {
+				anx_free(s->imgs[ii].pixels);
+				s->imgs[ii].pixels = NULL;
+			}
+		}
+		s->n_imgs = 0;
+	}
 
 	anx_strlcpy(s->current_url, url, SESSION_URL_LEN);
 	kprintf("browser: navigating %s to %s\n", s->session_id, url);
@@ -445,17 +468,59 @@ int session_navigate(struct browser_session *s, const char *url)
 			}
 		}
 
+		/*
+		 * Phase 2: fetch image sub-resources, then decode any WebP images.
+		 * Non-WebP formats (JPEG, PNG) are silently skipped — they produce
+		 * an empty src-lookup in the layout engine, which just omits the img.
+		 */
+		rq_fetch_images(&rq);
+		{
+			uint32_t ri;
+			for (ri = 0; ri < rq.n_res; ri++) {
+				struct sub_resource *r = &rq.res[ri];
+				if (r->type != RES_TYPE_IMG || !r->fetched || !r->body)
+					continue;
+				if (s->n_imgs >= SESSION_IMG_MAX)
+					break;
+				/* Check for RIFF...WEBP magic */
+				if (r->body_len < 12 ||
+				    r->body[0] != 'R' || r->body[1] != 'I' ||
+				    r->body[2] != 'F' || r->body[3] != 'F' ||
+				    r->body[8] != 'W' || r->body[9] != 'E' ||
+				    r->body[10] != 'B' || r->body[11] != 'P')
+					continue;
+				struct webp_image wimg;
+				if (webp_decode(r->body, r->body_len, &wimg) != 0)
+					continue;
+				anx_strlcpy(s->imgs[s->n_imgs].url, r->url,
+					     sizeof(s->imgs[0].url));
+				s->imgs[s->n_imgs].pixels = wimg.pixels;
+				s->imgs[s->n_imgs].w      = wimg.width;
+				s->imgs[s->n_imgs].h      = wimg.height;
+				s->n_imgs++;
+				kprintf("browser: decoded WebP %s (%ux%u)\n",
+					 r->url, wimg.width, wimg.height);
+			}
+		}
+
 		rq_free(&rq);
 	}
 
 	anx_http_response_free(&resp);
 
 render:
+	/* Build layout_image table from session image cache */
+	for (ni2 = 0; ni2 < s->n_imgs; ni2++) {
+		limgs[ni2].url    = s->imgs[ni2].url;
+		limgs[ni2].pixels = s->imgs[ni2].pixels;
+		limgs[ni2].w      = s->imgs[ni2].w;
+		limgs[ni2].h      = s->imgs[ni2].h;
+	}
 	/* Layout */
 	layout_init(&s->layout, SESSION_FB_W);
 	layout_document(&s->layout, &s->doc,
 			  s->css_index_valid ? &s->css_index : NULL,
-			  &s->forms);
+			  &s->forms, limgs, s->n_imgs);
 
 	/* Paint */
 	paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,

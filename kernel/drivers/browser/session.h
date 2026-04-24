@@ -56,6 +56,15 @@ struct browser_session {
 	struct js_engine  js;
 	struct js_heap    js_heap;
 
+	/* Decoded image cache — populated after rq_fetch_images(), cleared on navigate */
+#define SESSION_IMG_MAX 32
+	struct {
+		char      url[512];   /* src attribute, matched by layout engine */
+		uint32_t *pixels;     /* XRGB8888; heap-allocated by webp_decode */
+		uint32_t  w, h;
+	} imgs[SESSION_IMG_MAX];
+	uint32_t n_imgs;
+
 	/* WebSocket streaming connection (NULL when no subscriber) */
 	struct anx_tcp_conn *ws_conn;
 	bool                 ws_dirty;  /* true when a new frame is ready */

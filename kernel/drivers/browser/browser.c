@@ -528,9 +528,19 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 						/* Re-render to show focus change */
 						if (hit >= 0) {
 							layout_init(&s->layout, SESSION_FB_W);
-							layout_document(&s->layout, &s->doc,
-								s->css_index_valid ? &s->css_index : NULL,
-								&s->forms);
+							{
+								struct layout_image limgs2[SESSION_IMG_MAX];
+								uint32_t nli2;
+								for (nli2 = 0; nli2 < s->n_imgs; nli2++) {
+									limgs2[nli2].url    = s->imgs[nli2].url;
+									limgs2[nli2].pixels = s->imgs[nli2].pixels;
+									limgs2[nli2].w      = s->imgs[nli2].w;
+									limgs2[nli2].h      = s->imgs[nli2].h;
+								}
+								layout_document(&s->layout, &s->doc,
+									s->css_index_valid ? &s->css_index : NULL,
+									&s->forms, limgs2, s->n_imgs);
+							}
 							/* Sync focus state into paint cmds */
 							{
 								uint32_t ci;

@@ -45,6 +45,10 @@ struct paint_cmd {
 	bool     focused;             /* INPUT/BUTTON: field has keyboard focus */
 	bool     checked;             /* CHECKBOX: current state */
 	uint32_t cursor_pos;          /* INPUT/TEXTAREA: byte offset of cursor */
+	/* PCMD_IMAGE — source pixels borrowed from session image cache */
+	const uint32_t *img_pixels;   /* XRGB8888 source, row-major; not freed here */
+	uint32_t        img_src_w;
+	uint32_t        img_src_h;
 };
 
 /* ── Layout context ──────────────────────────────────────────────── */
@@ -76,6 +80,13 @@ struct layout_ctx {
 	bool inline_buf_active;
 };
 
+/* Decoded image entry passed to layout_document() for <img> rendering. */
+struct layout_image {
+	const char     *url;     /* src attribute value to match */
+	const uint32_t *pixels;  /* XRGB8888, row-major */
+	uint32_t        w, h;
+};
+
 void layout_init(struct layout_ctx *ctx, uint32_t viewport_w);
 
 /* Flush any pending inline run — call at document end or block transitions. */
@@ -85,10 +96,13 @@ void layout_flush_inline(struct layout_ctx *ctx);
  * Walk the DOM tree and generate paint commands.
  * author_idx: CSS selector index built from <style> blocks; may be NULL.
  * fs:         Form state to populate as form elements are discovered; may be NULL.
+ * imgs/n_imgs: decoded image table for <img> rendering; may be NULL/0.
  */
 void layout_document(struct layout_ctx *ctx,
 		      const struct dom_doc *doc,
 		      const struct css_selector_index *author_idx,
-		      struct form_state *fs);
+		      struct form_state *fs,
+		      const struct layout_image *imgs,
+		      uint32_t n_imgs);
 
 #endif /* ANX_BROWSER_LAYOUT_H */

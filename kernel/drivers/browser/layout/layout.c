@@ -195,6 +195,8 @@ struct walk_state {
 	uint32_t                         n_ancestors;
 	struct form_state               *fs;
 	struct css_bloom                 bloom;
+	const struct layout_image       *imgs;
+	uint32_t                         n_imgs;
 };
 
 static void walk_node(struct layout_ctx *ctx,
@@ -345,6 +347,49 @@ static void walk_node(struct layout_ctx *ctx,
 
 	if (st.display == CSS_DISPLAY_NONE) return;
 
+	/* ── <img> element ───────────────────────────────────────── */
+	if (anx_strcmp(tag, "img") == 0) {
+		const char *src = dom_attr(n, "src");
+		if (src && ws->n_imgs > 0) {
+			uint32_t ii;
+			for (ii = 0; ii < ws->n_imgs; ii++) {
+				if (!ws->imgs[ii].pixels) continue;
+				if (anx_strcmp(ws->imgs[ii].url, src) != 0) continue;
+
+				uint32_t iw = (st.width  != CSS_DIM_AUTO)
+					       ? (uint32_t)st.width
+					       : ws->imgs[ii].w;
+				uint32_t ih = (st.height != CSS_DIM_AUTO)
+					       ? (uint32_t)st.height
+					       : ws->imgs[ii].h;
+				/* Clamp to viewport */
+				if (iw > ctx->viewport_w - 8u)
+					iw = ctx->viewport_w - 8u;
+				if (ih > 2048u)
+					ih = 2048u;
+
+				if (ctx->cursor_x != (int32_t)ctx->indent)
+					emit_newline(ctx);
+
+				struct paint_cmd *c = emit_cmd(ctx);
+				if (c) {
+					c->type       = PCMD_IMAGE;
+					c->x          = ctx->cursor_x;
+					c->y          = ctx->cursor_y;
+					c->w          = iw;
+					c->h          = ih;
+					c->img_pixels = ws->imgs[ii].pixels;
+					c->img_src_w  = ws->imgs[ii].w;
+					c->img_src_h  = ws->imgs[ii].h;
+					ctx->cursor_y += (int32_t)ih + 4;
+					ctx->cursor_x  = (int32_t)ctx->indent;
+				}
+				break;
+			}
+		}
+		return;
+	}
+
 	bool is_block = (st.display == CSS_DISPLAY_BLOCK ||
 	                 st.display == CSS_DISPLAY_FLEX);
 
@@ -373,7 +418,7 @@ static void walk_node(struct layout_ctx *ctx,
 		ctx->cursor_x = (int32_t)ctx->indent;
 	}
 
-	/* Push ancestor for child selector matching */
+	/* Push ancestor for child selector matching; inherit image table */
 	struct walk_state child_ws = *ws;
 	if (child_ws.n_ancestors < ANCESTOR_MAX) {
 		uint32_t i;
@@ -445,7 +490,9 @@ void layout_init(struct layout_ctx *ctx, uint32_t viewport_w)
 void layout_document(struct layout_ctx *ctx,
 		      const struct dom_doc *doc,
 		      const struct css_selector_index *author_idx,
-		      struct form_state *fs)
+		      struct form_state *fs,
+		      const struct layout_image *imgs,
+		      uint32_t n_imgs)
 {
 	css_ua_init();
 
@@ -459,6 +506,8 @@ void layout_document(struct layout_ctx *ctx,
 	anx_memset(&ws, 0, sizeof(ws));
 	ws.author_idx = author_idx;
 	ws.fs         = fs;
+	ws.imgs       = imgs;
+	ws.n_imgs     = n_imgs;
 	ws.parent_style.display      = CSS_DISPLAY_BLOCK;
 	ws.parent_style.font_size_px = 14;
 	ws.parent_style.color_fg     = 0x001a2733u;
