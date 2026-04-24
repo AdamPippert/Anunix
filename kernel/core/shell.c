@@ -354,7 +354,7 @@ static void cmd_version(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Anunix 2026.4.19 (kernel monitor)\n");
+	kprintf("Anunix 2026.4.23 (kernel monitor)\n");
 }
 
 /* --- Memory commands --- */

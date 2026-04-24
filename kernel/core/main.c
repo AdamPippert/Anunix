@@ -53,7 +53,7 @@
 #include <anx/jepa.h>
 #include <anx/loop.h>
 
-#define ANX_VERSION "2026.4.17"
+#define ANX_VERSION "2026.4.23"
 
 /*
  * Emergency framebuffer write — draw a colored bar directly to
