@@ -78,6 +78,9 @@ struct layout_ctx {
 		bool     bold, italic;
 	} inline_buf;
 	bool inline_buf_active;
+
+	/* Height of the fully-laid-out document in pixels; set by layout_document(). */
+	uint32_t content_h;
 };
 
 /* Decoded image entry passed to layout_document() for <img> rendering. */

@@ -546,15 +546,39 @@ render:
 			  s->css_index_valid ? &s->css_index : NULL,
 			  &s->forms, limgs, s->n_imgs);
 
+	/* Scroll state: reset position, compute new max */
+	s->scroll_y   = 0;
+	s->scroll_max = ((int32_t)s->layout.content_h > (int32_t)SESSION_FB_H)
+			 ? (int32_t)s->layout.content_h - (int32_t)SESSION_FB_H
+			 : 0;
+
 	/* Paint */
 	paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,
 		     SESSION_FB_W * 4, 0x00EFECe6U);
 	paint_execute(&s->layout, s->fb, SESSION_FB_W, SESSION_FB_H,
-		       SESSION_FB_W * 4);
+		       SESSION_FB_W * 4, 0);
 
 	s->ws_dirty = true;
 	s->event_seq++;
 	return 0;
+}
+
+void session_scroll(struct browser_session *s, int32_t dy)
+{
+	int32_t ny;
+
+	if (!s || !s->fb) return;
+	ny = s->scroll_y + dy;
+	if (ny < 0)             ny = 0;
+	if (ny > s->scroll_max) ny = s->scroll_max;
+	if (ny == s->scroll_y)  return;
+
+	s->scroll_y = ny;
+	paint_clear(s->fb, SESSION_FB_W, SESSION_FB_H,
+		     SESSION_FB_W * 4, 0x00EFECe6U);
+	paint_execute(&s->layout, s->fb, SESSION_FB_W, SESSION_FB_H,
+		       SESSION_FB_W * 4, s->scroll_y);
+	s->ws_dirty = true;
 }
 
 size_t session_snapshot_jpeg(struct browser_session *s,

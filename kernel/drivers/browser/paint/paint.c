@@ -92,42 +92,42 @@ void paint_clear(uint32_t *fb, uint32_t w, uint32_t h,
 
 void paint_execute(const struct layout_ctx *ctx,
 		    uint32_t *fb, uint32_t fb_w, uint32_t fb_h,
-		    uint32_t stride)
+		    uint32_t stride, int32_t scroll_y)
 {
 	uint32_t i;
 
 	for (i = 0; i < ctx->n_cmds; i++) {
 		const struct paint_cmd *c = &ctx->cmds[i];
+		int32_t sy = c->y - scroll_y;
 
 		switch (c->type) {
 		case PCMD_FILL_RECT:
 			fill_rect(fb, fb_w, fb_h, stride,
-				   c->x, c->y, c->w, c->h, c->color);
+				   c->x, sy, c->w, c->h, c->color);
 			break;
 
 		case PCMD_TEXT_RUN:
 			draw_text(fb, fb_w, fb_h, stride,
-				   c->x, c->y, c->text, c->color,
+				   c->x, sy, c->text, c->color,
 				   c->bold, c->font_size_px);
 			break;
 
 		case PCMD_IMAGE: {
-			/* Nearest-neighbor scale from img_src_w×img_src_h → w×h */
 			if (!c->img_pixels || !c->img_src_w || !c->img_src_h ||
 			    !c->w || !c->h)
 				break;
 			uint32_t stride32 = stride / 4;
 			uint32_t dy, dx;
 			for (dy = 0; dy < c->h; dy++) {
-				int32_t py = c->y + (int32_t)dy;
+				int32_t py = sy + (int32_t)dy;
 				if (py < 0 || (uint32_t)py >= fb_h) continue;
-				uint32_t sy = dy * c->img_src_h / c->h;
+				uint32_t src_y = dy * c->img_src_h / c->h;
 				for (dx = 0; dx < c->w; dx++) {
 					int32_t px = c->x + (int32_t)dx;
 					if (px < 0 || (uint32_t)px >= fb_w) continue;
-					uint32_t sx = dx * c->img_src_w / c->w;
+					uint32_t src_x = dx * c->img_src_w / c->w;
 					fb[(uint32_t)py * stride32 + (uint32_t)px] =
-						c->img_pixels[sy * c->img_src_w + sx];
+						c->img_pixels[src_y * c->img_src_w + src_x];
 				}
 			}
 			break;

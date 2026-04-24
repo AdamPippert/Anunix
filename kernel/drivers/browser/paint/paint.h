@@ -14,8 +14,10 @@
  * w, h:   framebuffer dimensions in pixels
  * stride: bytes per row (must be >= w*4)
  */
+/* scroll_y: vertical scroll offset in pixels; commands are shifted up by this amount. */
 void paint_execute(const struct layout_ctx *ctx,
-		    uint32_t *fb, uint32_t w, uint32_t h, uint32_t stride);
+		    uint32_t *fb, uint32_t w, uint32_t h, uint32_t stride,
+		    int32_t scroll_y);
 
 /*
  * Fill the framebuffer with a solid color.

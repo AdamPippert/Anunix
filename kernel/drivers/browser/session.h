@@ -65,6 +65,10 @@ struct browser_session {
 	} imgs[SESSION_IMG_MAX];
 	uint32_t n_imgs;
 
+	/* Scroll state — reset to 0 on each navigate */
+	int32_t  scroll_y;    /* current vertical offset in pixels */
+	int32_t  scroll_max;  /* max scroll_y = content_h - SESSION_FB_H (or 0) */
+
 	/* WebSocket streaming connection (NULL when no subscriber) */
 	struct anx_tcp_conn *ws_conn;
 	bool                 ws_dirty;  /* true when a new frame is ready */
@@ -105,6 +109,12 @@ uint32_t session_count(void);
 
 /* Iterate active sessions; pass NULL to start, returns NULL when done. */
 struct browser_session *session_next(const struct browser_session *prev);
+
+/*
+ * Scroll session by dy pixels (positive = down). Clamps to [0, scroll_max],
+ * re-renders the framebuffer, and marks ws_dirty.
+ */
+void session_scroll(struct browser_session *s, int32_t dy);
 
 /*
  * Navigate session to URL.
