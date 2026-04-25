@@ -70,6 +70,11 @@ void js_engine_init(struct js_engine *eng, struct js_heap *heap,
 		eng->wrap_cache_val[i]  = JV_UNDEF;
 	}
 
+	/* Clear timer queue */
+	eng->next_timer_id = 0;
+	for (i = 0; i < JS_TIMER_MAX; i++)
+		eng->timers[i].id = -1;
+
 	/* Zero compiler */
 	eng->compiler.n_funcs   = 0;
 	eng->compiler.cur_func  = 0;

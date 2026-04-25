@@ -37,6 +37,7 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/net.h>
+#include <anx/arch.h>
 #include "session.h"
 #include "ws.h"
 #include "forms/forms.h"
@@ -976,5 +977,13 @@ void anx_browser_poll(void)
 		struct anx_tcp_conn *conn = pending_rest;
 		pending_rest = NULL;
 		browser_handle_request(conn);
+	}
+
+	/* Fire JS timers for all active sessions */
+	uint32_t now_ms = (uint32_t)(arch_time_now() / 1000000ULL);
+	struct browser_session *s = session_next(NULL);
+	while (s) {
+		js_engine_tick(&s->js, now_ms);
+		s = session_next(s);
 	}
 }

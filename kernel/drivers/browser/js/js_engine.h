@@ -23,6 +23,15 @@
 #include "../html/dom_extra.h"
 
 #define DOM_WRAP_CACHE  64
+#define JS_TIMER_MAX    16
+
+struct js_timer {
+	js_val    fn;
+	uint32_t  fire_at_ms;   /* absolute time in ms */
+	int16_t   id;           /* handle returned to JS; -1 = free slot */
+	uint8_t   repeat;       /* 1 = setInterval, 0 = setTimeout */
+	uint32_t  interval_ms;  /* for setInterval */
+};
 
 struct js_engine {
 	struct js_heap      *heap;          /* borrowed from session */
@@ -35,6 +44,10 @@ struct js_engine {
 	/* Node wrapper cache */
 	struct dom_node     *wrap_cache_node[DOM_WRAP_CACHE];
 	js_val               wrap_cache_val[DOM_WRAP_CACHE];
+
+	/* Deferred timer queue */
+	struct js_timer      timers[JS_TIMER_MAX];
+	int16_t              next_timer_id;
 
 	bool                 initialized;
 };
@@ -57,6 +70,10 @@ void js_engine_reset_script(struct js_engine *eng);
 
 /* Full teardown (engine no longer usable without re-init). */
 void js_engine_destroy(struct js_engine *eng);
+
+/* Fire any timers whose deadline has passed.  now_ms = current time in ms.
+ * Call periodically (e.g. every frame) from the browser poll loop. */
+void js_engine_tick(struct js_engine *eng, uint32_t now_ms);
 
 /* Called by VM for native function calls (C functions stored in js_obj). */
 js_val js_engine_call_native(struct js_engine *eng, js_val callee,
