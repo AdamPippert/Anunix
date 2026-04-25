@@ -19,6 +19,11 @@
 #define ANX_LOOP_MAX_ITERATIONS   256
 #define ANX_LOOP_MAX_CANDIDATES    16
 #define ANX_LOOP_MAX_SCORE_HIST    64
+#define ANX_LOOP_MAX_BRANCHES       8   /* Phase 4: max child branch sessions */
+
+/* Phase 5: memory consolidation constants */
+#define ANX_MEMORY_ACT_COUNT       12   /* matches JEPA_ACTION_DIM */
+#define ANX_MEMORY_WAYPOINTS        8   /* trajectory summary waypoints */
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
@@ -101,6 +106,13 @@ struct anx_loop_session {
 	/* Timestamps (nanoseconds since boot) */
 	uint64_t   started_at_ns;
 	uint64_t   halted_at_ns;
+
+	/* Phase 4: branch/merge scheduler */
+	anx_oid_t  branch_from_oid;           /* parent session OID, or zero if root */
+	uint32_t   branch_depth;              /* 0 for root, 1 for branches */
+	uint32_t   branch_id;                 /* index within parent's child list */
+	anx_oid_t  branch_child_oids[8];      /* child branch session OIDs */
+	uint32_t   branch_child_count;
 };
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +282,43 @@ int anx_loop_counterexample_record(anx_oid_t session_oid,
 				   const char *context_summary);
 
 /* ------------------------------------------------------------------ */
+/* Phase 5: per-action statistics and memory consolidation payload    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Per-action accumulator filled during a single IBAL session.
+ * Passed to anx_loop_consolidate() and then to anx_pal_memory_update().
+ */
+struct anx_loop_session_action_stats {
+	uint32_t  total_proposals;   /* how many times this action was scored */
+	uint32_t  win_count;         /* how many times this action was selected */
+	float     energy_sum;        /* sum of scored energies */
+	float     min_energy;        /* lowest energy seen (sentinel: 1.0) */
+};
+
+/*
+ * Per-action summary packed into the memory payload (EMA-friendly form).
+ * This is what anx_pal_memory_update() consumes.
+ */
+struct anx_loop_action_stats {
+	uint32_t  total_updates;  /* sessions that scored this action */
+	float     win_rate;       /* fraction of sessions where this action won */
+	float     avg_energy;     /* mean scored energy across sessions */
+	float     min_energy;     /* best (lowest) energy seen */
+};
+
+/*
+ * Full memory payload produced by anx_loop_consolidate() for one session.
+ * Passed verbatim to anx_pal_memory_update().
+ */
+struct anx_loop_memory_payload {
+	float                          avg_final_energy;
+	float                          avg_iters;
+	float                          energy_waypoints[ANX_MEMORY_WAYPOINTS];
+	struct anx_loop_action_stats   action_stats[ANX_MEMORY_ACT_COUNT];
+};
+
+/* ------------------------------------------------------------------ */
 /* Session creation parameters                                         */
 /* ------------------------------------------------------------------ */
 
@@ -302,6 +351,12 @@ struct anx_loop_session_info {
 	char                          goal_text[512];	/* Phase 3 */
 	uint64_t                      started_at_ns;
 	uint64_t                      halted_at_ns;
+	/* Phase 4 */
+	anx_oid_t                     branch_from_oid;
+	uint32_t                      branch_depth;
+	uint32_t                      branch_id;
+	anx_oid_t                     branch_child_oids[8];
+	uint32_t                      branch_child_count;
 };
 
 /* ------------------------------------------------------------------ */
@@ -356,5 +411,18 @@ struct anx_loop_session *anx_loop_session_get(anx_oid_t session_oid);
 
 /* Shell command entry point */
 int anx_loop_shell_dispatch(int argc, const char *const *argv);
+
+/* Phase 4: branch/merge scheduler (loop_branch.c) */
+int anx_loop_branch_create(anx_oid_t parent_oid, uint32_t branch_id,
+                           uint32_t max_iterations,
+                           anx_oid_t *branch_oid_out);
+int anx_loop_branch_merge(anx_oid_t parent_oid, anx_oid_t branch_oid);
+int anx_loop_branch_list(anx_oid_t parent_oid, anx_oid_t *oids_out,
+                         uint32_t max_oids, uint32_t *found_out);
+
+/* Phase 5: memory consolidation (loop_memory.c) */
+int anx_loop_consolidate(anx_oid_t session_oid,
+                         const struct anx_loop_session_action_stats *stats,
+                         uint32_t stats_count);
 
 #endif /* ANX_LOOP_H */
