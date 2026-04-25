@@ -44,6 +44,17 @@ void form_state_reset(struct form_state *fs)
 	fs->focused_idx = -1;
 }
 
+void form_state_set_action(struct form_state *fs,
+			    const char *action, const char *method)
+{
+	if (action)
+		anx_strlcpy(fs->action, action, sizeof(fs->action));
+	if (method)
+		anx_strlcpy(fs->method, method, sizeof(fs->method));
+	else
+		anx_strlcpy(fs->method, "GET", sizeof(fs->method));
+}
+
 int32_t form_field_register(struct form_state *fs,
 			      uint8_t type,
 			      const char *name,
@@ -305,17 +316,17 @@ size_t form_collect(const struct form_state *fs, char *buf, size_t cap)
 	return pos;
 }
 
-bool form_submit_action(const struct form_state *fs __attribute__((unused)),
+bool form_submit_action(const struct form_state *fs,
 			  char *action_buf, size_t action_cap,
 			  char *method_buf, size_t method_cap)
 {
-	/*
-	 * In the current single-page model, form action comes from the DOM
-	 * <form action="..." method="..."> element.  Without a DOM back-
-	 * reference stored here, we return sensible defaults.  The browser
-	 * driver augments this during dispatch.
-	 */
-	if (action_buf && action_cap > 0) action_buf[0] = '\0';
-	if (method_buf && method_cap > 0) anx_strlcpy(method_buf, "GET", method_cap);
-	return true;
+	if (action_buf && action_cap > 0)
+		anx_strlcpy(action_buf, fs->action, action_cap);
+	if (method_buf && method_cap > 0) {
+		if (fs->method[0])
+			anx_strlcpy(method_buf, fs->method, method_cap);
+		else
+			anx_strlcpy(method_buf, "GET", method_cap);
+	}
+	return fs->action[0] != '\0';
 }

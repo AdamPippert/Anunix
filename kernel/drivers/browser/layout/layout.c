@@ -418,6 +418,13 @@ static void walk_node(struct layout_ctx *ctx,
 		ctx->cursor_x = (int32_t)ctx->indent;
 	}
 
+	/* Capture <form action="..." method="..."> for submission */
+	if (anx_strcmp(tag, "form") == 0 && ws->fs) {
+		const char *act = dom_attr(n, "action");
+		const char *meth = dom_attr(n, "method");
+		form_state_set_action(ws->fs, act ? act : "", meth);
+	}
+
 	/* Push ancestor for child selector matching; inherit image table */
 	struct walk_state child_ws = *ws;
 	if (child_ws.n_ancestors < ANCESTOR_MAX) {
