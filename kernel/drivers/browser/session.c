@@ -21,6 +21,7 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/arch.h>
 #include <anx/net.h>
 #include <anx/http.h>
 
@@ -79,7 +80,7 @@ struct browser_session *session_create(void)
 		     SESSION_FB_W * 4, 0x00EFECe6U);
 
 	s->active     = true;
-	s->created_at = 0;  /* TODO: real timestamp from RTC */
+	s->created_at = arch_time_now() / 1000000000ULL;  /* ns → Unix seconds */
 	s->ws_dirty   = true;
 
 	kprintf("browser: created session %s\n", s->session_id);
