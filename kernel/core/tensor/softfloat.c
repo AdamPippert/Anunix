@@ -266,3 +266,23 @@ bool anx_sf_gt(uint32_t a, uint32_t b)
 {
 	return anx_sf_lt(b, a);
 }
+
+/* float32 square root via Newton-Raphson: r_{n+1} = (r_n + x/r_n) / 2 */
+uint32_t anx_sf_sqrt(uint32_t a)
+{
+	uint32_t i;
+	uint32_t r;
+
+	if (sf_is_zero(a) || sf_sign(a))
+		return anx_sf_zero(); /* sqrt(0) = 0; sqrt(negative) = 0 */
+
+	/* Seed: start at a/2 */
+	r = anx_sf_div(a, anx_sf_from_int(2));
+	for (i = 0; i < 16; i++) {
+		uint32_t next = anx_sf_div(
+			anx_sf_add(r, anx_sf_div(a, r)),
+			anx_sf_from_int(2));
+		r = next;
+	}
+	return r;
+}

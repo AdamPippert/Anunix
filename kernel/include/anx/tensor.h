@@ -133,6 +133,7 @@ bool     anx_sf_lt(uint32_t a, uint32_t b);
 bool     anx_sf_gt(uint32_t a, uint32_t b);
 uint32_t anx_sf_abs(uint32_t a);
 uint32_t anx_sf_zero(void);
+uint32_t anx_sf_sqrt(uint32_t a);
 
 /* --- BRIN computation --- */
 

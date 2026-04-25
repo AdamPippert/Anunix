@@ -5,6 +5,7 @@
 #include "js_vm.h"
 #include "js_obj.h"
 #include "js_str.h"
+#include "js_std.h"
 #include <anx/string.h>
 #include <anx/kprintf.h>
 
@@ -386,7 +387,7 @@ js_val js_vm_exec(struct js_vm *vm,
 		case OP_MUL: { js_val b = POP(); js_val a = POP(); PUSH(jv_double(val_to_num(a) * val_to_num(b))); break; }
 		case OP_DIV: { js_val b = POP(); js_val a = POP(); double db = val_to_num(b); PUSH(jv_double(db == 0.0 ? 0.0/0.0 : val_to_num(a) / db)); break; }
 		case OP_MOD: { js_val b = POP(); js_val a = POP(); double db = val_to_num(b); int32_t ia = val_to_i32(a), ib = val_to_i32(b); PUSH(ib ? jv_int(ia % ib) : JV_NAN); (void)db; break; }
-		case OP_POW: { js_val b = POP(); js_val a = POP(); double da = val_to_num(a), db = val_to_num(b); /* simple pow via log? skip for now */ PUSH(jv_double(da * db)); break; }
+		case OP_POW: { js_val b = POP(); js_val a = POP(); PUSH(jv_double(js_math_pow(val_to_num(a), val_to_num(b)))); break; }
 		case OP_NEG: { js_val a = POP(); PUSH(jv_double(-val_to_num(a))); break; }
 		case OP_POS: { js_val a = POP(); PUSH(jv_double(val_to_num(a))); break; }
 		case OP_BITAND: { int32_t b = val_to_i32(POP()); int32_t a = val_to_i32(POP()); PUSH(jv_int(a & b)); break; }

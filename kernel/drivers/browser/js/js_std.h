@@ -13,4 +13,7 @@ struct js_engine;
  * isNaN, isFinite, String(), Number(), Boolean(). */
 void js_std_init(struct js_engine *eng);
 
+/* Exposed for OP_POW in js_vm.c */
+double js_math_pow(double base, double exp);
+
 #endif /* ANX_JS_STD_H */
