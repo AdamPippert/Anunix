@@ -193,7 +193,27 @@ js_val js_dom_native_add_listener(struct js_engine *eng, js_val this_val,
 js_val js_dom_native_remove_listener(struct js_engine *eng, js_val this_val,
                                      js_val *args, uint8_t argc)
 {
-	(void)eng; (void)this_val; (void)args; (void)argc;
+	(void)eng;
+	if (argc < 2 || !jv_is_str(args[0])) return JV_UNDEF;
+	struct dom_node *node = unwrap_node(eng, this_val);
+	if (!node) return JV_UNDEF;
+	const struct js_str *ev = jv_to_str(args[0]);
+	char event[32];
+	uint32_t cp = ev->len < 31 ? ev->len : 31;
+	anx_memcpy(event, js_str_data(ev), cp);
+	event[cp] = '\0';
+	uint32_t i;
+	for (i = 0; i < s_n_listeners; i++) {
+		if (s_listeners[i].node == node &&
+		    anx_strcmp(s_listeners[i].event, event) == 0) {
+			/* Shift remaining entries down */
+			uint32_t j;
+			for (j = i; j + 1 < s_n_listeners; j++)
+				s_listeners[j] = s_listeners[j + 1];
+			s_n_listeners--;
+			return JV_UNDEF;
+		}
+	}
 	return JV_UNDEF;
 }
 
