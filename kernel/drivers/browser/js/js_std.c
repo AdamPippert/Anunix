@@ -63,6 +63,7 @@ static double _exp(double x)
 	return r;
 }
 
+/* Exposed as js_math_pow() for OP_POW in js_vm.c */
 static double _pow(double base, double e)
 {
 	if (e == 0.0) return 1.0;
@@ -512,6 +513,8 @@ static js_val fn_number(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
 
 /* Forward: js_engine.c provides make_native wrapper */
 extern js_val js_engine_make_native(struct js_engine *eng, js_native_fn fn);
+
+double js_math_pow(double base, double exp) { return _pow(base, exp); }
 
 void js_std_init(struct js_engine *eng)
 {

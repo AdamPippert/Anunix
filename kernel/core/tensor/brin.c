@@ -60,8 +60,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 				meta->stat_variance_bits,
 				mean_sq ^ 0x80000000U); /* negate */
 		}
-		meta->stat_l2_norm_bits = anx_sf_from_int(sum_sq);
-		/* TODO: sqrt for proper L2 norm */
+		meta->stat_l2_norm_bits = anx_sf_sqrt(anx_sf_from_int(sum_sq));
 		meta->stat_min_bits = anx_sf_from_int(min_val);
 		meta->stat_max_bits = anx_sf_from_int(max_val);
 		meta->stat_sparsity_bits = anx_sf_div(
