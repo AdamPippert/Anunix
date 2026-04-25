@@ -319,18 +319,82 @@ static js_val native_console_log(struct js_engine *eng, js_val this_val,
 	return JV_UNDEF;
 }
 
-/* ── setTimeout stub ───────────────────────────────────────────────── */
+/* ── Deferred timer queue ──────────────────────────────────────────── */
+
+static js_val timer_register(struct js_engine *eng, js_val *args, uint8_t argc,
+                              uint8_t repeat)
+{
+	if (argc < 1) return jv_int(-1);
+	uint32_t delay_ms = (argc >= 2) ? (uint32_t)jv_to_double(args[1]) : 0;
+
+	/* Find a free slot */
+	uint32_t i;
+	for (i = 0; i < JS_TIMER_MAX; i++) {
+		if (eng->timers[i].id < 0) {
+			struct js_timer *t = &eng->timers[i];
+			t->fn           = args[0];
+			t->fire_at_ms   = 0; /* filled in by js_engine_tick caller */
+			t->id           = ++eng->next_timer_id;
+			t->repeat       = repeat;
+			t->interval_ms  = delay_ms;
+			/* fire_at_ms will be set on next tick using stored interval */
+			t->fire_at_ms   = (uint32_t)(0xFFFFFFFFu); /* sentinel: not started */
+			return jv_int((int32_t)t->id);
+		}
+	}
+	return jv_int(-1);
+}
 
 static js_val native_set_timeout(struct js_engine *eng, js_val this_val,
                                   js_val *args, uint8_t argc)
 {
 	(void)this_val;
-	/* Stub: execute callback immediately with 0 args */
-	if (argc < 1) return jv_int(0);
-	js_val no_args[1];
-	js_vm_call(&eng->vm, args[0], JV_UNDEF, no_args, 0,
-	           eng->compiler.funcs, eng->compiler.n_funcs);
-	return jv_int(1);
+	return timer_register(eng, args, argc, 0);
+}
+
+static js_val native_set_interval(struct js_engine *eng, js_val this_val,
+                                   js_val *args, uint8_t argc)
+{
+	(void)this_val;
+	return timer_register(eng, args, argc, 1);
+}
+
+static js_val native_clear_timeout(struct js_engine *eng, js_val this_val,
+                                    js_val *args, uint8_t argc)
+{
+	(void)eng; (void)this_val;
+	if (argc < 1) return JV_UNDEF;
+	int16_t id = (int16_t)jv_to_int(args[0]);
+	uint32_t i;
+	for (i = 0; i < JS_TIMER_MAX; i++) {
+		if (eng->timers[i].id == id) {
+			eng->timers[i].id = -1;
+			return JV_UNDEF;
+		}
+	}
+	return JV_UNDEF;
+}
+
+void js_engine_tick(struct js_engine *eng, uint32_t now_ms)
+{
+	uint32_t i;
+	for (i = 0; i < JS_TIMER_MAX; i++) {
+		struct js_timer *t = &eng->timers[i];
+		if (t->id < 0) continue;
+		/* First tick for this timer: initialize fire_at_ms */
+		if (t->fire_at_ms == 0xFFFFFFFFu)
+			t->fire_at_ms = now_ms + t->interval_ms;
+		if (now_ms < t->fire_at_ms) continue;
+		/* Fire */
+		js_val no_args[1];
+		js_vm_call(&eng->vm, t->fn, JV_UNDEF, no_args, 0,
+		           eng->compiler.funcs, eng->compiler.n_funcs);
+		if (t->repeat) {
+			t->fire_at_ms = now_ms + t->interval_ms;
+		} else {
+			t->id = -1; /* one-shot: clear */
+		}
+	}
 }
 
 /* ── init ──────────────────────────────────────────────────────────── */
@@ -374,11 +438,15 @@ void js_dom_init(struct js_engine *eng, struct dom_doc *doc)
 	/* window = global proxy */
 	js_obj_set_cstr(eng->heap, eng->vm.globals,"window", jv_obj(eng->vm.globals));
 
-	/* setTimeout */
-	js_obj_set_cstr(eng->heap, eng->vm.globals,"setTimeout",
+	/* Timer globals */
+	js_obj_set_cstr(eng->heap, eng->vm.globals, "setTimeout",
 	                make_native(eng, native_set_timeout));
-	js_obj_set_cstr(eng->heap, eng->vm.globals,"clearTimeout",
-	                make_native(eng, native_set_timeout));
+	js_obj_set_cstr(eng->heap, eng->vm.globals, "setInterval",
+	                make_native(eng, native_set_interval));
+	js_obj_set_cstr(eng->heap, eng->vm.globals, "clearTimeout",
+	                make_native(eng, native_clear_timeout));
+	js_obj_set_cstr(eng->heap, eng->vm.globals, "clearInterval",
+	                make_native(eng, native_clear_timeout));
 }
 
 /* ── Event dispatch ────────────────────────────────────────────────── */
