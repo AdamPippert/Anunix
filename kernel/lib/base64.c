@@ -1,87 +1,66 @@
 /*
- * base64.c — Standard base64 decode (RFC 4648 §4).
- *
- * Minimal implementation: no line-length enforcement, no streaming.
- * Padding ('=') is accepted but not required.
+ * base64.c — Base64 encode / decode (RFC 4648, standard alphabet).
  */
 
-#include <anx/base64.h>
-#include <anx/types.h>
+#include "base64.h"
+#include <anx/string.h>
 
-static int8_t b64_char_to_val(char c)
+static const char B64_ENC[] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+size_t anx_base64_encode(const uint8_t *src, size_t src_len,
+			  char *dst, size_t dst_cap)
 {
-	if (c >= 'A' && c <= 'Z') return (int8_t)(c - 'A');
-	if (c >= 'a' && c <= 'z') return (int8_t)(c - 'a' + 26);
-	if (c >= '0' && c <= '9') return (int8_t)(c - '0' + 52);
-	if (c == '+')              return 62;
-	if (c == '/')              return 63;
+	size_t i, out = 0;
+	uint32_t triple;
+
+	for (i = 0; i < src_len; i += 3) {
+		size_t rem = src_len - i;
+
+		triple  = (uint32_t)src[i] << 16;
+		if (rem > 1) triple |= (uint32_t)src[i + 1] << 8;
+		if (rem > 2) triple |= (uint32_t)src[i + 2];
+
+		if (out + 4 > dst_cap)
+			break;
+		dst[out++] = B64_ENC[(triple >> 18) & 0x3F];
+		dst[out++] = B64_ENC[(triple >> 12) & 0x3F];
+		dst[out++] = (rem > 1) ? B64_ENC[(triple >> 6) & 0x3F] : '=';
+		dst[out++] = (rem > 2) ? B64_ENC[(triple     ) & 0x3F] : '=';
+	}
+	return out;
+}
+
+static int b64_val(char c)
+{
+	if (c >= 'A' && c <= 'Z') return c - 'A';
+	if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+	if (c >= '0' && c <= '9') return c - '0' + 52;
+	if (c == '+') return 62;
+	if (c == '/') return 63;
 	return -1;
 }
 
-int anx_base64_decode(const char *src, uint32_t src_len,
-		      uint8_t *dst, uint32_t dst_cap, uint32_t *dst_len)
+size_t anx_base64_decode(const char *src, size_t src_len,
+			  uint8_t *dst, size_t dst_cap)
 {
-	uint32_t out = 0;
-	uint32_t i = 0;
+	size_t out = 0;
+	size_t i;
 
-	while (i < src_len) {
-		int8_t v0, v1, v2, v3;
-		char c0, c1, c2, c3;
+	for (i = 0; i + 3 < src_len; i += 4) {
+		int a = b64_val(src[i]);
+		int b = b64_val(src[i + 1]);
+		int c = (src[i + 2] != '=') ? b64_val(src[i + 2]) : 0;
+		int d = (src[i + 3] != '=') ? b64_val(src[i + 3]) : 0;
 
-		/* Skip whitespace */
-		while (i < src_len && (src[i] == ' ' || src[i] == '\n' ||
-		                        src[i] == '\r' || src[i] == '\t'))
-			i++;
-		if (i >= src_len)
-			break;
+		if (a < 0 || b < 0 || c < 0 || d < 0)
+			return 0;
 
-		c0 = src[i++];
-		if (c0 == '=') break;
-
-		/* Need at least 2 chars for one output byte */
-		while (i < src_len && (src[i] == ' ' || src[i] == '\n' ||
-		                        src[i] == '\r' || src[i] == '\t'))
-			i++;
-		if (i >= src_len)
-			return ANX_EINVAL;
-
-		c1 = src[i++];
-		if (c1 == '=') return ANX_EINVAL;
-
-		while (i < src_len && (src[i] == ' ' || src[i] == '\n' ||
-		                        src[i] == '\r' || src[i] == '\t'))
-			i++;
-		c2 = (i < src_len) ? src[i++] : '=';
-
-		while (i < src_len && (src[i] == ' ' || src[i] == '\n' ||
-		                        src[i] == '\r' || src[i] == '\t'))
-			i++;
-		c3 = (i < src_len) ? src[i++] : '=';
-
-		v0 = b64_char_to_val(c0);
-		v1 = b64_char_to_val(c1);
-		if (v0 < 0 || v1 < 0)
-			return ANX_EINVAL;
-
-		if (out >= dst_cap) return ANX_ENOMEM;
-		dst[out++] = (uint8_t)((v0 << 2) | (v1 >> 4));
-
-		if (c2 != '=') {
-			v2 = b64_char_to_val(c2);
-			if (v2 < 0) return ANX_EINVAL;
-			if (out >= dst_cap) return ANX_ENOMEM;
-			dst[out++] = (uint8_t)((v1 << 4) | (v2 >> 2));
-
-			if (c3 != '=') {
-				v3 = b64_char_to_val(c3);
-				if (v3 < 0) return ANX_EINVAL;
-				if (out >= dst_cap) return ANX_ENOMEM;
-				dst[out++] = (uint8_t)((v2 << 6) | v3);
-			}
-		}
+		if (out < dst_cap) dst[out++] = (uint8_t)((a << 2) | (b >> 4));
+		if (src[i + 2] != '=' && out < dst_cap)
+			dst[out++] = (uint8_t)((b << 4) | (c >> 2));
+		if (src[i + 3] != '=' && out < dst_cap)
+			dst[out++] = (uint8_t)((c << 6) | d);
 	}
-
-	if (dst_len)
-		*dst_len = out;
-	return ANX_OK;
+	return out;
 }
