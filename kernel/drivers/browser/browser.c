@@ -443,6 +443,39 @@ static void handle_whitelist_remove(struct anx_tcp_conn *conn,
 	send_204(conn);
 }
 
+/* ── Form submission ─────────────────────────────────────────────── */
+
+/*
+ * Build a submission URL from the form's action and GET-encode the
+ * field values, then navigate the session to that URL.
+ * action="" means submit to the current page URL.
+ */
+static void do_form_submit(struct browser_session *s)
+{
+	char action[512], method[8], qbuf[1024];
+	char nav_url[1024];
+	uint32_t off;
+
+	form_submit_action(&s->forms, action, sizeof(action),
+			   method, sizeof(method));
+	form_collect(&s->forms, qbuf, sizeof(qbuf));
+
+	/* If no action URL, submit back to the current page */
+	if (!action[0])
+		anx_strlcpy(action, s->current_url, sizeof(action));
+
+	/* Only GET encoding supported for now (POST needs body + HTTP method) */
+	off  = 0;
+	off += anx_strlcpy(nav_url + off, action,  sizeof(nav_url) - off);
+	if (qbuf[0]) {
+		off += anx_strlcpy(nav_url + off, "?",    sizeof(nav_url) - off);
+		off += anx_strlcpy(nav_url + off, qbuf,   sizeof(nav_url) - off);
+	}
+	(void)off;
+	kprintf("browser: form submit → %s\n", nav_url);
+	session_navigate(s, nav_url);
+}
+
 /* ── WebSocket stream ────────────────────────────────────────────── */
 
 /*
@@ -527,6 +560,10 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 						int32_t hit = form_click(&s->forms, cx, cy);
 						/* Re-render to show focus change */
 						if (hit >= 0) {
+							/* Submit button click → navigate */
+							if (s->forms.fields[hit].type ==
+							    FORM_TYPE_SUBMIT)
+								do_form_submit(s);
 							layout_init(&s->layout, SESSION_FB_W);
 							{
 								struct layout_image limgs2[SESSION_IMG_MAX];
@@ -590,22 +627,11 @@ static void run_ws_stream(struct anx_tcp_conn *conn,
 								       s->scroll_y);
 							s->ws_dirty = true;
 						}
-						/* Enter in a submit field = form submission */
+						/* Enter in a text/submit field triggers submission */
 						if (!consumed &&
 						    anx_strcmp(key, "Enter") == 0 &&
-						    s->forms.focused_idx >= 0) {
-							struct form_field *ff =
-								&s->forms.fields[s->forms.focused_idx];
-							if (ff->type == FORM_TYPE_SUBMIT ||
-							    ff->type == FORM_TYPE_RESET) {
-								/* Treat as navigate with form data */
-								char qbuf[1024];
-								form_collect(&s->forms, qbuf, sizeof(qbuf));
-								/* For now, just log; full form submit
-								   requires knowing the action URL */
-								kprintf("browser: form submit: %s\n", qbuf);
-							}
-						}
+						    s->forms.focused_idx >= 0)
+							do_form_submit(s);
 					}
 
 				} else if (anx_strncmp(msg,

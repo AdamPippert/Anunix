@@ -62,11 +62,19 @@ struct form_state {
 	struct form_field fields[FORM_FIELDS_MAX];
 	uint32_t          n_fields;
 	int32_t           focused_idx;   /* -1 = none */
+
+	/* <form action="..." method="..."> for the current page. */
+	char     action[512];
+	char     method[8];              /* "GET" or "POST" */
 };
 
 /* ── Lifecycle ────────────────────────────────────────────────────── */
 
 void form_state_reset(struct form_state *fs);
+
+/* Record the action URL and method from a <form> element. */
+void form_state_set_action(struct form_state *fs,
+			    const char *action, const char *method);
 
 /*
  * Register a form element discovered during layout.

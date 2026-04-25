@@ -14,6 +14,7 @@
 #include "pii/pii_whitelist.h"
 #include "js/js_engine.h"
 #include "fetch/resource_loader.h"
+#include "fetch/https_proxy.h"
 #include "image/webp.h"
 #include "image/jpeg.h"
 #include "image/png.h"
@@ -353,9 +354,12 @@ int session_navigate(struct browser_session *s, const char *url)
 		goto render;
 	}
 
-	/* Fetch the page (HTTP only for now; HTTPS via kernel TLS proxy later) */
+	/* Fetch the page — HTTP directly, HTTPS through local CONNECT proxy. */
 	anx_memset(&resp, 0, sizeof(resp));
-	ret = anx_http_get(host, port, path, &resp);
+	if (anx_strncmp(url, "https://", 8) == 0)
+		ret = https_fetch(host, path, &resp);
+	else
+		ret = anx_http_get(host, port, path, &resp);
 	if (ret != 0 || !resp.body || resp.status_code < 200 || resp.status_code > 399) {
 		kprintf("browser: fetch failed (ret=%d status=%u)\n",
 			ret, (uint32_t)resp.status_code);

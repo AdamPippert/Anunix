@@ -19,6 +19,7 @@
  */
 
 #include "resource_loader.h"
+#include "https_proxy.h"
 #include <anx/alloc.h>
 #include <anx/http.h>
 #include <anx/string.h>
@@ -76,21 +77,27 @@ static void resolve_url(const char *base, const char *rel,
 }
 
 /*
- * Parse host, port, and path from an http:// URL.
+ * Parse host, port, and path from an http:// or https:// URL.
+ * Sets *is_https on output.
  * Returns 0 on success, -1 if unsupported scheme or malformed.
  */
 static int rl_parse_url(const char *url,
 			  char *host, uint32_t host_cap,
 			  uint16_t *port,
-			  char *path, uint32_t path_cap)
+			  char *path, uint32_t path_cap,
+			  bool *is_https)
 {
 	const char *p = url;
 
+	*is_https = false;
 	if (anx_strncmp(p, "http://", 7) == 0) {
 		p += 7;
 		*port = 80;
+	} else if (anx_strncmp(p, "https://", 8) == 0) {
+		p += 8;
+		*port     = 443;
+		*is_https = true;
 	} else {
-		/* https:// and others not supported */
 		return -1;
 	}
 
@@ -291,8 +298,9 @@ static uint32_t fetch_by_type(struct resource_queue *q, uint8_t type)
 
 		char     host[256], path[512];
 		uint16_t port;
+		bool     is_https;
 		if (rl_parse_url(r->url, host, sizeof(host), &port,
-				  path, sizeof(path)) != 0) {
+				  path, sizeof(path), &is_https) != 0) {
 			r->failed = true;
 			kprintf("resource_loader: skip %s (unsupported scheme)\n",
 				r->url);
@@ -301,7 +309,8 @@ static uint32_t fetch_by_type(struct resource_queue *q, uint8_t type)
 
 		struct anx_http_response resp;
 		anx_memset(&resp, 0, sizeof(resp));
-		int rc = anx_http_get(host, port, path, &resp);
+		int rc = is_https ? https_fetch(host, path, &resp)
+			          : anx_http_get(host, port, path, &resp);
 		if (rc == 0 && resp.body &&
 		    resp.status_code >= 200 && resp.status_code < 300) {
 			r->body     = resp.body;
