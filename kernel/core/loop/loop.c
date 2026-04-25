@@ -96,12 +96,20 @@ int anx_loop_session_create(const struct anx_loop_create_params *params,
 
 	anx_spin_lock(&g_loop_lock);
 
-	/* Find a free slot */
+	/* Find a free slot; also reclaim committed/aborted sessions */
 	s = NULL;
 	for (i = 0; i < ANX_LOOP_MAX_SESSIONS; i++) {
 		if (!g_loop_sessions[i].in_use) {
 			s = &g_loop_sessions[i];
 			break;
+		}
+		/* Reclaim terminal sessions that are no longer needed */
+		if (g_loop_sessions[i].status == ANX_LOOP_COMMITTED ||
+		    g_loop_sessions[i].status == ANX_LOOP_ABORTED  ||
+		    g_loop_sessions[i].status == ANX_LOOP_HALTED) {
+			g_loop_sessions[i].in_use = false;
+			if (!s)
+				s = &g_loop_sessions[i];
 		}
 	}
 	if (!s) {
