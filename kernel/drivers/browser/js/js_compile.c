@@ -648,20 +648,49 @@ static void compile_node(struct js_compiler *c, uint16_t idx)
 		break;
 	}
 	case ND_WHILE: {
+		/* Save outer break/continue counts */
+		uint32_t saved_brk = c->n_break_jumps;
+		uint32_t saved_cont = c->n_continue_jumps;
+
 		uint32_t loop_start = cur_fn(c)->code_len;
 		compile_expr(c, n->c[0]);
 		uint32_t j_end = emit_jump(c, OP_JUMP_IF_FALSE);
 		compile_node(c, n->c[1]);
-		/* Back-jump */
+
+		/* Patch continue jumps to loop_start */
+		uint32_t i;
+		for (i = saved_cont; i < c->n_continue_jumps; i++) {
+			uint32_t pos = c->continue_jumps[i];
+			int16_t off = (int16_t)(loop_start - (pos + 2));
+			cur_fn(c)->code[pos]     = (uint8_t)(off & 0xFF);
+			cur_fn(c)->code[pos + 1] = (uint8_t)((off >> 8) & 0xFF);
+		}
+		c->n_continue_jumps = saved_cont;
+
+		/* Back-jump to condition */
 		emit1(c, OP_JUMP);
 		uint32_t back_pos = cur_fn(c)->code_len;
 		int16_t back = (int16_t)(loop_start - (back_pos + 2));
 		emit1(c, (uint8_t)(back & 0xFF));
 		emit1(c, (uint8_t)((back >> 8) & 0xFF));
+
 		patch_jump(c, j_end);
+		/* Patch break jumps to here (after loop) */
+		uint32_t after = cur_fn(c)->code_len;
+		for (i = saved_brk; i < c->n_break_jumps; i++) {
+			uint32_t pos = c->break_jumps[i];
+			int16_t off = (int16_t)(after - (pos + 2));
+			cur_fn(c)->code[pos]     = (uint8_t)(off & 0xFF);
+			cur_fn(c)->code[pos + 1] = (uint8_t)((off >> 8) & 0xFF);
+		}
+		c->n_break_jumps = saved_brk;
 		break;
 	}
 	case ND_FOR: {
+		/* Save outer break/continue counts */
+		uint32_t saved_brk = c->n_break_jumps;
+		uint32_t saved_cont = c->n_continue_jumps;
+
 		if (n->c[0] != JS_NODE_NULL) compile_node(c, n->c[0]);
 		uint32_t loop_start = cur_fn(c)->code_len;
 		uint32_t j_end = 0;
@@ -671,6 +700,18 @@ static void compile_node(struct js_compiler *c, uint16_t idx)
 			j_end = emit_jump(c, OP_JUMP_IF_FALSE);
 		}
 		compile_node(c, n->c[3]);
+
+		/* continue target: the update expression */
+		uint32_t update_target = cur_fn(c)->code_len;
+		uint32_t i;
+		for (i = saved_cont; i < c->n_continue_jumps; i++) {
+			uint32_t pos = c->continue_jumps[i];
+			int16_t off = (int16_t)(update_target - (pos + 2));
+			cur_fn(c)->code[pos]     = (uint8_t)(off & 0xFF);
+			cur_fn(c)->code[pos + 1] = (uint8_t)((off >> 8) & 0xFF);
+		}
+		c->n_continue_jumps = saved_cont;
+
 		if (n->c[2] != JS_NODE_NULL) {
 			compile_expr(c, n->c[2]);
 			emit1(c, OP_POP);
@@ -681,6 +722,16 @@ static void compile_node(struct js_compiler *c, uint16_t idx)
 		emit1(c, (uint8_t)(back & 0xFF));
 		emit1(c, (uint8_t)((back >> 8) & 0xFF));
 		if (has_cond) patch_jump(c, j_end);
+
+		/* Patch break jumps to after loop */
+		uint32_t after = cur_fn(c)->code_len;
+		for (i = saved_brk; i < c->n_break_jumps; i++) {
+			uint32_t pos = c->break_jumps[i];
+			int16_t off = (int16_t)(after - (pos + 2));
+			cur_fn(c)->code[pos]     = (uint8_t)(off & 0xFF);
+			cur_fn(c)->code[pos + 1] = (uint8_t)((off >> 8) & 0xFF);
+		}
+		c->n_break_jumps = saved_brk;
 		break;
 	}
 	case ND_THROW: {
@@ -713,8 +764,18 @@ static void compile_node(struct js_compiler *c, uint16_t idx)
 			compile_node(c, n->c[2]);
 		break;
 	}
-	case ND_BREAK:    emit_i16(c, OP_JUMP, 0); break; /* patched by loop — stub */
-	case ND_CONTINUE: emit_i16(c, OP_JUMP, 0); break;
+	case ND_BREAK: {
+		uint32_t pos = emit_jump(c, OP_JUMP);
+		if (c->n_break_jumps < JS_JUMP_LIST_MAX)
+			c->break_jumps[c->n_break_jumps++] = pos;
+		break;
+	}
+	case ND_CONTINUE: {
+		uint32_t pos = emit_jump(c, OP_JUMP);
+		if (c->n_continue_jumps < JS_JUMP_LIST_MAX)
+			c->continue_jumps[c->n_continue_jumps++] = pos;
+		break;
+	}
 	case ND_EMPTY:    emit1(c, OP_NOP); break;
 	case ND_LIST:     compile_node(c, n->c[0]); break;
 
@@ -730,13 +791,15 @@ static void compile_node(struct js_compiler *c, uint16_t idx)
 bool js_compile(struct js_compiler *c, struct js_parser *p,
                 struct js_heap *h, uint16_t root)
 {
-	c->parser      = p;
-	c->heap        = h;
-	c->error       = false;
-	c->error_msg   = NULL;
-	c->n_funcs     = 1;   /* func 0 = script body */
-	c->cur_func    = 0;
-	c->scope_depth = 0;
+	c->parser           = p;
+	c->heap             = h;
+	c->error            = false;
+	c->error_msg        = NULL;
+	c->n_funcs          = 1;   /* func 0 = script body */
+	c->cur_func         = 0;
+	c->scope_depth      = 0;
+	c->n_break_jumps    = 0;
+	c->n_continue_jumps = 0;
 
 	struct js_func_proto *fn = &c->funcs[0];
 	fn->code_len = 0;
