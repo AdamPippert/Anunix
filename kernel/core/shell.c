@@ -41,6 +41,7 @@
 #include <anx/acpi.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/browser.h>
 #include <anx/base64.h>
 #include <anx/e1000.h>
 #include <anx/mt7925.h>
@@ -140,6 +141,7 @@ static int kgetline(char *buf, size_t size)
 			anx_e1000_poll();
 			anx_mt7925_poll();
 			anx_browser_cell_tick();
+			anx_browser_poll();
 		}
 
 		c = arch_console_getc();

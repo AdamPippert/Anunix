@@ -31,12 +31,16 @@ FONT_NAME   = 'ANXSchoolbook'
 FAMILY      = 'ANX Schoolbook'
 W           = 12      # glyph width (pixels)
 H           = 24      # glyph height (pixels)
-BL          = 18      # baseline row (0 = top)
+BL          = 16      # baseline row (0 = top).  Most letters sit on row 16.
 UPM         = 2400    # units per em  (100 units per pixel)
 PX          = 100     # units per pixel = UPM / H
 ADVANCE     = W * PX  # horizontal advance = 1200
-ASCENDER    = BL * PX                  # 1800
-DESCENDER   = -(H - BL - 1) * PX      # -500
+ASCENDER    = BL * PX                  # 1600  (rows 0-15 above baseline)
+DESCENDER   = -(H - BL - 1) * PX      # -700  (rows 17-23 below baseline)
+# x-height: lowercase 'o' top is at row 10  → 600 units above baseline
+# cap height: uppercase letters top at row 3 → 1300 units above baseline
+XHEIGHT     = (BL - 10) * PX   # 600
+CAPHEIGHT   = (BL -  3) * PX   # 1300
 FIRST       = 0x20
 LAST        = 0x7E
 
@@ -538,16 +542,15 @@ reg(0x41,
     '.#........#.',
     '.#........#.',
     '##........##',
-    '.#........#.',
-    '.#........#.',
+    '#..........#',
+    '#..........#',
     '###......###',
     __,__,__,__,__,__)
 
 # 0x42  B
 reg(0x42,
-    __,__,
-    '####........',
-    '##########..',
+    __,__,__,
+    '.#########..',
     '.##.....##..',
     '.##.....##..',
     '.##.....##..',
@@ -558,7 +561,7 @@ reg(0x42,
     '.##......##.',
     '.##......##.',
     '.##......##.',
-    '##########..',
+    '.#########..',
     '####........',
     __,__,__,__,__,__)
 
@@ -581,9 +584,8 @@ reg(0x43,
 
 # 0x44  D
 reg(0x44,
-    __,__,
-    '####........',
-    '#########...',
+    __,__,__,
+    '.########...',
     '.##.....##..',
     '.##.....###.',
     '.##......##.',
@@ -594,15 +596,14 @@ reg(0x44,
     '.##......##.',
     '.##.....###.',
     '.##.....##..',
-    '#########...',
+    '.########...',
     '####........',
     __,__,__,__,__,__)
 
 # 0x45  E
 reg(0x45,
-    __,__,
-    '####........',
-    '###########.',
+    __,__,__,
+    '.##########.',
     '.##.........',
     '.##.........',
     '.##.........',
@@ -613,7 +614,7 @@ reg(0x45,
     '.##.........',
     '.##.........',
     '.##.........',
-    '###########.',
+    '.##########.',
     '####........',
     __,__,__,__,__,__)
 
@@ -749,8 +750,8 @@ reg(0x4D,
     '##........##',
     '##........##',
     '##........##',
-    '.##......##.',
-    '.##......##.',
+    '##........##',
+    '##........##',
     '####....####',
     __,__,__,__,__,__)
 
@@ -919,8 +920,7 @@ reg(0x57,
     '##..####..##',
     '##.##..##.##',
     '###......###',
-    '.##......##.',
-    '####....####',
+    '##........##',
     __,__,__,__,__,__)
 
 # 0x58  X
@@ -1113,7 +1113,7 @@ reg(0x64,
     '.##......##.',
     '.##......##.',
     '.##.....###.',
-    '..########..',
+    '...#######..',
     __,__,__,__,__,__)
 
 # 0x65  e
@@ -1144,9 +1144,8 @@ reg(0x66,
     '...##.......',
     '...##.......',
     '...##.......',
-    '...##.......',
-    '...##.......',
-    '.#####......')
+    '.#####......',
+    __,__,__,__,__,__)
 
 # 0x67  g
 reg(0x67,
@@ -1253,9 +1252,8 @@ reg(0x6C,
     '.....##.....',
     '.....##.....',
     '.....##.....',
-    '.....##.....',
-    '.....##.....',
-    '...######...')
+    '...######...',
+    __,__,__,__,__,__)
 
 # 0x6D  m
 reg(0x6D,
@@ -1364,9 +1362,8 @@ reg(0x74,
     '....##......',
     '....##......',
     '....##......',
-    '....##......',
-    '....##......',
-    '.....#####..')
+    '.....#####..',
+    __,__,__,__,__,__)
 
 # 0x75  u
 reg(0x75,
@@ -1603,34 +1600,37 @@ def write_ttf(path: Path) -> None:
         glyph_order.append(name)
         cmap[cp] = name
 
-    def draw_pixel_cw(pen: 'TTGlyphPen', x0: int, y0: int) -> None:
-        """Draw one lit pixel as a clockwise unit square (TrueType outer contour).
-        TrueType fill rule: clockwise = outer (filled), CCW = inner (hole).
-        Traverse bottom-left → bottom-right → top-right → top-left."""
-        x1, y1 = x0 + PX, y0 + PX
-        pen.moveTo((x0, y0))
-        pen.lineTo((x1, y0))
-        pen.lineTo((x1, y1))
-        pen.lineTo((x0, y1))
-        pen.closePath()
-
     def draw_pixels(rows: list[int], pen: 'TTGlyphPen') -> None:
+        """Draw each lit pixel as a clockwise unit square."""
         for r, val in enumerate(rows):
             for c in range(W):
                 if val & (1 << (W - 1 - c)):
-                    draw_pixel_cw(pen, c * PX, (BL - r) * PX)
+                    x0 = c * PX
+                    y0 = (BL - r) * PX
+                    x1, y1 = x0 + PX, y0 + PX
+                    pen.moveTo((x0, y0))
+                    pen.lineTo((x0, y1))
+                    pen.lineTo((x1, y1))
+                    pen.lineTo((x1, y0))
+                    pen.closePath()
 
     metrics:  dict[str, tuple[int, int]] = {}
     glyf_tbl: dict[str, object]          = {}
 
-    # .notdef: hollow rectangle (CW outer, CCW inner)
+    # .notdef: hollow rectangle
     pen = TTGlyphPen(None)
     for r in (2, 22):
         for c in range(W):
-            draw_pixel_cw(pen, c * PX, (BL - r) * PX)
+            x0 = c * PX; y0 = (BL - r) * PX
+            pen.moveTo((x0, y0)); pen.lineTo((x0, y0 + PX))
+            pen.lineTo((x0 + PX, y0 + PX)); pen.lineTo((x0 + PX, y0))
+            pen.closePath()
     for r in range(3, 22):
         for c in (0, W - 1):
-            draw_pixel_cw(pen, c * PX, (BL - r) * PX)
+            x0 = c * PX; y0 = (BL - r) * PX
+            pen.moveTo((x0, y0)); pen.lineTo((x0, y0 + PX))
+            pen.lineTo((x0 + PX, y0 + PX)); pen.lineTo((x0 + PX, y0))
+            pen.closePath()
     glyf_tbl['.notdef'] = pen.glyph()
     metrics['.notdef']  = (ADVANCE, 0)
 
@@ -1641,10 +1641,6 @@ def write_ttf(path: Path) -> None:
         glyf_tbl[name] = pen.glyph()
         metrics[name]  = (ADVANCE, 0)
 
-    VERSION     = '1.000'
-    PS_NAME     = 'ANXSchoolbook-Regular'
-    UNIQUE_ID   = f'{VERSION};ANX ;{PS_NAME}'
-
     fb = FontBuilder(UPM, isTTF=True)
     fb.setupGlyphOrder(glyph_order)
     fb.setupCharacterMap(cmap)
@@ -1652,26 +1648,25 @@ def write_ttf(path: Path) -> None:
     fb.setupHorizontalMetrics(metrics)
     fb.setupHorizontalHeader(ascent=ASCENDER, descent=DESCENDER)
     fb.setupNameTable({
-        'familyName':   FAMILY,
-        'styleName':    'Regular',
-        'uniqueFontIdentifier': UNIQUE_ID,
-        'fullName':     f'{FAMILY} Regular',
-        'version':      f'Version {VERSION}',
-        'psName':       PS_NAME,
+        'familyName':           FAMILY,
+        'styleName':            'Regular',
+        'uniqueFontIdentifier': f'{FONT_NAME};1.000',
+        'fullName':             f'{FAMILY} Regular',
+        'version':              'Version 1.000',
+        'psName':               FONT_NAME,
     })
     fb.setupOS2(
-        sTypoAscender=ASCENDER,
-        sTypoDescender=DESCENDER,
-        sTypoLineGap=0,
-        usWinAscent=ASCENDER,
-        usWinDescent=-DESCENDER,
-        fsType=0,
-        fsSelection=0x40,   # bit 6 = REGULAR
-        achVendID='ANX ',
+        sTypoAscender  = ASCENDER,
+        sTypoDescender = DESCENDER,
+        sTypoLineGap   = 0,
+        usWinAscent    = ASCENDER,
+        usWinDescent   = -DESCENDER,
+        fsType         = 0,
+        achVendID      = 'ANX ',
+        sxHeight       = XHEIGHT,
+        sCapHeight     = CAPHEIGHT,
     )
     fb.setupPost(isFixedPitch=1)
-    # Set lowestRecPPEM to the design pixel size (24 px at UPM=2400 → 1 px = 100u)
-    fb.font['head'].lowestRecPPEM = H
     fb.font.save(str(path))
     print(f'  wrote {path}')
 
@@ -1741,7 +1736,7 @@ def main() -> None:
 
     print('ANX Schoolbook 12×24 — generating outputs ...')
     write_bdf(out / 'anx_schoolbook_12x24.bdf')
-    write_ttf(out / 'anx_schoolbook_12x24.otf')
+    write_ttf(out / 'anx_schoolbook_12x24.ttf')   # .ttf for TrueType outlines
     write_c_header(out / 'anx_schoolbook_12x24.h')
     print('done.')
 

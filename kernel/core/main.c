@@ -52,6 +52,7 @@
 #include <anx/sshd.h>
 #include <anx/jepa.h>
 #include <anx/loop.h>
+#include <anx/browser.h>
 
 #define ANX_VERSION "2026.4.17"
 
@@ -402,6 +403,9 @@ void kernel_main(void)
 		anx_wm_init();
 		kprintf("window manager initialized\n");
 	}
+
+	/* Start browser engine (ANX-Browser Protocol on port 9191) */
+	anx_browser_init(9191);
 
 	kprintf("kernel init complete -- all subsystems online\n");
 
