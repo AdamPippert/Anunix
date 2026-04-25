@@ -114,6 +114,7 @@ struct js_func_proto {
 /* ── Compiler state ───────────────────────────────────────────────── */
 
 #define JS_SCOPE_DEPTH_MAX  8
+#define JS_JUMP_LIST_MAX    64   /* max pending break/continue patches */
 
 struct js_scope {
 	char     names[JS_LOCAL_MAX][32];
@@ -130,6 +131,12 @@ struct js_compiler {
 	uint32_t             scope_depth;
 	bool                 error;
 	const char          *error_msg;
+
+	/* break/continue patch lists — positions in current function's bytecode */
+	uint32_t             break_jumps[JS_JUMP_LIST_MAX];
+	uint32_t             n_break_jumps;
+	uint32_t             continue_jumps[JS_JUMP_LIST_MAX];
+	uint32_t             n_continue_jumps;
 };
 
 /* Compile a parsed program (root node index) into func 0 (the script body).
