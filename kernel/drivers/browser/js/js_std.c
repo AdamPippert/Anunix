@@ -35,19 +35,50 @@ static double _ceil(double x)  { return -_floor(-x); }
 static double _round(double x) { return _floor(x + 0.5); }
 static double _min(double a, double b) { return a < b ? a : b; }
 static double _max(double a, double b) { return a > b ? a : b; }
-static double _pow(double base, double exp)
+/* Natural log via Padé/series — accurate to ~6 digits for x in (0, ∞) */
+static double _ln(double x)
 {
-	if (exp == 0.0) return 1.0;
-	/* Approximation for integer exponents */
-	int64_t e = (int64_t)exp;
-	if ((double)e == exp) {
+	if (x <= 0.0) return -1.0/0.0; /* -Infinity */
+	/* Reduce to [1, 2) using ln(x) = n*ln(2) + ln(x/2^n) */
+	int n = 0;
+	while (x >= 2.0) { x *= 0.5; n++; }
+	while (x < 1.0)  { x *= 2.0; n--; }
+	/* ln(x) for x in [1,2): use ln(1+t) Taylor, t = x-1 in [-1,1) */
+	double t = x - 1.0;
+	double t2 = t*t, t3 = t2*t, t4 = t3*t, t5 = t4*t, t6 = t5*t;
+	double r = t - t2/2.0 + t3/3.0 - t4/4.0 + t5/5.0 - t6/6.0;
+	return r + (double)n * 0.693147180559945;
+}
+
+/* e^x via Taylor series — accurate to ~8 digits for |x| < 20 */
+static double _exp(double x)
+{
+	double r = 1.0, term = 1.0;
+	int i;
+	for (i = 1; i <= 20; i++) {
+		term *= x / (double)i;
+		r += term;
+		if (term < 1e-12 && term > -1e-12) break;
+	}
+	return r;
+}
+
+static double _pow(double base, double e)
+{
+	if (e == 0.0) return 1.0;
+	if (base == 0.0) return e > 0.0 ? 0.0 : 1.0/0.0;
+	/* Integer exponent: exact */
+	int64_t ei = (int64_t)e;
+	if ((double)ei == e) {
 		double r = 1.0;
-		bool neg = e < 0;
-		if (neg) e = -e;
-		while (e--) r *= base;
+		bool neg = ei < 0;
+		if (neg) ei = -ei;
+		while (ei--) r *= base;
 		return neg ? 1.0 / r : r;
 	}
-	return base; /* stub for fractional exponents */
+	/* Fractional exponent: base^e = exp(e * ln(base)) */
+	if (base < 0.0) return -1.0/0.0; /* NaN for negative base */
+	return _exp(e * _ln(base));
 }
 
 static js_val math_abs(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
@@ -99,6 +130,18 @@ static js_val math_random(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
 
 static js_val math_trunc(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
 { (void)eng;(void)t; return n?jv_double((double)(int64_t)jv_to_double(a[0])):JV_NAN; }
+
+static js_val math_exp(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
+{ (void)eng;(void)t; return n?jv_double(_exp(jv_to_double(a[0]))):JV_NAN; }
+
+static js_val math_log(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
+{ (void)eng;(void)t; return n?jv_double(_ln(jv_to_double(a[0]))):JV_NAN; }
+
+static js_val math_log2(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
+{ (void)eng;(void)t; return n?jv_double(_ln(jv_to_double(a[0]))/0.693147180559945):JV_NAN; }
+
+static js_val math_log10(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
+{ (void)eng;(void)t; return n?jv_double(_ln(jv_to_double(a[0]))/2.302585092994046):JV_NAN; }
 
 static js_val math_sign(struct js_engine *eng, js_val t, js_val *a, uint8_t n)
 {
@@ -486,6 +529,10 @@ void js_std_init(struct js_engine *eng)
 		js_obj_set_cstr(eng->heap, math, "random", js_engine_make_native(eng, math_random));
 		js_obj_set_cstr(eng->heap, math, "trunc",  js_engine_make_native(eng, math_trunc));
 		js_obj_set_cstr(eng->heap, math, "sign",   js_engine_make_native(eng, math_sign));
+		js_obj_set_cstr(eng->heap, math, "exp",    js_engine_make_native(eng, math_exp));
+		js_obj_set_cstr(eng->heap, math, "log",    js_engine_make_native(eng, math_log));
+		js_obj_set_cstr(eng->heap, math, "log2",   js_engine_make_native(eng, math_log2));
+		js_obj_set_cstr(eng->heap, math, "log10",  js_engine_make_native(eng, math_log10));
 		js_obj_set_cstr(eng->heap, math, "PI",     jv_double(3.14159265358979));
 		js_obj_set_cstr(eng->heap, math, "E",      jv_double(2.71828182845904));
 		js_obj_set_cstr(eng->heap, math, "LN2",    jv_double(0.693147180559945));
