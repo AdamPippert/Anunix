@@ -46,6 +46,7 @@ int test_external_call(void);
 int test_disk_store(void);
 int test_route_planner(void);
 int test_vm_object(void);
+int test_vm_sandbox(void);
 int test_workflow(void);
 int test_theme(void);
 
@@ -78,6 +79,7 @@ static struct test_case tests[] = {
 	{ "disk_store",		test_disk_store },
 	{ "route_planner",	test_route_planner },
 	{ "vm_object",		test_vm_object },
+	{ "vm_sandbox",		test_vm_sandbox },
 	{ "workflow",		test_workflow },
 	{ "theme",		test_theme },
 };

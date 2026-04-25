@@ -14,6 +14,9 @@
 struct anx_vm_backend {
 	const char *name;
 
+	/* Sandbox mode this backend serves (ANX_VM_SANDBOX_*) */
+	enum anx_vm_sandbox_mode mode;
+
 	/* Returns true if this backend is usable on the current host */
 	bool (*available)(void);
 
@@ -50,8 +53,14 @@ struct anx_vm_backend {
 
 /* Backend registry */
 extern struct anx_vm_backend anx_vm_backend_qemu;
+extern struct anx_vm_backend anx_vm_backend_firecracker;
+extern struct anx_vm_backend anx_vm_backend_anx_native;
 
-/* Select best available backend */
-struct anx_vm_backend *anx_vm_backend_select(void);
+/*
+ * Select a backend.  If `mode` is ANX_VM_SANDBOX_AUTO the kernel picks the
+ * lightest available backend (firecracker > qemu > anx-native).  Otherwise
+ * the named backend is returned only if `available()` reports true.
+ */
+struct anx_vm_backend *anx_vm_backend_select(enum anx_vm_sandbox_mode mode);
 
 #endif /* ANX_VM_BACKEND_H */

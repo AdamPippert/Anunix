@@ -57,6 +57,7 @@ static int  qemu_stats(struct anx_vm_object *vm, struct anx_vm_stats *out);
 
 struct anx_vm_backend anx_vm_backend_qemu = {
 	.name		= "qemu",
+	.mode		= ANX_VM_SANDBOX_QEMU,
 	.available	= qemu_available,
 	.create		= qemu_create,
 	.start		= qemu_start,

@@ -55,6 +55,27 @@ int anx_vm_config_get_field(const anx_oid_t *vm_oid, const char *field,
 		anx_snprintf(out, out_size, "%u", c->net_count);
 		return ANX_OK;
 	}
+	if (anx_strcmp(field, "sandbox.mode") == 0) {
+		const char *s;
+
+		switch (c->sandbox_mode) {
+		case ANX_VM_SANDBOX_FIRECRACKER:	s = "firecracker"; break;
+		case ANX_VM_SANDBOX_QEMU:		s = "qemu"; break;
+		case ANX_VM_SANDBOX_ANX_NATIVE:		s = "anx-native"; break;
+		case ANX_VM_SANDBOX_AUTO:		/* fallthrough */
+		default:				s = "auto"; break;
+		}
+		anx_strlcpy(out, s, out_size);
+		return ANX_OK;
+	}
+	if (anx_strcmp(field, "sandbox.input_count") == 0) {
+		anx_snprintf(out, out_size, "%u", c->sandbox.input_count);
+		return ANX_OK;
+	}
+	if (anx_strcmp(field, "sandbox.output_count") == 0) {
+		anx_snprintf(out, out_size, "%u", c->sandbox.output_count);
+		return ANX_OK;
+	}
 
 	return ANX_ENOENT;
 }

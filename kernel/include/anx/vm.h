@@ -21,6 +21,34 @@ enum anx_vm_state {
 	ANX_VM_DELETED,
 };
 
+/* --- Sandbox mode (RFC-0017 extension: agent sandbox modes) ---
+ *
+ * A VM Object selects exactly one sandbox mode at create time.  The mode
+ * determines which hypervisor backend is bound to the VM and what resource
+ * ceiling and provisioning policy applies.
+ *
+ *   ANX_VM_SANDBOX_FIRECRACKER — ultra-lightweight microVM.  No firmware,
+ *     no legacy devices, single virtio block + virtio net, direct kernel
+ *     boot, sub-second start.  Backed by the firecracker backend.
+ *
+ *   ANX_VM_SANDBOX_QEMU — full-featured VM with bios/uefi, multiple
+ *     buses, hotplug, snapshots.  Backed by the qemu backend.
+ *
+ *   ANX_VM_SANDBOX_ANX_NATIVE — Anunix-native execution sandbox.  No guest
+ *     kernel; the sandbox hosts a workflow object inside an isolated cell
+ *     with explicit input/output OID passing.  Backed by the anx-native
+ *     backend.
+ *
+ *   ANX_VM_SANDBOX_AUTO — let the kernel pick (default; firecracker if
+ *     available, else qemu).
+ */
+enum anx_vm_sandbox_mode {
+	ANX_VM_SANDBOX_AUTO = 0,
+	ANX_VM_SANDBOX_FIRECRACKER,
+	ANX_VM_SANDBOX_QEMU,
+	ANX_VM_SANDBOX_ANX_NATIVE,
+};
+
 /* --- Disk format --- */
 
 enum anx_vm_disk_format {
@@ -62,7 +90,8 @@ enum anx_vm_display {
 #define ANX_VM_FIELD_DISPLAY		(1u << 5)
 #define ANX_VM_FIELD_SERIAL		(1u << 6)
 #define ANX_VM_FIELD_AGENT_POLICY	(1u << 7)
-#define ANX_VM_FIELD_ALL		(0xFFu)
+#define ANX_VM_FIELD_SANDBOX		(1u << 8)
+#define ANX_VM_FIELD_ALL		(0x1FFu)
 
 /* --- Network interface config --- */
 
@@ -122,6 +151,33 @@ struct anx_vm_agent_policy {
 	uint32_t	snapshot_max_count;
 };
 
+/* --- Agent sandbox spec ---
+ *
+ * Used by ANX_VM_SANDBOX_ANX_NATIVE (and optionally by other modes) to pass
+ * State Object / Workflow Object references into the sandbox at start time
+ * and collect outputs at exit.  All OIDs are non-owning references; the
+ * sandbox does not delete the underlying objects.
+ *
+ * inputs[]   — read-only inputs the sandboxed workflow may consume.
+ * outputs[]  — slots filled by the sandbox at exit (0…output_count-1).
+ * workflow_oid — the ANX_OBJ_WORKFLOW that the sandbox executes; for
+ *                non-native modes this is informational only (recorded in
+ *                provenance, not interpreted by the hypervisor).
+ * timeout_ms — wall-clock cap; 0 means no timeout.
+ * memory_kb_cap — hard memory ceiling; 0 inherits from anx_vm_mem_config.
+ */
+#define ANX_VM_SANDBOX_MAX_PORTS	8
+
+struct anx_vm_agent_sandbox {
+	anx_oid_t	workflow_oid;
+	anx_oid_t	inputs[ANX_VM_SANDBOX_MAX_PORTS];
+	uint32_t	input_count;
+	anx_oid_t	outputs[ANX_VM_SANDBOX_MAX_PORTS];
+	uint32_t	output_count;
+	uint32_t	timeout_ms;
+	uint64_t	memory_kb_cap;
+};
+
 /* --- Top-level VM config --- */
 
 #define ANX_VM_MAX_DISKS	8
@@ -139,6 +195,8 @@ struct anx_vm_config {
 	uint32_t			net_count;
 	enum anx_vm_display		display;
 	struct anx_vm_agent_policy	agent_policy;
+	enum anx_vm_sandbox_mode	sandbox_mode;
+	struct anx_vm_agent_sandbox	sandbox;
 };
 
 /* --- VM Object (kernel-internal representation) --- */
@@ -205,6 +263,24 @@ int anx_vm_console_read(const anx_oid_t *vm_oid, char *buf, uint32_t len,
 			uint32_t *read_out);
 int anx_vm_exec(const anx_oid_t *vm_oid, const char *command,
 		char *stdout_out, uint32_t stdout_size);
+
+/* Agent sandbox helpers (RFC-0017 extension) */
+
+/*
+ * Create an agent-oriented sandbox VM.  Picks sane defaults for
+ * resource limits, validates the spec against the requested mode, and
+ * generates a unique name when cfg->name is empty.  The caller may pre-fill
+ * cfg with overrides; mode and sandbox.* are the only required fields.
+ */
+int anx_vm_agent_sandbox_create(const struct anx_vm_config *cfg,
+				anx_oid_t *vm_oid_out);
+
+/*
+ * Read back the sandbox spec — primarily the output OIDs after the
+ * sandbox has run.  Returns ANX_ENOENT if the VM does not exist.
+ */
+int anx_vm_agent_sandbox_get(const anx_oid_t *vm_oid,
+			     struct anx_vm_agent_sandbox *out);
 
 /* Enumeration */
 int anx_vm_list(anx_oid_t *results, uint32_t max, uint32_t *count_out);

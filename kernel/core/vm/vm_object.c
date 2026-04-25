@@ -85,10 +85,11 @@ int anx_vm_create(const struct anx_vm_config *config, anx_oid_t *vm_oid_out)
 			return ANX_EEXIST;
 	}
 
-	/* Select backend */
-	backend = anx_vm_backend_select();
+	/* Select backend by sandbox mode (default AUTO if unset) */
+	backend = anx_vm_backend_select(config->sandbox_mode);
 	if (!backend) {
-		kprintf("vm: no hypervisor backend available\n");
+		kprintf("vm: no hypervisor backend available for mode %d\n",
+			(int)config->sandbox_mode);
 		return ANX_ENODEV;
 	}
 
@@ -120,10 +121,10 @@ int anx_vm_create(const struct anx_vm_config *config, anx_oid_t *vm_oid_out)
 	*vm_oid_out = vm->oid;
 	vm_count++;
 
-	kprintf("vm: created '%s' (%u cpu, %u MB) via %s\n",
+	kprintf("vm: created '%s' (%u cpu, %u MB) via %s [mode=%d]\n",
 		config->name, config->cpu.count,
 		(uint32_t)config->memory.size_mb,
-		backend->name);
+		backend->name, (int)config->sandbox_mode);
 	return ANX_OK;
 }
 
