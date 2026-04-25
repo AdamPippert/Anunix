@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.4.22-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.4.24-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
   <img src="https://img.shields.io/badge/tests-30%20passing-brightgreen" alt="Tests">
@@ -31,6 +31,36 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | `chmod`/ACLs | **Capabilities** | Object-level, unforgeable, delegatable |
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
+
+## Release: 2026.4.24
+
+### Milestone: Native kernel browser engine
+
+Anunix now ships a **complete HTML/CSS/JS browser engine in the kernel** —
+no external process, no Playwright dependency. The engine tokenizes HTML,
+builds a DOM, cascades CSS, runs JavaScript (NaN-boxing VM with mark-sweep GC),
+decodes JPEG/PNG/WebP, and renders to a 1280×800 off-screen framebuffer
+streamed over WebSocket at ~30 FPS via the ANX-Browser Protocol on port 9191.
+
+```
+anx> browser_init               # connect to anxbrowserd peer or use native engine
+anx> browser https://example.com
+# live render appears on framebuffer / stream viewer
+```
+
+**What's new in 2026.4.24**
+
+- **Native browser engine** (`kernel/drivers/browser/`) — HTML/CSS/JS/image pipeline, ~8,000 lines of C
+- **HTTPS via CONNECT proxy** — `tools/anxbproxy.py` terminates TLS on host at `10.0.2.2:8118`
+- **Form submission** — action URL captured in layout pass; Enter/submit-click builds URL + navigates
+- **Full `JSON.stringify`/`JSON.parse`** — handles nested objects, arrays, string escaping, numbers
+- **Session timestamps** — `created_at` from `arch_time_now()` (ns-since-epoch)
+- **System font baseline fix** — ANX Schoolbook 12×24 ascender -7 (was -5), no more clipping
+- **WM + browser coexist** — `anx_wm_init()` and `anx_browser_init(9191)` both called at boot
+
+See [`RELEASE-2026.4.24.md`](RELEASE-2026.4.24.md) for full details.
+
+---
 
 ## Release: 2026.4.19
 
