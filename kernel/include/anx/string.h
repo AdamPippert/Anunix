@@ -17,8 +17,9 @@ void *anx_memmove(void *dst, const void *src, size_t n);
 size_t anx_strlen(const char *s);
 int    anx_strcmp(const char *a, const char *b);
 int    anx_strncmp(const char *a, const char *b, size_t n);
-size_t anx_strlcpy(char *dst, const char *src, size_t dstsize);
-char  *anx_strncat(char *dst, const char *src, size_t n);
+size_t      anx_strlcpy(char *dst, const char *src, size_t dstsize);
+char       *anx_strncat(char *dst, const char *src, size_t n);
+const char *anx_strstr(const char *haystack, const char *needle);
 uint32_t anx_strtoul(const char *s, char **endp, int base);
 uint64_t anx_strtoull(const char *s, char **endp, int base);
 int      anx_snprintf(char *buf, uint32_t size, const char *fmt, ...)

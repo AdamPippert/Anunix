@@ -158,6 +158,20 @@ char *anx_strncat(char *dst, const char *src, size_t n)
 	return dst;
 }
 
+const char *anx_strstr(const char *haystack, const char *needle)
+{
+	size_t nlen = anx_strlen(needle);
+
+	if (nlen == 0)
+		return haystack;
+	while (*haystack) {
+		if (anx_memcmp(haystack, needle, nlen) == 0)
+			return haystack;
+		haystack++;
+	}
+	return NULL;
+}
+
 size_t anx_strlcpy(char *dst, const char *src, size_t dstsize)
 {
 	size_t srclen = anx_strlen(src);
