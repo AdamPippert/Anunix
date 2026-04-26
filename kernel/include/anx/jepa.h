@@ -477,4 +477,23 @@ int anx_jepa_tool_predict(const char *action_name,
 /* Compute and serialise current anomaly score as JSON. */
 int anx_jepa_tool_anomaly_score(char *out_buf, uint32_t buf_size);
 
+/* ------------------------------------------------------------------ */
+/* Online learning integration (Phase 10)                              */
+/* ------------------------------------------------------------------ */
+
+/* Record which action won a loop iteration (gates train-step batching). */
+int anx_jepa_record_winner(uint32_t action_id);
+
+/* Return the number of online training steps completed this session. */
+uint32_t anx_jepa_get_train_step_count(void);
+
+/*
+ * Compute cosine divergence for each action in the os-default vocabulary.
+ * Observes current system state, encodes it, then for each action predicts
+ * a future latent and measures divergence from the context latent.
+ * Fills out[0..min(max, ANX_JEPA_ACT_COUNT)-1] with values in [0, 1].
+ * Returns the number of entries written.  All zeros when JEPA unavailable.
+ */
+uint32_t anx_jepa_get_action_divergences(float *out, uint32_t max);
+
 #endif /* ANX_JEPA_H */

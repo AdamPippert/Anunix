@@ -48,6 +48,8 @@
 #include <anx/browser_cell.h>
 #include <anx/vm.h>
 #include <anx/loop.h>
+#include <anx/rlm.h>
+#include <anx/memory.h>
 
 /* --- Line input with history --- */
 
@@ -312,6 +314,10 @@ static void cmd_help(int argc, char **argv)
 	kputs("  engine list                List registered engines\n");
 	kputs("  cap create <name>          Create a capability (draft)\n");
 	kputs("  cap list                   List capabilities\n");
+	kputs("  cap validate <index>       Validate a draft capability\n");
+	kputs("  cap install <index>        Install a validated capability\n");
+	kputs("  rlm run [prompt]           Run a rollout with current adapter\n");
+	kputs("  rlm pal <i> <world> [s] [a] Feed rollout score to PAL\n");
 	kputs("  sched status               Show scheduler queue depths\n");
 	kputs("  net status                 Show network plane status\n");
 	kputs("  ping <ip>                  Send ICMP echo request\n");
@@ -881,13 +887,149 @@ static void cmd_cap(int argc, char **argv)
 			if (cap) {
 				anx_uuid_to_string(&cap->cap_oid, buf,
 						   sizeof(buf));
-				kprintf("  %s  %s v%s  %s\n",
-					buf, cap->name, cap->version,
-					cap_status_name(cap->status));
+				kprintf("  [%u] %s  %s v%s  %s  score=%u\n",
+					i, buf, cap->name, cap->version,
+					cap_status_name(cap->status),
+					cap->validation_score);
 			}
 		}
+	} else if (anx_strcmp(argv[1], "validate") == 0) {
+		struct anx_capability *cap;
+		uint32_t idx;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: cap validate <index>\n");
+			return;
+		}
+		idx = (uint32_t)anx_strtoul(argv[2], NULL, 10);
+		if (idx >= shell_cap_count) {
+			kprintf("error: index %u out of range\n", idx);
+			return;
+		}
+		cap = anx_cap_lookup(&shell_cap_oids[idx]);
+		if (!cap) {
+			kputs("error: capability not found\n");
+			return;
+		}
+		ret = anx_cap_validate(cap);
+		if (ret != ANX_OK)
+			kprintf("validate failed (%d): score=%u\n",
+				ret, cap->validation_score);
+
+	} else if (anx_strcmp(argv[1], "install") == 0) {
+		struct anx_capability *cap;
+		uint32_t idx;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: cap install <index>\n");
+			return;
+		}
+		idx = (uint32_t)anx_strtoul(argv[2], NULL, 10);
+		if (idx >= shell_cap_count) {
+			kprintf("error: index %u out of range\n", idx);
+			return;
+		}
+		cap = anx_cap_lookup(&shell_cap_oids[idx]);
+		if (!cap) {
+			kputs("error: capability not found\n");
+			return;
+		}
+		ret = anx_cap_install(cap);
+		if (ret != ANX_OK)
+			kprintf("install failed (%d)\n", ret);
+		else
+			kprintf("installed: %s v%s\n", cap->name, cap->version);
+
 	} else {
-		kputs("usage: cap <create|list>\n");
+		kputs("usage: cap <create|list|validate|install> [args]\n");
+	}
+}
+
+/* --- RLM commands --- */
+
+#define MAX_SHELL_ROLLOUTS 8
+static struct anx_rlm_rollout *shell_rollouts[MAX_SHELL_ROLLOUTS];
+static uint32_t shell_rollout_count;
+
+static void cmd_rlm(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: rlm <run|pal> [args]\n");
+		return;
+	}
+
+	if (anx_strcmp(argv[1], "run") == 0) {
+		const char *text = argc >= 3 ? argv[2] : "hello";
+		struct anx_so_create_params params;
+		struct anx_state_object *obj;
+		struct anx_rlm_config cfg;
+		struct anx_rlm_rollout *r;
+		anx_oid_t prompt_oid;
+		int ret;
+
+		anx_memset(&params, 0, sizeof(params));
+		params.object_type  = ANX_OBJ_BYTE_DATA;
+		params.payload      = text;
+		params.payload_size = (uint32_t)anx_strlen(text);
+		ret = anx_so_create(&params, &obj);
+		if (ret != ANX_OK) {
+			kprintf("error: prompt create failed (%d)\n", ret);
+			return;
+		}
+		prompt_oid = obj->oid;
+		anx_objstore_release(obj);
+
+		anx_rlm_config_default(&cfg);
+		cfg.max_steps = 4;
+		cfg.admit_responses = false;
+
+		ret = anx_rlm_rollout_create(&prompt_oid, &cfg, &r);
+		if (ret != ANX_OK) {
+			kprintf("error: rollout create failed (%d)\n", ret);
+			return;
+		}
+
+		ret = anx_rlm_rollout_run(r);
+		kprintf("rollout [%u]: status=%d steps=%u in=%d out=%d\n",
+			shell_rollout_count, r->status, r->step_count,
+			r->total_input_tokens, r->total_output_tokens);
+
+		if (shell_rollout_count < MAX_SHELL_ROLLOUTS)
+			shell_rollouts[shell_rollout_count++] = r;
+
+	} else if (anx_strcmp(argv[1], "pal") == 0) {
+		struct anx_rlm_rollout *r;
+		const char *world;
+		uint32_t idx, action_id;
+		int32_t score;
+		int ret;
+
+		if (argc < 4) {
+			kputs("usage: rlm pal <index> <world-uri> [score] [action-id]\n");
+			return;
+		}
+		idx = (uint32_t)anx_strtoul(argv[2], NULL, 10);
+		if (idx >= shell_rollout_count) {
+			kprintf("error: index %u out of range\n", idx);
+			return;
+		}
+		r = shell_rollouts[idx];
+		world = argv[3];
+		score = argc >= 5 ? (int32_t)anx_strtoul(argv[4], NULL, 10) : 50;
+		action_id = argc >= 6 ? (uint32_t)anx_strtoul(argv[5], NULL, 10) : 0;
+
+		anx_rlm_rollout_set_score(r, score);
+		ret = anx_rlm_pal_feedback(r, world, action_id);
+		if (ret != ANX_OK)
+			kprintf("pal feedback failed (%d)\n", ret);
+		else
+			kprintf("pal updated: world=%s action=%u score=%d\n",
+				world, action_id, (int)score);
+
+	} else {
+		kputs("usage: rlm <run|pal> [args]\n");
 	}
 }
 
@@ -1926,6 +2068,8 @@ static void dispatch(int argc, char **argv)
 		cmd_vm(argc, argv);
 	} else if (anx_strcmp(argv[0], "workflow") == 0) {
 		cmd_workflow(argc, argv);
+	} else if (anx_strcmp(argv[0], "rlm") == 0) {
+		cmd_rlm(argc, argv);
 	} else if (anx_strcmp(argv[0], "loop") == 0) {
 		anx_loop_shell_dispatch(argc, (const char *const *)argv);
 	} else if (anx_strcmp(argv[0], "theme") == 0) {

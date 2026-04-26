@@ -7,6 +7,7 @@
 #include <anx/engine.h>
 #include <anx/state_object.h>
 #include <anx/uuid.h>
+#include <anx/string.h>
 
 int test_capability(void)
 {
@@ -80,6 +81,73 @@ int test_capability(void)
 	/* Should have cleared engine ID */
 	if (!anx_uuid_is_nil(&cap->installed_engine_id))
 		return -14;
+
+	/* ------------------------------------------------------------------ */
+	/* Phase 15: Capability validation procedure                           */
+	/* ------------------------------------------------------------------ */
+
+	/* Test 15: validate with no required engines → score 100, VALIDATED */
+	{
+		struct anx_capability *cap2;
+
+		ret = anx_cap_create("validator_test", "2.0", &cap2);
+		if (ret != ANX_OK)
+			return -15;
+
+		ret = anx_cap_validate(cap2);
+		if (ret != ANX_OK)
+			return -15;
+		if (cap2->status != ANX_CAP_VALIDATED)
+			return -15;
+		if (cap2->validation_score != 100)
+			return -15;
+	}
+
+	/* Test 16: validate with 3 missing required engines → score 25 < 50 → DRAFT */
+	{
+		struct anx_capability *cap3;
+		anx_eid_t fake_eid;
+
+		ret = anx_cap_create("failing_cap", "1.0", &cap3);
+		if (ret != ANX_OK)
+			return -16;
+
+		/* Point 3 required engine slots at a non-nil ID that won't exist */
+		anx_memset(&fake_eid, 0xFF, sizeof(fake_eid));
+		cap3->required_engines[0] = fake_eid;
+		cap3->required_engines[1] = fake_eid;
+		cap3->required_engines[2] = fake_eid;
+		cap3->required_engine_count = 3;
+
+		ret = anx_cap_validate(cap3);
+		if (ret == ANX_OK)
+			return -16;	/* must fail */
+		if (cap3->status != ANX_CAP_DRAFT)
+			return -16;	/* rolled back */
+		if (cap3->validation_score >= 50)
+			return -16;
+	}
+
+	/* Test 17: anx_cap_validate on non-DRAFT returns ANX_EPERM */
+	{
+		struct anx_capability *cap4;
+
+		ret = anx_cap_create("double_validate", "1.0", &cap4);
+		if (ret != ANX_OK)
+			return -17;
+
+		/* First validate succeeds */
+		ret = anx_cap_validate(cap4);
+		if (ret != ANX_OK)
+			return -17;
+		if (cap4->status != ANX_CAP_VALIDATED)
+			return -17;
+
+		/* Second validate on VALIDATED must fail */
+		ret = anx_cap_validate(cap4);
+		if (ret == ANX_OK)
+			return -17;
+	}
 
 	return 0;
 }

@@ -360,6 +360,14 @@ struct anx_loop_session_action_stats {
  */
 float anx_loop_goal_alignment_energy(const char *goal_text, uint32_t action_id);
 
+/*
+ * Return the action_id in [0, action_count) with the lowest PAL-learned
+ * prior for world_uri.  Falls back to 0 when PAL has no data (cold-start).
+ * Used to bias JEPA proposal generation toward historically low-cost actions.
+ */
+uint32_t anx_loop_select_action_by_prior(const char *world_uri,
+					  uint32_t action_count);
+
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
@@ -429,5 +437,18 @@ int anx_loop_branch_merge(anx_oid_t parent_oid, anx_oid_t child_oid);
 int anx_loop_branch_list(anx_oid_t parent_oid,
 			 anx_oid_t *oids_out, uint32_t max_count,
 			 uint32_t *count_out);
+
+/* ------------------------------------------------------------------ */
+/* JEPA online training pipeline (Phase 17: loop_jepa_train.c)        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Ingest a completed session's best action into the JEPA online training
+ * pipeline.  Collects a fresh system observation, stores it as
+ * ANX_OBJ_JEPA_OBS, and calls anx_jepa_record_winner() so the training
+ * step counter advances.  Non-fatal if JEPA is unavailable.
+ * Returns ANX_ENOENT if session_oid is not found, ANX_EINVAL on bad args.
+ */
+int anx_loop_jepa_ingest(anx_oid_t session_oid, const char *world_uri);
 
 #endif /* ANX_LOOP_H */

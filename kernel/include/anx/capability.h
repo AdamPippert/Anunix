@@ -87,4 +87,7 @@ int anx_cap_uninstall(struct anx_capability *cap);
 /* Record an invocation result */
 void anx_cap_record_invocation(struct anx_capability *cap, bool success);
 
+/* Validate a DRAFT capability; transitions to VALIDATED or back to DRAFT */
+int anx_cap_validate(struct anx_capability *cap);
+
 #endif /* ANX_CAPABILITY_H */

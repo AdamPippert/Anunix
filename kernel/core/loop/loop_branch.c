@@ -154,13 +154,80 @@ int anx_loop_branch_merge(anx_oid_t parent_oid, anx_oid_t child_oid)
 		}
 
 		kprintf("[loop] merge branch %016llx → parent %016llx"
-			" energy %.4f→%.4f\n",
+			" energy %u.%04u→%u.%04u\n",
 			(unsigned long long)child_oid.lo,
 			(unsigned long long)parent_oid.lo,
-			parent_energy, child_energy);
+			(unsigned int)parent_energy,
+			(unsigned int)((parent_energy - (float)(unsigned int)parent_energy)
+				       * 10000.0f + 0.5f),
+			(unsigned int)child_energy,
+			(unsigned int)((child_energy - (float)(unsigned int)child_energy)
+				       * 10000.0f + 0.5f));
 	}
 
 	anx_spin_unlock(&g_loop_lock);
+	return ANX_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* anx_loop_branch_schedule_and_merge                                  */
+/* ------------------------------------------------------------------ */
+
+int anx_loop_branch_schedule_and_merge(anx_oid_t parent_oid)
+{
+	uint32_t branch_budget, branch_max_iter, i;
+	anx_oid_t child_oids[ANX_LOOP_MAX_BRANCHES];
+	struct anx_loop_session_info info;
+	struct anx_loop_session *parent;
+	int rc;
+
+	anx_spin_lock(&g_loop_lock);
+	parent = anx_loop_session_get(parent_oid);
+	if (!parent || parent->branch_depth > 0) {
+		anx_spin_unlock(&g_loop_lock);
+		return ANX_EPERM;
+	}
+	branch_budget   = (parent->branch_budget > 0)
+		? parent->branch_budget : 1;
+	if (branch_budget > ANX_LOOP_MAX_BRANCHES)
+		branch_budget = ANX_LOOP_MAX_BRANCHES;
+	branch_max_iter = parent->max_iterations / 2;
+	if (branch_max_iter == 0)
+		branch_max_iter = 4;
+	anx_spin_unlock(&g_loop_lock);
+
+	anx_memset(child_oids, 0, sizeof(child_oids));
+
+	/* Spawn branches */
+	for (i = 0; i < branch_budget; i++) {
+		rc = anx_loop_branch_create(parent_oid, i,
+					    branch_max_iter, &child_oids[i]);
+		if (rc != ANX_OK) {
+			anx_memset(&child_oids[i], 0, sizeof(child_oids[i]));
+		}
+	}
+
+	/* Run each branch to budget exhaustion */
+	for (i = 0; i < branch_budget; i++) {
+		if (child_oids[i].lo == 0 && child_oids[i].hi == 0)
+			continue;
+		do {
+			rc = anx_loop_session_advance(child_oids[i]);
+			if (rc != ANX_OK)
+				break;
+			rc = anx_loop_session_status_get(child_oids[i], &info);
+			if (rc != ANX_OK)
+				break;
+		} while (info.status == ANX_LOOP_RUNNING);
+	}
+
+	/* Merge best child energy back into parent */
+	for (i = 0; i < branch_budget; i++) {
+		if (child_oids[i].lo == 0 && child_oids[i].hi == 0)
+			continue;
+		anx_loop_branch_merge(parent_oid, child_oids[i]);
+	}
+
 	return ANX_OK;
 }
 

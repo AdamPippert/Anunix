@@ -133,9 +133,11 @@ int anx_loop_proposal_set_score(anx_oid_t proposal_oid, float aggregate)
 		return rc;
 
 	rc = anx_so_read_payload(&handle, 0, &payload, sizeof(payload));
-	if (rc == ANX_OK) {
+	if (rc >= (int)sizeof(payload)) {
 		payload.aggregate_score = aggregate;
 		rc = anx_so_write_payload(&handle, 0, &payload, sizeof(payload));
+	} else {
+		rc = ANX_EIO;
 	}
 
 	anx_so_close(&handle);
@@ -153,7 +155,7 @@ int anx_loop_proposal_add_score(anx_oid_t proposal_oid, anx_oid_t score_oid)
 		return rc;
 
 	rc = anx_so_read_payload(&handle, 0, &payload, sizeof(payload));
-	if (rc == ANX_OK) {
+	if (rc >= (int)sizeof(payload)) {
 		if (payload.score_count < ANX_LOOP_PROPOSAL_MAX_SCORES) {
 			payload.score_oids[payload.score_count++] = score_oid;
 			rc = anx_so_write_payload(&handle, 0, &payload,
@@ -161,6 +163,8 @@ int anx_loop_proposal_add_score(anx_oid_t proposal_oid, anx_oid_t score_oid)
 		} else {
 			rc = ANX_ENOMEM;
 		}
+	} else {
+		rc = ANX_EIO;
 	}
 
 	anx_so_close(&handle);
@@ -199,8 +203,12 @@ int anx_loop_counterexample_record(anx_oid_t session_oid,
 
 	/* Non-fatal: counterexample storage failure should not halt the loop */
 	if (anx_so_create(&cp, &obj) == ANX_OK) {
-		kprintf("[loop] counterexample stored: action=%u score=%.3f reason=%u\n",
-			0, rejection_score, reason);
+		unsigned int rs_i = (unsigned int)rejection_score;
+		unsigned int rs_f = (unsigned int)(
+			(rejection_score - (float)rs_i) * 1000.0f + 0.5f);
+
+		kprintf("[loop] counterexample stored: reason=%u score=%u.%03u\n",
+			reason, rs_i, rs_f);
 	}
 
 	return ANX_OK;
