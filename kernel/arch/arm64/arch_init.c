@@ -339,3 +339,17 @@ const char *arch_boot_cmdline(void)
 	/* ARM64 QEMU virt has no multiboot cmdline; use device tree in future */
 	return NULL;
 }
+
+void arch_set_timer_callback(void (*fn)(void))
+{
+	/* Stub: ARM64 generic timer IRQ wiring is TODO (Phase N+1). */
+	(void)fn;
+}
+
+#include <anx/dt.h>
+
+bool anx_dt_has_compatible(const char *compatible)
+{
+	(void)compatible;
+	return false;	/* TODO: parse Apple device tree */
+}

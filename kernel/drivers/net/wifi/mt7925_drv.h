@@ -58,4 +58,16 @@ void mt7925_rx_poll(struct mt7925_dev *dev);
 int  mt7925_tx_frame(struct mt7925_dev *dev,
 		     const void *frame, uint16_t len);
 
+/* Poll one frame from data RX ring without dispatching to the network stack.
+ * Returns pointer to static RX buffer (valid until next call), or NULL. */
+const uint8_t *mt7925_data_rx_one(struct mt7925_dev *dev, uint32_t *out_len);
+
+/* Send a raw MCU extended command (used by the WPA2 layer for SET_KEY). */
+int mt7925_mcu_send_cmd(struct mt7925_dev *dev, uint8_t ext_cid,
+			const void *payload, uint16_t payload_len);
+
+/* WPA2-PSK 4-way handshake: call after BSS_INFO_UPDATE has been sent. */
+int mt7925_wpa_connect(struct mt7925_dev *dev,
+		       const char *ssid, const char *psk);
+
 #endif /* MT7925_DRV_H */

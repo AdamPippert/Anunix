@@ -182,6 +182,10 @@ $(BUILD_DIR)/core/loop/%.o: $(CORE_DIR)/loop/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(JEPA_CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/core/rlm/%.o: $(CORE_DIR)/rlm/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
 # Compile C files from core/ (recursive)
 $(BUILD_DIR)/core/%.o: $(CORE_DIR)/%.c
 	@mkdir -p $(dir $@)
@@ -335,8 +339,9 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 # fb/*.c included (tests need it) except gui.c (needs kernel GUI subsystem).
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
-		  ! -path '*/acpi/*' ! -path '*/accel/*' \
+		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/storage/*' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
+		  ! -name 'driver_table.c' \
 		  2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
@@ -380,7 +385,9 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_isolation.c \
                tests/test_a11y.c \
                tests/test_media.c \
-               tests/test_conformance_gate.c
+               tests/test_conformance_gate.c \
+               tests/test_ibal.c \
+               tests/test_kickstart.c
 TEST_BIN    := build/test/anunix_test
 
 test:
