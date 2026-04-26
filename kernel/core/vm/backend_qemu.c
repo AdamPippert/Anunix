@@ -214,7 +214,6 @@ static bool qmp_has(const char *buf, const char *needle)
 static int qmp_connect(struct qemu_priv *priv)
 {
 	char buf[QMP_RESP_SIZE];
-	uint32_t n;
 	int ret;
 	uint32_t attempts;
 
