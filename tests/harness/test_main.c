@@ -59,6 +59,8 @@ int test_isolation(void);
 int test_a11y(void);
 int test_media(void);
 int test_conformance_gate(void);
+int test_ibal(void);
+int test_kickstart(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -102,6 +104,8 @@ static struct test_case tests[] = {
 	{ "a11y",		test_a11y },
 	{ "media",		test_media },
 	{ "conformance_gate",	test_conformance_gate },
+	{ "ibal",		test_ibal },
+	{ "kickstart",		test_kickstart },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

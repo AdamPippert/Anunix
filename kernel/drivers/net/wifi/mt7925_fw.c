@@ -92,7 +92,13 @@ static int fw_poll(const struct mt7925_dev *dev, uint32_t reg,
 		if ((fw_rd(dev, reg) & mask) == val)
 			return 0;
 		/* ~1 us delay via CPUID-style fence */
+		#if defined(__x86_64__) || defined(__i386__)
 		__asm__ volatile("pause" ::: "memory");
+#elif defined(__aarch64__)
+		__asm__ volatile("wfe" ::: "memory");
+#else
+		__asm__ volatile("" ::: "memory");
+#endif
 	}
 	return -1;
 }
@@ -234,7 +240,13 @@ static int mcu_wait_evt(struct mt7925_dev *dev, uint8_t eid)
 			if (txd->ext_cid == eid || txd->cid == eid)
 				return 0;
 		}
+		#if defined(__x86_64__) || defined(__i386__)
 		__asm__ volatile("pause" ::: "memory");
+#elif defined(__aarch64__)
+		__asm__ volatile("wfe" ::: "memory");
+#else
+		__asm__ volatile("" ::: "memory");
+#endif
 	}
 	return -1;
 }
@@ -417,7 +429,13 @@ int mt7925_fw_download(struct mt7925_dev *dev)
 
 	/* Short delay for MCU restart (~100ms equiv in spin loops) */
 	for (volatile uint32_t i = 0; i < 5000000; i++)
+		#if defined(__x86_64__) || defined(__i386__)
 		__asm__ volatile("pause" ::: "memory");
+#elif defined(__aarch64__)
+		__asm__ volatile("wfe" ::: "memory");
+#else
+		__asm__ volatile("" ::: "memory");
+#endif
 
 	/* Step 5: stream WM RAM firmware */
 	ret = fw_stream(dev, mt7925_ram_fw, mt7925_ram_fw_size, "WM RAM");

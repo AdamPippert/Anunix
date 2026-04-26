@@ -22,6 +22,9 @@
 #include <anx/page.h>
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
+#include <anx/driver_table.h>
+#include <anx/dt.h>
+#include <anx/mt7925.h>
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
@@ -372,3 +375,20 @@ int anx_xdna_submit(const void *in, uint32_t in_len, void *out, uint32_t out_sz,
 { (void)in; (void)in_len; (void)out; (void)out_sz; (void)part; (void)flags;
   return ANX_ENODEV; }
 void anx_xdna_info(void) {}
+
+/* Mock driver table — driver_table.c excluded from test build (references
+ * hardware-only symbols: nvme, ahci, apple_ans).  These stubs satisfy
+ * references from test_main.c / kernel_main(). */
+void anx_drivers_probe(void) {}
+bool anx_net_probe_ok(void) { return false; }
+
+/* Mock device tree — architecture init provides the real implementation;
+ * mock_arch.c provides it for test builds where arch_init.c is not compiled. */
+bool anx_dt_has_compatible(const char *compatible)
+{
+	(void)compatible;
+	return false;
+}
+
+/* Mock MT7925 state — used by kernel_main() post-probe WiFi connect logic */
+anx_mt7925_state_t anx_mt7925_state(void) { return MT7925_STATE_DOWN; }

@@ -29,10 +29,9 @@
 #include <anx/string.h>
 #include <anx/credential.h>
 #include <anx/auth.h>
-#include <anx/virtio_net.h>
-#include <anx/virtio_blk.h>
+#include <anx/blk.h>
 #include <anx/objstore_disk.h>
-#include <anx/e1000.h>
+#include <anx/driver_table.h>
 #include <anx/mt7925.h>
 #include <anx/xdna.h>
 #include <anx/net.h>
@@ -52,79 +51,15 @@
 #include <anx/sshd.h>
 #include <anx/jepa.h>
 #include <anx/loop.h>
+#include <anx/installer.h>
 
 #define ANX_VERSION "2026.4.23"
 
-/*
- * Emergency framebuffer write — draw a colored bar directly to
- * the multiboot2 framebuffer before any subsystem is initialized.
- * Used to prove the kernel is running on hardware with no serial.
- * Only available on x86_64 where multiboot2 provides the FB info tag.
- */
-#ifdef __x86_64__
-extern uint32_t _mb_magic;
-extern uint64_t _mb_info;
-
-static void early_fb_debug(uint32_t color, uint32_t row)
-{
-	uint8_t *ptr, *end;
-	uint32_t total_size;
-	uint64_t fb_addr = 0;
-	uint32_t fb_pitch = 0;
-	uint32_t fb_width = 0;
-	uint32_t x, y;
-	uint32_t *pixel;
-
-	if (_mb_magic != 0x36d76289 || _mb_info == 0)
-		return;
-
-	/* Parse multiboot2 tags for framebuffer */
-	ptr = (uint8_t *)(uintptr_t)_mb_info;
-	total_size = *(uint32_t *)ptr;
-	end = ptr + total_size;
-	ptr += 8;
-
-	while (ptr + 8 <= end) {
-		uint32_t tag_type = *(uint32_t *)ptr;
-		uint32_t tag_size = *(uint32_t *)(ptr + 4);
-
-		if (tag_type == 0)
-			break;
-		if (tag_type == 8 && tag_size >= 32) {
-			fb_addr  = *(uint64_t *)(ptr + 8);
-			fb_pitch = *(uint32_t *)(ptr + 16);
-			fb_width = *(uint32_t *)(ptr + 20);
-			break;
-		}
-		ptr += (tag_size + 7) & ~7u;
-	}
-
-	if (fb_addr == 0 || fb_width == 0)
-		return;
-
-	/* Draw a colored bar at the specified row */
-	for (y = row * 20; y < row * 20 + 20; y++) {
-		pixel = (uint32_t *)(uintptr_t)(fb_addr + y * fb_pitch);
-		for (x = 0; x < fb_width && x < 400; x++)
-			pixel[x] = color;
-	}
-}
-#else
-static void early_fb_debug(uint32_t color, uint32_t row)
-{
-	(void)color; (void)row;
-}
-#endif /* __x86_64__ */
 
 void kernel_main(void)
 {
-	/* Immediate visual debug — proves kernel is running on bare metal */
-	early_fb_debug(0x00FF0000, 0);	/* red bar: kernel_main entered */
-
 	/* Early hardware init (serial/UART so kprintf works) */
 	arch_early_init();
-
-	early_fb_debug(0x0000FF00, 1);	/* green bar: serial init done */
 
 	/* Detect and initialize framebuffer if available */
 	{
@@ -132,15 +67,11 @@ void kernel_main(void)
 
 		arch_fb_detect(&fb_info);
 
-		early_fb_debug(0x000000FF, 2);	/* blue bar: fb detect done */
-
 		if (fb_info.available && anx_fb_init(&fb_info) == ANX_OK) {
 			anx_fbcon_init();
 			kprintf("framebuffer console: %ux%u @ %ubpp\n",
 				fb_info.width, fb_info.height, fb_info.bpp);
 		}
-
-		early_fb_debug(0x00FFFF00, 3);	/* yellow bar: fb init done */
 	}
 
 	/* Architecture-specific full init (page allocator, etc.) */
@@ -230,7 +161,8 @@ void kernel_main(void)
 	anx_auth_init();
 	anx_credstore_init();
 
-	/* Parse boot command line for credentials: cred:name=value */
+	/* Parse boot command line for credentials: cred:name=value, and flags */
+	bool install_mode = false;
 	{
 		const char *cmdline = arch_boot_cmdline();
 
@@ -262,6 +194,17 @@ void kernel_main(void)
 						offset >= 0 ? "+" : "",
 						(int)offset);
 					p = v;
+					continue;
+				}
+
+				/* Look for "install" flag */
+				if (p[0] == 'i' && p[1] == 'n' &&
+				    p[2] == 's' && p[3] == 't' &&
+				    p[4] == 'a' && p[5] == 'l' &&
+				    p[6] == 'l' &&
+				    (p[7] == ' ' || p[7] == '\0')) {
+					install_mode = true;
+					p += 7;
 					continue;
 				}
 
@@ -316,9 +259,9 @@ void kernel_main(void)
 	anx_pci_init();
 	PERF_END();
 
-	/* 10. Block device + disk object store */
-	PERF_BEGIN("virtio_blk_init");
-	anx_virtio_blk_init();
+	/* 10. Driver probe — storage, network, accelerators */
+	PERF_BEGIN("drivers_probe");
+	anx_drivers_probe();
 	PERF_END();
 	if (anx_blk_ready()) {
 		int ds_ret = anx_disk_store_init();
@@ -359,17 +302,29 @@ void kernel_main(void)
 	anx_theme_init(anx_fb_available() ? ANX_THEME_PRETTY : ANX_THEME_BORING);
 	kprintf("theme subsystem initialized\n");
 
-	/* 12. Network device and IP stack (virtio-net preferred; E1000 fallback) */
+	/* 12. Network bring-up (drivers already probed above) */
 	{
-		bool net_up = (anx_virtio_net_init() == ANX_OK);
+		/* Auto-connect WiFi if cred:wifi-ssid was passed on cmdline.
+		 * Only runs when MT7925 is the active driver (virtio/e1000 absent). */
+		if (anx_net_probe_ok() && anx_mt7925_state() == MT7925_STATE_FW_UP) {
+			char wifi_ssid[64]  = {0};
+			char wifi_pass[128] = {0};
+			uint32_t ssid_len = 0, pass_len = 0;
 
-		if (!net_up)
-			net_up = (anx_e1000_init() == ANX_OK);
+			if (anx_credential_read("wifi-ssid", wifi_ssid,
+						sizeof(wifi_ssid) - 1,
+						&ssid_len) == ANX_OK &&
+			    ssid_len > 0) {
+				anx_credential_read("wifi-pass", wifi_pass,
+						    sizeof(wifi_pass) - 1,
+						    &pass_len);
+				anx_mt7925_connect(wifi_ssid,
+						   pass_len > 0 ? wifi_pass
+						                : NULL);
+			}
+		}
 
-		if (!net_up)
-			net_up = (anx_mt7925_init() == ANX_OK);
-
-		if (net_up) {
+		if (anx_net_probe_ok()) {
 			struct anx_net_config net_cfg;
 
 			anx_arp_init();
@@ -407,6 +362,13 @@ void kernel_main(void)
 
 	/* Show boot performance profile */
 	anx_perf_report();
+
+	/* Install mode: run text installer instead of desktop */
+	if (install_mode) {
+		kprintf("install: starting installer\n");
+		anx_installer_interactive();
+		return;
+	}
 
 	/* Boot into desktop on framebuffer hardware; fall back to shell */
 	if (anx_fb_available())

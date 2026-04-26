@@ -670,3 +670,11 @@ void arch_wmb(void)
 {
 	__asm__ volatile("sfence" ::: "memory");
 }
+
+#include <anx/dt.h>
+
+bool anx_dt_has_compatible(const char *compatible)
+{
+	(void)compatible;
+	return false;
+}

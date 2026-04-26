@@ -56,6 +56,18 @@ static struct {
 	bool ready;
 } blkdev;
 
+/* Forward declarations for ops table defined at end of file */
+static int virtio_blk_read(uint64_t sector, uint32_t count, void *buf);
+static int virtio_blk_write(uint64_t sector, uint32_t count, const void *buf);
+static uint64_t virtio_blk_capacity(void);
+
+static const struct anx_blk_ops virtio_ops = {
+	.read     = virtio_blk_read,
+	.write    = virtio_blk_write,
+	.capacity = virtio_blk_capacity,
+	.name     = "virtio-blk",
+};
+
 static void virtio_blk_irq(uint32_t irq, void *arg)
 {
 	(void)irq;
@@ -107,6 +119,7 @@ int anx_virtio_blk_init(void)
 		(uint32_t)(blkdev.capacity * SECTOR_SIZE / (1024 * 1024)),
 		(uint32_t)pci->irq_line);
 
+	anx_blk_register(&virtio_ops);
 	return ANX_OK;
 }
 
@@ -234,26 +247,21 @@ static int blk_request(uint32_t type, uint64_t sector,
 	}
 }
 
-int anx_blk_read(uint64_t sector, uint32_t count, void *buf)
+static int virtio_blk_read(uint64_t sector, uint32_t count, void *buf)
 {
 	if (sector + count > blkdev.capacity)
 		return ANX_EINVAL;
 	return blk_request(VIRTIO_BLK_T_IN, sector, count, buf);
 }
 
-int anx_blk_write(uint64_t sector, uint32_t count, const void *buf)
+static int virtio_blk_write(uint64_t sector, uint32_t count, const void *buf)
 {
 	if (sector + count > blkdev.capacity)
 		return ANX_EINVAL;
 	return blk_request(VIRTIO_BLK_T_OUT, sector, count, (void *)buf);
 }
 
-uint64_t anx_blk_capacity(void)
+static uint64_t virtio_blk_capacity(void)
 {
 	return blkdev.capacity;
-}
-
-bool anx_blk_ready(void)
-{
-	return blkdev.ready;
 }
