@@ -218,13 +218,32 @@ int anx_so_open(const anx_oid_t *oid, enum anx_open_mode mode,
 		struct anx_object_handle *handle)
 {
 	struct anx_state_object *obj = anx_objstore_lookup(oid);
+	anx_cid_t nil_cell = ANX_UUID_NIL;
+	enum anx_access_op access_op;
+	int ar;
 
 	if (!obj)
 		return ANX_ENOENT;
-	if (obj->state != ANX_OBJ_ACTIVE && obj->state != ANX_OBJ_SEALED)
+	if (obj->state != ANX_OBJ_ACTIVE && obj->state != ANX_OBJ_SEALED) {
+		anx_objstore_release(obj);
 		return ANX_EINVAL;
-	if (mode != ANX_OPEN_READ && obj->state == ANX_OBJ_SEALED)
+	}
+	if (mode != ANX_OPEN_READ && obj->state == ANX_OBJ_SEALED) {
+		anx_objstore_release(obj);
 		return ANX_EPERM;
+	}
+
+	access_op = (mode == ANX_OPEN_READ)
+		? ANX_ACCESS_READ_PAYLOAD
+		: ANX_ACCESS_WRITE_PAYLOAD;
+
+	ar = anx_access_evaluate(&obj->access_policy, &nil_cell,
+				 (const anx_oid_t *)&obj->creator_cell,
+				 access_op);
+	if (ar != ANX_OK) {
+		anx_objstore_release(obj);
+		return ar;
+	}
 
 	handle->obj = obj;
 	handle->mode = mode;

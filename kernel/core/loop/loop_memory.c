@@ -122,11 +122,17 @@ int anx_loop_consolidate(anx_oid_t session_oid,
 	/* Update the PAL cross-session accumulator */
 	anx_pal_memory_update(payload.world_uri, &payload);
 
-	kprintf("[memory] consolidated %016llx world=%s iters=%.0f energy=%.4f\n",
-		(unsigned long long)session_oid.lo,
-		payload.world_uri,
-		payload.avg_iters,
-		payload.avg_final_energy);
+	{
+		unsigned int iters_i = (unsigned int)payload.avg_iters;
+		float ef = payload.avg_final_energy;
+		unsigned int ef_i = (unsigned int)ef;
+		unsigned int ef_f = (unsigned int)((ef - (float)ef_i) * 10000.0f + 0.5f);
+
+		kprintf("[memory] consolidated %016llx world=%s iters=%u energy=%u.%04u\n",
+			(unsigned long long)session_oid.lo,
+			payload.world_uri,
+			iters_i, ef_i, ef_f);
+	}
 
 	return ANX_OK;
 }

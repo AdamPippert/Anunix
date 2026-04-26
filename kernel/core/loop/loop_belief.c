@@ -55,15 +55,23 @@ int anx_loop_belief_create(anx_oid_t session_oid, uint32_t iteration,
 	/* Step 1: collect current system observation */
 	rc = anx_jepa_observe(&obs);
 	if (rc != ANX_OK) {
-		kprintf("[loop_belief] observe failed (%d)\n", rc);
-		return rc;
+		if (anx_jepa_available()) {
+			kprintf("[loop_belief] observe failed (%d)\n", rc);
+			return rc;
+		}
+		/* JEPA unavailable: continue with zero observation */
+		anx_memset(&obs, 0, sizeof(obs));
 	}
 
 	/* Step 2: persist observation as ANX_OBJ_JEPA_OBS */
-	rc = anx_jepa_observe_store(&obs, &obs_oid);
-	if (rc != ANX_OK) {
-		kprintf("[loop_belief] observe_store failed (%d)\n", rc);
-		return rc;
+	if (anx_jepa_available()) {
+		rc = anx_jepa_observe_store(&obs, &obs_oid);
+		if (rc != ANX_OK) {
+			kprintf("[loop_belief] observe_store failed (%d)\n", rc);
+			return rc;
+		}
+	} else {
+		anx_memset(&obs_oid, 0, sizeof(obs_oid));
 	}
 
 	/* Step 3: encode → ANX_OBJ_JEPA_LATENT */
@@ -137,8 +145,8 @@ int anx_loop_belief_get_latent(anx_oid_t belief_oid,
 	rc = anx_so_read_payload(&handle, 0, &payload, sizeof(payload));
 	anx_so_close(&handle);
 
-	if (rc != ANX_OK)
-		return rc;
+	if (rc < (int)sizeof(payload))
+		return ANX_EIO;
 
 	*latent_oid_out = payload.latent_oid;
 	return ANX_OK;
@@ -165,8 +173,8 @@ int anx_loop_belief_get_uncertainty(anx_oid_t belief_oid,
 	rc = anx_so_read_payload(&handle, 0, &payload, sizeof(payload));
 	anx_so_close(&handle);
 
-	if (rc != ANX_OK)
-		return rc;
+	if (rc < (int)sizeof(payload))
+		return ANX_EIO;
 
 	*uncertainty_out = payload.uncertainty;
 	return ANX_OK;

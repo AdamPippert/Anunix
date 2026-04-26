@@ -12,6 +12,7 @@
 #include <anx/cell.h>
 #include <anx/memplane.h>
 #include <anx/sched.h>
+#include <anx/memory.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
 
@@ -373,6 +374,88 @@ static int test_batch(void)
 	return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Phase 16: RLM → PAL score feedback                                 */
+/* ------------------------------------------------------------------ */
+
+static int test_rlm_pal_feedback(void)
+{
+	struct anx_rlm_rollout *r;
+	struct anx_rlm_config cfg;
+	anx_oid_t prompt;
+	uint32_t sess_before, sess_after;
+	int ret;
+
+	init_all();
+	anx_rlm_set_infer(stub_infer);
+	stub_reset(2);
+
+	ret = make_prompt("pal-test", &prompt);
+	if (ret != ANX_OK)
+		return -1;
+
+	anx_rlm_config_default(&cfg);
+	cfg.max_steps = 3;
+	cfg.admit_responses = false;
+	cfg.persist_trace = false;
+
+	ret = anx_rlm_rollout_create(&prompt, &cfg, &r);
+	if (ret != ANX_OK)
+		return -2;
+
+	ret = anx_rlm_rollout_run(r);
+	if (ret != ANX_OK)
+		return -3;
+	if (r->status != ANX_RLM_COMPLETED)
+		return -4;
+
+	/* Test A: good rollout (score=80) → PAL session count increments */
+	sess_before = anx_pal_session_count("anx:world/rlm-test");
+	anx_rlm_rollout_set_score(r, 80);
+	ret = anx_rlm_pal_feedback(r, "anx:world/rlm-test", 0);
+	if (ret != ANX_OK)
+		return -5;
+	sess_after = anx_pal_session_count("anx:world/rlm-test");
+	if (sess_after != sess_before + 1)
+		return -6;
+
+	/* Test B: poor rollout (score=20) → PAL updates + counterexample
+	 * Reuse same rollout with new score; session count increments again. */
+	anx_rlm_rollout_set_score(r, 20);
+	ret = anx_rlm_pal_feedback(r, "anx:world/rlm-test", 1);
+	if (ret != ANX_OK)
+		return -7;
+	if (anx_pal_session_count("anx:world/rlm-test") != sess_after + 1)
+		return -8;
+
+	/* Test C: PAL feedback on non-COMPLETED rollout returns ANX_EPERM */
+	{
+		struct anx_rlm_rollout *r2;
+		anx_oid_t p2;
+
+		ret = make_prompt("not-done", &p2);
+		if (ret != ANX_OK)
+			return -9;
+
+		anx_rlm_config_default(&cfg);
+		cfg.max_steps = 3;
+
+		ret = anx_rlm_rollout_create(&p2, &cfg, &r2);
+		if (ret != ANX_OK)
+			return -9;
+
+		/* r2 is PENDING, never run */
+		ret = anx_rlm_pal_feedback(r2, "anx:world/rlm-test", 0);
+		if (ret == ANX_OK)
+			return -9;	/* must be refused */
+
+		anx_rlm_rollout_destroy(r2);
+	}
+
+	anx_rlm_rollout_destroy(r);
+	return 0;
+}
+
 int test_rlm(void)
 {
 	int ret;
@@ -396,6 +479,10 @@ int test_rlm(void)
 	ret = test_batch();
 	if (ret != 0)
 		return ret - 80;
+
+	ret = test_rlm_pal_feedback();
+	if (ret != 0)
+		return ret - 100;
 
 	return 0;
 }

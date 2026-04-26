@@ -129,6 +129,10 @@ int kprintf(const char *fmt, ...)
 			fmt++;
 		}
 
+		/* Length modifiers: l → long, ll → long long */
+		int is_long = 0;
+		while (*fmt == 'l') { is_long++; fmt++; }
+
 		switch (*fmt) {
 		case 's': {
 			const char *s = va_arg(ap, const char *);
@@ -138,17 +142,23 @@ int kprintf(const char *fmt, ...)
 			break;
 		}
 		case 'd': {
-			int64_t val = va_arg(ap, int);
+			int64_t val = (is_long >= 2) ? (int64_t)va_arg(ap, long long) :
+				      (is_long == 1) ? (int64_t)va_arg(ap, long) :
+						       (int64_t)va_arg(ap, int);
 			put_int(val);
 			break;
 		}
 		case 'u': {
-			uint64_t val = va_arg(ap, unsigned int);
+			uint64_t val = (is_long >= 2) ? (uint64_t)va_arg(ap, unsigned long long) :
+				       (is_long == 1) ? (uint64_t)va_arg(ap, unsigned long) :
+						        (uint64_t)va_arg(ap, unsigned int);
 			put_uint(val, 10, width, pad);
 			break;
 		}
 		case 'x': {
-			uint64_t val = va_arg(ap, unsigned int);
+			uint64_t val = (is_long >= 2) ? (uint64_t)va_arg(ap, unsigned long long) :
+				       (is_long == 1) ? (uint64_t)va_arg(ap, unsigned long) :
+						        (uint64_t)va_arg(ap, unsigned int);
 			put_uint(val, 16, width, pad);
 			break;
 		}
