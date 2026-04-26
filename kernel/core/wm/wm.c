@@ -460,15 +460,10 @@ void anx_wm_run(void)
 	}
 
 	kprintf("[wm] desktop session started (workspace 1)\n");
-	kprintf("[wm] keybindings:\n");
-	kprintf("[wm]   Meta+1..9   switch workspace\n");
-	kprintf("[wm]   Meta+Enter  open terminal\n");
-	kprintf("[wm]   Meta+Q      close window\n");
-	kprintf("[wm]   Meta+F      fullscreen toggle\n");
-	kprintf("[wm]   Meta+Tab    cycle window focus\n");
-	kprintf("[wm]   Meta+Space  command search\n");
-	kprintf("[wm]   Meta+W      workflow designer\n");
-	kprintf("[wm]   Meta+O      object viewer\n");
+	kprintf("[wm] keybindings: Meta+Enter=terminal  Meta+1..9=ws  Meta+Q=close  Meta+Tab=cycle\n");
+
+	/* Open a terminal on the initial workspace */
+	anx_wm_launch_terminal();
 
 	while (g_wm_running) {
 		struct anx_event ev;
@@ -477,8 +472,7 @@ void anx_wm_run(void)
 		if (anx_iface_event_poll_wm(&ev) == ANX_OK) {
 			switch (ev.type) {
 			case ANX_EVENT_KEY_DOWN:
-				/* Hotkeys are already intercepted in input.c;
-				 * remaining events have passed the WM filter. */
+				/* Hotkeys intercepted in input.c before reaching here */
 				break;
 
 			case ANX_EVENT_POINTER_MOVE:
@@ -499,15 +493,35 @@ void anx_wm_run(void)
 			}
 		}
 
-		/* Refresh menu bar (includes clock) every ~60 polls */
+		/* Dispatch surface-targeted events to the focused surface handler */
+		{
+			struct anx_wm_workspace *ws = active_ws();
+			struct anx_surface *focused = NULL;
+
+			if (!oid_null(&ws->focused))
+				anx_iface_surface_lookup(ws->focused, &focused);
+
+			if (focused && focused->on_event) {
+				struct anx_event sev;
+
+				while (anx_iface_event_poll_surf(focused->oid, &sev) == ANX_OK)
+					focused->on_event(focused, &sev);
+			}
+		}
+
+		/* Refresh menu bar (includes clock) every ~2000 polls */
 		{
 			static uint32_t tick;
+
 			tick++;
-			if (tick >= 60) {
+			if (tick >= 2000) {
 				tick = 0;
 				anx_wm_menubar_refresh();
 			}
 		}
+
+		/* Yield to reduce CPU pressure on bare metal */
+		__asm__ volatile("pause");
 	}
 }
 

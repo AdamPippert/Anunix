@@ -95,6 +95,7 @@ bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key);
 void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
 
 /* ---- Built-in applications ---- */
+void anx_wm_launch_terminal(void);
 void anx_wm_launch_workflow_designer(void);
 void anx_wm_launch_object_viewer(void);
 void anx_wm_launch_command_search(void);
