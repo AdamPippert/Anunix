@@ -36,23 +36,6 @@ static js_val make_native(struct js_engine *eng, js_native_fn fn)
 	return jv_obj(fo);
 }
 
-js_val js_engine_call_native(struct js_engine *eng, js_val callee,
-                             js_val this_val, js_val *args, uint8_t argc)
-{
-	if (!jv_is_obj(callee)) return JV_UNDEF;
-	struct js_obj *fo = (struct js_obj *)jv_to_ptr(callee);
-	js_val lo = js_obj_get_cstr(eng->heap, fo, "__np_lo__");
-	js_val hi = js_obj_get_cstr(eng->heap, fo, "__np_hi__");
-	if (jv_is_undef(lo)) return JV_UNDEF;
-	uintptr_t ptr = (uintptr_t)(uint32_t)jv_to_int(lo);
-#if defined(__LP64__) || defined(_LP64)
-	ptr |= ((uintptr_t)(uint32_t)jv_to_int(hi)) << 32;
-#endif
-	(void)hi;
-	js_native_fn fn = (js_native_fn)ptr;
-	return fn(eng, this_val, args, argc);
-}
-
 /* ── Node wrapper cache ────────────────────────────────────────────── */
 
 #define DOM_WRAP_CACHE  64

@@ -32,7 +32,8 @@ static inline uint32_t ru32le(const uint8_t *p)
 	       ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24);
 }
 
-static inline uint16_t ru16le(const uint8_t *p)
+static inline __attribute__((unused)) uint16_t
+ru16le(const uint8_t *p)
 {
 	return (uint16_t)(p[0] | (p[1]<<8));
 }
@@ -271,8 +272,8 @@ static inline void cache_insert(uint32_t *cache, uint32_t mask, uint32_t argb)
 	cache[key & mask] = argb;
 }
 
-static inline uint32_t cache_get(const uint32_t *cache, uint32_t mask,
-				   uint32_t argb)
+static inline __attribute__((unused)) uint32_t
+cache_get(const uint32_t *cache, uint32_t mask, uint32_t argb)
 {
 	uint32_t key = (0x1e35a7bd * argb) >> (32 - 8);
 	return cache[key & mask];
@@ -512,6 +513,13 @@ static int vpl_decode_image(struct bb *b, uint32_t w, uint32_t h,
 	int ret = -1;
 	uint32_t n_pixels = w * h;
 
+	/* Entropy group meta image — declared before any goto to avoid
+	 * uninitialized-use in the done: cleanup path. */
+	int      meta_bits = 0;
+	uint32_t meta_w = 1, meta_h = 1;
+	uint32_t *meta_img = NULL;
+	uint32_t  n_groups = 1;
+
 	/* Color cache */
 	uint32_t *cache       = NULL;
 	uint32_t  cache_mask  = 0;
@@ -522,12 +530,6 @@ static int vpl_decode_image(struct bb *b, uint32_t w, uint32_t h,
 		anx_memset(cache, 0, csz * 4);
 		cache_mask = csz - 1;
 	}
-
-	/* Entropy group meta image */
-	int      meta_bits = 0;
-	uint32_t meta_w = 1, meta_h = 1;
-	uint32_t *meta_img = NULL;
-	uint32_t  n_groups = 1;
 
 	bool has_meta = bb_read(b, 1);
 	if (has_meta) {

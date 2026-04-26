@@ -13,6 +13,17 @@
 #include "loop_internal.h"
 
 /* ------------------------------------------------------------------ */
+/* anx_pal_memory_update — stub; Phase 6 wires to JEPA train buffer   */
+/* ------------------------------------------------------------------ */
+
+void anx_pal_memory_update(const char *world_uri,
+			    const struct anx_loop_memory_payload *payload)
+{
+	(void)world_uri;
+	(void)payload;
+}
+
+/* ------------------------------------------------------------------ */
 /* anx_loop_consolidate                                                */
 /* ------------------------------------------------------------------ */
 
