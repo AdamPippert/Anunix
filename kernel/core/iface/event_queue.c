@@ -46,6 +46,21 @@ static struct anx_spinlock sub_lock;
 static uint64_t            ev_posted;
 static uint64_t            ev_overflow_drops;
 
+/* ------------------------------------------------------------------ */
+/* Surface cursor table (forward-declared for use in event_reset)      */
+/* ------------------------------------------------------------------ */
+
+#define SURF_POLL_MAX  32
+
+struct anx_surf_poll_cursor {
+	anx_oid_t  surf_oid;
+	uint32_t   read_idx;
+	bool       active;
+};
+
+static struct anx_surf_poll_cursor surf_cursors[SURF_POLL_MAX];
+static struct anx_spinlock         sc_lock;
+
 void
 anx_iface_event_reset(void)
 {
@@ -62,6 +77,10 @@ anx_iface_event_reset(void)
 	anx_memset(subs, 0, sizeof(subs));
 	sub_count = 0;
 	anx_spin_unlock_irqrestore(&sub_lock, flags);
+
+	anx_spin_lock_irqsave(&sc_lock, &flags);
+	anx_memset(surf_cursors, 0, sizeof(surf_cursors));
+	anx_spin_unlock_irqrestore(&sc_lock, flags);
 }
 
 void
@@ -86,6 +105,7 @@ static void __attribute__((constructor)) event_queue_init(void)
 {
 	anx_spin_init(&ev_lock);
 	anx_spin_init(&sub_lock);
+	anx_spin_init(&sc_lock);
 	anx_iface_event_reset();
 }
 
@@ -161,6 +181,70 @@ anx_iface_event_poll_wm(struct anx_event *out)
 	}
 
 	anx_spin_unlock_irqrestore(&ev_lock, flags);
+	return ANX_ENOENT;
+}
+
+/* ------------------------------------------------------------------ */
+/* anx_iface_event_poll_surf                                           */
+/* ------------------------------------------------------------------ */
+
+int
+anx_iface_event_poll_surf(anx_oid_t surf_oid, struct anx_event *out)
+{
+	bool flags;
+	uint32_t i, write_snapshot, floor, slot;
+	struct anx_surf_poll_cursor *cur = NULL;
+
+	if (!out)
+		return ANX_EINVAL;
+
+	anx_spin_lock_irqsave(&sc_lock, &flags);
+
+	/* Find or create a cursor for this surface */
+	for (i = 0; i < SURF_POLL_MAX; i++) {
+		if (surf_cursors[i].active &&
+		    surf_cursors[i].surf_oid.hi == surf_oid.hi &&
+		    surf_cursors[i].surf_oid.lo == surf_oid.lo) {
+			cur = &surf_cursors[i];
+			break;
+		}
+	}
+	if (!cur) {
+		for (i = 0; i < SURF_POLL_MAX; i++) {
+			if (!surf_cursors[i].active) {
+				cur = &surf_cursors[i];
+				cur->surf_oid = surf_oid;
+				cur->read_idx = ev_write;
+				cur->active   = true;
+				break;
+			}
+		}
+	}
+	if (!cur) {
+		anx_spin_unlock_irqrestore(&sc_lock, flags);
+		return ANX_EFULL;
+	}
+
+	write_snapshot = ev_write;
+	floor = (write_snapshot > EV_RING_SIZE) ? (write_snapshot - EV_RING_SIZE) : 0;
+	if (cur->read_idx < floor)
+		cur->read_idx = floor;
+
+	while (cur->read_idx != write_snapshot) {
+		slot = cur->read_idx & EV_RING_MASK;
+		struct anx_event *ev = &ev_ring[slot];
+
+		cur->read_idx++;
+
+		if (ev->target_surf.hi == surf_oid.hi &&
+		    ev->target_surf.lo == surf_oid.lo) {
+			*out = *ev;
+			anx_spin_unlock_irqrestore(&sc_lock, flags);
+			return ANX_OK;
+		}
+	}
+
+	anx_spin_unlock_irqrestore(&sc_lock, flags);
 	return ANX_ENOENT;
 }
 

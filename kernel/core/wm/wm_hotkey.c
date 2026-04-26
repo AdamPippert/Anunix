@@ -127,9 +127,7 @@ static void hk_cycle(uint32_t mods, uint32_t key, void *arg)
 static void hk_shell(uint32_t mods, uint32_t key, void *arg)
 {
 	(void)mods; (void)key; (void)arg;
-	/* Shell window launched by the WM as a surface wrapping a terminal */
-	kprintf("[wm] shell window requested\n");
-	/* Phase 2: spawn a terminal surface */
+	anx_wm_launch_terminal();
 }
 
 static void hk_search(uint32_t mods, uint32_t key, void *arg)
