@@ -19,6 +19,7 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/types.h>
+#include <anx/objstore_disk.h>
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -51,6 +52,7 @@ static struct pal_world_entry g_pal_worlds[PAL_MAX_WORLDS];
 static uint32_t               g_pal_count;
 static struct anx_spinlock    g_pal_lock;
 static bool                   g_pal_ready;
+static bool                   g_pal_disk_ok;  /* set after disk store confirmed */
 
 /* ------------------------------------------------------------------ */
 /* Internal helpers                                                    */
@@ -147,10 +149,15 @@ void anx_pal_memory_update(const char *world_uri,
 		}
 	}
 
-	anx_spin_unlock(&g_pal_lock);
+	{
+		uint32_t sc = e->session_count;
 
-	kprintf("[pal] updated world=%s sessions=%u\n",
-		world_uri, e->session_count);
+		anx_spin_unlock(&g_pal_lock);
+		kprintf("[pal] updated world=%s sessions=%u\n", world_uri, sc);
+		/* Auto-save every 5 organic sessions once disk is confirmed */
+		if (g_pal_disk_ok && sc % 5 == 0)
+			anx_pal_persist_save();
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -261,4 +268,158 @@ uint32_t anx_pal_session_count(const char *world_uri)
 
 	anx_spin_unlock(&g_pal_lock);
 	return cnt;
+}
+
+/* ------------------------------------------------------------------ */
+/* Persistence: save / load to disk object store                       */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Fixed OID for the PAL state blob.  Two 64-bit halves spell "PALSTATE"
+ * and version 1 so the object is unambiguously identifiable on disk.
+ */
+#define PAL_DISK_OID_HI  0x50414C5354415445ULL  /* "PALSTATE" */
+#define PAL_DISK_OID_LO  0x0000000000000001ULL  /* version 1  */
+#define PAL_SAVE_MAGIC   0x50414C31u            /* "PAL1"     */
+#define PAL_DISK_TYPE    0xDA0A5E00u            /* arbitrary subsystem tag */
+
+/* On-disk action record (mirrors pal_action_ema without spinlock noise) */
+struct pal_disk_action {
+	float    avg_energy;
+	float    win_rate;
+	float    min_energy;
+	uint32_t sample_count;
+	uint32_t session_count;
+};
+
+/* On-disk world record */
+struct pal_disk_world {
+	char                world_uri[128];
+	uint32_t            session_count;
+	uint32_t            _pad;
+	struct pal_disk_action actions[ANX_MEMORY_ACT_COUNT];
+};
+
+/* On-disk header */
+struct pal_disk_hdr {
+	uint32_t magic;
+	uint32_t world_count;
+	uint32_t act_count;   /* must equal ANX_MEMORY_ACT_COUNT */
+	uint32_t _pad;
+};
+
+void anx_pal_persist_save(void)
+{
+	static uint8_t buf[sizeof(struct pal_disk_hdr) +
+			   PAL_MAX_WORLDS * sizeof(struct pal_disk_world)];
+	struct pal_disk_hdr   *hdr;
+	struct pal_disk_world *worlds;
+	anx_oid_t oid;
+	uint32_t i, j, count;
+	uint32_t total;
+
+	pal_init_once();
+	anx_spin_lock(&g_pal_lock);
+
+	count = 0;
+	hdr    = (struct pal_disk_hdr *)buf;
+	worlds = (struct pal_disk_world *)(buf + sizeof(*hdr));
+
+	for (i = 0; i < g_pal_count; i++) {
+		if (!g_pal_worlds[i].valid)
+			continue;
+		anx_strlcpy(worlds[count].world_uri,
+			    g_pal_worlds[i].world_uri,
+			    sizeof(worlds[count].world_uri));
+		worlds[count].session_count = g_pal_worlds[i].session_count;
+		worlds[count]._pad          = 0;
+		for (j = 0; j < ANX_MEMORY_ACT_COUNT; j++) {
+			worlds[count].actions[j].avg_energy   =
+				g_pal_worlds[i].actions[j].avg_energy;
+			worlds[count].actions[j].win_rate     =
+				g_pal_worlds[i].actions[j].win_rate;
+			worlds[count].actions[j].min_energy   =
+				g_pal_worlds[i].actions[j].min_energy;
+			worlds[count].actions[j].sample_count =
+				g_pal_worlds[i].actions[j].sample_count;
+			worlds[count].actions[j].session_count =
+				g_pal_worlds[i].actions[j].session_count;
+		}
+		count++;
+	}
+
+	anx_spin_unlock(&g_pal_lock);
+
+	hdr->magic       = PAL_SAVE_MAGIC;
+	hdr->world_count = count;
+	hdr->act_count   = ANX_MEMORY_ACT_COUNT;
+	hdr->_pad        = 0;
+
+	total = (uint32_t)(sizeof(*hdr) + count * sizeof(struct pal_disk_world));
+
+	oid.hi = PAL_DISK_OID_HI;
+	oid.lo = PAL_DISK_OID_LO;
+
+	/* Overwrite existing record (delete + rewrite) */
+	anx_disk_delete_obj(&oid);
+	if (anx_disk_write_obj(&oid, PAL_DISK_TYPE, buf, total) == ANX_OK)
+		kprintf("[pal] persisted %u worlds to disk\n", count);
+	else
+		kprintf("[pal] persist save failed\n");
+}
+
+void anx_pal_persist_load(void)
+{
+	static uint8_t buf[sizeof(struct pal_disk_hdr) +
+			   PAL_MAX_WORLDS * sizeof(struct pal_disk_world)];
+	struct pal_disk_hdr   *hdr;
+	struct pal_disk_world *worlds;
+	anx_oid_t oid;
+	uint32_t actual, obj_type;
+	uint32_t i, j;
+	int rc;
+
+	g_pal_disk_ok = true;  /* disk is now available regardless of load result */
+
+	oid.hi = PAL_DISK_OID_HI;
+	oid.lo = PAL_DISK_OID_LO;
+
+	rc = anx_disk_read_obj(&oid, buf, sizeof(buf), &actual, &obj_type);
+	if (rc != ANX_OK) {
+		kprintf("[pal] no persisted state (first boot or fresh format)\n");
+		return;
+	}
+
+	hdr = (struct pal_disk_hdr *)buf;
+	if (hdr->magic != PAL_SAVE_MAGIC ||
+	    hdr->act_count != ANX_MEMORY_ACT_COUNT ||
+	    hdr->world_count > PAL_MAX_WORLDS) {
+		kprintf("[pal] persisted state has wrong magic/version — ignoring\n");
+		return;
+	}
+
+	worlds = (struct pal_disk_world *)(buf + sizeof(*hdr));
+
+	pal_init_once();
+	anx_spin_lock(&g_pal_lock);
+
+	for (i = 0; i < hdr->world_count; i++) {
+		struct pal_world_entry *e;
+
+		e = pal_find_or_create(worlds[i].world_uri);
+		if (!e)
+			break;
+
+		e->session_count = worlds[i].session_count;
+		for (j = 0; j < ANX_MEMORY_ACT_COUNT; j++) {
+			e->actions[j].avg_energy    = worlds[i].actions[j].avg_energy;
+			e->actions[j].win_rate      = worlds[i].actions[j].win_rate;
+			e->actions[j].min_energy    = worlds[i].actions[j].min_energy;
+			e->actions[j].sample_count  = worlds[i].actions[j].sample_count;
+			e->actions[j].session_count = worlds[i].actions[j].session_count;
+		}
+	}
+
+	anx_spin_unlock(&g_pal_lock);
+	kprintf("[pal] loaded %u worlds from disk\n", hdr->world_count);
 }

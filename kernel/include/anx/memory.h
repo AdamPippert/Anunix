@@ -84,4 +84,16 @@ void anx_pal_prime_kickstart(const char *workflow_uri);
 /* Call at end of install with a bitmask of detected hardware. */
 void anx_pal_prime_install(uint32_t hardware_flags);
 
+/* ------------------------------------------------------------------ */
+/* PAL persistence (loop_pal.c)                                       */
+/* ------------------------------------------------------------------ */
+
+/* Save the PAL accumulator state to the disk object store. */
+void anx_pal_persist_save(void);
+
+/* Load a previously saved PAL state from disk.  Also marks disk as
+ * available so subsequent sessions trigger auto-save.  Call after
+ * anx_disk_store_init() succeeds. */
+void anx_pal_persist_load(void);
+
 #endif /* ANX_MEMORY_H */
