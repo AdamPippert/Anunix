@@ -159,4 +159,13 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid);
 void anx_wm_app_menu_key_event(struct anx_key_event *ev);
 bool anx_wm_app_menu_active(void);
 
+/* ---- Right-click context menu ---- */
+/* Open a window context menu for surf at screen position (x, y). */
+void anx_wm_ctx_menu_open(struct anx_surface *surf, int32_t x, int32_t y);
+void anx_wm_ctx_menu_close(void);
+bool anx_wm_ctx_menu_active(void);
+/* Pass pointer events; returns true if consumed by the menu. */
+bool anx_wm_ctx_menu_pointer(int32_t x, int32_t y, uint32_t buttons,
+			      bool move_only);
+
 #endif /* ANX_WM_H */
