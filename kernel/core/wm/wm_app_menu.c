@@ -16,6 +16,8 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/input.h>
+#include <anx/theme.h>
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -106,6 +108,7 @@ static struct {
 
 	uint32_t		 menu_index;
 	anx_oid_t		 invocation_oid;
+	anx_oid_t		 target_oid;	/* focused surface OID at open time */
 
 	int32_t			 selected;
 	uint32_t		 item_count;
@@ -245,15 +248,36 @@ static void am_render(void)
 
 static void am_execute(uint32_t menu_idx, uint32_t item_idx)
 {
-	(void)menu_idx; (void)item_idx;
-	/* Stub: future implementation dispatches to the invocation_oid.
-	 * E.g. menu_idx==0,item_idx==0 → create new workflow instance.
-	 *      menu_idx==2,item_idx==0 → toggle fullscreen.
-	 *      menu_idx==2,item_idx==3 → anx_theme_set_mode toggle. */
-	kprintf("[app_menu] execute menu=%u item=%u oid=%08llx%08llx\n",
-		menu_idx, item_idx,
-		(unsigned long long)g_am.invocation_oid.hi,
-		(unsigned long long)g_am.invocation_oid.lo);
+	kprintf("[app_menu] execute menu=%u item=%u\n", menu_idx, item_idx);
+
+	switch (menu_idx) {
+	case 0: /* Obj */
+		if (item_idx == 4) { /* Close */
+			struct anx_surface *surf = NULL;
+
+			anx_iface_surface_lookup(g_am.target_oid, &surf);
+			if (surf)
+				anx_wm_window_close(surf);
+		}
+		break;
+	case 2: /* View */
+		if (item_idx == 0) { /* Fullscreen */
+			struct anx_surface *surf = NULL;
+
+			anx_iface_surface_lookup(g_am.target_oid, &surf);
+			if (surf)
+				anx_wm_window_fullscreen_toggle(surf);
+		} else if (item_idx == 3) { /* Theme Toggle */
+			enum anx_theme_mode m = anx_theme_get_mode();
+
+			anx_theme_set_mode(m == ANX_THEME_PRETTY
+					   ? ANX_THEME_BORING
+					   : ANX_THEME_PRETTY);
+		}
+		break;
+	default:
+		break;
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -315,6 +339,7 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid)
 
 	g_am.menu_index     = menu_index < MENU_COUNT ? menu_index : 0;
 	g_am.invocation_oid = invocation_oid;
+	g_am.target_oid     = anx_input_focus_get();
 	g_am.selected       = 0;
 
 	/* Count items */
@@ -323,6 +348,7 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid)
 		;
 	g_am.item_count = n;
 
+	anx_iface_surface_set_title(g_am.surf, g_menu_titles[g_am.menu_index]);
 	anx_iface_surface_map(g_am.surf);
 	anx_wm_window_open(g_am.surf);
 	am_render();

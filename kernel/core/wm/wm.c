@@ -302,9 +302,11 @@ int anx_wm_window_focus(struct anx_surface *surf)
 	/* Record last-used timestamp for the switcher. */
 	anx_wm_activity_touch(surf->oid);
 
-	/* Raise menubar above the newly focused surface */
-	if (g_menubar)
+	/* Raise menubar above the newly focused surface and refresh title */
+	if (g_menubar) {
 		anx_iface_surface_raise(g_menubar);
+		anx_wm_menubar_refresh();
+	}
 
 	return ANX_OK;
 }
@@ -416,20 +418,29 @@ static void wm_handle_pointer(int32_t x, int32_t y, bool clicked)
 	if (g_menubar && x >= g_menubar->x && y >= g_menubar->y &&
 	    x < g_menubar->x + (int32_t)g_menubar->width &&
 	    y < g_menubar->y + (int32_t)g_menubar->height) {
-		/* Workspace dot hit test: dots start at x=10, spacing 24px */
 		if (clicked) {
 			uint32_t ws;
+			int32_t  dot_y = ANX_WM_MENUBAR_H / 2;
 
+			/* Workspace dots: centers at x = 16 + (ws-1)*20 */
 			for (ws = 1; ws <= ANX_WM_WORKSPACES; ws++) {
-				int32_t dot_x = (int32_t)(10 + (ws - 1) * 24 + 7);
-				int32_t dot_y = ANX_WM_MENUBAR_H / 2;
+				int32_t dot_x = (int32_t)(16 + (ws - 1) * 20);
 
-				if (x >= dot_x - 8 && x <= dot_x + 8 &&
-				    y >= dot_y - 8 && y <= dot_y + 8) {
+				if (x >= dot_x - 7 && x <= dot_x + 7 &&
+				    y >= dot_y - 7 && y <= dot_y + 7) {
 					anx_wm_workspace_switch(ws);
+					anx_wm_menubar_refresh();
 					cursor_draw(x, y);
 					return;
 				}
+			}
+
+			/* Power button: rightmost 24px of menubar */
+			if (x >= (int32_t)g_menubar->width - 24) {
+				/* Graceful shutdown placeholder */
+				kprintf("[wm] power button clicked\n");
+				cursor_draw(x, y);
+				return;
 			}
 		}
 		cursor_draw(x, y);

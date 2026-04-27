@@ -37,6 +37,8 @@
 
 #define CAPTURE_SZ	(HIST_COLS * 80)
 
+#define CMD_HIST_COUNT	50
+
 /* ------------------------------------------------------------------ */
 /* State                                                               */
 /* ------------------------------------------------------------------ */
@@ -51,6 +53,11 @@ static struct {
 
 	char     input[HIST_COLS];
 	uint32_t input_len;
+
+	char     cmd_hist[CMD_HIST_COUNT][HIST_COLS];
+	uint32_t cmd_hist_count;
+	int32_t  cmd_hist_pos;		/* -1 = live input */
+	char     input_saved[HIST_COLS];
 } g_term;
 
 /* ------------------------------------------------------------------ */
@@ -230,9 +237,18 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 	case ANX_KEY_ENTER:
 		if (g_term.input_len > 0) {
 			char cmd[HIST_COLS];
+
 			anx_strlcpy(cmd, g_term.input, sizeof(cmd));
 			g_term.input[0]  = '\0';
 			g_term.input_len = 0;
+			/* Push to command history */
+			{
+				uint32_t slot = g_term.cmd_hist_count % CMD_HIST_COUNT;
+
+				anx_strlcpy(g_term.cmd_hist[slot], cmd, HIST_COLS);
+				g_term.cmd_hist_count++;
+			}
+			g_term.cmd_hist_pos = -1;
 			term_run_command(cmd);
 		} else {
 			hist_append_str("> ");
@@ -243,6 +259,49 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		if (g_term.input_len > 0) {
 			g_term.input_len--;
 			g_term.input[g_term.input_len] = '\0';
+		}
+		g_term.cmd_hist_pos = -1;
+		break;
+
+	case ANX_KEY_UP:
+		{
+			uint32_t hist_len = g_term.cmd_hist_count > CMD_HIST_COUNT
+					    ? CMD_HIST_COUNT : g_term.cmd_hist_count;
+			if (hist_len == 0) break;
+			if (g_term.cmd_hist_pos == -1) {
+				anx_strlcpy(g_term.input_saved, g_term.input,
+					    sizeof(g_term.input_saved));
+				g_term.cmd_hist_pos = 0;
+			} else if ((uint32_t)(g_term.cmd_hist_pos + 1) < hist_len) {
+				g_term.cmd_hist_pos++;
+			} else {
+				break;
+			}
+			{
+				uint32_t idx = (g_term.cmd_hist_count - 1
+						- (uint32_t)g_term.cmd_hist_pos)
+					       % CMD_HIST_COUNT;
+				anx_strlcpy(g_term.input, g_term.cmd_hist[idx],
+					    sizeof(g_term.input));
+				g_term.input_len = (uint32_t)anx_strlen(g_term.input);
+			}
+		}
+		break;
+
+	case ANX_KEY_DOWN:
+		if (g_term.cmd_hist_pos < 0) break;
+		g_term.cmd_hist_pos--;
+		if (g_term.cmd_hist_pos < 0) {
+			anx_strlcpy(g_term.input, g_term.input_saved,
+				    sizeof(g_term.input));
+			g_term.input_len = (uint32_t)anx_strlen(g_term.input);
+		} else {
+			uint32_t idx = (g_term.cmd_hist_count - 1
+					- (uint32_t)g_term.cmd_hist_pos)
+				       % CMD_HIST_COUNT;
+			anx_strlcpy(g_term.input, g_term.cmd_hist[idx],
+				    sizeof(g_term.input));
+			g_term.input_len = (uint32_t)anx_strlen(g_term.input);
 		}
 		break;
 
@@ -268,6 +327,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 	default:
 		if (unicode >= 0x20 && unicode < 0x7F &&
 		    g_term.input_len < HIST_COLS - 1) {
+			g_term.cmd_hist_pos = -1;
 			g_term.input[g_term.input_len++] = (char)unicode;
 			g_term.input[g_term.input_len]   = '\0';
 		}
@@ -316,13 +376,15 @@ void anx_wm_terminal_open(void)
 		return;
 	}
 
-	g_term.input[0]   = '\0';
-	g_term.input_len  = 0;
-	g_term.scroll_off = 0;
+	g_term.input[0]     = '\0';
+	g_term.input_len    = 0;
+	g_term.scroll_off   = 0;
+	g_term.cmd_hist_pos = -1;
 
 	if (g_term.hist_count == 0)
 		hist_append_str("Anunix terminal  -  type 'help' for commands");
 
+	anx_iface_surface_set_title(g_term.surf, "Terminal");
 	anx_iface_surface_map(g_term.surf);
 	anx_wm_window_open(g_term.surf);
 	term_render();

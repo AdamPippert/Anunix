@@ -75,13 +75,13 @@ static const char *const g_builtins[] = {
 
 static bool str_contains(const char *hay, const char *needle)
 {
-	const char *h, *n;
+	uint32_t nl;
 
-	if (!hay || !needle || !needle[0]) return true;
-	for (h = hay; *h; h++) {
-		for (n = needle, h++; *n && *h == *n; n++, h++);
-		h--;
-		if (!*n) return true;
+	if (!hay || !needle || !*needle) return true;
+	nl = (uint32_t)anx_strlen(needle);
+	for (; *hay; hay++) {
+		if (anx_strncmp(hay, needle, nl) == 0)
+			return true;
 	}
 	return false;
 }
@@ -253,15 +253,22 @@ static void cs_populate(void)
 		for (i = 0; i < wf_count && g_cs.result_count < MAX_RESULTS; i++) {
 			uint32_t act   = uri_to_action(wf_uris[i]);
 			uint32_t score = 50 + (act == pal_act ? 50 : 0);
-			const char *name = wf_uris[i];
+			const struct anx_wf_template *tmpl;
+			const char *dname = wf_uris[i];
 			const char *slash;
 
-			slash = name;
-			for (; *name; name++)
-				if (*name == '/') slash = name + 1;
+			tmpl = anx_wf_lib_lookup(wf_uris[i]);
+			if (tmpl && tmpl->display_name[0]) {
+				dname = tmpl->display_name;
+			} else {
+				slash = wf_uris[i];
+				for (const char *p = wf_uris[i]; *p; p++)
+					if (*p == '/') slash = p + 1;
+				dname = slash;
+			}
 
 			anx_strlcpy(g_cs.results[g_cs.result_count].label,
-				     slash, 64);
+				     dname, 64);
 			anx_strlcpy(g_cs.results[g_cs.result_count].uri,
 				     wf_uris[i], 128);
 			g_cs.results[g_cs.result_count].score      = score;
@@ -303,15 +310,22 @@ static void cs_populate(void)
 			uint32_t act   = uri_to_action(wf_matches[i].uri);
 			uint32_t score = wf_matches[i].score * 100
 					 + (act == pal_act ? 50 : 0);
-			const char *name = wf_matches[i].uri;
+			const struct anx_wf_template *tmpl;
+			const char *dname = wf_matches[i].uri;
 			const char *slash;
 
-			slash = name;
-			for (; *name; name++)
-				if (*name == '/') slash = name + 1;
+			tmpl = anx_wf_lib_lookup(wf_matches[i].uri);
+			if (tmpl && tmpl->display_name[0]) {
+				dname = tmpl->display_name;
+			} else {
+				slash = wf_matches[i].uri;
+				for (const char *p = wf_matches[i].uri; *p; p++)
+					if (*p == '/') slash = p + 1;
+				dname = slash;
+			}
 
 			anx_strlcpy(g_cs.results[g_cs.result_count].label,
-				     slash, 64);
+				     dname, 64);
 			anx_strlcpy(g_cs.results[g_cs.result_count].uri,
 				     wf_matches[i].uri, 128);
 			g_cs.results[g_cs.result_count].score      = score;
@@ -494,25 +508,39 @@ static void cs_record_selection(uint32_t idx)
 
 static void cs_execute_selected(void)
 {
-	char     cmd[68];
 	uint32_t idx = (uint32_t)g_cs.selected;
-	uint32_t i;
 
 	if (g_cs.selected < 0 || idx >= g_cs.result_count) return;
 
 	cs_record_selection(idx);
 
-	anx_strlcpy(cmd, g_cs.results[idx].label, sizeof(cmd));
-
 	anx_wm_window_close(g_cs.surf);
 	g_cs.surf   = NULL;
 	g_cs.pixels = NULL;
 
-	anx_wm_terminal_open();
-	for (i = 0; cmd[i]; i++)
-		anx_wm_terminal_key_event(ANX_KEY_NONE, 0,
-					   (uint32_t)(uint8_t)cmd[i]);
-	anx_wm_terminal_key_event(ANX_KEY_ENTER, 0, '\n');
+	/* Workflow URI: instantiate and run */
+	if (!g_cs.results[idx].is_builtin && g_cs.results[idx].uri[0]) {
+		anx_oid_t wf_oid;
+
+		if (anx_wf_lib_instantiate(g_cs.results[idx].uri,
+					   g_cs.results[idx].label,
+					   &wf_oid) == ANX_OK)
+			anx_wf_run(&wf_oid, NULL);
+		return;
+	}
+
+	/* Built-in command: type into terminal */
+	{
+		char     cmd[68];
+		uint32_t i;
+
+		anx_strlcpy(cmd, g_cs.results[idx].label, sizeof(cmd));
+		anx_wm_terminal_open();
+		for (i = 0; cmd[i]; i++)
+			anx_wm_terminal_key_event(ANX_KEY_NONE, 0,
+						  (uint32_t)(uint8_t)cmd[i]);
+		anx_wm_terminal_key_event(ANX_KEY_ENTER, 0, '\n');
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -636,22 +664,36 @@ static void dir_render(void)
 static void dir_execute_selected(void)
 {
 	uint32_t idx = (uint32_t)g_dir.selected;
-	char cmd[68];
-	uint32_t i;
 
 	if (g_dir.selected < 0 || idx >= g_dir.item_count) return;
-
-	anx_strlcpy(cmd, g_dir.items[idx].display_name, sizeof(cmd));
 
 	anx_wm_window_close(g_dir.surf);
 	g_dir.surf   = NULL;
 	g_dir.pixels = NULL;
 
-	anx_wm_terminal_open();
-	for (i = 0; cmd[i]; i++)
-		anx_wm_terminal_key_event(ANX_KEY_NONE, 0,
-					   (uint32_t)(uint8_t)cmd[i]);
-	anx_wm_terminal_key_event(ANX_KEY_ENTER, 0, '\n');
+	/* Workflow URI: instantiate and run */
+	if (g_dir.items[idx].uri[0]) {
+		anx_oid_t wf_oid;
+
+		if (anx_wf_lib_instantiate(g_dir.items[idx].uri,
+					   g_dir.items[idx].display_name,
+					   &wf_oid) == ANX_OK)
+			anx_wf_run(&wf_oid, NULL);
+		return;
+	}
+
+	/* Built-in command: type into terminal */
+	{
+		char     cmd[68];
+		uint32_t i;
+
+		anx_strlcpy(cmd, g_dir.items[idx].display_name, sizeof(cmd));
+		anx_wm_terminal_open();
+		for (i = 0; cmd[i]; i++)
+			anx_wm_terminal_key_event(ANX_KEY_NONE, 0,
+						  (uint32_t)(uint8_t)cmd[i]);
+		anx_wm_terminal_key_event(ANX_KEY_ENTER, 0, '\n');
+	}
 }
 
 static void dir_open(void)
@@ -851,6 +893,7 @@ void anx_wm_launch_command_search(void)
 
 	cs_populate();
 
+	anx_iface_surface_set_title(g_cs.surf, "Search");
 	anx_iface_surface_map(g_cs.surf);
 	anx_wm_window_open(g_cs.surf);
 	cs_render();

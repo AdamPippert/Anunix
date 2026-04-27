@@ -15,6 +15,7 @@
 #include <anx/wm.h>
 #include <anx/types.h>
 #include <anx/interface_plane.h>
+#include <anx/input.h>
 #include <anx/fb.h>
 #include <anx/gui.h>
 #include <anx/font.h>
@@ -188,6 +189,21 @@ void anx_wm_menubar_refresh(void)
 
 		mb_fill_circle(dot_x, cy, dot_r, color);
 		dot_x += 20;
+	}
+
+	/* ---- Focused window title ------------------------------------ */
+	{
+		anx_oid_t         foc = anx_input_focus_get();
+		struct anx_surface *s = NULL;
+
+		if ((foc.hi || foc.lo) &&
+		    anx_iface_surface_lookup(foc, &s) == ANX_OK &&
+		    s && s->title[0]) {
+			uint32_t tx = dot_x + 16;
+
+			mb_draw_str(tx, text_y, s->title,
+				    theme->palette.text_primary, bg);
+		}
 	}
 
 	/* ---- Clock (scale 1: 12×24px, centred vertically) ------------ */
