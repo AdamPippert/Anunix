@@ -219,10 +219,24 @@ void anx_wm_menubar_refresh(void)
 		}
 	}
 
-	/* ---- Clock (scale 1: 12×24px, centred vertically) ------------ */
-	anx_gui_get_time(clock_str, sizeof(clock_str));
-	clock_x = (mb_width - (uint32_t)anx_strlen(clock_str) * ANX_FONT_WIDTH) / 2;
-	mb_draw_str(clock_x, text_y, clock_str, theme->palette.text_primary, bg);
+	/* ---- Clock + date (centred) ---------------------------------- */
+	{
+		char date_str[8];
+		char combined[16];
+		uint32_t tw;
+
+		anx_gui_get_time(clock_str, sizeof(clock_str));
+		anx_gui_get_date(date_str,  sizeof(date_str));
+
+		/* "Mon 26  14:30" — date + two spaces + time */
+		anx_snprintf(combined, sizeof(combined), "%s  %s",
+			     date_str, clock_str);
+
+		tw      = (uint32_t)anx_strlen(combined) * ANX_FONT_WIDTH;
+		clock_x = (mb_width > tw) ? (mb_width - tw) / 2 : 0;
+		mb_draw_str(clock_x, text_y, combined,
+			    theme->palette.text_primary, bg);
+	}
 
 	/* ---- Network status dot + short label ------------------------ */
 	{
