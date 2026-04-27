@@ -109,6 +109,9 @@ bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode);
 /* ---- Menu bar ---- */
 void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
 
+/* ---- Toast notification (auto-dismisses after ~3 seconds) ---- */
+void anx_wm_notify(const char *msg);
+
 /* ---- Built-in applications ---- */
 void anx_wm_launch_workflow_designer(void);
 void anx_wm_launch_object_viewer(void);
