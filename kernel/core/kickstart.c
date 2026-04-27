@@ -18,6 +18,7 @@
 #include <anx/credential.h>
 #include <anx/workflow.h>
 #include <anx/workflow_library.h>
+#include <anx/memory.h>
 
 /* Last parse/apply error message */
 static char ks_error[128];
@@ -279,8 +280,10 @@ handle_workflows(const struct anx_ks_entry *e)
 		if (ret != ANX_OK)
 			kprintf("kickstart: workflow load=%s failed (%d)\n",
 				e->value, ret);
-		else
+		else {
 			kprintf("kickstart: workflow loaded: %s\n", e->value);
+			anx_pal_prime_kickstart(e->value);
+		}
 		return ANX_OK;
 	}
 	if (anx_strcmp(e->key, "autorun") == 0) {
@@ -290,6 +293,7 @@ handle_workflows(const struct anx_ks_entry *e)
 				e->value, ret);
 			return ANX_OK;
 		}
+		anx_pal_prime_kickstart(e->value);
 		ret = anx_wf_run(&wf_oid, NULL);
 		if (ret != ANX_OK)
 			kprintf("kickstart: workflow autorun=%s run failed (%d)\n",

@@ -64,4 +64,24 @@ int anx_pal_stats_get(const char *world_uri,
 /* Number of sessions accumulated so far for world_uri (0 if unknown). */
 uint32_t anx_pal_session_count(const char *world_uri);
 
+/* ------------------------------------------------------------------ */
+/* PAL warm-start priming (loop_pal_prime.c)                          */
+/* ------------------------------------------------------------------ */
+
+/* Call after anx_drivers_probe() — uses detected hardware to pre-seed priors. */
+void anx_pal_prime_hardware(void);
+
+/* Call for each workflow URI in a kickstart [workflows] section. */
+void anx_pal_prime_kickstart(const char *workflow_uri);
+
+/* ANX_PAL_PRIME_HW_* flags for anx_pal_prime_install(). */
+#define ANX_PAL_PRIME_HW_NPU      (1u << 0)
+#define ANX_PAL_PRIME_HW_GPU      (1u << 1)
+#define ANX_PAL_PRIME_HW_WIFI     (1u << 2)
+#define ANX_PAL_PRIME_HW_ETHERNET (1u << 3)
+#define ANX_PAL_PRIME_HW_STORAGE  (1u << 4)
+
+/* Call at end of install with a bitmask of detected hardware. */
+void anx_pal_prime_install(uint32_t hardware_flags);
+
 #endif /* ANX_MEMORY_H */

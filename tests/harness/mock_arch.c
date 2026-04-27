@@ -368,6 +368,7 @@ void anx_e1000_info(void) {}
 
 /* Mock XDNA NPU — hardware excluded from test build */
 int anx_xdna_init(void) { return ANX_ENODEV; }
+bool anx_xdna_present(void) { return false; }
 bool anx_xdna_ready(void) { return false; }
 int anx_xdna_load_firmware(void) { return ANX_ENODEV; }
 int anx_xdna_submit(const void *in, uint32_t in_len, void *out, uint32_t out_sz,
