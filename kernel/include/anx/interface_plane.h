@@ -139,6 +139,10 @@ struct anx_surface {
 	/* Optional window title (set by creator; shown in menubar) */
 	char                     title[64];
 
+	/* Set by WM when user explicitly minimizes; cleared on restore.
+	 * Distinguishes user-minimized from workspace-hidden surfaces. */
+	bool                     user_minimized;
+
 	/* Internal: hashtable chain and z-order list membership */
 	struct anx_list_head     ht_node;
 	struct anx_list_head     z_node;
