@@ -49,6 +49,20 @@ static struct {
 	bool                active;
 } g_drag;
 
+#define RESIZE_EDGE    6u   /* px from edge that counts as resize zone */
+#define RESIZE_MIN_W  80u
+#define RESIZE_MIN_H  40u
+
+/* Drag-to-resize state */
+static struct {
+	struct anx_surface *surf;
+	int32_t  start_x, start_y;   /* cursor pos at drag start */
+	uint32_t orig_w,  orig_h;    /* surface dims at drag start */
+	int32_t  orig_rx, orig_ry;   /* surface right/bottom edge at drag start */
+	uint8_t  edges;              /* bitmask: 1=right, 2=bottom */
+	bool     active;
+} g_resize;
+
 /* Saved pre-tile bounds (for Float restore) */
 static struct {
 	struct anx_surface *surf;
@@ -196,6 +210,23 @@ static struct anx_surface *wm_surface_at_decor(int32_t x, int32_t y)
 			return s;
 	}
 	return NULL;
+}
+
+/* Return which resize edges (1=right, 2=bottom) cursor (x,y) hits on surf. */
+static uint8_t surf_resize_edges(struct anx_surface *surf, int32_t x, int32_t y)
+{
+	int32_t  sx = surf->x, sy = surf->y;
+	int32_t  rx = sx + (int32_t)surf->width;
+	int32_t  by = sy + (int32_t)surf->height;
+	uint8_t  edges = 0;
+
+	if (x >= rx - (int32_t)RESIZE_EDGE && x <= rx + (int32_t)RESIZE_EDGE &&
+	    y >= sy && y <= by)
+		edges |= 1;
+	if (y >= by - (int32_t)RESIZE_EDGE && y <= by + (int32_t)RESIZE_EDGE &&
+	    x >= sx && x <= rx)
+		edges |= 2;
+	return edges;
 }
 
 /* Return the workspace a surface belongs to, or NULL. */
@@ -603,10 +634,40 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 
 	cursor_erase();
 
-	/* Button released: end any active drag */
-	if (!left_down && !move_only && g_drag.active) {
-		g_drag.active = false;
-		g_drag.surf   = NULL;
+	/* Button released: end any active drag or resize */
+	if (!left_down && !move_only) {
+		if (g_drag.active) {
+			g_drag.active = false;
+			g_drag.surf   = NULL;
+		}
+		if (g_resize.active) {
+			g_resize.active = false;
+			g_resize.surf   = NULL;
+		}
+		cursor_draw(x, y);
+		return;
+	}
+
+	/* Active resize: adjust surface dimensions */
+	if (g_resize.active && g_resize.surf && left_down) {
+		int32_t  dx = x - g_resize.start_x;
+		int32_t  dy = y - g_resize.start_y;
+		uint32_t nw = g_resize.orig_w;
+		uint32_t nh = g_resize.orig_h;
+
+		if (g_resize.edges & 1) {
+			int32_t w = (int32_t)g_resize.orig_w + dx;
+			nw = (uint32_t)(w < (int32_t)RESIZE_MIN_W
+					? (int32_t)RESIZE_MIN_W : w);
+		}
+		if (g_resize.edges & 2) {
+			int32_t h = (int32_t)g_resize.orig_h + dy;
+			nh = (uint32_t)(h < (int32_t)RESIZE_MIN_H
+					? (int32_t)RESIZE_MIN_H : h);
+		}
+		g_resize.surf->width  = nw;
+		g_resize.surf->height = nh;
+		anx_iface_surface_commit(g_resize.surf);
 		cursor_draw(x, y);
 		return;
 	}
@@ -655,8 +716,20 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 	under = anx_iface_surface_at(x, y);
 
 	if (under && left_down && !move_only) {
-		/* Only start drag from untitled surfaces (no decoration) */
-		if (!under->title[0]) {
+		uint8_t edges = surf_resize_edges(under, x, y);
+
+		if (edges) {
+			/* Edge/corner resize */
+			anx_wm_window_focus(under);
+			g_resize.surf    = under;
+			g_resize.start_x = x;
+			g_resize.start_y = y;
+			g_resize.orig_w  = under->width;
+			g_resize.orig_h  = under->height;
+			g_resize.edges   = edges;
+			g_resize.active  = true;
+		} else if (!under->title[0]) {
+			/* Untitled surface: drag to move */
 			anx_wm_window_focus(under);
 			g_drag.surf   = under;
 			g_drag.off_x  = x - under->x;
