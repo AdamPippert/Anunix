@@ -22,6 +22,7 @@
 #define ANX_WM_WS_SURFS		32	/* max surfaces per workspace */
 #define ANX_WM_HOTKEYS		64	/* max registered hotkeys */
 #define ANX_WM_MENUBAR_H	34	/* menu bar height in pixels */
+#define ANX_WM_TASKBAR_H	22	/* taskbar height in pixels */
 #define ANX_WM_DECOR_H		18	/* window titlebar decoration height */
 
 /* ------------------------------------------------------------------ */
@@ -111,6 +112,15 @@ bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode);
 
 /* ---- Menu bar ---- */
 void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
+
+/* ---- Taskbar (minimized window dock, bottom strip) ---- */
+int  anx_wm_taskbar_create(void);
+void anx_wm_taskbar_refresh(void);
+bool anx_wm_taskbar_pointer(int32_t x, int32_t y, uint32_t buttons,
+			     bool move_only);
+
+/* Return OIDs of minimized windows on the active workspace. */
+uint32_t anx_wm_minimized_list(anx_oid_t *out, uint32_t max);
 
 /* ---- Toast notification (auto-dismisses after ~3 seconds) ---- */
 void anx_wm_notify(const char *msg);
