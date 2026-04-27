@@ -248,31 +248,55 @@ static void am_render(void)
 
 static void am_execute(uint32_t menu_idx, uint32_t item_idx)
 {
-	kprintf("[app_menu] execute menu=%u item=%u\n", menu_idx, item_idx);
+	struct anx_surface *surf = NULL;
+
+	anx_iface_surface_lookup(g_am.target_oid, &surf);
 
 	switch (menu_idx) {
 	case 0: /* Obj */
-		if (item_idx == 4) { /* Close */
-			struct anx_surface *surf = NULL;
-
-			anx_iface_surface_lookup(g_am.target_oid, &surf);
+		switch (item_idx) {
+		case 0: /* New Instance — open a new terminal */
+			anx_wm_terminal_open();
+			break;
+		case 4: /* Close */
 			if (surf)
 				anx_wm_window_close(surf);
+			break;
 		}
 		break;
 	case 2: /* View */
-		if (item_idx == 0) { /* Fullscreen */
-			struct anx_surface *surf = NULL;
-
-			anx_iface_surface_lookup(g_am.target_oid, &surf);
+		switch (item_idx) {
+		case 0: /* Fullscreen */
 			if (surf)
 				anx_wm_window_fullscreen_toggle(surf);
-		} else if (item_idx == 3) { /* Theme Toggle */
-			enum anx_theme_mode m = anx_theme_get_mode();
-
-			anx_theme_set_mode(m == ANX_THEME_PRETTY
-					   ? ANX_THEME_BORING
-					   : ANX_THEME_PRETTY);
+			break;
+		case 3: /* Theme Toggle */
+			{
+				enum anx_theme_mode m = anx_theme_get_mode();
+				anx_theme_set_mode(m == ANX_THEME_PRETTY
+						   ? ANX_THEME_BORING
+						   : ANX_THEME_PRETTY);
+			}
+			break;
+		}
+		break;
+	case 3: /* Panel */
+		switch (item_idx) {
+		case 0: /* New Panel — open terminal */
+			anx_wm_terminal_open();
+			break;
+		case 1: /* Tile Left */
+			if (surf)
+				anx_wm_window_tile_left(surf);
+			break;
+		case 2: /* Tile Right */
+			if (surf)
+				anx_wm_window_tile_right(surf);
+			break;
+		case 3: /* Float */
+			if (surf)
+				anx_wm_window_float(surf);
+			break;
 		}
 		break;
 	default:

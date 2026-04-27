@@ -11,6 +11,9 @@
  *   Meta+Tab     cycle window focus
  *   Meta+W       open workflow designer
  *   Meta+O       open object viewer
+ *   Meta+[       tile left
+ *   Meta+]       tile right
+ *   Meta+Shift+F float (restore from tile)
  *
  * Meta maps to Super (x86) and Cmd (Apple) via ANX_MOD_META.
  * anx_wm_hotkey_dispatch() is called by anx_input_ps2_key /
@@ -25,6 +28,7 @@
 #include <anx/kprintf.h>
 #include <anx/string.h>
 #include <anx/spinlock.h>
+#include <anx/arch.h>
 
 /* CID used by the WM for clipboard operations — a well-known sentinel. */
 #define WM_CID		((anx_cid_t){.hi = 0, .lo = 0xFFFF0001u})
@@ -227,6 +231,49 @@ static void hk_object_viewer(uint32_t mods, uint32_t key, void *arg)
 	anx_wm_launch_object_viewer();
 }
 
+static void hk_tile_left(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t focused;
+	struct anx_surface *surf = NULL;
+	(void)mods; (void)key; (void)arg;
+
+	focused = anx_input_focus_get();
+	anx_iface_surface_lookup(focused, &surf);
+	if (surf)
+		anx_wm_window_tile_left(surf);
+}
+
+static void hk_tile_right(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t focused;
+	struct anx_surface *surf = NULL;
+	(void)mods; (void)key; (void)arg;
+
+	focused = anx_input_focus_get();
+	anx_iface_surface_lookup(focused, &surf);
+	if (surf)
+		anx_wm_window_tile_right(surf);
+}
+
+static void hk_float(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t focused;
+	struct anx_surface *surf = NULL;
+	(void)mods; (void)key; (void)arg;
+
+	focused = anx_input_focus_get();
+	anx_iface_surface_lookup(focused, &surf);
+	if (surf)
+		anx_wm_window_float(surf);
+}
+
+static void hk_halt(uint32_t mods, uint32_t key, void *arg)
+{
+	(void)mods; (void)key; (void)arg;
+	kprintf("[wm] system halt requested\n");
+	arch_halt();
+}
+
 /* ------------------------------------------------------------------ */
 /* Register Omarchy defaults                                           */
 /* ------------------------------------------------------------------ */
@@ -246,15 +293,19 @@ void anx_wm_hotkeys_init(void)
 				       (void *)(uintptr_t)ws);
 	}
 
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_Q,      hk_close,              NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_F,      hk_fullscreen,         NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_TAB,    hk_switcher,           NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_ENTER,  hk_shell,              NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_SPACE,  hk_search,             NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_W,      hk_workflow_designer,  NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_O,      hk_object_viewer,      NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_C,      hk_copy,               NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_V,      hk_paste,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_Q,        hk_close,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_F,        hk_fullscreen,         NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_TAB,      hk_switcher,           NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_ENTER,    hk_shell,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_SPACE,    hk_search,             NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_W,        hk_workflow_designer,  NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_O,        hk_object_viewer,      NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_C,        hk_copy,               NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_V,        hk_paste,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_LBRACKET, hk_tile_left,          NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_RBRACKET, hk_tile_right,         NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_F,    hk_float,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_H,    hk_halt,               NULL);
 
 	kprintf("[wm] hotkeys registered (%u bindings)\n", g_hotkey_count);
 }

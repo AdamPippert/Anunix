@@ -20,6 +20,7 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/spinlock.h>
+#include <anx/arch.h>
 
 /* ------------------------------------------------------------------ */
 /* Global state                                                        */
@@ -47,6 +48,14 @@ static struct {
 	int32_t             off_y;
 	bool                active;
 } g_drag;
+
+/* Saved pre-tile bounds (for Float restore) */
+static struct {
+	struct anx_surface *surf;
+	int32_t  x, y;
+	uint32_t w, h;
+	bool     active;
+} g_tile_saved;
 
 /* ------------------------------------------------------------------ */
 /* Mouse cursor                                                        */
@@ -424,6 +433,131 @@ int anx_wm_window_fullscreen_toggle(struct anx_surface *surf)
 	return ANX_OK;
 }
 
+/* ------------------------------------------------------------------ */
+/* Tiling                                                             */
+/* ------------------------------------------------------------------ */
+
+static void tile_save(struct anx_surface *surf)
+{
+	if (g_tile_saved.active && g_tile_saved.surf == surf)
+		return;
+	g_tile_saved.surf   = surf;
+	g_tile_saved.x      = surf->x;
+	g_tile_saved.y      = surf->y;
+	g_tile_saved.w      = surf->width;
+	g_tile_saved.h      = surf->height;
+	g_tile_saved.active = true;
+}
+
+int anx_wm_window_tile_left(struct anx_surface *surf)
+{
+	const struct anx_fb_info *fb;
+	uint32_t top;
+
+	if (!surf)
+		return ANX_EINVAL;
+	fb = anx_fb_get_info();
+	if (!fb || !fb->available)
+		return ANX_ENOENT;
+
+	tile_save(surf);
+	top = ANX_WM_MENUBAR_H;
+	anx_iface_surface_move(surf, 0, (int32_t)(top + ANX_WM_DECOR_H));
+	surf->width  = fb->width / 2;
+	surf->height = fb->height - top - ANX_WM_DECOR_H;
+	anx_iface_surface_commit(surf);
+	return ANX_OK;
+}
+
+int anx_wm_window_tile_right(struct anx_surface *surf)
+{
+	const struct anx_fb_info *fb;
+	uint32_t top;
+
+	if (!surf)
+		return ANX_EINVAL;
+	fb = anx_fb_get_info();
+	if (!fb || !fb->available)
+		return ANX_ENOENT;
+
+	tile_save(surf);
+	top = ANX_WM_MENUBAR_H;
+	anx_iface_surface_move(surf,
+			       (int32_t)(fb->width / 2),
+			       (int32_t)(top + ANX_WM_DECOR_H));
+	surf->width  = fb->width - fb->width / 2;
+	surf->height = fb->height - top - ANX_WM_DECOR_H;
+	anx_iface_surface_commit(surf);
+	return ANX_OK;
+}
+
+int anx_wm_window_float(struct anx_surface *surf)
+{
+	if (!surf)
+		return ANX_EINVAL;
+	if (!g_tile_saved.active || g_tile_saved.surf != surf)
+		return ANX_OK;	/* nothing saved — already floating */
+
+	anx_iface_surface_move(surf, g_tile_saved.x, g_tile_saved.y);
+	surf->width  = g_tile_saved.w;
+	surf->height = g_tile_saved.h;
+	g_tile_saved.active = false;
+	anx_iface_surface_commit(surf);
+	return ANX_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* Send window to workspace                                           */
+/* ------------------------------------------------------------------ */
+
+int anx_wm_window_send_to_workspace(struct anx_surface *surf, uint32_t ws_id)
+{
+	struct anx_wm_workspace *src, *dst;
+	anx_oid_t null_oid = {0, 0};
+
+	if (!surf || ws_id < 1 || ws_id > ANX_WM_WORKSPACES)
+		return ANX_EINVAL;
+
+	src = ws_of(&surf->oid);
+	dst = &g_workspaces[ws_id - 1];
+
+	if (src == dst)
+		return ANX_OK;
+
+	if (dst->surf_count >= ANX_WM_WS_SURFS)
+		return ANX_ENOMEM;
+
+	if (src) {
+		ws_remove(src, &surf->oid);
+		if (oid_eq(&src->focused, &surf->oid)) {
+			if (src->surf_count > 0) {
+				src->focused = src->surfs[src->surf_count - 1];
+				if (src == active_ws())
+					anx_input_focus_set(src->focused);
+			} else {
+				src->focused = null_oid;
+				if (src == active_ws())
+					anx_input_focus_set(null_oid);
+			}
+		}
+	}
+
+	dst->surfs[dst->surf_count++] = surf->oid;
+
+	/* If sending to the inactive workspace, hide the surface */
+	if (dst != active_ws()) {
+		surf->state = ANX_SURF_MINIMIZED;
+	} else {
+		surf->state = ANX_SURF_VISIBLE;
+		anx_iface_surface_raise(surf);
+		anx_input_focus_set(surf->oid);
+		dst->focused = surf->oid;
+	}
+
+	anx_wm_menubar_refresh();
+	return ANX_OK;
+}
+
 void anx_wm_focus_cycle(void)
 {
 	struct anx_wm_workspace *ws = active_ws();
@@ -508,11 +642,10 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 				}
 			}
 
-			/* Power button: rightmost 24px of menubar */
+			/* Power button: rightmost 24px of menubar → halt */
 			if (x >= (int32_t)g_menubar->width - 24) {
-				kprintf("[wm] power button clicked\n");
-				cursor_draw(x, y);
-				return;
+				kprintf("[wm] power button clicked — halting\n");
+				arch_halt();
 			}
 		}
 		cursor_draw(x, y);
@@ -575,14 +708,18 @@ void anx_wm_run(void)
 
 	kprintf("[wm] desktop session started (workspace 1)\n");
 	kprintf("[wm] keybindings:\n");
-	kprintf("[wm]   Meta+1..9   switch workspace\n");
-	kprintf("[wm]   Meta+Enter  open terminal\n");
-	kprintf("[wm]   Meta+Q      close window\n");
-	kprintf("[wm]   Meta+F      fullscreen toggle\n");
-	kprintf("[wm]   Meta+Tab    cycle window focus\n");
-	kprintf("[wm]   Meta+Space  command search\n");
-	kprintf("[wm]   Meta+W      workflow designer\n");
-	kprintf("[wm]   Meta+O      object viewer\n");
+	kprintf("[wm]   Meta+1..9      switch workspace\n");
+	kprintf("[wm]   Meta+Enter     open terminal\n");
+	kprintf("[wm]   Meta+Q         close window\n");
+	kprintf("[wm]   Meta+F         fullscreen toggle\n");
+	kprintf("[wm]   Meta+[         tile left\n");
+	kprintf("[wm]   Meta+]         tile right\n");
+	kprintf("[wm]   Meta+Shift+F   float (restore from tile)\n");
+	kprintf("[wm]   Meta+Tab       cycle window focus\n");
+	kprintf("[wm]   Meta+Space     command search\n");
+	kprintf("[wm]   Meta+W         workflow designer\n");
+	kprintf("[wm]   Meta+O         object viewer\n");
+	kprintf("[wm]   Meta+Shift+H   halt system\n");
 
 	while (g_wm_running) {
 		struct anx_event ev;
