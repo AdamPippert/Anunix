@@ -424,6 +424,25 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid)
 	kprintf("[app_menu] opened panel %u\n", menu_index);
 }
 
+static void am_switch_panel(uint32_t new_index)
+{
+	const struct menu_item *items;
+	uint32_t n;
+
+	if (new_index >= MENU_COUNT)
+		return;
+	g_am.menu_index = new_index;
+	g_am.selected   = 0;
+
+	items = g_menus[g_am.menu_index];
+	for (n = 0; items[n].label; n++)
+		;
+	g_am.item_count = n;
+
+	anx_iface_surface_set_title(g_am.surf, g_menu_titles[g_am.menu_index]);
+	am_render();
+}
+
 void anx_wm_app_menu_key_event(struct anx_key_event *ev)
 {
 	uint32_t key = ev->keycode;
@@ -433,6 +452,16 @@ void anx_wm_app_menu_key_event(struct anx_key_event *ev)
 		anx_wm_window_close(g_am.surf);
 		g_am.surf   = NULL;
 		g_am.pixels = NULL;
+		return;
+
+	case ANX_KEY_LEFT:
+		if (g_am.menu_index > 0)
+			am_switch_panel(g_am.menu_index - 1);
+		return;
+
+	case ANX_KEY_RIGHT:
+		if (g_am.menu_index + 1 < MENU_COUNT)
+			am_switch_panel(g_am.menu_index + 1);
 		return;
 
 	case ANX_KEY_UP:
