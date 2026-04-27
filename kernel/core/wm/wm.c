@@ -535,7 +535,7 @@ int anx_wm_workspace_switch(uint32_t ws_id)
 	old_ws = &g_workspaces[g_active_ws];
 	new_ws = &g_workspaces[ws_id - 1];
 
-	/* Minimize all surfaces on the old workspace */
+	/* Hide all visible surfaces on the old workspace */
 	for (i = 0; i < old_ws->surf_count; i++) {
 		struct anx_surface *s = NULL;
 		anx_iface_surface_lookup(old_ws->surfs[i], &s);
@@ -545,12 +545,25 @@ int anx_wm_workspace_switch(uint32_t ws_id)
 
 	g_active_ws = ws_id - 1;
 
-	/* Restore surfaces on the new workspace */
+	/* Clear desktop area so old windows don't ghost on screen */
+	{
+		const struct anx_fb_info *fb = anx_fb_get_info();
+		if (fb && fb->available)
+			anx_fb_fill_rect(0, ANX_WM_MENUBAR_H,
+					 fb->width,
+					 fb->height - ANX_WM_MENUBAR_H
+					 - ANX_WM_TASKBAR_H,
+					 0x000B1A2Bu /* ANX_COLOR_AX_BG */);
+	}
+
+	/* Restore windows on the new workspace that were not user-minimized */
 	for (i = 0; i < new_ws->surf_count; i++) {
 		struct anx_surface *s = NULL;
 		anx_iface_surface_lookup(new_ws->surfs[i], &s);
-		if (s && s->state == ANX_SURF_MINIMIZED)
+		if (s && s->state == ANX_SURF_MINIMIZED && !s->user_minimized) {
 			s->state = ANX_SURF_VISIBLE;
+			anx_iface_surface_commit(s);
+		}
 	}
 
 	/* Restore focus on new workspace */
@@ -561,6 +574,7 @@ int anx_wm_workspace_switch(uint32_t ws_id)
 	}
 
 	anx_wm_menubar_refresh();
+	anx_wm_taskbar_refresh();
 	kprintf("[wm] workspace %u\n", ws_id);
 	return ANX_OK;
 }
@@ -676,6 +690,7 @@ int anx_wm_window_restore(struct anx_surface *surf)
 	if (!surf)
 		return ANX_EINVAL;
 
+	surf->user_minimized = false;
 	surf->state = ANX_SURF_VISIBLE;
 	anx_iface_surface_raise(surf);
 	anx_input_focus_set(surf->oid);
@@ -702,6 +717,7 @@ int anx_wm_window_minimize(struct anx_surface *surf)
 	if (!surf)
 		return ANX_EINVAL;
 
+	surf->user_minimized = true;
 	surf->state = ANX_SURF_MINIMIZED;
 
 	/* Shift focus to previous window */
