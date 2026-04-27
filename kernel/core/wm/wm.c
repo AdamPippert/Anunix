@@ -586,6 +586,29 @@ int anx_wm_window_focus(struct anx_surface *surf)
 	return ANX_OK;
 }
 
+int anx_wm_window_restore(struct anx_surface *surf)
+{
+	if (!surf)
+		return ANX_EINVAL;
+
+	surf->state = ANX_SURF_VISIBLE;
+	anx_iface_surface_raise(surf);
+	anx_input_focus_set(surf->oid);
+
+	{
+		struct anx_wm_workspace *ws = ws_of(&surf->oid);
+
+		if (ws)
+			ws->focused = surf->oid;
+	}
+
+	if (g_menubar) {
+		anx_iface_surface_raise(g_menubar);
+		anx_wm_menubar_refresh();
+	}
+	return ANX_OK;
+}
+
 int anx_wm_window_minimize(struct anx_surface *surf)
 {
 	anx_oid_t null_oid = {0, 0};
@@ -793,14 +816,20 @@ void anx_wm_focus_cycle(void)
 		}
 	}
 
-	/* Advance to next visible surface */
+	/* Advance to next visible (or minimized) surface */
 	for (i = 1; i <= ws->surf_count; i++) {
 		uint32_t idx = (start + i) % ws->surf_count;
 		struct anx_surface *s = NULL;
 
 		anx_iface_surface_lookup(ws->surfs[idx], &s);
-		if (s && s->state == ANX_SURF_VISIBLE) {
+		if (!s)
+			continue;
+		if (s->state == ANX_SURF_VISIBLE) {
 			anx_wm_window_focus(s);
+			return;
+		}
+		if (s->state == ANX_SURF_MINIMIZED) {
+			anx_wm_window_restore(s);
 			return;
 		}
 	}

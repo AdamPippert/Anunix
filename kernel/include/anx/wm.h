@@ -80,6 +80,9 @@ int  anx_wm_window_focus(struct anx_surface *surf);
 /* Minimize a surface (MINIMIZED state, removed from view). */
 int  anx_wm_window_minimize(struct anx_surface *surf);
 
+/* Restore a minimized surface to VISIBLE and focus it. */
+int  anx_wm_window_restore(struct anx_surface *surf);
+
 /* Toggle fullscreen for a surface. */
 int  anx_wm_window_fullscreen_toggle(struct anx_surface *surf);
 

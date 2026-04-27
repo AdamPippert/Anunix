@@ -162,7 +162,13 @@ static void hk_minimize(uint32_t mods, uint32_t key, void *arg)
 
 	focused = anx_input_focus_get();
 	anx_iface_surface_lookup(focused, &surf);
-	if (surf)
+	if (!surf)
+		return;
+
+	/* Toggle: restore if already minimized, otherwise minimize */
+	if (surf->state == ANX_SURF_MINIMIZED)
+		anx_wm_window_restore(surf);
+	else
 		anx_wm_window_minimize(surf);
 }
 
