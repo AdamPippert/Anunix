@@ -413,3 +413,13 @@ void anx_wm_terminal_paste(const char *text, uint32_t len)
 	g_term.input[g_term.input_len] = '\0';
 	term_render();
 }
+
+void anx_wm_terminal_print(const char *text)
+{
+	if (!text)
+		return;
+	if (!g_term.surf)
+		anx_wm_terminal_open();
+	hist_append_str(text);
+	term_render();
+}

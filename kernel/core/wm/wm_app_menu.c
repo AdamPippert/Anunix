@@ -299,6 +299,38 @@ static void am_execute(uint32_t menu_idx, uint32_t item_idx)
 			break;
 		}
 		break;
+	case 4: /* Help */
+		switch (item_idx) {
+		case 0: /* About Anunix */
+			anx_wm_terminal_open();
+			anx_wm_terminal_print("");
+			anx_wm_terminal_print("  Anunix  2026.4.23");
+			anx_wm_terminal_print("  AI-native operating system");
+			anx_wm_terminal_print("  RFC-0001 through RFC-0008");
+			anx_wm_terminal_print("  https://github.com/anunix/anunix");
+			anx_wm_terminal_print("");
+			break;
+		case 1: /* Keyboard Shortcuts */
+			anx_wm_terminal_open();
+			anx_wm_terminal_print("");
+			anx_wm_terminal_print("  Keyboard shortcuts:");
+			anx_wm_terminal_print("  Meta+1..9      switch workspace");
+			anx_wm_terminal_print("  Meta+Enter     open terminal");
+			anx_wm_terminal_print("  Meta+Q         close window");
+			anx_wm_terminal_print("  Meta+F         fullscreen toggle");
+			anx_wm_terminal_print("  Meta+[         tile left");
+			anx_wm_terminal_print("  Meta+]         tile right");
+			anx_wm_terminal_print("  Meta+Shift+F   float (restore)");
+			anx_wm_terminal_print("  Meta+Tab       cycle focus");
+			anx_wm_terminal_print("  Meta+Space     command search");
+			anx_wm_terminal_print("  Meta+W         workflow designer");
+			anx_wm_terminal_print("  Meta+O         object viewer");
+			anx_wm_terminal_print("  Meta+C/V       copy/paste");
+			anx_wm_terminal_print("  Meta+Shift+H   halt system");
+			anx_wm_terminal_print("");
+			break;
+		}
+		break;
 	default:
 		break;
 	}
