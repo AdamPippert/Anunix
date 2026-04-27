@@ -202,6 +202,26 @@ gpu_commit(struct anx_surface *surf)
 					   0x00FFFFFF, theme->palette.error);
 	}
 
+	/* Draw 2px border around focused window canvas */
+	if (surf->title[0] && surf->width && surf->height) {
+		const struct anx_theme *theme2 = anx_theme_get();
+		anx_oid_t foc2    = anx_input_focus_get();
+		bool      is_foc2 = (foc2.hi == surf->oid.hi &&
+				     foc2.lo == surf->oid.lo);
+		uint32_t  border_col = is_foc2 ? theme2->palette.accent
+					       : theme2->palette.border;
+		uint32_t  bx = (uint32_t)surf->x;
+		uint32_t  by = (uint32_t)surf->y;
+
+		/* Left + Right 2px strips */
+		anx_fb_fill_rect(bx, by, 2, surf->height, border_col);
+		anx_fb_fill_rect(bx + surf->width - 2, by,
+				 2, surf->height, border_col);
+		/* Bottom 2px strip (top is covered by titlebar) */
+		anx_fb_fill_rect(bx, by + surf->height - 2,
+				 surf->width, 2, border_col);
+	}
+
 	return ANX_OK;
 }
 
