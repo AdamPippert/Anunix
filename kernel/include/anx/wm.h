@@ -162,6 +162,12 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid);
 void anx_wm_app_menu_key_event(struct anx_key_event *ev);
 bool anx_wm_app_menu_active(void);
 
+/* ---- Keyboard shortcut help overlay (F1) ---- */
+void anx_wm_help_toggle(void);
+void anx_wm_help_close(void);
+bool anx_wm_help_active(void);
+bool anx_wm_help_key(uint32_t key);
+
 /* ---- Right-click context menu ---- */
 /* Open a window context menu for surf at screen position (x, y). */
 void anx_wm_ctx_menu_open(struct anx_surface *surf, int32_t x, int32_t y);
