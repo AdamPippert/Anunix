@@ -782,6 +782,7 @@ void anx_wm_run(void)
 	kprintf("[wm] desktop session started (workspace 1)\n");
 	kprintf("[wm] keybindings:\n");
 	kprintf("[wm]   Meta+1..9      switch workspace\n");
+	kprintf("[wm]   Meta+Shift+1..9 send window to workspace\n");
 	kprintf("[wm]   Meta+Enter     open terminal\n");
 	kprintf("[wm]   Meta+Q         close window\n");
 	kprintf("[wm]   Meta+F         fullscreen toggle\n");
@@ -792,6 +793,7 @@ void anx_wm_run(void)
 	kprintf("[wm]   Meta+Space     command search\n");
 	kprintf("[wm]   Meta+W         workflow designer\n");
 	kprintf("[wm]   Meta+O         object viewer\n");
+	kprintf("[wm]   Meta+M         minimize window\n");
 	kprintf("[wm]   Meta+Shift+H   halt system\n");
 
 	while (g_wm_running) {
