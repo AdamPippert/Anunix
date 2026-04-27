@@ -155,6 +155,26 @@ static bool oid_eq(const anx_oid_t *a, const anx_oid_t *b)
 	return a->hi == b->hi && a->lo == b->lo;
 }
 
+/* Find the surface whose decoration area (above canvas) contains (x, y). */
+static struct anx_surface *wm_surface_at_decor(int32_t x, int32_t y)
+{
+	struct anx_wm_workspace *ws = &g_workspaces[g_active_ws];
+	uint32_t i;
+
+	for (i = 0; i < ws->surf_count; i++) {
+		struct anx_surface *s = NULL;
+
+		if (anx_iface_surface_lookup(ws->surfs[i], &s) != ANX_OK || !s)
+			continue;
+		if (s->state != ANX_SURF_VISIBLE || !s->title[0])
+			continue;
+		if (x >= s->x && x < s->x + (int32_t)s->width &&
+		    y >= s->y - (int32_t)ANX_WM_DECOR_H && y < s->y)
+			return s;
+	}
+	return NULL;
+}
+
 /* Return the workspace a surface belongs to, or NULL. */
 static struct anx_wm_workspace *ws_of(const anx_oid_t *oid)
 {
@@ -488,13 +508,32 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 	under = anx_iface_surface_at(x, y);
 
 	if (under && left_down && !move_only) {
+		struct anx_surface *decor;
+
 		anx_wm_window_focus(under);
 
-		/* Begin drag: record offset from surface origin */
-		g_drag.surf   = under;
-		g_drag.off_x  = x - under->x;
-		g_drag.off_y  = y - under->y;
-		g_drag.active = true;
+		/* Drag starts from the titlebar decoration area, or from
+		 * the surface canvas itself when there is no decoration. */
+		decor = wm_surface_at_decor(x, y);
+		if (decor || !under->title[0]) {
+			struct anx_surface *drag_surf = decor ? decor : under;
+
+			g_drag.surf   = drag_surf;
+			g_drag.off_x  = x - drag_surf->x;
+			g_drag.off_y  = y - drag_surf->y;
+			g_drag.active = true;
+		}
+	} else if (left_down && !move_only) {
+		/* Click landed in a decoration area (not on the canvas) */
+		struct anx_surface *decor = wm_surface_at_decor(x, y);
+
+		if (decor) {
+			anx_wm_window_focus(decor);
+			g_drag.surf   = decor;
+			g_drag.off_x  = x - decor->x;
+			g_drag.off_y  = y - decor->y;
+			g_drag.active = true;
+		}
 	}
 
 	cursor_draw(x, y);

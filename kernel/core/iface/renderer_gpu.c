@@ -12,8 +12,10 @@
 #include <anx/fb.h>
 #include <anx/gui.h>
 #include <anx/font.h>
+#include <anx/theme.h>
 #include <anx/string.h>
 #include <anx/types.h>
+#include <anx/wm.h>
 
 /* ------------------------------------------------------------------ */
 /* Content rendering helpers                                            */
@@ -160,7 +162,26 @@ gpu_commit(struct anx_surface *surf)
 {
 	if (!anx_fb_available())
 		return ANX_EIO;
+
 	render_node(surf, surf->content_root);
+
+	/* Window decoration: thin titlebar above the surface canvas.
+	 * Skipped for untitled surfaces and surfaces flush with the top. */
+	if (surf->title[0] && surf->y >= (int32_t)ANX_WM_DECOR_H) {
+		const struct anx_theme *theme = anx_theme_get();
+		uint32_t tx = (uint32_t)surf->x;
+		uint32_t ty = (uint32_t)(surf->y - (int32_t)ANX_WM_DECOR_H);
+		uint32_t fy = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
+
+		anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H,
+				 theme->palette.surface);
+		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 2, surf->width, 2,
+				 theme->palette.accent);
+		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, 1,
+					   theme->palette.text_primary,
+					   theme->palette.surface);
+	}
+
 	return ANX_OK;
 }
 

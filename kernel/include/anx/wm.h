@@ -22,6 +22,7 @@
 #define ANX_WM_WS_SURFS		32	/* max surfaces per workspace */
 #define ANX_WM_HOTKEYS		64	/* max registered hotkeys */
 #define ANX_WM_MENUBAR_H	34	/* menu bar height in pixels */
+#define ANX_WM_DECOR_H		18	/* window titlebar decoration height */
 
 /* ------------------------------------------------------------------ */
 /* Workspace                                                           */
