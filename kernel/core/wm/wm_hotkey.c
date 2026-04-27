@@ -141,6 +141,31 @@ static void hk_workspace(uint32_t mods, uint32_t key, void *arg)
 	anx_wm_workspace_switch(ws);
 }
 
+static void hk_send_to_workspace(uint32_t mods, uint32_t key, void *arg)
+{
+	uint32_t ws_id = (uint32_t)(uintptr_t)arg;
+	anx_oid_t focused;
+	struct anx_surface *surf = NULL;
+	(void)mods; (void)key;
+
+	focused = anx_input_focus_get();
+	anx_iface_surface_lookup(focused, &surf);
+	if (surf)
+		anx_wm_window_send_to_workspace(surf, ws_id);
+}
+
+static void hk_minimize(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t focused;
+	struct anx_surface *surf = NULL;
+	(void)mods; (void)key; (void)arg;
+
+	focused = anx_input_focus_get();
+	anx_iface_surface_lookup(focused, &surf);
+	if (surf)
+		anx_wm_window_minimize(surf);
+}
+
 static void hk_close(uint32_t mods, uint32_t key, void *arg)
 {
 	anx_oid_t focused;
@@ -297,11 +322,14 @@ void anx_wm_hotkeys_init(void)
 	anx_spin_init(&g_hk_lock);
 	g_hotkey_count = 0;
 
-	/* Meta+1..9 → switch workspace */
+	/* Meta+1..9 → switch workspace; Meta+Shift+1..9 → send window to ws */
 	for (ws = 1; ws <= 9; ws++) {
 		/* ANX_KEY_1 = 0x1E, ANX_KEY_2 = 0x1F, ... */
 		uint32_t key = ANX_KEY_1 + (ws - 1);
 		anx_wm_hotkey_register(ANX_MOD_META, key, hk_workspace,
+				       (void *)(uintptr_t)ws);
+		anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, key,
+				       hk_send_to_workspace,
 				       (void *)(uintptr_t)ws);
 	}
 
@@ -320,6 +348,7 @@ void anx_wm_hotkeys_init(void)
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_RBRACKET, hk_tile_right,         NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_F,    hk_float,              NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_H,    hk_halt,               NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,                  ANX_KEY_M,    hk_minimize,           NULL);
 
 	kprintf("[wm] hotkeys registered (%u bindings)\n", g_hotkey_count);
 }
