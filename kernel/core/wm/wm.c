@@ -354,6 +354,22 @@ static bool wm_decor_close_hit(struct anx_surface *surf, int32_t x, int32_t y)
 	       (uint32_t)y >= by && (uint32_t)y < by + btn;
 }
 
+/* True if (x,y) falls on the maximize (+) button. */
+static bool wm_decor_maximize_hit(struct anx_surface *surf,
+				   int32_t x, int32_t y)
+{
+	uint32_t btn, bx, mx, by;
+
+	if (!surf || !surf->title[0] || surf->y < (int32_t)ANX_WM_DECOR_H)
+		return false;
+	btn = ANX_WM_DECOR_H - 4;
+	bx  = (uint32_t)(surf->x) + surf->width - btn - 2;  /* close-btn x */
+	mx  = bx - btn - 3;				     /* maximize-btn x */
+	by  = (uint32_t)(surf->y) - ANX_WM_DECOR_H + 2;
+	return (uint32_t)x >= mx && (uint32_t)x < mx + btn &&
+	       (uint32_t)y >= by && (uint32_t)y < by + btn;
+}
+
 /* Find the surface whose decoration area (above canvas) contains (x, y). */
 static struct anx_surface *wm_surface_at_decor(int32_t x, int32_t y)
 {
@@ -962,8 +978,10 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 
 		if (decor) {
 			if (wm_decor_close_hit(decor, x, y)) {
-				/* Close button */
 				anx_wm_window_close(decor);
+			} else if (wm_decor_maximize_hit(decor, x, y)) {
+				anx_wm_window_focus(decor);
+				anx_wm_window_fullscreen_toggle(decor);
 			} else {
 				anx_wm_window_focus(decor);
 				g_drag.surf   = decor;
