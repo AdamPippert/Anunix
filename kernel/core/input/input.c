@@ -419,3 +419,38 @@ anx_input_pointer_button(int32_t x, int32_t y,
 		anx_iface_event_post(&ev);
 	}
 }
+
+void
+anx_input_pointer_scroll(int32_t x, int32_t y, int32_t delta)
+{
+	struct anx_event ev;
+	anx_oid_t target;
+	bool flags;
+
+	if (!initialized)
+		return;
+
+	anx_spin_lock_irqsave(&input_lock, &flags);
+	target = focused_surf;
+	anx_spin_unlock_irqrestore(&input_lock, flags);
+
+	ev.type                   = ANX_EVENT_POINTER_SCROLL;
+	ev.timestamp_ns           = next_timestamp_locked();
+	ev.target_surf.hi         = 0;
+	ev.target_surf.lo         = 0;
+	ev.source_cell.hi         = 0;
+	ev.source_cell.lo         = 0;
+	ev.device_id              = 0;
+	ev.oid.hi                 = 0;
+	ev.oid.lo                 = 0;
+	ev.data.pointer.x         = x;
+	ev.data.pointer.y         = y;
+	ev.data.pointer.buttons   = (uint32_t)delta;
+	ev.data.pointer.modifiers = 0;
+	anx_iface_event_post(&ev);
+
+	if (target.hi != 0 || target.lo != 0) {
+		ev.target_surf = target;
+		anx_iface_event_post(&ev);
+	}
+}
