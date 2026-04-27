@@ -543,16 +543,17 @@ static bool fb_detect_mb2(struct anx_fb_info *info)
 			struct mb2_tag_framebuffer *fb =
 				(struct mb2_tag_framebuffer *)ptr;
 
-			if (fb->fb_type != 1)	/* not direct RGB */
-				break;
+			if (fb->fb_type != 1) {	/* not direct RGB */
+				ptr += (tag->size + 7) & ~7u;
+				continue;
+			}
 
 			info->addr   = fb->addr;
 			info->pitch  = fb->pitch;
 			info->width  = fb->width;
 			info->height = fb->height;
 			info->bpp    = fb->bpp;
-			info->available = (info->addr != 0 &&
-					   info->bpp == 32);
+			info->available = (info->addr != 0 && info->bpp == 32);
 			return true;
 		}
 
