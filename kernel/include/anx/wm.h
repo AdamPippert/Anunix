@@ -83,6 +83,16 @@ int  anx_wm_window_minimize(struct anx_surface *surf);
 /* Toggle fullscreen for a surface. */
 int  anx_wm_window_fullscreen_toggle(struct anx_surface *surf);
 
+/* Snap a surface to the left or right half of the screen. */
+int  anx_wm_window_tile_left(struct anx_surface *surf);
+int  anx_wm_window_tile_right(struct anx_surface *surf);
+
+/* Restore a tiled surface to its pre-tile floating bounds. */
+int  anx_wm_window_float(struct anx_surface *surf);
+
+/* Move a surface to a different workspace (1-based). */
+int  anx_wm_window_send_to_workspace(struct anx_surface *surf, uint32_t ws_id);
+
 /* Cycle keyboard focus to the next window on the active workspace. */
 void anx_wm_focus_cycle(void);
 
