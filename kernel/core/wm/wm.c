@@ -16,6 +16,8 @@
 #include <anx/input.h>
 #include <anx/fb.h>
 #include <anx/gui.h>
+#include <anx/font.h>
+#include <anx/theme.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -70,6 +72,115 @@ static struct {
 	uint32_t w, h;
 	bool     active;
 } g_tile_saved;
+
+/* ------------------------------------------------------------------ */
+/* Toast notification                                                  */
+/* ------------------------------------------------------------------ */
+
+#define TOAST_W		400u
+#define TOAST_H		32u
+#define TOAST_LIFE	180u	/* poll cycles before auto-dismiss (~3s) */
+
+static struct {
+	struct anx_surface *surf;
+	uint32_t           *pixels;
+	uint32_t            age;	/* polls since creation */
+} g_toast;
+
+static void toast_dismiss(void)
+{
+	if (!g_toast.surf)
+		return;
+	anx_iface_surface_destroy(g_toast.surf);
+	g_toast.surf   = NULL;
+	g_toast.pixels = NULL;
+	g_toast.age    = 0;
+}
+
+void anx_wm_notify(const char *msg)
+{
+	const struct anx_fb_info *fb;
+	const struct anx_theme   *theme;
+	struct anx_content_node  *cn;
+	uint32_t buf_size, i, fg, bg;
+	int32_t  sx, sy;
+	const char *p;
+	uint32_t x;
+
+	if (!msg)
+		return;
+
+	fb = anx_fb_get_info();
+	if (!fb || !fb->available)
+		return;
+
+	toast_dismiss();
+
+	buf_size = TOAST_W * TOAST_H * 4;
+	g_toast.pixels = anx_alloc(buf_size);
+	if (!g_toast.pixels)
+		return;
+
+	cn = anx_alloc(sizeof(*cn));
+	if (!cn) {
+		anx_free(g_toast.pixels);
+		g_toast.pixels = NULL;
+		return;
+	}
+	anx_memset(cn, 0, sizeof(*cn));
+	cn->type     = ANX_CONTENT_CANVAS;
+	cn->data     = g_toast.pixels;
+	cn->data_len = buf_size;
+
+	sx = (int32_t)(fb->width  - TOAST_W - 16);
+	sy = (int32_t)(fb->height - TOAST_H - 16);
+	if (anx_iface_surface_create(ANX_ENGINE_RENDERER_GPU, cn,
+				     sx, sy, TOAST_W, TOAST_H,
+				     &g_toast.surf) != ANX_OK) {
+		anx_free(cn);
+		anx_free(g_toast.pixels);
+		g_toast.pixels = NULL;
+		return;
+	}
+
+	theme = anx_theme_get();
+	bg    = theme->palette.surface;
+	fg    = theme->palette.text_primary;
+
+	/* Background fill */
+	for (i = 0; i < TOAST_W * TOAST_H; i++)
+		g_toast.pixels[i] = bg;
+
+	/* Accent top border */
+	for (i = 0; i < TOAST_W; i++)
+		g_toast.pixels[i] = theme->palette.accent;
+
+	/* Draw message text at (8, (TOAST_H - ANX_FONT_HEIGHT)/2) */
+	{
+		uint32_t ty = (TOAST_H - ANX_FONT_HEIGHT) / 2;
+		const uint16_t *glyph;
+		uint32_t row, col;
+
+		x = 8;
+		for (p = msg; *p && x + ANX_FONT_WIDTH <= TOAST_W - 8; p++) {
+			glyph = anx_font_glyph(*p);
+			for (row = 0; row < ANX_FONT_HEIGHT; row++) {
+				uint16_t bits = glyph[row];
+				for (col = 0; col < ANX_FONT_WIDTH; col++) {
+					uint32_t px = (ty + row) * TOAST_W + x + col;
+					g_toast.pixels[px] =
+						(bits & (0x800u >> col)) ? fg : bg;
+				}
+			}
+			x += ANX_FONT_WIDTH;
+		}
+	}
+
+	g_toast.age = 0;
+	anx_iface_surface_map(g_toast.surf);
+	anx_iface_surface_raise(g_toast.surf);
+	anx_iface_surface_commit(g_toast.surf);
+}
 
 /* ------------------------------------------------------------------ */
 /* Mouse cursor                                                        */
@@ -497,6 +608,7 @@ int anx_wm_window_tile_left(struct anx_surface *surf)
 	surf->width  = fb->width / 2;
 	surf->height = fb->height - top - ANX_WM_DECOR_H;
 	anx_iface_surface_commit(surf);
+	anx_wm_notify("Tiled left");
 	return ANX_OK;
 }
 
@@ -519,6 +631,7 @@ int anx_wm_window_tile_right(struct anx_surface *surf)
 	surf->width  = fb->width - fb->width / 2;
 	surf->height = fb->height - top - ANX_WM_DECOR_H;
 	anx_iface_surface_commit(surf);
+	anx_wm_notify("Tiled right");
 	return ANX_OK;
 }
 
@@ -834,6 +947,13 @@ void anx_wm_run(void)
 				tick = 0;
 				anx_wm_menubar_refresh();
 			}
+		}
+
+		/* Auto-dismiss expired toast notifications */
+		if (g_toast.surf) {
+			g_toast.age++;
+			if (g_toast.age >= TOAST_LIFE)
+				toast_dismiss();
 		}
 	}
 }
