@@ -45,11 +45,13 @@ static struct {
 } g_fs_saved;
 
 /* Drag-to-move state */
+#define SNAP_ZONE  40   /* px from screen edge that triggers edge-snap */
 static struct {
 	struct anx_surface *surf;
 	int32_t             off_x;  /* cursor x minus surface x at drag start */
 	int32_t             off_y;
 	bool                active;
+	int                 snap;   /* 0=none, 1=tile_left, 2=tile_right */
 } g_drag;
 
 #define RESIZE_EDGE    6u   /* px from edge that counts as resize zone */
@@ -822,8 +824,17 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 	/* Button released: end any active drag or resize */
 	if (!left_down && !move_only) {
 		if (g_drag.active) {
+			struct anx_surface *ds = g_drag.surf;
+			int snap = g_drag.snap;
+
 			g_drag.active = false;
 			g_drag.surf   = NULL;
+			g_drag.snap   = 0;
+
+			if (ds && snap == 1)
+				anx_wm_window_tile_left(ds);
+			else if (ds && snap == 2)
+				anx_wm_window_tile_right(ds);
 		}
 		if (g_resize.active) {
 			g_resize.active = false;
@@ -859,13 +870,31 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 		return;
 	}
 
-	/* Active drag: move surface */
+	/* Active drag: move surface; detect edge-snap zone */
 	if (g_drag.active && g_drag.surf && left_down) {
+		const struct anx_fb_info *fbinfo = anx_fb_get_info();
+		int prev_snap = g_drag.snap;
+
 		anx_iface_surface_move(g_drag.surf,
 				       x - g_drag.off_x,
 				       y - g_drag.off_y);
 		anx_iface_surface_commit(g_drag.surf);
-		cursor_set(CURSOR_MOVE);
+
+		if (fbinfo && fbinfo->available) {
+			if (x < SNAP_ZONE)
+				g_drag.snap = 1;
+			else if (x >= (int32_t)fbinfo->width - SNAP_ZONE)
+				g_drag.snap = 2;
+			else
+				g_drag.snap = 0;
+		}
+
+		if (g_drag.snap != prev_snap && g_drag.snap != 0)
+			anx_wm_notify(g_drag.snap == 1
+				      ? "Snap left — release to tile"
+				      : "Snap right — release to tile");
+
+		cursor_set(g_drag.snap ? CURSOR_RESIZE : CURSOR_MOVE);
 		cursor_draw(x, y);
 		return;
 	}
