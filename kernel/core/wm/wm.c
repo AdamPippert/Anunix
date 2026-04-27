@@ -155,6 +155,20 @@ static bool oid_eq(const anx_oid_t *a, const anx_oid_t *b)
 	return a->hi == b->hi && a->lo == b->lo;
 }
 
+/* True if (x,y) falls on the close button of surf's decoration. */
+static bool wm_decor_close_hit(struct anx_surface *surf, int32_t x, int32_t y)
+{
+	uint32_t btn, bx, by;
+
+	if (!surf || !surf->title[0] || surf->y < (int32_t)ANX_WM_DECOR_H)
+		return false;
+	btn = ANX_WM_DECOR_H - 4;
+	bx  = (uint32_t)(surf->x) + surf->width - btn - 2;
+	by  = (uint32_t)(surf->y) - ANX_WM_DECOR_H + 2;
+	return (uint32_t)x >= bx && (uint32_t)x < bx + btn &&
+	       (uint32_t)y >= by && (uint32_t)y < by + btn;
+}
+
 /* Find the surface whose decoration area (above canvas) contains (x, y). */
 static struct anx_surface *wm_surface_at_decor(int32_t x, int32_t y)
 {
@@ -508,31 +522,32 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 	under = anx_iface_surface_at(x, y);
 
 	if (under && left_down && !move_only) {
-		struct anx_surface *decor;
-
-		anx_wm_window_focus(under);
-
-		/* Drag starts from the titlebar decoration area, or from
-		 * the surface canvas itself when there is no decoration. */
-		decor = wm_surface_at_decor(x, y);
-		if (decor || !under->title[0]) {
-			struct anx_surface *drag_surf = decor ? decor : under;
-
-			g_drag.surf   = drag_surf;
-			g_drag.off_x  = x - drag_surf->x;
-			g_drag.off_y  = y - drag_surf->y;
+		/* Only start drag from untitled surfaces (no decoration) */
+		if (!under->title[0]) {
+			anx_wm_window_focus(under);
+			g_drag.surf   = under;
+			g_drag.off_x  = x - under->x;
+			g_drag.off_y  = y - under->y;
 			g_drag.active = true;
+		} else {
+			/* Titled surface: focus only (drag comes via decor area) */
+			anx_wm_window_focus(under);
 		}
 	} else if (left_down && !move_only) {
 		/* Click landed in a decoration area (not on the canvas) */
 		struct anx_surface *decor = wm_surface_at_decor(x, y);
 
 		if (decor) {
-			anx_wm_window_focus(decor);
-			g_drag.surf   = decor;
-			g_drag.off_x  = x - decor->x;
-			g_drag.off_y  = y - decor->y;
-			g_drag.active = true;
+			if (wm_decor_close_hit(decor, x, y)) {
+				/* Close button */
+				anx_wm_window_close(decor);
+			} else {
+				anx_wm_window_focus(decor);
+				g_drag.surf   = decor;
+				g_drag.off_x  = x - decor->x;
+				g_drag.off_y  = y - decor->y;
+				g_drag.active = true;
+			}
 		}
 	}
 
