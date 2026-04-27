@@ -507,6 +507,21 @@ bool anx_wm_workspace_occupied(uint32_t ws_id)
 	return g_workspaces[ws_id - 1].surf_count > 0;
 }
 
+uint32_t anx_wm_minimized_list(anx_oid_t *out, uint32_t max)
+{
+	struct anx_wm_workspace *ws = &g_workspaces[g_active_ws];
+	uint32_t n = 0, i;
+
+	for (i = 0; i < ws->surf_count && n < max; i++) {
+		struct anx_surface *s = NULL;
+
+		anx_iface_surface_lookup(ws->surfs[i], &s);
+		if (s && s->state == ANX_SURF_MINIMIZED)
+			out[n++] = ws->surfs[i];
+	}
+	return n;
+}
+
 /* ------------------------------------------------------------------ */
 /* Window lifecycle                                                    */
 /* ------------------------------------------------------------------ */
@@ -606,6 +621,7 @@ int anx_wm_window_restore(struct anx_surface *surf)
 		anx_iface_surface_raise(g_menubar);
 		anx_wm_menubar_refresh();
 	}
+	anx_wm_taskbar_refresh();
 	return ANX_OK;
 }
 
@@ -638,6 +654,7 @@ int anx_wm_window_minimize(struct anx_surface *surf)
 			anx_input_focus_set(prev);
 		}
 	}
+	anx_wm_taskbar_refresh();
 	return ANX_OK;
 }
 
@@ -993,6 +1010,12 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 		return;
 	}
 
+	/* Taskbar: restore minimized window on click */
+	if (anx_wm_taskbar_pointer(x, y, buttons, move_only)) {
+		cursor_draw(x, y);
+		return;
+	}
+
 	under = anx_iface_surface_at(x, y);
 
 	if (under && left_down && !move_only) {
@@ -1185,6 +1208,7 @@ int anx_wm_init(void)
 
 	anx_wm_hotkeys_init();
 	anx_wm_menubar_create();
+	anx_wm_taskbar_create();
 
 	kprintf("[wm] initialized (%u workspaces)\n", ANX_WM_WORKSPACES);
 	return ANX_OK;
