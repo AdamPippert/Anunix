@@ -852,6 +852,13 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 
 	cursor_erase();
 
+	/* Help overlay: any click dismisses it */
+	if (anx_wm_help_active() && !move_only) {
+		anx_wm_help_close();
+		cursor_draw(x, y);
+		return;
+	}
+
 	/* Context menu: forward all events while active */
 	if (anx_wm_ctx_menu_active()) {
 		if (anx_wm_ctx_menu_pointer(x, y, buttons, move_only)) {
@@ -869,9 +876,12 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 		if (rc) {
 			anx_wm_window_focus(rc);
 			anx_wm_ctx_menu_open(rc, x, y);
-			cursor_draw(x, y);
-			return;
+		} else {
+			/* Desktop right-click: NULL target = desktop menu */
+			anx_wm_ctx_menu_open(NULL, x, y);
 		}
+		cursor_draw(x, y);
+		return;
 	}
 
 	/* Button released: end any active drag or resize */
