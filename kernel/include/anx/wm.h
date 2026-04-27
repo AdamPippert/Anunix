@@ -136,6 +136,12 @@ void anx_wm_terminal_paste(const char *text, uint32_t len);
 /* Print a line of text to the terminal history (opens terminal if needed). */
 void anx_wm_terminal_print(const char *text);
 
+/* Clear the current input line (undo). */
+void anx_wm_terminal_clear_input(void);
+
+/* Cut current input line to clipboard. */
+void anx_wm_terminal_cut_input(void);
+
 /* ---- App switcher (Meta+Tab) ---- */
 void anx_wm_switcher_open(void);
 void anx_wm_switcher_key_event(struct anx_key_event *ev);

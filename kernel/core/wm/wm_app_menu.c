@@ -264,6 +264,19 @@ static void am_execute(uint32_t menu_idx, uint32_t item_idx)
 			break;
 		}
 		break;
+	case 1: /* Edit */
+		switch (item_idx) {
+		case 0: /* Undo — clear terminal input */
+			anx_wm_terminal_clear_input();
+			break;
+		case 3: /* Cut — cut terminal input to clipboard */
+			anx_wm_terminal_cut_input();
+			break;
+		case 5: /* Find — launch command search */
+			anx_wm_launch_command_search();
+			break;
+		}
+		break;
 	case 2: /* View */
 		switch (item_idx) {
 		case 0: /* Fullscreen */
