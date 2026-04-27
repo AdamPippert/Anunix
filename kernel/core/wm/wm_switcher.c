@@ -79,6 +79,8 @@ static struct {
 
 	enum switcher_state	 state;
 	bool			 active;
+
+	anx_oid_t		 pre_switch_oid; /* focused surface before switcher opened */
 } g_sw;
 
 /* ------------------------------------------------------------------ */
@@ -482,31 +484,49 @@ static void sw_render(void)
 
 static void sw_focus_selected(void)
 {
-	struct sw_app    *a;
-	struct anx_wf_object *wf;
-	struct anx_surface *surf = NULL;
-	anx_oid_t          oid;
-	int32_t            idx;
+	struct anx_surface *best = NULL;
+	uint64_t            best_ts = 0;
+	uint32_t            i;
+	anx_oid_t           sw_oid;
 
-	if (g_sw.app_count == 0)
+	/* Switcher surface OID (to exclude it from the search). */
+	sw_oid = g_sw.surf ? g_sw.surf->oid : (anx_oid_t){0, 0};
+
+	/*
+	 * Walk the activity table to find the most recently active surface
+	 * that is not the switcher itself.
+	 *
+	 * A proper wf→surface mapping would let us find the exact surface for
+	 * the selected invocation; for now this is the best we can do without
+	 * a structural link between workflow objects and their surfaces.
+	 */
+	for (i = 0; i < g_activity_count; i++) {
+		anx_oid_t         soid = g_activity[i].surface_oid;
+		struct anx_surface *s  = NULL;
+
+		if (soid.hi == sw_oid.hi && soid.lo == sw_oid.lo)
+			continue;
+		if (g_activity[i].last_used_ns <= best_ts)
+			continue;
+		if (anx_iface_surface_lookup(soid, &s) != ANX_OK || !s)
+			continue;
+		best    = s;
+		best_ts = g_activity[i].last_used_ns;
+	}
+
+	if (best) {
+		anx_wm_window_focus(best);
 		return;
+	}
 
-	a   = &g_sw.apps[g_sw.app_sel];
-	idx = (g_sw.state == SW_INVOCATIONS && g_sw.inv_sel >= 0)
-	      ? g_sw.inv_sel : a->last_used_idx;
+	/* Fall back to whatever was focused before the switcher opened. */
+	if (g_sw.pre_switch_oid.hi || g_sw.pre_switch_oid.lo) {
+		struct anx_surface *s = NULL;
 
-	if (a->inv_count == 0)
-		return;
-
-	oid = a->invocations[(uint32_t)idx];
-	wf  = anx_wf_object_get(&oid);
-	(void)wf;
-
-	/* Try to find and raise the surface matching this OID.
-	 * For now, raise the most-recently-focused surface as a proxy. */
-	anx_iface_surface_lookup(anx_input_focus_get(), &surf);
-	if (surf)
-		anx_wm_window_focus(surf);
+		if (anx_iface_surface_lookup(g_sw.pre_switch_oid, &s) == ANX_OK
+		    && s)
+			anx_wm_window_focus(s);
+	}
 }
 
 /* ------------------------------------------------------------------ */
@@ -530,6 +550,9 @@ void anx_wm_switcher_open(void)
 		sw_render();
 		return;
 	}
+
+	/* Record what was focused before we open so sw_focus_selected() can restore it. */
+	g_sw.pre_switch_oid = anx_input_focus_get();
 
 	buf_size    = SW_W * SW_H * 4;
 	g_sw.pixels = anx_alloc(buf_size);

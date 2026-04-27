@@ -1029,3 +1029,10 @@ struct anx_surface *anx_iface_surface_at(int32_t x, int32_t y)
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
 	return found;
 }
+
+void anx_iface_surface_set_title(struct anx_surface *surf, const char *title)
+{
+	if (!surf || !title)
+		return;
+	anx_strlcpy(surf->title, title, sizeof(surf->title));
+}

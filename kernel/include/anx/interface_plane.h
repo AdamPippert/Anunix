@@ -136,6 +136,9 @@ struct anx_surface {
 	anx_oid_t                parent_oid;
 	struct anx_list_head     children;       /* child surfaces */
 
+	/* Optional window title (set by creator; shown in menubar) */
+	char                     title[64];
+
 	/* Internal: hashtable chain and z-order list membership */
 	struct anx_list_head     ht_node;
 	struct anx_list_head     z_node;
@@ -383,5 +386,8 @@ int anx_iface_surface_set_parent(struct anx_surface *child, anx_oid_t parent_oid
 
 /* Return topmost VISIBLE surface whose bounds contain (x, y), or NULL. */
 struct anx_surface *anx_iface_surface_at(int32_t x, int32_t y);
+
+/* Set the display title for a surface (shown in menubar, switcher, etc.). */
+void anx_iface_surface_set_title(struct anx_surface *surf, const char *title);
 
 #endif /* ANX_INTERFACE_PLANE_H */
