@@ -190,11 +190,12 @@ void anx_wm_notify(const char *msg)
 #define CURSOR_W  10
 #define CURSOR_H  11
 
-/*
- * 0 = transparent, 1 = white (#FFFFFF), 2 = black outline (#000000).
- * Shape: filled triangle pointing upper-left, hotspot at (0,0).
- */
-static const uint8_t cursor_px[CURSOR_H][CURSOR_W] = {
+/* 0=transparent, 1=white (#FFFFFF), 2=black outline (#000000) */
+enum cursor_type { CURSOR_ARROW = 0, CURSOR_RESIZE, CURSOR_MOVE,
+		   CURSOR_COUNT };
+
+/* Arrow: filled upper-left triangle, hotspot at (0,0) */
+static const uint8_t cur_arrow[CURSOR_H][CURSOR_W] = {
 	{2,0,0,0,0,0,0,0,0,0},
 	{2,2,0,0,0,0,0,0,0,0},
 	{2,1,2,0,0,0,0,0,0,0},
@@ -208,14 +209,58 @@ static const uint8_t cursor_px[CURSOR_H][CURSOR_W] = {
 	{0,0,0,0,0,0,0,0,0,0},
 };
 
+/* Resize: four-directional cross, hotspot at (4,4) */
+static const uint8_t cur_resize[CURSOR_H][CURSOR_W] = {
+	{0,0,0,0,2,2,0,0,0,0},
+	{0,0,0,2,1,1,2,0,0,0},
+	{0,0,0,0,2,2,0,0,0,0},
+	{0,2,0,0,2,2,0,0,2,0},
+	{2,1,2,2,1,1,2,2,1,2},
+	{2,1,2,2,1,1,2,2,1,2},
+	{0,2,0,0,2,2,0,0,2,0},
+	{0,0,0,0,2,2,0,0,0,0},
+	{0,0,0,2,1,1,2,0,0,0},
+	{0,0,0,0,2,2,0,0,0,0},
+	{0,0,0,0,0,0,0,0,0,0},
+};
+
+/* Move: open crosshair with gaps, hotspot at (4,4) */
+static const uint8_t cur_move[CURSOR_H][CURSOR_W] = {
+	{0,0,0,0,2,2,0,0,0,0},
+	{0,0,0,0,2,1,2,0,0,0},
+	{0,0,0,0,0,0,0,0,0,0},
+	{0,2,0,0,0,0,0,0,2,0},
+	{2,1,2,0,0,0,0,2,1,2},
+	{0,2,0,0,0,0,0,0,2,0},
+	{0,0,0,0,0,0,0,0,0,0},
+	{0,0,0,0,2,1,2,0,0,0},
+	{0,0,0,0,2,2,0,0,0,0},
+	{0,0,0,0,0,0,0,0,0,0},
+	{0,0,0,0,0,0,0,0,0,0},
+};
+
+static const uint8_t (* const cursor_shapes[CURSOR_COUNT])[CURSOR_W] = {
+	[CURSOR_ARROW]  = cur_arrow,
+	[CURSOR_RESIZE] = cur_resize,
+	[CURSOR_MOVE]   = cur_move,
+};
+
+static enum cursor_type g_cursor_type = CURSOR_ARROW;
+
 static int32_t  g_cur_x  = -1;
 static int32_t  g_cur_y  = -1;
 static bool     g_cur_on = false;
 static uint32_t g_cur_saved[CURSOR_H][CURSOR_W];
 
+static void cursor_set(enum cursor_type t)
+{
+	g_cursor_type = t;
+}
+
 static void cursor_erase(void)
 {
 	const struct anx_fb_info *fb;
+	const uint8_t (*shape)[CURSOR_W];
 	uint32_t r, c;
 
 	if (!g_cur_on)
@@ -224,6 +269,7 @@ static void cursor_erase(void)
 	if (!fb || !fb->available)
 		return;
 
+	shape = cursor_shapes[g_cursor_type];
 	for (r = 0; r < CURSOR_H; r++) {
 		int32_t py = g_cur_y + (int32_t)r;
 		if (py < 0 || (uint32_t)py >= fb->height)
@@ -232,7 +278,7 @@ static void cursor_erase(void)
 			int32_t px = g_cur_x + (int32_t)c;
 			if (px < 0 || (uint32_t)px >= fb->width)
 				continue;
-			if (cursor_px[r][c] != 0)
+			if (shape[r][c] != 0)
 				anx_fb_row_ptr((uint32_t)py)[px] =
 					g_cur_saved[r][c];
 		}
@@ -243,6 +289,7 @@ static void cursor_erase(void)
 static void cursor_draw(int32_t x, int32_t y)
 {
 	const struct anx_fb_info *fb;
+	const uint8_t (*shape)[CURSOR_W];
 	uint32_t r, c;
 
 	fb = anx_fb_get_info();
@@ -251,6 +298,7 @@ static void cursor_draw(int32_t x, int32_t y)
 
 	g_cur_x = x;
 	g_cur_y = y;
+	shape   = cursor_shapes[g_cursor_type];
 
 	for (r = 0; r < CURSOR_H; r++) {
 		int32_t py = y + (int32_t)r;
@@ -260,10 +308,10 @@ static void cursor_draw(int32_t x, int32_t y)
 			int32_t px = x + (int32_t)c;
 			if (px < 0 || (uint32_t)px >= fb->width)
 				continue;
-			if (cursor_px[r][c] != 0) {
+			if (shape[r][c] != 0) {
 				uint32_t *row = anx_fb_row_ptr((uint32_t)py);
 				g_cur_saved[r][c] = row[px];
-				row[px] = (cursor_px[r][c] == 1)
+				row[px] = (shape[r][c] == 1)
 					  ? 0xFFFFFF : 0x000000;
 			}
 		}
@@ -758,6 +806,7 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 			g_resize.active = false;
 			g_resize.surf   = NULL;
 		}
+		cursor_set(CURSOR_ARROW);
 		cursor_draw(x, y);
 		return;
 	}
@@ -782,6 +831,7 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 		g_resize.surf->width  = nw;
 		g_resize.surf->height = nh;
 		anx_iface_surface_commit(g_resize.surf);
+		cursor_set(CURSOR_RESIZE);
 		cursor_draw(x, y);
 		return;
 	}
@@ -792,6 +842,7 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 				       x - g_drag.off_x,
 				       y - g_drag.off_y);
 		anx_iface_surface_commit(g_drag.surf);
+		cursor_set(CURSOR_MOVE);
 		cursor_draw(x, y);
 		return;
 	}
@@ -869,6 +920,18 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 				g_drag.active = true;
 			}
 		}
+	}
+
+	/* Hover: update cursor shape without pressing a button */
+	if (move_only || !left_down) {
+		struct anx_surface *hov = anx_iface_surface_at(x, y);
+		enum cursor_type shape = CURSOR_ARROW;
+
+		if (hov && surf_resize_edges(hov, x, y))
+			shape = CURSOR_RESIZE;
+		else if (g_drag.active)
+			shape = CURSOR_MOVE;
+		cursor_set(shape);
 	}
 
 	cursor_draw(x, y);
