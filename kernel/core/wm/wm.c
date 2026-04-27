@@ -792,9 +792,32 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 			       uint32_t buttons, bool move_only)
 {
 	struct anx_surface *under;
-	bool left_down = (buttons & 1) != 0;
+	bool left_down  = (buttons & 1) != 0;
+	bool right_down = (buttons & 2) != 0;
 
 	cursor_erase();
+
+	/* Context menu: forward all events while active */
+	if (anx_wm_ctx_menu_active()) {
+		if (anx_wm_ctx_menu_pointer(x, y, buttons, move_only)) {
+			cursor_draw(x, y);
+			return;
+		}
+	}
+
+	/* Right-click: open context menu on the surface under cursor */
+	if (right_down && !move_only && !g_drag.active && !g_resize.active) {
+		struct anx_surface *rc = anx_iface_surface_at(x, y);
+
+		if (!rc)
+			rc = wm_surface_at_decor(x, y);
+		if (rc) {
+			anx_wm_window_focus(rc);
+			anx_wm_ctx_menu_open(rc, x, y);
+			cursor_draw(x, y);
+			return;
+		}
+	}
 
 	/* Button released: end any active drag or resize */
 	if (!left_down && !move_only) {
