@@ -154,6 +154,65 @@ static void hk_send_to_workspace(uint32_t mods, uint32_t key, void *arg)
 		anx_wm_window_send_to_workspace(surf, ws_id);
 }
 
+/* ---- Keyboard-driven window move/resize (Meta+Arrow / Meta+Shift+Arrow) */
+
+#define WIN_MOVE_STEP   20   /* px per keypress */
+#define WIN_RESIZE_STEP 16   /* px per keypress */
+
+static void hk_win_move(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t foc;
+	struct anx_surface *surf = NULL;
+	int32_t dx = 0, dy = 0;
+	(void)mods; (void)arg;
+
+	foc = anx_input_focus_get();
+	anx_iface_surface_lookup(foc, &surf);
+	if (!surf || surf->state != ANX_SURF_VISIBLE)
+		return;
+
+	switch (key) {
+	case ANX_KEY_LEFT:  dx = -WIN_MOVE_STEP; break;
+	case ANX_KEY_RIGHT: dx =  WIN_MOVE_STEP; break;
+	case ANX_KEY_UP:    dy = -WIN_MOVE_STEP; break;
+	case ANX_KEY_DOWN:  dy =  WIN_MOVE_STEP; break;
+	default: return;
+	}
+	anx_iface_surface_move(surf, surf->x + dx, surf->y + dy);
+	anx_iface_surface_commit(surf);
+}
+
+static void hk_win_resize(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t foc;
+	struct anx_surface *surf = NULL;
+	(void)mods; (void)arg;
+
+	foc = anx_input_focus_get();
+	anx_iface_surface_lookup(foc, &surf);
+	if (!surf || surf->state != ANX_SURF_VISIBLE)
+		return;
+
+	switch (key) {
+	case ANX_KEY_LEFT:
+		if (surf->width > WIN_RESIZE_STEP)
+			surf->width -= WIN_RESIZE_STEP;
+		break;
+	case ANX_KEY_RIGHT:
+		surf->width += WIN_RESIZE_STEP;
+		break;
+	case ANX_KEY_UP:
+		if (surf->height > WIN_RESIZE_STEP)
+			surf->height -= WIN_RESIZE_STEP;
+		break;
+	case ANX_KEY_DOWN:
+		surf->height += WIN_RESIZE_STEP;
+		break;
+	default: return;
+	}
+	anx_iface_surface_commit(surf);
+}
+
 static void hk_minimize(uint32_t mods, uint32_t key, void *arg)
 {
 	anx_oid_t focused;
@@ -355,6 +414,18 @@ void anx_wm_hotkeys_init(void)
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_F,    hk_float,              NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_H,    hk_halt,               NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,                  ANX_KEY_M,    hk_minimize,           NULL);
+
+	/* Keyboard-driven window move (Meta+Arrow) */
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_LEFT,  hk_win_move, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_RIGHT, hk_win_move, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_UP,    hk_win_move, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_DOWN,  hk_win_move, NULL);
+
+	/* Keyboard-driven window resize (Meta+Shift+Arrow) */
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_LEFT,  hk_win_resize, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_RIGHT, hk_win_resize, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_UP,    hk_win_resize, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_DOWN,  hk_win_resize, NULL);
 
 	kprintf("[wm] hotkeys registered (%u bindings)\n", g_hotkey_count);
 }

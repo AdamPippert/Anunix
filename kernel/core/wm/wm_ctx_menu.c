@@ -31,7 +31,7 @@
 #define CTX_ITEMS	5
 #define CTX_H		(CTX_ITEMS * CTX_ITEM_H + 2)
 
-static const char * const ctx_labels[CTX_ITEMS] = {
+static const char *ctx_labels[CTX_ITEMS] = {
 	"Tile Left",
 	"Tile Right",
 	"Float",
@@ -200,6 +200,10 @@ void anx_wm_ctx_menu_open(struct anx_surface *target, int32_t x, int32_t y)
 	g_ctx.menu_x  = sx;
 	g_ctx.menu_y  = sy;
 
+	/* Adjust label 3 based on target minimize state */
+	ctx_labels[3] = (target && target->state == ANX_SURF_MINIMIZED)
+			? "Restore" : "Minimize";
+
 	ctx_render();
 	anx_iface_surface_map(g_ctx.surf);
 	anx_iface_surface_raise(g_ctx.surf);
@@ -249,7 +253,12 @@ bool anx_wm_ctx_menu_pointer(int32_t x, int32_t y, uint32_t buttons,
 		case 0: anx_wm_window_tile_left(t);  break;
 		case 1: anx_wm_window_tile_right(t); break;
 		case 2: anx_wm_window_float(t);      break;
-		case 3: anx_wm_window_minimize(t);   break;
+		case 3:
+			if (t->state == ANX_SURF_MINIMIZED)
+				anx_wm_window_restore(t);
+			else
+				anx_wm_window_minimize(t);
+			break;
 		case 4: anx_wm_window_close(t);      break;
 		default: break;
 		}
