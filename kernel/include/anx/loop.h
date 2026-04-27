@@ -257,6 +257,16 @@ int anx_loop_proposal_get_action_id(anx_oid_t proposal_oid,
 /* Update the aggregate energy score on a proposal (called after EBM). */
 int anx_loop_proposal_set_score(anx_oid_t proposal_oid, float aggregate);
 
+/*
+ * Generate one LLM-sourced world proposal for the session.  Runs a single-step
+ * RLM rollout, maps the response text to the best-matching action via goal
+ * alignment energy, then creates an ANX_OBJ_WORLD_PROPOSAL with
+ * source=ANX_LOOP_PROPOSAL_LLM.  Falls back to the PAL-preferred action when
+ * the RLM harness is unavailable.
+ */
+int anx_loop_llm_propose(anx_oid_t session_oid, uint32_t iteration,
+			  anx_oid_t *proposal_oid_out);
+
 /* ------------------------------------------------------------------ */
 /* Score object API (Phase 2: loop_score.c)                           */
 /* ------------------------------------------------------------------ */

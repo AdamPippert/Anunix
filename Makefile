@@ -186,6 +186,10 @@ $(BUILD_DIR)/core/rlm/%.o: $(CORE_DIR)/rlm/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(JEPA_CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/core/ebm/%.o: $(CORE_DIR)/ebm/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
 # Compile C files from core/ (recursive)
 $(BUILD_DIR)/core/%.o: $(CORE_DIR)/%.c
 	@mkdir -p $(dir $@)
@@ -387,6 +391,7 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_media.c \
                tests/test_conformance_gate.c \
                tests/test_ibal.c \
+               tests/test_ebm.c \
                tests/test_kickstart.c
 TEST_BIN    := build/test/anunix_test
 

@@ -299,6 +299,9 @@ int anx_wm_window_focus(struct anx_surface *surf)
 	anx_input_focus_set(surf->oid);
 	ws->focused = surf->oid;
 
+	/* Record last-used timestamp for the switcher. */
+	anx_wm_activity_touch(surf->oid);
+
 	/* Raise menubar above the newly focused surface */
 	if (g_menubar)
 		anx_iface_surface_raise(g_menubar);
@@ -509,16 +512,6 @@ void anx_wm_run(void)
 			}
 		}
 	}
-}
-
-/* ------------------------------------------------------------------ */
-/* Command search overlay (Phase 2)                                    */
-/* ------------------------------------------------------------------ */
-
-void anx_wm_launch_command_search(void)
-{
-	/* Phase 2: overlay surface with fuzzy-search input field */
-	kprintf("[wm] command search requested\n");
 }
 
 /* ------------------------------------------------------------------ */

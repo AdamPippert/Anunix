@@ -51,6 +51,7 @@
 #include <anx/sshd.h>
 #include <anx/jepa.h>
 #include <anx/loop.h>
+#include <anx/ebm.h>
 #include <anx/installer.h>
 
 #define ANX_VERSION "2026.4.23"
@@ -295,8 +296,9 @@ void kernel_main(void)
 	anx_vm_init();
 	kprintf("vm subsystem initialized\n");
 
-	/* 16. IBAL loop session primitive (RFC-0020) */
+	/* 16. IBAL loop session primitive + EBM scorer registry (RFC-0020) */
 	anx_loop_init();
+	anx_ebm_init();
 
 	/* 15. Visual theme (RFC-0019) — default Pretty on FB, Boring headless */
 	anx_theme_init(anx_fb_available() ? ANX_THEME_PRETTY : ANX_THEME_BORING);

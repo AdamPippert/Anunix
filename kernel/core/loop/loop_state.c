@@ -1,13 +1,16 @@
 /*
- * loop_state.c — IBAL EBM weight persistence and run helper (RFC-0020 Phase 9).
+ * loop_state.c — IBAL EBM weight persistence and run helper (RFC-0020).
  *
  * anx_ibal_save_state() captures current per-action energy statistics into
  * an ANX_OBJ_MEMORY_CONSOLIDATION state object.  anx_ibal_load_state() reads
  * them back.  anx_ibal_run() wraps the session create + advance loop into
- * a single blocking call.
+ * a single blocking call, including EBM scoring each iteration and
+ * memory consolidation after the session ends.
  */
 
 #include <anx/ibal.h>
+#include <anx/ebm.h>
+#include <anx/jepa.h>
 #include <anx/cexl.h>
 #include <anx/diag.h>
 #include <anx/state_object.h>
@@ -114,10 +117,13 @@ int anx_ibal_run(const struct anx_loop_create_params *params,
 {
 	anx_oid_t sid;
 	struct anx_loop_session_info info;
+	struct anx_loop_session_action_stats act_stats[ANX_JEPA_ACT_COUNT];
 	int rc;
 
 	if (!params || !session_oid_out)
 		return ANX_EINVAL;
+
+	anx_memset(act_stats, 0, sizeof(act_stats));
 
 	(void)anx_trace_begin("ibal.session");
 
@@ -131,6 +137,11 @@ int anx_ibal_run(const struct anx_loop_create_params *params,
 		rc = anx_loop_session_advance(sid);
 		if (rc != ANX_OK)
 			break;
+
+		/* Run EBM scoring pipeline: believe → propose → score → arbitrate */
+		(void)anx_ebm_run_iteration(sid, act_stats,
+					    (uint32_t)ANX_JEPA_ACT_COUNT);
+
 		rc = anx_loop_session_status_get(sid, &info);
 		if (rc != ANX_OK)
 			break;
@@ -151,6 +162,10 @@ int anx_ibal_run(const struct anx_loop_create_params *params,
 			? params->world_uri : "anx:world/os-default";
 		anx_loop_cexl_process(sid, world);
 		anx_loop_jepa_ingest(sid, world);
+
+		/* Phase 5: consolidate session stats into PAL cross-session memory */
+		(void)anx_loop_consolidate(sid, act_stats,
+					   (uint32_t)ANX_JEPA_ACT_COUNT);
 	}
 
 	(void)anx_trace_end("ibal.session");
