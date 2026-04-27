@@ -84,6 +84,25 @@ void arch_init(void)
 	/* Initialize page allocator with linker-defined heap */
 	anx_page_init((uintptr_t)_heap_start, (uintptr_t)_heap_end);
 
+	/*
+	 * Enable SSE/SSE2 — required before any float or SIMD instruction.
+	 * x86-64 mandates SSE2 support, but the OS must opt in via CR0/CR4
+	 * or the first XMMD/FXSAVE instruction traps with #UD (exception 6).
+	 */
+	{
+		uint64_t cr0, cr4;
+
+		__asm__ volatile("mov %%cr0, %0" : "=r"(cr0));
+		cr0 &= ~(1UL << 2);	/* clear CR0.EM (FPU emulation) */
+		cr0 |=  (1UL << 1);	/* set CR0.MP (monitor coprocessor) */
+		__asm__ volatile("mov %0, %%cr0" :: "r"(cr0));
+
+		__asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+		cr4 |= (1UL << 9);	/* set CR4.OSFXSR (FXSAVE + SSE insns) */
+		cr4 |= (1UL << 10);	/* set CR4.OSXMMEXCPT (unmasked SSE exceptions) */
+		__asm__ volatile("mov %0, %%cr4" :: "r"(cr4));
+	}
+
 	/* IDT, GDT, PIC, PIT timer */
 	arch_exception_init();
 
