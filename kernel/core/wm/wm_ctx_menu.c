@@ -31,12 +31,22 @@
 #define CTX_ITEMS	5
 #define CTX_H		(CTX_ITEMS * CTX_ITEM_H + 2)
 
+/* Window context menu labels (target != NULL) */
 static const char *ctx_labels[CTX_ITEMS] = {
 	"Tile Left",
 	"Tile Right",
 	"Float",
 	"Minimize",
 	"Close",
+};
+
+/* Desktop context menu labels (target == NULL) */
+static const char * const desk_labels[CTX_ITEMS] = {
+	"New Terminal",
+	"Theme Toggle",
+	"Help (F1)",
+	"Object Viewer",
+	"Workflows",
 };
 
 /* ------------------------------------------------------------------ */
@@ -46,10 +56,11 @@ static const char *ctx_labels[CTX_ITEMS] = {
 static struct {
 	struct anx_surface *surf;
 	uint32_t           *pixels;
-	struct anx_surface *target;	/* window the menu is for */
+	struct anx_surface *target;	/* window the menu is for; NULL = desktop */
 	int                 hovered;	/* -1 = none, 0..CTX_ITEMS-1 */
 	int32_t             menu_x;
 	int32_t             menu_y;
+	bool                desktop;	/* true when target == NULL */
 } g_ctx;
 
 /* ------------------------------------------------------------------ */
@@ -118,7 +129,11 @@ static void ctx_render(void)
 				g_ctx.pixels[(item_y + row) * CTX_W + col] = row_bg;
 		}
 
-		ctx_draw_str(CTX_PAD_X, text_y, ctx_labels[i], row_fg, row_bg);
+		{
+			const char *lbl = g_ctx.desktop
+					  ? desk_labels[i] : ctx_labels[i];
+			ctx_draw_str(CTX_PAD_X, text_y, lbl, row_fg, row_bg);
+		}
 	}
 
 	anx_iface_surface_commit(g_ctx.surf);
@@ -199,10 +214,12 @@ void anx_wm_ctx_menu_open(struct anx_surface *target, int32_t x, int32_t y)
 	g_ctx.hovered = -1;
 	g_ctx.menu_x  = sx;
 	g_ctx.menu_y  = sy;
+	g_ctx.desktop = (target == NULL);
 
 	/* Adjust label 3 based on target minimize state */
-	ctx_labels[3] = (target && target->state == ANX_SURF_MINIMIZED)
-			? "Restore" : "Minimize";
+	if (!g_ctx.desktop)
+		ctx_labels[3] = (target->state == ANX_SURF_MINIMIZED)
+				? "Restore" : "Minimize";
 
 	ctx_render();
 	anx_iface_surface_map(g_ctx.surf);
@@ -244,23 +261,42 @@ bool anx_wm_ctx_menu_pointer(int32_t x, int32_t y, uint32_t buttons,
 	}
 
 	/* Left-click on an item → execute */
-	if (!move_only && (buttons & 1) && item >= 0 && g_ctx.target) {
+	if (!move_only && (buttons & 1) && item >= 0) {
+		bool is_desktop = g_ctx.desktop;
 		struct anx_surface *t = g_ctx.target;
 
 		anx_wm_ctx_menu_close();
 
-		switch (item) {
-		case 0: anx_wm_window_tile_left(t);  break;
-		case 1: anx_wm_window_tile_right(t); break;
-		case 2: anx_wm_window_float(t);      break;
-		case 3:
-			if (t->state == ANX_SURF_MINIMIZED)
-				anx_wm_window_restore(t);
-			else
-				anx_wm_window_minimize(t);
-			break;
-		case 4: anx_wm_window_close(t);      break;
-		default: break;
+		if (is_desktop) {
+			switch (item) {
+			case 0: anx_wm_terminal_open();      break;
+			case 1: {
+				enum anx_theme_mode m = anx_theme_get_mode();
+				anx_theme_set_mode(m == ANX_THEME_PRETTY
+						   ? ANX_THEME_BORING
+						   : ANX_THEME_PRETTY);
+				anx_wm_menubar_refresh();
+				break;
+			}
+			case 2: anx_wm_help_toggle();        break;
+			case 3: anx_wm_launch_object_viewer();  break;
+			case 4: anx_wm_launch_workflow_designer(); break;
+			default: break;
+			}
+		} else if (t) {
+			switch (item) {
+			case 0: anx_wm_window_tile_left(t);  break;
+			case 1: anx_wm_window_tile_right(t); break;
+			case 2: anx_wm_window_float(t);      break;
+			case 3:
+				if (t->state == ANX_SURF_MINIMIZED)
+					anx_wm_window_restore(t);
+				else
+					anx_wm_window_minimize(t);
+				break;
+			case 4: anx_wm_window_close(t);      break;
+			default: break;
+			}
 		}
 		return true;
 	}
