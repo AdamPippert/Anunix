@@ -179,6 +179,7 @@ static void term_render(struct anx_terminal *t)
 	const struct anx_theme *theme = anx_theme_get();
 	uint32_t bg     = theme->palette.background;
 	uint32_t surf_c = theme->palette.surface;
+	uint32_t border = theme->palette.border;
 	uint32_t accent = theme->palette.accent;
 	uint32_t fg     = theme->palette.text_primary;
 	uint32_t fg_dim = theme->palette.text_dim;
@@ -187,8 +188,12 @@ static void term_render(struct anx_terminal *t)
 	uint32_t row;
 	char     prompt_line[TERM_LINE_MAX + 8];
 
-	/* Fill background */
+	/* Window body (slightly lighter than desktop background) */
 	term_fill(t, 0, 0, t->pix_w, t->pix_h, bg);
+	/* 1px border on all sides except top (title bar covers it) */
+	term_fill(t, 0, 0, 1, t->pix_h, border);
+	term_fill(t, t->pix_w - 1, 0, 1, t->pix_h, border);
+	term_fill(t, 0, t->pix_h - 1, t->pix_w, 1, border);
 
 	/* Title bar */
 	term_fill(t, 0, 0, t->pix_w, TERM_TITLE_H, surf_c);
