@@ -35,6 +35,7 @@ struct anx_surface            *g_menubar;	/* always-on-top bar (used by wm_menub
 uint32_t                      *g_menubar_pixels;
 static bool                    g_wm_running;
 static struct anx_spinlock     g_wm_lock;
+static uint32_t                g_wm_tick;	/* incremented every event loop iteration */
 
 /* Saved pre-fullscreen bounds for a surface */
 static struct {
@@ -53,6 +54,13 @@ static struct {
 	bool                active;
 	int                 snap;   /* 0=none, 1=tile_left, 2=tile_right */
 } g_drag;
+
+/* Double-click detection on titlebar */
+#define DBLCLICK_WINDOW  8   /* event-loop polls; ~133ms @ 60Hz */
+static struct {
+	struct anx_surface *surf;
+	uint32_t            tick;  /* g_wm_tick at first click */
+} g_dblclick;
 
 #define RESIZE_EDGE    6u   /* px from edge that counts as resize zone */
 #define RESIZE_MIN_W  80u
@@ -983,11 +991,23 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 				anx_wm_window_focus(decor);
 				anx_wm_window_fullscreen_toggle(decor);
 			} else {
+				/* Double-click on titlebar → fullscreen toggle */
+				bool dbl = (g_dblclick.surf == decor &&
+					    g_wm_tick - g_dblclick.tick
+					    <= DBLCLICK_WINDOW);
+
 				anx_wm_window_focus(decor);
-				g_drag.surf   = decor;
-				g_drag.off_x  = x - decor->x;
-				g_drag.off_y  = y - decor->y;
-				g_drag.active = true;
+				if (dbl) {
+					g_dblclick.surf = NULL;
+					anx_wm_window_fullscreen_toggle(decor);
+				} else {
+					g_dblclick.surf = decor;
+					g_dblclick.tick = g_wm_tick;
+					g_drag.surf   = decor;
+					g_drag.off_x  = x - decor->x;
+					g_drag.off_y  = y - decor->y;
+					g_drag.active = true;
+				}
 			}
 		}
 	}
@@ -1090,14 +1110,9 @@ void anx_wm_run(void)
 		}
 
 		/* Refresh menu bar (includes clock) every ~60 polls */
-		{
-			static uint32_t tick;
-			tick++;
-			if (tick >= 60) {
-				tick = 0;
-				anx_wm_menubar_refresh();
-			}
-		}
+		g_wm_tick++;
+		if (g_wm_tick % 60 == 0)
+			anx_wm_menubar_refresh();
 
 		/* Auto-dismiss expired toast notifications */
 		if (g_toast.surf) {
