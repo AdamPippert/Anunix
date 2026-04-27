@@ -934,6 +934,22 @@ void anx_wm_run(void)
 						  false);
 				break;
 
+			case ANX_EVENT_POINTER_SCROLL:
+				{
+					/* Route scroll to terminal if focused */
+					struct anx_surface *ts = anx_wm_terminal_surface();
+					anx_oid_t foc = anx_input_focus_get();
+					if (ts && ts->oid.hi == foc.hi &&
+					    ts->oid.lo == foc.lo) {
+						int32_t delta = (int32_t)ev.data.pointer.buttons;
+						uint32_t key = (delta > 0)
+							? ANX_KEY_PAGEUP
+							: ANX_KEY_PAGEDOWN;
+						anx_wm_terminal_key_event(key, 0, 0);
+					}
+				}
+				break;
+
 			default:
 				break;
 			}
