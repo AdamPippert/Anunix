@@ -231,6 +231,18 @@ static void hk_object_viewer(uint32_t mods, uint32_t key, void *arg)
 	anx_wm_launch_object_viewer();
 }
 
+static void hk_undo(uint32_t mods, uint32_t key, void *arg)
+{
+	(void)mods; (void)key; (void)arg;
+	anx_wm_terminal_clear_input();
+}
+
+static void hk_cut(uint32_t mods, uint32_t key, void *arg)
+{
+	(void)mods; (void)key; (void)arg;
+	anx_wm_terminal_cut_input();
+}
+
 static void hk_tile_left(uint32_t mods, uint32_t key, void *arg)
 {
 	anx_oid_t focused;
@@ -302,6 +314,8 @@ void anx_wm_hotkeys_init(void)
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_O,        hk_object_viewer,      NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_C,        hk_copy,               NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_V,        hk_paste,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_Z,        hk_undo,               NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_X,        hk_cut,                NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_LBRACKET, hk_tile_left,          NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_RBRACKET, hk_tile_right,         NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_F,    hk_float,              NULL);

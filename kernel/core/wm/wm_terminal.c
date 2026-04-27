@@ -13,6 +13,9 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/shell.h>
+#include <anx/clipboard.h>
+
+#define WM_CLIPBOARD_CID	((anx_cid_t){.hi = 0, .lo = 0xFFFF0001u})
 
 /* ------------------------------------------------------------------ */
 /* Layout constants                                                    */
@@ -422,4 +425,25 @@ void anx_wm_terminal_print(const char *text)
 		anx_wm_terminal_open();
 	hist_append_str(text);
 	term_render();
+}
+
+void anx_wm_terminal_clear_input(void)
+{
+	if (!g_term.surf)
+		return;
+	g_term.input[0]  = '\0';
+	g_term.input_len = 0;
+	g_term.cmd_hist_pos = -1;
+	term_render();
+}
+
+void anx_wm_terminal_cut_input(void)
+{
+	if (!g_term.surf || g_term.input_len == 0)
+		return;
+	/* Copy current input to clipboard then clear */
+	anx_clipboard_grant(WM_CLIPBOARD_CID, ANX_CLIPBOARD_FLAG_WRITE);
+	anx_clipboard_write(WM_CLIPBOARD_CID, "text/plain",
+			    g_term.input, g_term.input_len);
+	anx_wm_terminal_clear_input();
 }
