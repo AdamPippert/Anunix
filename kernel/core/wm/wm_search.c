@@ -286,6 +286,7 @@ static void cs_populate(void)
 			g_cs.result_count++;
 		}
 
+		g_cs.agent_active = (g_cs.result_count > 0);
 		goto done;
 	}
 
