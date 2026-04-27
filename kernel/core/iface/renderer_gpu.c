@@ -16,6 +16,7 @@
 #include <anx/string.h>
 #include <anx/types.h>
 #include <anx/wm.h>
+#include <anx/input.h>
 
 /* ------------------------------------------------------------------ */
 /* Content rendering helpers                                            */
@@ -169,6 +170,10 @@ gpu_commit(struct anx_surface *surf)
 	 * Skipped for untitled surfaces and surfaces flush with the top. */
 	if (surf->title[0] && surf->y >= (int32_t)ANX_WM_DECOR_H) {
 		const struct anx_theme *theme = anx_theme_get();
+		anx_oid_t foc    = anx_input_focus_get();
+		bool      is_foc = (foc.hi == surf->oid.hi && foc.lo == surf->oid.lo);
+		uint32_t  tbg    = is_foc ? theme->palette.accent : theme->palette.surface;
+		uint32_t  tfg    = is_foc ? 0x00FFFFFFu : theme->palette.text_dim;
 		uint32_t tx  = (uint32_t)surf->x;
 		uint32_t ty  = (uint32_t)(surf->y - (int32_t)ANX_WM_DECOR_H);
 		uint32_t fy  = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
@@ -177,13 +182,10 @@ gpu_commit(struct anx_surface *surf)
 		uint32_t mx  = bx - btn - 3;			/* maximize-btn x */
 		uint32_t by  = ty + 2;				/* buttons y */
 
-		anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H,
-				 theme->palette.surface);
+		anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H, tbg);
 		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 2, surf->width, 2,
 				 theme->palette.accent);
-		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, 1,
-					   theme->palette.text_primary,
-					   theme->palette.surface);
+		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, 1, tfg, tbg);
 
 		/* Maximize button: accent colour, "+" label */
 		anx_fb_fill_rect(mx, by, btn, btn, theme->palette.accent);
