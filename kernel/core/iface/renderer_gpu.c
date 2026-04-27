@@ -169,9 +169,12 @@ gpu_commit(struct anx_surface *surf)
 	 * Skipped for untitled surfaces and surfaces flush with the top. */
 	if (surf->title[0] && surf->y >= (int32_t)ANX_WM_DECOR_H) {
 		const struct anx_theme *theme = anx_theme_get();
-		uint32_t tx = (uint32_t)surf->x;
-		uint32_t ty = (uint32_t)(surf->y - (int32_t)ANX_WM_DECOR_H);
-		uint32_t fy = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
+		uint32_t tx  = (uint32_t)surf->x;
+		uint32_t ty  = (uint32_t)(surf->y - (int32_t)ANX_WM_DECOR_H);
+		uint32_t fy  = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
+		uint32_t btn = ANX_WM_DECOR_H - 4;		/* close-btn side */
+		uint32_t bx  = tx + surf->width - btn - 2;	/* close-btn x */
+		uint32_t by  = ty + 2;				/* close-btn y */
 
 		anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H,
 				 theme->palette.surface);
@@ -180,6 +183,13 @@ gpu_commit(struct anx_surface *surf)
 		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, 1,
 					   theme->palette.text_primary,
 					   theme->palette.surface);
+
+		/* Close button: filled square in error colour, "×" label */
+		anx_fb_fill_rect(bx, by, btn, btn, theme->palette.error);
+		anx_gui_draw_string_scaled(bx + (btn - ANX_FONT_WIDTH) / 2,
+					   by + (btn - ANX_FONT_HEIGHT) / 2,
+					   "x", 1,
+					   0x00FFFFFF, theme->palette.error);
 	}
 
 	return ANX_OK;
