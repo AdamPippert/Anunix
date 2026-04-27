@@ -210,19 +210,26 @@ static void term_render(struct anx_terminal *t)
 	visible_rows = text_area_h / ANX_FONT_HEIGHT;
 
 	/* Determine which lines to show (last visible_rows lines) */
-	if (t->line_total <= visible_rows) {
-		first_line = 0;
-		visible_rows = t->line_total;
-	} else {
-		first_line = t->line_total - visible_rows;
-	}
+	{
+		uint32_t total_vis  = visible_rows;
+		uint32_t skip_rows;	/* empty rows above text (bottom-align) */
 
-	for (row = 0; row < visible_rows; row++) {
-		uint32_t line_idx = (first_line + row) % TERM_SCROLLBACK;
-		uint32_t y = text_area_y + row * ANX_FONT_HEIGHT;
+		if (t->line_total <= total_vis) {
+			first_line = 0;
+			visible_rows = t->line_total;
+			skip_rows = total_vis - visible_rows;
+		} else {
+			first_line = t->line_total - total_vis;
+			skip_rows  = 0;
+		}
 
-		(void)fg_dim;
-		term_str(t, TERM_PAD, y, t->lines[line_idx], fg, bg);
+		for (row = 0; row < visible_rows; row++) {
+			uint32_t line_idx = (first_line + row) % TERM_SCROLLBACK;
+			uint32_t y = text_area_y + (skip_rows + row) * ANX_FONT_HEIGHT;
+
+			(void)fg_dim;
+			term_str(t, TERM_PAD, y, t->lines[line_idx], fg, bg);
+		}
 	}
 
 	/* Commit canvas to framebuffer */
