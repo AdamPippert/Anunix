@@ -294,6 +294,8 @@ int mt7925_mcu_connect(struct mt7925_dev *dev,
 	/* Open network: association is implicit in the MCU scan */
 	kprintf("mt7925: open network associated\n");
 	dev->state = MT7925_STATE_ASSOC;
+	if (mt7925_on_connect)
+		mt7925_on_connect(ssid);
 	return 0;
 }
 
@@ -308,4 +310,6 @@ void mt7925_mcu_disconnect(struct mt7925_dev *dev)
 	mcu_send(dev, MCU_EXT_CMD_BSS_INFO_UPDATE, &bss, sizeof(bss));
 	dev->state = MT7925_STATE_FW_UP;
 	kprintf("mt7925: disconnected\n");
+	if (mt7925_on_disconnect)
+		mt7925_on_disconnect();
 }
