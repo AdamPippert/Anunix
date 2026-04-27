@@ -40,6 +40,14 @@ static struct {
 	bool     active;
 } g_fs_saved;
 
+/* Drag-to-move state */
+static struct {
+	struct anx_surface *surf;
+	int32_t             off_x;  /* cursor x minus surface x at drag start */
+	int32_t             off_y;
+	bool                active;
+} g_drag;
+
 /* ------------------------------------------------------------------ */
 /* Mouse cursor                                                        */
 /* ------------------------------------------------------------------ */
@@ -232,6 +240,13 @@ uint32_t anx_wm_workspace_active(void)
 	return g_active_ws + 1;
 }
 
+bool anx_wm_workspace_occupied(uint32_t ws_id)
+{
+	if (ws_id < 1 || ws_id > ANX_WM_WORKSPACES)
+		return false;
+	return g_workspaces[ws_id - 1].surf_count > 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Window lifecycle                                                    */
 /* ------------------------------------------------------------------ */
@@ -408,17 +423,41 @@ void anx_wm_focus_cycle(void)
 /* Pointer event routing                                               */
 /* ------------------------------------------------------------------ */
 
-static void wm_handle_pointer(int32_t x, int32_t y, bool clicked)
+/*
+ * buttons: bitmask of held buttons (bit 0 = left).  0 = all released.
+ * move_only: true when called from POINTER_MOVE (no button state change).
+ */
+static void wm_handle_pointer(int32_t x, int32_t y,
+			       uint32_t buttons, bool move_only)
 {
 	struct anx_surface *under;
+	bool left_down = (buttons & 1) != 0;
 
 	cursor_erase();
 
-	/* Menu bar click handled separately (always on top) */
+	/* Button released: end any active drag */
+	if (!left_down && !move_only && g_drag.active) {
+		g_drag.active = false;
+		g_drag.surf   = NULL;
+		cursor_draw(x, y);
+		return;
+	}
+
+	/* Active drag: move surface */
+	if (g_drag.active && g_drag.surf && left_down) {
+		anx_iface_surface_move(g_drag.surf,
+				       x - g_drag.off_x,
+				       y - g_drag.off_y);
+		anx_iface_surface_commit(g_drag.surf);
+		cursor_draw(x, y);
+		return;
+	}
+
+	/* Menu bar: always on top, handle clicks, no drag */
 	if (g_menubar && x >= g_menubar->x && y >= g_menubar->y &&
 	    x < g_menubar->x + (int32_t)g_menubar->width &&
 	    y < g_menubar->y + (int32_t)g_menubar->height) {
-		if (clicked) {
+		if (left_down && !move_only) {
 			uint32_t ws;
 			int32_t  dot_y = ANX_WM_MENUBAR_H / 2;
 
@@ -437,7 +476,6 @@ static void wm_handle_pointer(int32_t x, int32_t y, bool clicked)
 
 			/* Power button: rightmost 24px of menubar */
 			if (x >= (int32_t)g_menubar->width - 24) {
-				/* Graceful shutdown placeholder */
 				kprintf("[wm] power button clicked\n");
 				cursor_draw(x, y);
 				return;
@@ -448,8 +486,16 @@ static void wm_handle_pointer(int32_t x, int32_t y, bool clicked)
 	}
 
 	under = anx_iface_surface_at(x, y);
-	if (under && clicked)
+
+	if (under && left_down && !move_only) {
 		anx_wm_window_focus(under);
+
+		/* Begin drag: record offset from surface origin */
+		g_drag.surf   = under;
+		g_drag.off_x  = x - under->x;
+		g_drag.off_y  = y - under->y;
+		g_drag.active = true;
+	}
 
 	cursor_draw(x, y);
 }
@@ -498,14 +544,15 @@ void anx_wm_run(void)
 			case ANX_EVENT_POINTER_MOVE:
 				wm_handle_pointer(ev.data.pointer.x,
 						  ev.data.pointer.y,
-						  false);
+						  ev.data.pointer.buttons,
+						  true);
 				break;
 
 			case ANX_EVENT_POINTER_BUTTON:
-				if (ev.data.pointer.buttons & 1)
-					wm_handle_pointer(ev.data.pointer.x,
-							  ev.data.pointer.y,
-							  true);
+				wm_handle_pointer(ev.data.pointer.x,
+						  ev.data.pointer.y,
+						  ev.data.pointer.buttons,
+						  false);
 				break;
 
 			default:
