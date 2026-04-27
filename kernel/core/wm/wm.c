@@ -15,6 +15,7 @@
 #include <anx/interface_plane.h>
 #include <anx/input.h>
 #include <anx/fb.h>
+#include <anx/fbcon.h>
 #include <anx/gui.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -450,8 +451,10 @@ void anx_wm_run(void)
 
 	g_wm_running = true;
 
-	/* Erase the pre-WM GUI framebuffer content (boot splash, old terminal
-	 * frame) so the desktop starts with a clean background. */
+	/* Take framebuffer ownership: disable text console and clear screen */
+	anx_fbcon_disable();
+
+	/* Paint desktop background */
 	if (fb && fb->available) {
 		anx_fb_fill_rect(0, 0, fb->width, fb->height,
 				 0x000B1A2B /* ANX_COLOR_AX_BG */);
