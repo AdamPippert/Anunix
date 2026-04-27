@@ -116,6 +116,7 @@ void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
 /* ---- Taskbar (minimized window dock, bottom strip) ---- */
 int  anx_wm_taskbar_create(void);
 void anx_wm_taskbar_refresh(void);
+void anx_wm_taskbar_raise(void);
 bool anx_wm_taskbar_pointer(int32_t x, int32_t y, uint32_t buttons,
 			     bool move_only);
 

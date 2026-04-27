@@ -201,6 +201,12 @@ void anx_wm_taskbar_refresh(void)
 /* Pointer events                                                      */
 /* ------------------------------------------------------------------ */
 
+void anx_wm_taskbar_raise(void)
+{
+	if (g_taskbar)
+		anx_iface_surface_raise(g_taskbar);
+}
+
 bool anx_wm_taskbar_pointer(int32_t x, int32_t y,
 			     uint32_t buttons, bool move_only)
 {

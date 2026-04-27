@@ -661,6 +661,8 @@ int anx_wm_window_close(struct anx_surface *surf)
 int anx_wm_window_focus(struct anx_surface *surf)
 {
 	struct anx_wm_workspace *ws;
+	anx_oid_t prev_foc;
+	struct anx_surface *prev_surf = NULL;
 
 	if (!surf)
 		return ANX_EINVAL;
@@ -669,6 +671,10 @@ int anx_wm_window_focus(struct anx_surface *surf)
 	if (!ws)
 		ws = active_ws();
 
+	/* Capture old focus before changing it — needed for decoration repaint */
+	prev_foc = anx_input_focus_get();
+	anx_iface_surface_lookup(prev_foc, &prev_surf);
+
 	anx_iface_surface_raise(surf);
 	anx_input_focus_set(surf->oid);
 	ws->focused = surf->oid;
@@ -676,11 +682,21 @@ int anx_wm_window_focus(struct anx_surface *surf)
 	/* Record last-used timestamp for the switcher. */
 	anx_wm_activity_touch(surf->oid);
 
+	/* Repaint newly focused surface (accent titlebar + focus border). */
+	anx_iface_surface_commit(surf);
+
+	/* Repaint previously focused surface so its titlebar reverts. */
+	if (prev_surf && prev_surf != surf && prev_surf->state == ANX_SURF_VISIBLE)
+		anx_iface_surface_commit(prev_surf);
+
 	/* Raise menubar above the newly focused surface and refresh title */
 	if (g_menubar) {
 		anx_iface_surface_raise(g_menubar);
 		anx_wm_menubar_refresh();
 	}
+
+	/* Raise taskbar above new focused surface */
+	anx_wm_taskbar_raise();
 
 	return ANX_OK;
 }
