@@ -70,4 +70,8 @@ int mt7925_mcu_send_cmd(struct mt7925_dev *dev, uint8_t ext_cid,
 int mt7925_wpa_connect(struct mt7925_dev *dev,
 		       const char *ssid, const char *psk);
 
+/* Weak hooks: override in higher-level code to receive state notifications. */
+void mt7925_on_connect(const char *ssid)    __attribute__((weak));
+void mt7925_on_disconnect(void)             __attribute__((weak));
+
 #endif /* MT7925_DRV_H */

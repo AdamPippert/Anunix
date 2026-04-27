@@ -513,6 +513,8 @@ int mt7925_wpa_connect(struct mt7925_dev *dev,
 
 	dev->state = MT7925_STATE_CONNECTED;
 	kprintf("mt7925: WPA2 connected — keys installed\n");
+	if (mt7925_on_connect)
+		mt7925_on_connect(ssid);
 	ret = 0;
 
 out:

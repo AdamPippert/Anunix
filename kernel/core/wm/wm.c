@@ -23,6 +23,7 @@
 #include <anx/kprintf.h>
 #include <anx/spinlock.h>
 #include <anx/arch.h>
+#include <anx/mt7925.h>
 
 /* ------------------------------------------------------------------ */
 /* Global state                                                        */
@@ -997,4 +998,21 @@ int anx_wm_init(void)
 
 	kprintf("[wm] initialized (%u workspaces)\n", ANX_WM_WORKSPACES);
 	return ANX_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* WiFi state hooks (override weak symbols from mt7925 driver)        */
+/* ------------------------------------------------------------------ */
+
+void mt7925_on_connect(const char *ssid)
+{
+	(void)ssid;
+	anx_wm_notify("WiFi connected");
+	anx_wm_menubar_refresh();
+}
+
+void mt7925_on_disconnect(void)
+{
+	anx_wm_notify("WiFi disconnected");
+	anx_wm_menubar_refresh();
 }

@@ -376,3 +376,11 @@ void anx_mt7925_info(void)
 		kprintf("mt7925: SSID \"%s\"\n", g_dev.ssid);
 	}
 }
+
+/* Default (no-op) implementations of the state-change hooks.
+ * Override these in higher-level code (e.g., wm.c) to add notifications. */
+void mt7925_on_connect(const char *ssid)    __attribute__((weak));
+void mt7925_on_connect(const char *ssid)    { (void)ssid; }
+
+void mt7925_on_disconnect(void)             __attribute__((weak));
+void mt7925_on_disconnect(void)             { }
