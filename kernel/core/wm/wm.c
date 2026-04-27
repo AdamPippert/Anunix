@@ -1099,8 +1099,11 @@ void anx_wm_run(void)
 		if (anx_iface_event_poll_wm(&ev) == ANX_OK) {
 			switch (ev.type) {
 			case ANX_EVENT_KEY_DOWN:
-				/* Hotkeys are already intercepted in input.c;
-				 * remaining events have passed the WM filter. */
+				/* F1 toggles the help overlay; Esc closes it. */
+				if (ev.data.key.keycode == ANX_KEY_F1)
+					anx_wm_help_toggle();
+				else if (anx_wm_help_active())
+					anx_wm_help_key(ev.data.key.keycode);
 				break;
 
 			case ANX_EVENT_POINTER_MOVE:
