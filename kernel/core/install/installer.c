@@ -328,6 +328,8 @@ int anx_installer_run(const char *provision_json, uint32_t json_len)
 
 	/* Seed PAL priors from detected hardware so first boot is warm-started */
 	anx_pal_prime_install(detect_hw_flags());
+	/* Immediately persist so the primed state survives into first boot */
+	anx_pal_persist_save();
 
 	/* Done */
 	banner("Installation Complete");
@@ -416,12 +418,15 @@ int anx_installer_interactive(void)
 
 	/* Seed PAL priors from detected hardware so first boot is warm-started */
 	anx_pal_prime_install(detect_hw_flags());
+	/* Persist so the primed state survives into first boot */
+	anx_pal_persist_save();
 
 	/* Done */
 	banner("Installation Complete");
 	kprintf("  Hostname: %s\n", hostname);
 	kprintf("  User:     %s\n", username);
 	kprintf("  Object store: formatted\n");
+	kprintf("  PAL state: persisted\n");
 	kprintf("\n  You can now reboot into the installed system.\n\n");
 
 	return ANX_OK;

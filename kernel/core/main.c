@@ -281,6 +281,10 @@ void kernel_main(void)
 			kprintf("disk: store init failed (%d)\n", ds_ret);
 	}
 
+	/* Load previously persisted PAL state before hardware priming so that
+	 * organic session data from prior boots is not overwritten by priming */
+	anx_pal_persist_load();
+
 	/* Prime PAL cross-session priors from detected hardware */
 	anx_pal_prime_hardware();
 
