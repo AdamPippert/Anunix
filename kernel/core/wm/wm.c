@@ -330,6 +330,76 @@ static void cursor_draw(int32_t x, int32_t y)
 }
 
 /* ------------------------------------------------------------------ */
+/* Snap preview                                                        */
+/* ------------------------------------------------------------------ */
+
+#define SNAP_BORDER  3u   /* border thickness in pixels */
+
+static int g_snap_preview;  /* last drawn preview: 0=none, 1=left, 2=right */
+
+static void snap_preview_draw(int snap)
+{
+	const struct anx_fb_info *fb = anx_fb_get_info();
+	const struct anx_theme   *theme = anx_theme_get();
+	uint32_t color;
+	uint32_t x0, y0, w, h;
+
+	if (!fb || !fb->available)
+		return;
+	if (snap == 0)
+		return;
+
+	color = theme->palette.accent;
+	y0    = ANX_WM_MENUBAR_H;
+	h     = fb->height - ANX_WM_MENUBAR_H - ANX_WM_TASKBAR_H;
+
+	if (snap == 1) {
+		x0 = 0;
+		w  = fb->width / 2;
+	} else {
+		x0 = fb->width / 2;
+		w  = fb->width - x0;
+	}
+
+	/* Outline: top, bottom, left, right strips */
+	anx_fb_fill_rect(x0, y0, w, SNAP_BORDER, color);
+	anx_fb_fill_rect(x0, y0 + h - SNAP_BORDER, w, SNAP_BORDER, color);
+	anx_fb_fill_rect(x0, y0, SNAP_BORDER, h, color);
+	anx_fb_fill_rect(x0 + w - SNAP_BORDER, y0, SNAP_BORDER, h, color);
+
+	g_snap_preview = snap;
+}
+
+static void snap_preview_erase(void)
+{
+	const struct anx_fb_info *fb = anx_fb_get_info();
+	uint32_t bg = 0x000B1A2Bu; /* ANX_COLOR_AX_BG */
+	uint32_t x0, y0, w, h;
+
+	if (!fb || !fb->available || g_snap_preview == 0)
+		return;
+
+	y0 = ANX_WM_MENUBAR_H;
+	h  = fb->height - ANX_WM_MENUBAR_H - ANX_WM_TASKBAR_H;
+
+	if (g_snap_preview == 1) {
+		x0 = 0;
+		w  = fb->width / 2;
+	} else {
+		x0 = fb->width / 2;
+		w  = fb->width - x0;
+	}
+
+	/* Repaint just the border strips with desktop background */
+	anx_fb_fill_rect(x0, y0, w, SNAP_BORDER, bg);
+	anx_fb_fill_rect(x0, y0 + h - SNAP_BORDER, w, SNAP_BORDER, bg);
+	anx_fb_fill_rect(x0, y0, SNAP_BORDER, h, bg);
+	anx_fb_fill_rect(x0 + w - SNAP_BORDER, y0, SNAP_BORDER, h, bg);
+
+	g_snap_preview = 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Workspace helpers                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -907,6 +977,8 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 			struct anx_surface *ds = g_drag.surf;
 			int snap = g_drag.snap;
 
+			snap_preview_erase();
+
 			g_drag.active = false;
 			g_drag.surf   = NULL;
 			g_drag.snap   = 0;
@@ -969,10 +1041,15 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 				g_drag.snap = 0;
 		}
 
-		if (g_drag.snap != prev_snap && g_drag.snap != 0)
-			anx_wm_notify(g_drag.snap == 1
-				      ? "Snap left — release to tile"
-				      : "Snap right — release to tile");
+		if (g_drag.snap != prev_snap) {
+			snap_preview_erase();
+			if (g_drag.snap != 0) {
+				snap_preview_draw(g_drag.snap);
+				anx_wm_notify(g_drag.snap == 1
+					      ? "Snap left — release to tile"
+					      : "Snap right — release to tile");
+			}
+		}
 
 		cursor_set(g_drag.snap ? CURSOR_RESIZE : CURSOR_MOVE);
 		cursor_draw(x, y);
