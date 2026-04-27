@@ -22,6 +22,9 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/net.h>
+#include <anx/virtio_net.h>
+#include <anx/mt7925.h>
 
 /* Exposed to wm.c so it can set g_menubar */
 extern struct anx_surface *g_menubar;
@@ -195,9 +198,19 @@ void anx_wm_menubar_refresh(void)
 	/* ---- Network status dot --------------------------------------- */
 	{
 		uint32_t net_x = mb_width - 48;
+		uint32_t dot_color;
+		uint32_t local_ip = anx_ipv4_local_ip();
 
-		mb_fill_circle(net_x, cy, 4, success);	/* Phase 2: query net stack */
-		(void)err_col;
+		if (local_ip != 0) {
+			dot_color = success;
+		} else if (anx_virtio_net_ready() ||
+			   anx_mt7925_state() >= MT7925_STATE_ASSOC) {
+			dot_color = theme->palette.warning;
+		} else {
+			dot_color = err_col;
+		}
+
+		mb_fill_circle(net_x, cy, 4, dot_color);
 	}
 
 	/* ---- Power icon (simple rectangle) ---------------------------- */

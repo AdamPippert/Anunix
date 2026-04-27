@@ -20,9 +20,14 @@
 
 #include <anx/wm.h>
 #include <anx/input.h>
+#include <anx/interface_plane.h>
+#include <anx/clipboard.h>
 #include <anx/kprintf.h>
 #include <anx/string.h>
 #include <anx/spinlock.h>
+
+/* CID used by the WM for clipboard operations — a well-known sentinel. */
+#define WM_CID		((anx_cid_t){.hi = 0, .lo = 0xFFFF0001u})
 
 /* ------------------------------------------------------------------ */
 /* Registry                                                            */
@@ -79,6 +84,48 @@ bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key)
 	return false;
 }
 
+bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode)
+{
+	anx_oid_t focused = anx_input_focus_get();
+	struct anx_surface *s;
+	struct anx_key_event kev;
+
+	kev.keycode   = key;
+	kev.modifiers = mods;
+	kev.unicode   = unicode;
+
+	/* Priority 1: switcher */
+	if (anx_wm_switcher_active()) {
+		anx_wm_switcher_key_event(&kev);
+		return true;
+	}
+
+	if (focused.hi == 0 && focused.lo == 0)
+		return false;
+
+	/* Priority 2: search overlay */
+	s = anx_wm_search_surface();
+	if (s && s->oid.hi == focused.hi && s->oid.lo == focused.lo) {
+		anx_wm_search_key_event(key, mods, unicode);
+		return true;
+	}
+
+	/* Priority 3: app menu */
+	if (anx_wm_app_menu_active()) {
+		anx_wm_app_menu_key_event(&kev);
+		return true;
+	}
+
+	/* Priority 4: terminal */
+	s = anx_wm_terminal_surface();
+	if (s && s->oid.hi == focused.hi && s->oid.lo == focused.lo) {
+		anx_wm_terminal_key_event(key, mods, unicode);
+		return true;
+	}
+
+	return false;
+}
+
 /* ------------------------------------------------------------------ */
 /* Default action callbacks                                            */
 /* ------------------------------------------------------------------ */
@@ -118,18 +165,48 @@ static void hk_fullscreen(uint32_t mods, uint32_t key, void *arg)
 		anx_wm_window_fullscreen_toggle(surf);
 }
 
-static void hk_cycle(uint32_t mods, uint32_t key, void *arg)
+static void hk_switcher(uint32_t mods, uint32_t key, void *arg)
 {
 	(void)mods; (void)key; (void)arg;
-	anx_wm_focus_cycle();
+	anx_wm_switcher_open();
+}
+
+static void hk_copy(uint32_t mods, uint32_t key, void *arg)
+{
+	struct anx_surface *s;
+	anx_oid_t focused;
+	(void)mods; (void)key; (void)arg;
+
+	anx_clipboard_grant(WM_CID, ANX_CLIPBOARD_FLAG_WRITE);
+	focused = anx_input_focus_get();
+	s = anx_wm_terminal_surface();
+	if (s && s->oid.hi == focused.hi && s->oid.lo == focused.lo) {
+		/* Terminal selection: no selection API yet; write empty. */
+		anx_clipboard_write(WM_CID, "text/plain", "", 0);
+	}
+}
+
+static void hk_paste(uint32_t mods, uint32_t key, void *arg)
+{
+	char    mime[64];
+	char    buf[ANX_CLIPBOARD_MAX_SIZE];
+	uint32_t len = 0;
+	(void)mods; (void)key; (void)arg;
+
+	anx_clipboard_grant(WM_CID, ANX_CLIPBOARD_FLAG_READ);
+	if (anx_clipboard_read(WM_CID, mime, sizeof(mime),
+			       buf, sizeof(buf) - 1, &len) != ANX_OK)
+		return;
+	buf[len] = '\0';
+
+	if (anx_wm_terminal_surface() != NULL)
+		anx_wm_terminal_paste(buf, len);
 }
 
 static void hk_shell(uint32_t mods, uint32_t key, void *arg)
 {
 	(void)mods; (void)key; (void)arg;
-	/* Shell window launched by the WM as a surface wrapping a terminal */
-	kprintf("[wm] shell window requested\n");
-	/* Phase 2: spawn a terminal surface */
+	anx_wm_terminal_open();
 }
 
 static void hk_search(uint32_t mods, uint32_t key, void *arg)
@@ -171,11 +248,13 @@ void anx_wm_hotkeys_init(void)
 
 	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_Q,      hk_close,              NULL);
 	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_F,      hk_fullscreen,         NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_TAB,    hk_cycle,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_TAB,    hk_switcher,           NULL);
 	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_ENTER,  hk_shell,              NULL);
 	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_SPACE,  hk_search,             NULL);
 	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_W,      hk_workflow_designer,  NULL);
 	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_O,      hk_object_viewer,      NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_C,      hk_copy,               NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_V,      hk_paste,              NULL);
 
 	kprintf("[wm] hotkeys registered (%u bindings)\n", g_hotkey_count);
 }

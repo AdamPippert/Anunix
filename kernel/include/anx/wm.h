@@ -91,6 +91,9 @@ int  anx_wm_hotkey_register(uint32_t mods, uint32_t key,
 /* Called by input subsystem before forwarding key to focused surface. */
 bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key);
 
+/* Route key to focused WM-managed app (terminal/viewer/designer). */
+bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode);
+
 /* ---- Menu bar ---- */
 void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
 
@@ -98,5 +101,38 @@ void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
 void anx_wm_launch_workflow_designer(void);
 void anx_wm_launch_object_viewer(void);
 void anx_wm_launch_command_search(void);
+
+/* ---- Terminal surface ---- */
+void anx_wm_terminal_open(void);
+void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode);
+struct anx_surface *anx_wm_terminal_surface(void);
+
+/* ---- Command search overlay ---- */
+void anx_wm_search_key_event(uint32_t key, uint32_t mods, uint32_t unicode);
+struct anx_surface *anx_wm_search_surface(void);
+
+/* ---- Key event struct (used by switcher / app_menu) ---- */
+struct anx_key_event {
+	uint32_t keycode;
+	uint32_t modifiers;
+	uint32_t unicode;
+};
+
+/* ---- Terminal paste ---- */
+void anx_wm_terminal_paste(const char *text, uint32_t len);
+
+/* ---- App switcher (Meta+Tab) ---- */
+void anx_wm_switcher_open(void);
+void anx_wm_switcher_key_event(struct anx_key_event *ev);
+void anx_wm_switcher_meta_released(void);
+bool anx_wm_switcher_active(void);
+
+/* Internal: record surface focus timestamp for switcher ordering. */
+void anx_wm_activity_touch(anx_oid_t oid);
+
+/* ---- App menu panels ---- */
+void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid);
+void anx_wm_app_menu_key_event(struct anx_key_event *ev);
+bool anx_wm_app_menu_active(void);
 
 #endif /* ANX_WM_H */

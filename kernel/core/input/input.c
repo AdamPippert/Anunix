@@ -251,6 +251,11 @@ post_key_event(enum anx_event_type type,
 	    anx_wm_hotkey_dispatch(mods, hid_key))
 		return;
 
+	/* WM-managed app key routing (terminal, viewer, designer) */
+	if (type == ANX_EVENT_KEY_DOWN &&
+	    anx_wm_app_key_route(hid_key, mods, unicode))
+		return;
+
 	anx_spin_lock_irqsave(&input_lock, &flags);
 	target = focused_surf;
 	anx_spin_unlock_irqrestore(&input_lock, flags);

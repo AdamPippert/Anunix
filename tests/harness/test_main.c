@@ -60,6 +60,7 @@ int test_a11y(void);
 int test_media(void);
 int test_conformance_gate(void);
 int test_ibal(void);
+int test_ebm(void);
 int test_kickstart(void);
 
 static struct test_case tests[] = {
@@ -105,6 +106,7 @@ static struct test_case tests[] = {
 	{ "media",		test_media },
 	{ "conformance_gate",	test_conformance_gate },
 	{ "ibal",		test_ibal },
+	{ "ebm",		test_ebm },
 	{ "kickstart",		test_kickstart },
 };
 

@@ -9,6 +9,7 @@
 
 #include <anx/loop.h>
 #include <anx/ibal.h>
+#include <anx/ebm.h>
 #include <anx/memory.h>
 #include <anx/cexl.h>
 #include <anx/diag.h>
@@ -62,6 +63,7 @@ static void loop_usage(void)
 	kprintf("  branches <session-id>\n");
 	kprintf("  cexl     <session-id> [world-uri]\n");
 	kprintf("  jepa     <session-id> [world-uri]\n");
+	kprintf("  ebm      <session-id>              Run EBM iteration and show scores\n");
 	kprintf("  diag                               Show diag trace timeline\n");
 	kprintf("  pal      [world-uri]\n");
 }
@@ -449,6 +451,46 @@ int anx_loop_shell_dispatch(int argc, const char *const *argv)
 		}
 		kprintf("loop: jepa ingested session %s world=%s\n",
 			argv[2], world);
+		return ANX_OK;
+	}
+
+	/* ---- loop ebm ---- */
+	if (anx_strcmp(argv[1], "ebm") == 0) {
+		anx_oid_t  cands[ANX_LOOP_MAX_CANDIDATES];
+		uint32_t   found = 0;
+		uint32_t   j;
+
+		rc = anx_loop_session_candidates(session_oid,
+						 cands,
+						 ANX_LOOP_MAX_CANDIDATES,
+						 &found);
+		if (rc != ANX_OK || found == 0) {
+			/* No candidates yet: run a fresh iteration */
+			rc = anx_ebm_run_iteration(session_oid, NULL, 0);
+			if (rc != ANX_OK) {
+				kprintf("loop: ebm run failed (%d)\n", rc);
+				return rc;
+			}
+			rc = anx_loop_session_candidates(session_oid,
+							 cands,
+							 ANX_LOOP_MAX_CANDIDATES,
+							 &found);
+		}
+
+		kprintf("ebm: %u candidate(s) for session %s\n",
+			found, argv[2]);
+
+		for (j = 0; j < found; j++) {
+			float energy = 0.5f;
+			unsigned int ei, ef;
+
+			(void)anx_ebm_score_proposal(session_oid, cands[j],
+						     &energy);
+			ei = (unsigned int)energy;
+			ef = (unsigned int)((energy - (float)ei) * 10000.0f
+					    + 0.5f);
+			kprintf("  [%u] energy=%u.%04u\n", j, ei, ef);
+		}
 		return ANX_OK;
 	}
 
