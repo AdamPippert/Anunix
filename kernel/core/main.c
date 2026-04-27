@@ -52,6 +52,7 @@
 #include <anx/jepa.h>
 #include <anx/loop.h>
 #include <anx/ebm.h>
+#include <anx/memory.h>
 #include <anx/installer.h>
 
 #define ANX_VERSION "2026.4.23"
@@ -279,6 +280,9 @@ void kernel_main(void)
 		else
 			kprintf("disk: store init failed (%d)\n", ds_ret);
 	}
+
+	/* Prime PAL cross-session priors from detected hardware */
+	anx_pal_prime_hardware();
 
 	/* 11. Workflow Objects (RFC-0018) + built-in template library
 	 * Must come before JEPA: anx_jepa_init() registers agent workflows
