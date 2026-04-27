@@ -167,6 +167,8 @@ struct anx_vm_agent_policy {
  * memory_kb_cap — hard memory ceiling; 0 inherits from anx_vm_mem_config.
  */
 #define ANX_VM_SANDBOX_MAX_PORTS	8
+#define ANX_VM_SANDBOX_MAX_GROUPS	8
+#define ANX_VM_SANDBOX_NS_MAX		64
 
 struct anx_vm_agent_sandbox {
 	anx_oid_t	workflow_oid;
@@ -176,6 +178,16 @@ struct anx_vm_agent_sandbox {
 	uint32_t	output_count;
 	uint32_t	timeout_ms;
 	uint64_t	memory_kb_cap;
+
+	/*
+	 * Access control (RFC-0021 sandbox lens).  output_ns is the
+	 * namespace prefix the sandbox may CREATE/WRITE under; groups[]
+	 * names sealed object groups whose grants are unioned into the
+	 * sandbox lens.  Default-deny applies otherwise.
+	 */
+	char		output_ns[ANX_VM_SANDBOX_NS_MAX];
+	anx_oid_t	groups[ANX_VM_SANDBOX_MAX_GROUPS];
+	uint32_t	group_count;
 };
 
 /* --- Top-level VM config --- */
@@ -281,6 +293,14 @@ int anx_vm_agent_sandbox_create(const struct anx_vm_config *cfg,
  */
 int anx_vm_agent_sandbox_get(const anx_oid_t *vm_oid,
 			     struct anx_vm_agent_sandbox *out);
+
+/*
+ * Attach an object group OID to the sandbox.  The group's grants are
+ * unioned into the lens at start time.  Rejects when the sandbox is
+ * already RUNNING (groups must be set before start).
+ */
+int anx_vm_agent_sandbox_attach_group(const anx_oid_t *vm_oid,
+				      const anx_oid_t *group_oid);
 
 /* Enumeration */
 int anx_vm_list(anx_oid_t *results, uint32_t max, uint32_t *count_out);

@@ -47,6 +47,7 @@ int test_disk_store(void);
 int test_route_planner(void);
 int test_vm_object(void);
 int test_vm_sandbox(void);
+int test_sandbox_lens(void);
 int test_workflow(void);
 int test_theme(void);
 
@@ -80,6 +81,7 @@ static struct test_case tests[] = {
 	{ "route_planner",	test_route_planner },
 	{ "vm_object",		test_vm_object },
 	{ "vm_sandbox",		test_vm_sandbox },
+	{ "sandbox_lens",	test_sandbox_lens },
 	{ "workflow",		test_workflow },
 	{ "theme",		test_theme },
 };

@@ -11,6 +11,7 @@
 #include <anx/string.h>
 #include <anx/alloc.h>
 #include <anx/kprintf.h>
+#include <anx/object_group.h>
 
 #define ANX_VM_MAX_VMS		32
 
@@ -39,6 +40,7 @@ int anx_vm_init(void)
 	vm_count = 0;
 	vm_oid_seq = 0;
 	vm_initialized = true;
+	anx_object_group_init();
 	kprintf("vm: subsystem initialized (max %u VMs)\n", ANX_VM_MAX_VMS);
 	return ANX_OK;
 }

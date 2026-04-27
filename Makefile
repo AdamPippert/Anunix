@@ -380,6 +380,7 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_route_planner.c \
                tests/test_vm_object.c \
                tests/test_vm_sandbox.c \
+               tests/test_sandbox_lens.c \
                tests/test_workflow.c \
                tests/test_theme.c
 TEST_BIN    := build/test/anunix_test

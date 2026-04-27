@@ -160,8 +160,18 @@ int anx_so_write_payload(struct anx_object_handle *handle,
 int anx_so_replace_payload(struct anx_object_handle *handle,
 			   const void *data, uint64_t len);
 
-/* Look up an object by OID (internal, increments refcount) */
+/*
+ * Look up an object by OID, applying any active sandbox lens.
+ * Returns NULL when the OID is denied by the lens or absent from the store.
+ */
 struct anx_state_object *anx_objstore_lookup(const anx_oid_t *oid);
+
+/*
+ * Lens-bypassing lookup for kernel-internal callers (sandbox backends,
+ * provenance writers) that must resolve an OID without consulting the
+ * lens.  Avoid in code paths reachable from sandboxed cells.
+ */
+struct anx_state_object *anx_objstore_lookup_raw(const anx_oid_t *oid);
 
 /* Release a reference (decrements refcount) */
 void anx_objstore_release(struct anx_state_object *obj);

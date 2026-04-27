@@ -123,3 +123,24 @@ int anx_vm_agent_sandbox_get(const anx_oid_t *vm_oid,
 	anx_memcpy(out, &vm->config.sandbox, sizeof(*out));
 	return ANX_OK;
 }
+
+int anx_vm_agent_sandbox_attach_group(const anx_oid_t *vm_oid,
+				      const anx_oid_t *group_oid)
+{
+	struct anx_vm_object *vm;
+	struct anx_vm_agent_sandbox *s;
+
+	if (!vm_oid || !group_oid)
+		return ANX_EINVAL;
+	vm = anx_vm_object_get(vm_oid);
+	if (!vm)
+		return ANX_ENOENT;
+	if (vm->state != ANX_VM_DEFINED)
+		return ANX_EBUSY;
+
+	s = &vm->config.sandbox;
+	if (s->group_count >= ANX_VM_SANDBOX_MAX_GROUPS)
+		return ANX_ENOMEM;
+	s->groups[s->group_count++] = *group_oid;
+	return ANX_OK;
+}

@@ -14,6 +14,7 @@
 #include <anx/arch.h>
 #include <anx/kprintf.h>
 #include <anx/crypto.h>
+#include <anx/sandbox_lens.h>
 
 int anx_lifecycle_transition(struct anx_state_object *obj,
 			     enum anx_object_state new_state);
@@ -29,9 +30,45 @@ void anx_objstore_init(void)
 
 struct anx_state_object *anx_objstore_lookup(const anx_oid_t *oid)
 {
-	uint64_t hash = anx_uuid_hash(oid);
+	uint64_t hash;
 	struct anx_list_head *pos;
 
+	if (!oid)
+		return NULL;
+
+	/*
+	 * Sandbox lens enforcement: when a sandbox is active the lens
+	 * filters lookups to objects the sandbox has been granted
+	 * READ access to.  Outside a sandbox the check is a pass-through.
+	 */
+	if (!anx_sandbox_lens_check(oid, ANX_SBX_READ))
+		return NULL;
+
+	hash = anx_uuid_hash(oid);
+	ANX_HTABLE_FOR_BUCKET(pos, &oid_table, hash) {
+		struct anx_state_object *obj =
+			ANX_LIST_ENTRY(pos, struct anx_state_object, oid_link);
+		if (anx_uuid_compare(&obj->oid, oid) == 0) {
+			obj->refcount++;
+			return obj;
+		}
+	}
+	return NULL;
+}
+
+/*
+ * Lens-bypassing lookup used by kernel internals (e.g. the sandbox
+ * backend itself) that must resolve an OID independently of the active
+ * lens.  Avoid in code paths reachable from sandboxed cells.
+ */
+struct anx_state_object *anx_objstore_lookup_raw(const anx_oid_t *oid)
+{
+	uint64_t hash;
+	struct anx_list_head *pos;
+
+	if (!oid)
+		return NULL;
+	hash = anx_uuid_hash(oid);
 	ANX_HTABLE_FOR_BUCKET(pos, &oid_table, hash) {
 		struct anx_state_object *obj =
 			ANX_LIST_ENTRY(pos, struct anx_state_object, oid_link);
