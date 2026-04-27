@@ -65,6 +65,7 @@ void anx_wm_run(void);
 /* ---- Workspace management ---- */
 int  anx_wm_workspace_switch(uint32_t ws_id);		/* 1-9 */
 uint32_t anx_wm_workspace_active(void);
+bool     anx_wm_workspace_occupied(uint32_t ws_id);	/* true if ws has windows */
 
 /* Open a surface on the current workspace (maps + raises + focuses). */
 int  anx_wm_window_open(struct anx_surface *surf);

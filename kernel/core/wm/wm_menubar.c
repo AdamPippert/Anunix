@@ -184,10 +184,23 @@ void anx_wm_menubar_refresh(void)
 	/* ---- Workspace dots ------------------------------------------ */
 	dot_x = 16;
 	for (ws = 1; ws <= ANX_WM_WORKSPACES; ws++) {
-		bool is_active = (ws == anx_wm_workspace_active());
-		uint32_t color = is_active ? accent : dim;
+		bool is_active   = (ws == anx_wm_workspace_active());
+		bool is_occupied = anx_wm_workspace_occupied(ws);
+		uint32_t color;
+
+		if (is_active)
+			color = accent;
+		else if (is_occupied)
+			color = theme->palette.text_primary;
+		else
+			color = dim;
 
 		mb_fill_circle(dot_x, cy, dot_r, color);
+
+		/* Hollow ring for occupied-but-inactive: paint centre with bg */
+		if (is_occupied && !is_active)
+			mb_fill_circle(dot_x, cy, dot_r - 2, bg);
+
 		dot_x += 20;
 	}
 
@@ -211,29 +224,35 @@ void anx_wm_menubar_refresh(void)
 	clock_x = (mb_width - (uint32_t)anx_strlen(clock_str) * ANX_FONT_WIDTH) / 2;
 	mb_draw_str(clock_x, text_y, clock_str, theme->palette.text_primary, bg);
 
-	/* ---- Network status dot --------------------------------------- */
+	/* ---- Network status dot + short label ------------------------ */
 	{
-		uint32_t net_x = mb_width - 48;
+		uint32_t net_x = mb_width - 72;
 		uint32_t dot_color;
 		uint32_t local_ip = anx_ipv4_local_ip();
+		const char *net_label;
 
 		if (local_ip != 0) {
 			dot_color = success;
+			net_label = anx_mt7925_state() >= MT7925_STATE_ASSOC
+				    ? "wifi" : "lan";
 		} else if (anx_virtio_net_ready() ||
 			   anx_mt7925_state() >= MT7925_STATE_ASSOC) {
 			dot_color = theme->palette.warning;
+			net_label = "link";
 		} else {
 			dot_color = err_col;
+			net_label = "off";
 		}
 
 		mb_fill_circle(net_x, cy, 4, dot_color);
+		mb_draw_str(net_x + 8, text_y, net_label, dim, bg);
 	}
 
 	/* ---- Power icon (simple rectangle) ---------------------------- */
 	{
-		uint32_t pw_x = mb_width - 20;
+		uint32_t pw_x = mb_width - 18;
 
-		mb_fill_rect(pw_x, cy - 5, 10, 10, dim);
+		mb_fill_rect(pw_x,     cy - 5, 10, 10, dim);
 		mb_fill_rect(pw_x + 3, cy - 9,  4,  6, dim);
 	}
 
