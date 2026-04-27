@@ -661,6 +661,117 @@ static const struct anx_wf_template tmpl_ibal_symbolic = {
 	},
 };
 
+/*
+ * 12. anx:workflow/jepa/observe-encode/v1
+ *     TRIGGER → CELL_CALL(jepa-observe) → CELL_CALL(jepa-encode) → OUTPUT
+ *     Capture a JEPA observation and encode it to a latent vector.
+ *     Useful as the first stage of a prediction or anomaly-detection pipeline.
+ */
+static const struct anx_wf_template tmpl_jepa_observe_encode = {
+	.uri          = "anx:workflow/jepa/observe-encode/v1",
+	.display_name = "JEPA Observe + Encode",
+	.description  = "Capture a world observation via JEPA and encode it to "
+			"a latent vector.",
+	.tags         = {
+		"jepa", "observe", "encode", "latent", "world", "state",
+	},
+	.tag_count    = 6,
+	.node_count   = 4,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "observe",
+			.params.cell_call = { .intent = "jepa-observe" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "obs", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "encode",
+			.params.cell_call = { .intent = "jepa-encode" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "obs",    .dir = ANX_WF_PORT_IN  },
+				{ .name = "latent", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 4, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "latent",
+			.params.output = { .dest_name = "jepa_latent" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 3,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+		{ .from_node = 3, .from_port = 1, .to_node = 4, .to_port = 0 },
+	},
+};
+
+/*
+ * 13. anx:workflow/jepa/predict-route/v1
+ *     TRIGGER → jepa-observe-encode → jepa-predict:route_local → OUTPUT
+ *     Full single-step prediction pipeline: observe current world state,
+ *     encode to latent, then predict the next latent for the route_local
+ *     action.  Used by the IBAL loop to generate JEPA proposals.
+ */
+static const struct anx_wf_template tmpl_jepa_predict_route = {
+	.uri          = "anx:workflow/jepa/predict-route/v1",
+	.display_name = "JEPA Predict (route_local)",
+	.description  = "Observe + encode world state, then predict the next "
+			"latent under the route_local action.",
+	.tags         = {
+		"jepa", "predict", "route", "latent", "planning", "ibal",
+	},
+	.tag_count    = 6,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "observe-encode",
+			.params.cell_call = { .intent = "jepa-observe-encode" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",     .dir = ANX_WF_PORT_IN  },
+				{ .name = "latent", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "predict",
+			.params.cell_call = { .intent = "jepa-predict:route_local" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "latent",    .dir = ANX_WF_PORT_IN  },
+				{ .name = "predicted", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
 /* All built-in templates in order. */
 static const struct anx_wf_template *g_builtins[] = {
 	&tmpl_infer,
@@ -674,6 +785,8 @@ static const struct anx_wf_template *g_builtins[] = {
 	&tmpl_ibal_default,
 	&tmpl_ibal_lite,
 	&tmpl_ibal_symbolic,
+	&tmpl_jepa_observe_encode,
+	&tmpl_jepa_predict_route,
 };
 #define BUILTIN_COUNT ((uint32_t)(sizeof(g_builtins) / sizeof(g_builtins[0])))
 
