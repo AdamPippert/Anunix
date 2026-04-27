@@ -190,6 +190,10 @@ $(BUILD_DIR)/core/ebm/%.o: $(CORE_DIR)/ebm/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(JEPA_CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/core/exec/jepa_cell.o: $(CORE_DIR)/exec/jepa_cell.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
 # Compile C files from core/ (recursive)
 $(BUILD_DIR)/core/%.o: $(CORE_DIR)/%.c
 	@mkdir -p $(dir $@)

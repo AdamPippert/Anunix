@@ -14,6 +14,10 @@
 #include <anx/string.h>
 #include <anx/state_object.h>
 #include <anx/cell.h>
+#include <anx/jepa.h>
+#include <anx/jepa_cell.h>
+#include <anx/workflow_library.h>
+#include <anx/tensor_ops.h>
 
 int test_workflow(void)
 {
@@ -158,6 +162,64 @@ int test_workflow(void)
 	ret = anx_wf_destroy(&wf_oid);
 	if (ret != ANX_OK) return -29;
 	if (anx_wf_object_get(&wf_oid) != NULL) return -30;
+
+	/* ---------------------------------------------------------------- */
+	/* Tests 18-22: JEPA cell dispatch (via anx_jepa_cell_dispatch)     */
+	/* ---------------------------------------------------------------- */
+
+	/* Ensure tensor engine is registered so JEPA enters DEGRADED mode */
+	anx_tensor_cpu_engine_init();
+	anx_jepa_init();
+
+	/* Tests 18-22 require JEPA to be available (tensor engine present).
+	 * In minimal test environments without a tensor engine, skip gracefully. */
+	if (anx_jepa_available()) {
+		anx_oid_t obs_oid    = {0};
+		anx_oid_t latent_oid = {0};
+		anx_oid_t pred_oid   = {0};
+
+		/* Test 18: jepa-observe returns a non-zero OID */
+		ret = anx_jepa_cell_dispatch("jepa-observe", NULL, 0, &obs_oid);
+		if (ret != ANX_OK) return -31;
+		if (obs_oid.hi == 0 && obs_oid.lo == 0) return -32;
+
+		/* Test 19: jepa-encode returns a LATENT OID from an OBS OID */
+		ret = anx_jepa_cell_dispatch("jepa-encode", &obs_oid, 1, &latent_oid);
+		if (ret != ANX_OK) return -33;
+		if (latent_oid.hi == 0 && latent_oid.lo == 0) return -34;
+
+		/* Test 20: jepa-observe-encode shortcut produces a LATENT OID */
+		ret = anx_jepa_cell_dispatch("jepa-observe-encode",
+					     NULL, 0, &latent_oid);
+		if (ret != ANX_OK) return -35;
+		if (latent_oid.hi == 0 && latent_oid.lo == 0) return -36;
+
+		/* Test 21: jepa-predict:route_local predicts next latent */
+		ret = anx_jepa_cell_dispatch("jepa-predict:route_local",
+					     &latent_oid, 1, &pred_oid);
+		if (ret != ANX_OK) return -37;
+		if (pred_oid.hi == 0 && pred_oid.lo == 0) return -38;
+
+		/* Test 22: observe-encode workflow template completes */
+		{
+			anx_oid_t         tmpl_oid = {0};
+			anx_cid_t         run_cid;
+			enum anx_wf_run_state s;
+
+			anx_wf_lib_init();
+			ret = anx_wf_lib_instantiate(
+				"anx:workflow/jepa/observe-encode/v1",
+				"test-jepa-oe", &tmpl_oid);
+			if (ret != ANX_OK) return -39;
+
+			ret = anx_wf_run(&tmpl_oid, &run_cid);
+			if (ret != ANX_OK) return -40;
+
+			ret = anx_wf_run_state_get(&tmpl_oid, &s);
+			if (ret != ANX_OK) return -41;
+			if (s != ANX_WF_RUN_COMPLETED) return -42;
+		}
+	}
 
 	return 0;
 }
