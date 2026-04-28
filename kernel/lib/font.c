@@ -148,6 +148,33 @@ void anx_font_draw_codepoint(uint32_t x, uint32_t y,
 	}
 }
 
+void anx_font_blit_char(uint32_t *buf, uint32_t buf_w, uint32_t buf_h,
+                         uint32_t x, uint32_t y, char c,
+                         uint32_t fg, uint32_t bg)
+{
+	const uint16_t *glyph = anx_font_glyph(c);
+	uint32_t row, col;
+
+	for (row = 0; row < ANX_FONT_HEIGHT && (y + row) < buf_h; row++) {
+		uint16_t bits = glyph[row];
+
+		for (col = 0; col < ANX_FONT_WIDTH && (x + col) < buf_w; col++) {
+			if (bits & (0x800u >> col))
+				buf[(y + row) * buf_w + (x + col)] = fg;
+			else if (bg != ANX_FONT_TRANSPARENT)
+				buf[(y + row) * buf_w + (x + col)] = bg;
+		}
+	}
+}
+
+void anx_font_blit_str(uint32_t *buf, uint32_t buf_w, uint32_t buf_h,
+                        uint32_t x, uint32_t y, const char *s,
+                        uint32_t fg, uint32_t bg)
+{
+	for (; *s && x + ANX_FONT_WIDTH <= buf_w; s++, x += ANX_FONT_WIDTH)
+		anx_font_blit_char(buf, buf_w, buf_h, x, y, *s, fg, bg);
+}
+
 int anx_font_draw_str(uint32_t x, uint32_t y,
                        const char *utf8_str, uint32_t fg, uint32_t bg)
 {

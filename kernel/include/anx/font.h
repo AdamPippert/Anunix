@@ -59,4 +59,23 @@ void anx_font_draw_codepoint(uint32_t x, uint32_t y,
 int anx_font_draw_str(uint32_t x, uint32_t y,
                        const char *utf8_str, uint32_t fg, uint32_t bg);
 
+/* ------------------------------------------------------------------ */
+/* Off-screen buffer rendering                                          */
+/* ------------------------------------------------------------------ */
+
+/* Pass as bg to skip drawing background pixels (text over pre-filled bg). */
+#define ANX_FONT_TRANSPARENT  0xFF000000u
+
+/* Blit a single ASCII character into a caller-supplied pixel buffer.
+ * Background pixels are skipped when bg == ANX_FONT_TRANSPARENT. */
+void anx_font_blit_char(uint32_t *buf, uint32_t buf_w, uint32_t buf_h,
+                         uint32_t x, uint32_t y, char c,
+                         uint32_t fg, uint32_t bg);
+
+/* Blit a NUL-terminated ASCII string into a caller-supplied pixel buffer.
+ * Background pixels are skipped when bg == ANX_FONT_TRANSPARENT. */
+void anx_font_blit_str(uint32_t *buf, uint32_t buf_w, uint32_t buf_h,
+                        uint32_t x, uint32_t y, const char *s,
+                        uint32_t fg, uint32_t bg);
+
 #endif /* ANX_FONT_H */
