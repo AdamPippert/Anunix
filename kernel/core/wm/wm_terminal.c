@@ -741,6 +741,89 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		}
 		break;
 
+	case ANX_KEY_TAB:
+		{
+			/* Complete the first word (command name) of current input */
+			static const char *const cmds[] = {
+				"ask", "api", "browser", "browser_init", "browser_stop",
+				"cap", "cat", "cell", "cells", "clear", "compctl",
+				"cp", "disk", "dns", "echo", "edit", "engine",
+				"envctl", "evctl", "fetch", "fb_info", "fb_test",
+				"gop_list", "grep", "halt", "head", "help",
+				"history", "hwd", "hw-inventory", "http-get",
+				"if", "inspect", "install", "kickstart",
+				"login", "logout", "loop", "ls", "mem",
+				"memplane", "meta", "mode", "model", "model-init",
+				"mv", "net", "netinfo", "ntp", "pci", "perf",
+				"ping", "reboot", "rlm", "rm", "sched", "search",
+				"secret", "sort", "ssh-addkey", "state", "store",
+				"surfctl", "sysinfo", "tail", "tensor", "theme",
+				"tz", "useradd", "version", "vm", "wc", "wifi",
+				"workflow", "write", "xdna", NULL
+			};
+			uint32_t cursor = g_term.input_len;
+			uint32_t i;
+			const char *best = NULL;
+			uint32_t match_count = 0;
+			uint32_t best_len = 0;
+
+			/* Only complete the first token (no space yet) */
+			for (i = 0; i < cursor; i++) {
+				if (g_term.input[i] == ' ')
+					goto tab_done;
+			}
+
+			for (i = 0; cmds[i]; i++) {
+				if (anx_strncmp(cmds[i], g_term.input, cursor) == 0) {
+					if (match_count == 0) {
+						best = cmds[i];
+						best_len = (uint32_t)anx_strlen(cmds[i]);
+					} else {
+						uint32_t j = cursor;
+						while (j < best_len && cmds[i][j] == best[j])
+							j++;
+						best_len = j;
+					}
+					match_count++;
+				}
+			}
+
+			if (match_count == 1) {
+				uint32_t clen = (uint32_t)anx_strlen(best);
+				if (clen + 1 < HIST_COLS - 1) {
+					anx_strlcpy(g_term.input, best, HIST_COLS);
+					g_term.input[clen]     = ' ';
+					g_term.input[clen + 1] = '\0';
+					g_term.input_len = clen + 1;
+				}
+			} else if (match_count > 1 && best_len > cursor) {
+				anx_memcpy(g_term.input, best, best_len);
+				g_term.input[best_len] = '\0';
+				g_term.input_len = best_len;
+			} else if (match_count > 1) {
+				char line[HIST_COLS];
+				uint32_t pos = 0;
+
+				for (i = 0; cmds[i]; i++) {
+					if (anx_strncmp(cmds[i], g_term.input,
+							cursor) == 0) {
+						uint32_t clen =
+							(uint32_t)anx_strlen(cmds[i]);
+						if (pos + clen + 2 < HIST_COLS) {
+							anx_memcpy(line + pos,
+								   cmds[i], clen);
+							pos += clen;
+							line[pos++] = ' ';
+						}
+					}
+				}
+				line[pos] = '\0';
+				hist_append_str(line);
+			}
+			tab_done:;
+		}
+		break;
+
 	case ANX_KEY_PAGEUP:
 		{
 			uint32_t vl = g_term.vis_lines;
