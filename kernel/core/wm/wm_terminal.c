@@ -140,17 +140,44 @@ static void hist_append(const char *s, uint32_t len)
 
 static void hist_append_str(const char *s)
 {
-	const char *start = s;
+	/* Visible columns (subtract 4px left margin) */
+	uint32_t max_cols = g_term.w > (FONT_W + 4)
+		? (g_term.w - 4) / FONT_W : HIST_COLS - 1;
+	if (max_cols < 1) max_cols = 1;
+	if (max_cols > HIST_COLS - 1) max_cols = HIST_COLS - 1;
 
 	while (*s) {
-		if (*s == '\n') {
-			hist_append(start, (uint32_t)(s - start));
-			start = s + 1;
+		const char *line_start = s;
+		uint32_t col = 0;
+
+		/* Scan to next newline or visible-column boundary */
+		while (*s && *s != '\n') {
+			if (col >= max_cols) {
+				/* Wrap: try to break at last space */
+				const char *wrap = s;
+				uint32_t wc = col;
+				while (wrap > line_start + 1 && wrap[-1] != ' ')
+					wrap--, wc--;
+				if (wrap > line_start + max_cols / 2) {
+					/* Clean word-break found */
+					hist_append(line_start, (uint32_t)(wrap - line_start));
+					s = wrap;
+				} else {
+					/* No good break point; hard wrap */
+					hist_append(line_start, col);
+					s = line_start + col;
+				}
+				line_start = s;
+				col = 0;
+				continue;
+			}
+			s++;
+			col++;
 		}
-		s++;
+		hist_append(line_start, (uint32_t)(s - line_start));
+		if (*s == '\n')
+			s++;
 	}
-	if (s > start)
-		hist_append(start, (uint32_t)(s - start));
 }
 
 /* ------------------------------------------------------------------ */

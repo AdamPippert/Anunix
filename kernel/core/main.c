@@ -354,6 +354,13 @@ void kernel_main(void)
 			PERF_BEGIN("net_stack_init");
 			anx_net_stack_init(&net_cfg);
 			PERF_END();
+
+			/* Auto-sync time from NTP (pool.ntp.org via DNS) */
+			{
+				uint32_t ntp_ip;
+				if (anx_dns_resolve("pool.ntp.org", &ntp_ip) == ANX_OK)
+					anx_ntp_sync(ntp_ip);
+			}
 		}
 	}
 
