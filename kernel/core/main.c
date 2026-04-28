@@ -71,8 +71,9 @@ void kernel_main(void)
 
 		if (fb_info.available && anx_fb_init(&fb_info) == ANX_OK) {
 			anx_fbcon_init();
-			kprintf("framebuffer console: %ux%u @ %ubpp\n",
-				fb_info.width, fb_info.height, fb_info.bpp);
+			kprintf("framebuffer console: %ux%u @ %ubpp addr=%llx pitch=%u\n",
+				fb_info.width, fb_info.height, fb_info.bpp,
+				(unsigned long long)fb_info.addr, fb_info.pitch);
 		}
 	}
 

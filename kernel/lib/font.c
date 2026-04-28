@@ -35,16 +35,28 @@ const uint16_t *anx_font_glyph(char c)
 void anx_font_draw_char(uint32_t x, uint32_t y,
 			char c, uint32_t fg, uint32_t bg)
 {
+	const struct anx_fb_info *info = anx_fb_get_info();
 	const uint16_t *glyph = anx_font_glyph(c);
 	uint32_t row;
 
+	if (!info->available)
+		return;
+
 	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
 		uint16_t bits = glyph[row];
-		uint32_t *dst = anx_fb_row_ptr(y + row) + x;
+		uint32_t *dst;
 		uint32_t col;
 
-		for (col = 0; col < ANX_FONT_WIDTH; col++)
+		if (y + row >= info->height)
+			break;
+
+		dst = anx_fb_row_ptr(y + row) + x;
+
+		for (col = 0; col < ANX_FONT_WIDTH; col++) {
+			if (x + col >= info->width)
+				break;
 			dst[col] = (bits & (0x800u >> col)) ? fg : bg;
+		}
 	}
 }
 

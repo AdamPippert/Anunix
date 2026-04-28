@@ -639,6 +639,120 @@ static bool fb_detect_mb1(struct anx_fb_info *info)
 	return info->available;
 }
 
+/*
+ * Bochs VBE framebuffer detection — works with QEMU -vga std.
+ *
+ * Bochs VBE exposes the current mode via I/O ports 0x01CE/0x01CF.
+ * The LFB physical address is read from the VGA PCI device's BAR0.
+ * This path fires when neither multiboot2 nor multiboot1 provide
+ * framebuffer info (e.g. ISOLINUX mboot.c32 without VBE setup).
+ */
+/*
+ * Bochs VBE I/O port indices and enable flags.
+ * Reference: https://wiki.osdev.org/Bochs_VBE_Extensions
+ */
+#define BOCHS_VBE_INDEX		0x01CEu
+#define BOCHS_VBE_DATA		0x01CFu
+
+#define VBE_IDX_ID		0x0u
+#define VBE_IDX_XRES		0x1u
+#define VBE_IDX_YRES		0x2u
+#define VBE_IDX_BPP		0x3u
+#define VBE_IDX_ENABLE		0x4u
+#define VBE_IDX_VIRT_WIDTH	0x6u
+#define VBE_IDX_VIRT_HEIGHT	0x7u
+
+#define VBE_DISPI_DISABLED	0x00u
+#define VBE_DISPI_ENABLED	0x01u
+#define VBE_DISPI_LFB_ENABLED	0x40u	/* use linear framebuffer */
+
+#define BOCHS_VBE_WIDTH		640u
+#define BOCHS_VBE_HEIGHT	480u
+
+static uint16_t bochs_vbe_read(uint16_t idx)
+{
+	anx_outw(idx, BOCHS_VBE_INDEX);
+	return anx_inw(BOCHS_VBE_DATA);
+}
+
+static void bochs_vbe_write(uint16_t idx, uint16_t val)
+{
+	anx_outw(idx, BOCHS_VBE_INDEX);
+	anx_outw(val, BOCHS_VBE_DATA);
+}
+
+/* Scan PCI bus 0 for the VGA display controller and return its BAR0. */
+static uint32_t pci_vga_bar0(void)
+{
+	uint8_t dev;
+
+	for (dev = 0; dev < 32; dev++) {
+		uint32_t addr = 0x80000000u | ((uint32_t)dev << 11);
+		uint32_t vid, class_rev, bar0;
+
+		anx_outl(addr, 0xCF8u);
+		vid = anx_inl(0xCFCu);
+		if ((vid & 0xFFFFu) == 0xFFFFu)
+			continue;
+
+		anx_outl(addr | 0x08u, 0xCF8u);
+		class_rev = anx_inl(0xCFCu);
+		/* class 0x03 = display controller */
+		if ((uint8_t)(class_rev >> 24) != 0x03u)
+			continue;
+
+		/* Enable memory space (PCI command register bit 1) */
+		anx_outl(addr | 0x04u, 0xCF8u);
+		{
+			uint32_t cmd = anx_inl(0xCFCu);
+			anx_outl(addr | 0x04u, 0xCF8u);
+			anx_outl(cmd | 0x02u, 0xCFCu);
+		}
+
+		anx_outl(addr | 0x10u, 0xCF8u);
+		bar0 = anx_inl(0xCFCu);
+		if (bar0 & 0x01u)	/* I/O BAR — skip */
+			continue;
+		bar0 &= ~0xFu;
+		if (bar0)
+			return bar0;
+	}
+	return 0;
+}
+
+static bool fb_detect_bochs_vbe(struct anx_fb_info *info)
+{
+	uint16_t id;
+	uint32_t lfb;
+
+	/* Confirm Bochs VBE device is present (ID 0xB0C0..0xB0C5) */
+	id = bochs_vbe_read(VBE_IDX_ID);
+	if ((id & 0xFFF0u) != 0xB0C0u)
+		return false;
+
+	/*
+	 * Program 640×480×32 mode directly via I/O registers.
+	 * No BIOS required — Bochs VBE supports direct register programming.
+	 */
+	bochs_vbe_write(VBE_IDX_ENABLE, VBE_DISPI_DISABLED);
+	bochs_vbe_write(VBE_IDX_XRES,   (uint16_t)BOCHS_VBE_WIDTH);
+	bochs_vbe_write(VBE_IDX_YRES,   (uint16_t)BOCHS_VBE_HEIGHT);
+	bochs_vbe_write(VBE_IDX_BPP,    32u);
+	bochs_vbe_write(VBE_IDX_ENABLE, VBE_DISPI_ENABLED | VBE_DISPI_LFB_ENABLED);
+
+	lfb = pci_vga_bar0();
+	if (!lfb)
+		return false;
+
+	info->addr      = lfb;
+	info->width     = BOCHS_VBE_WIDTH;
+	info->height    = BOCHS_VBE_HEIGHT;
+	info->pitch     = BOCHS_VBE_WIDTH * 4u;
+	info->bpp       = 32;
+	info->available = true;
+	return true;
+}
+
 void arch_fb_detect(struct anx_fb_info *info)
 {
 	info->available = false;
@@ -647,8 +761,12 @@ void arch_fb_detect(struct anx_fb_info *info)
 	if (fb_detect_mb2(info))
 		return;
 
-	/* Fall back to multiboot1 trampoline info (QEMU) */
-	fb_detect_mb1(info);
+	/* Try multiboot1 trampoline info (QEMU -kernel / ISOLINUX) */
+	if (fb_detect_mb1(info))
+		return;
+
+	/* Last resort: probe Bochs VBE I/O ports directly (QEMU -vga std) */
+	fb_detect_bochs_vbe(info);
 }
 
 /* --- Boot command line --- */
