@@ -42,6 +42,20 @@ uint32_t anx_kprintf_capture_stop(void)
 	return n;
 }
 
+void anx_kprintf_capture_save(struct anx_capture_state *s)
+{
+	s->buf  = capture_buf;
+	s->size = capture_size;
+	s->pos  = capture_pos;
+}
+
+void anx_kprintf_capture_restore(const struct anx_capture_state *s)
+{
+	capture_buf  = s->buf;
+	capture_size = s->size;
+	capture_pos  = s->pos;
+}
+
 static void putc(char c)
 {
 	arch_console_putc(c);

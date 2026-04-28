@@ -19,4 +19,14 @@ void anx_kprintf_capture_start(char *buf, uint32_t buf_size);
 /* Stop capturing, return bytes captured */
 uint32_t anx_kprintf_capture_stop(void);
 
+/* Save/restore capture state (for nested capture, e.g., shell pipes inside
+ * an HTTP-captured command) */
+struct anx_capture_state {
+	char    *buf;
+	uint32_t size;
+	uint32_t pos;
+};
+void anx_kprintf_capture_save(struct anx_capture_state *s);
+void anx_kprintf_capture_restore(const struct anx_capture_state *s);
+
 #endif /* ANX_KPRINTF_H */
