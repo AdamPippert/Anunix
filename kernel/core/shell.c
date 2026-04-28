@@ -23,6 +23,7 @@
 #include <anx/netplane.h>
 #include <anx/capability.h>
 #include <anx/page.h>
+#include <anx/alloc.h>
 #include <anx/pci.h>
 #include <anx/net.h>
 #include <anx/virtio_net.h>
@@ -58,6 +59,11 @@
 #define MAX_LINE	256
 #define MAX_ARGS	16
 #define HISTORY_SIZE	32
+#define PIPE_CAP_SZ	8192
+
+/* Pipe stdin — set by execute_line when running right side of a pipe */
+static const char *g_pipe_stdin;
+static uint32_t    g_pipe_stdin_len;
 
 static char history[HISTORY_SIZE][MAX_LINE];
 static uint32_t history_count;
@@ -299,6 +305,11 @@ static void cmd_help(int argc, char **argv)
 	kputs("  model info|layers|diff|import  Model namespace\n");
 	kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
 	kputs("  echo <text...>             Print text ($? for return code)\n");
+	kputs("\nPipe filters (use with |):\n");
+	kputs("  grep <pattern>             Filter lines matching pattern\n");
+	kputs("  head [-n N]                First N lines (default 10)\n");
+	kputs("  tail [-n N]                Last N lines (default 10)\n");
+	kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
 	kputs("  version                    Show kernel version\n");
@@ -1846,6 +1857,184 @@ static void cmd_pci(int argc, char **argv)
 
 static int last_return_code;	/* $? */
 
+/* --- Pipe-aware filter commands --- */
+
+/* Simple substring search within a length-bounded string */
+static bool line_contains(const char *line, uint32_t len, const char *pat)
+{
+	uint32_t plen = (uint32_t)anx_strlen(pat);
+	uint32_t i, j;
+
+	if (plen == 0 || plen > len)
+		return plen == 0;
+
+	for (i = 0; i + plen <= len; i++) {
+		bool match = true;
+		for (j = 0; j < plen; j++) {
+			if (line[i + j] != pat[j]) {
+				match = false;
+				break;
+			}
+		}
+		if (match)
+			return true;
+	}
+	return false;
+}
+
+/* Print a length-bounded line (kprintf doesn't support %.*s) */
+static void print_line(const char *s, uint32_t len)
+{
+	char buf[256];
+	uint32_t copy = len < sizeof(buf) - 2 ? len : sizeof(buf) - 2;
+
+	anx_memcpy(buf, s, copy);
+	buf[copy]     = '\n';
+	buf[copy + 1] = '\0';
+	kprintf("%s", buf);
+}
+
+static void cmd_grep(int argc, char **argv)
+{
+	const char *pattern;
+	const char *p;
+
+	if (argc < 2) {
+		kprintf("usage: grep <pattern>\n");
+		return;
+	}
+	pattern = argv[1];
+
+	if (!g_pipe_stdin) {
+		kprintf("grep: no piped input\n");
+		return;
+	}
+
+	p = g_pipe_stdin;
+	while (*p) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		if (line_contains(start, len, pattern))
+			print_line(start, len);
+		if (*p == '\n')
+			p++;
+	}
+}
+
+static void cmd_head(int argc, char **argv)
+{
+	int n = 10;
+	const char *p;
+	int count = 0;
+
+	if (argc >= 3 && anx_strcmp(argv[1], "-n") == 0)
+		n = (int)anx_strtoul(argv[2], NULL, 10);
+	else if (argc >= 2 && argv[1][0] == '-' && argv[1][1] >= '1')
+		n = (int)anx_strtoul(argv[1] + 1, NULL, 10);
+
+	if (!g_pipe_stdin) {
+		kprintf("head: no piped input\n");
+		return;
+	}
+
+	p = g_pipe_stdin;
+	while (*p && count < n) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		print_line(start, len);
+		if (*p == '\n')
+			p++;
+		count++;
+	}
+}
+
+static void cmd_tail(int argc, char **argv)
+{
+	int n = 10;
+	const char *p;
+	const char *lines[64];
+	uint32_t lens[64];
+	int total = 0, i;
+
+	if (argc >= 3 && anx_strcmp(argv[1], "-n") == 0)
+		n = (int)anx_strtoul(argv[2], NULL, 10);
+	else if (argc >= 2 && argv[1][0] == '-' && argv[1][1] >= '1')
+		n = (int)anx_strtoul(argv[1] + 1, NULL, 10);
+	if (n > 64) n = 64;
+
+	if (!g_pipe_stdin) {
+		kprintf("tail: no piped input\n");
+		return;
+	}
+
+	/* Collect all lines (ring buffer of last n) */
+	p = g_pipe_stdin;
+	while (*p) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		lines[total % 64] = start;
+		lens[total % 64]  = len;
+		total++;
+		if (*p == '\n')
+			p++;
+	}
+
+	{
+		int start_idx = total > n ? total - n : 0;
+		for (i = start_idx; i < total; i++) {
+			int slot = i % 64;
+			print_line(lines[slot], lens[slot]);
+		}
+	}
+}
+
+static void cmd_wc(int argc, char **argv)
+{
+	const char *p;
+	uint32_t lines = 0, words = 0, chars = 0;
+	bool in_word = false;
+	bool count_lines = false, count_words = false, count_chars = false;
+	int i;
+
+	for (i = 1; i < argc; i++) {
+		if (anx_strcmp(argv[i], "-l") == 0) count_lines = true;
+		else if (anx_strcmp(argv[i], "-w") == 0) count_words = true;
+		else if (anx_strcmp(argv[i], "-c") == 0) count_chars = true;
+	}
+	if (!count_lines && !count_words && !count_chars)
+		count_lines = count_words = count_chars = true;
+
+	if (!g_pipe_stdin) {
+		kprintf("wc: no piped input\n");
+		return;
+	}
+
+	p = g_pipe_stdin;
+	while (*p) {
+		chars++;
+		if (*p == '\n') {
+			lines++;
+			in_word = false;
+		} else if (*p == ' ' || *p == '\t') {
+			in_word = false;
+		} else {
+			if (!in_word) { words++; in_word = true; }
+		}
+		p++;
+	}
+
+	if (count_lines) kprintf("%u", lines);
+	if (count_words) kprintf(count_lines ? " %u" : "%u", words);
+	if (count_chars) kprintf((count_lines || count_words) ? " %u" : "%u", chars);
+	kprintf("\n");
+}
+
 /* --- Command dispatch --- */
 
 static void dispatch(int argc, char **argv)
@@ -2115,6 +2304,14 @@ static void dispatch(int argc, char **argv)
 		last_return_code = cmd_mode(argc, argv);
 	} else if (anx_strcmp(argv[0], "kickstart") == 0) {
 		cmd_kickstart(argc, argv);
+	} else if (anx_strcmp(argv[0], "grep") == 0) {
+		cmd_grep(argc, argv);
+	} else if (anx_strcmp(argv[0], "head") == 0) {
+		cmd_head(argc, argv);
+	} else if (anx_strcmp(argv[0], "tail") == 0) {
+		cmd_tail(argc, argv);
+	} else if (anx_strcmp(argv[0], "wc") == 0) {
+		cmd_wc(argc, argv);
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 		last_return_code = -1;
@@ -2129,8 +2326,60 @@ static void execute_line(const char *input)
 	char line_copy[MAX_LINE];
 	char *argv[MAX_ARGS];
 	int argc;
+	char *pipe_pos;
 
 	anx_strlcpy(line_copy, input, MAX_LINE);
+
+	/* Detect pipe operator */
+	pipe_pos = line_copy;
+	while (*pipe_pos && *pipe_pos != '|')
+		pipe_pos++;
+
+	if (*pipe_pos == '|') {
+		char right_cmd[MAX_LINE];
+		char *capture;
+		uint32_t captured;
+		const char *right;
+		struct anx_capture_state outer;
+
+		*pipe_pos = '\0';
+		right = pipe_pos + 1;
+		while (*right == ' ')
+			right++;
+		anx_strlcpy(right_cmd, right, MAX_LINE);
+
+		capture = anx_alloc(PIPE_CAP_SZ);
+		if (!capture) {
+			kprintf("pipe: out of memory\n");
+			return;
+		}
+
+		/* Save outer capture (e.g., HTTP API's buffer), install inner */
+		anx_kprintf_capture_save(&outer);
+		anx_kprintf_capture_start(capture, PIPE_CAP_SZ);
+		argc = parse_args(line_copy, argv, MAX_ARGS);
+		if (argc > 0)
+			dispatch(argc, argv);
+		captured = anx_kprintf_capture_stop();
+		capture[captured < PIPE_CAP_SZ ? captured : PIPE_CAP_SZ - 1] = '\0';
+
+		/* Restore outer capture so right-side output goes to caller */
+		anx_kprintf_capture_restore(&outer);
+
+		/* Run right side with captured output as pipe stdin */
+		g_pipe_stdin     = capture;
+		g_pipe_stdin_len = captured;
+
+		argc = parse_args(right_cmd, argv, MAX_ARGS);
+		if (argc > 0)
+			dispatch(argc, argv);
+
+		g_pipe_stdin     = NULL;
+		g_pipe_stdin_len = 0;
+		anx_free(capture);
+		return;
+	}
+
 	argc = parse_args(line_copy, argv, MAX_ARGS);
 	if (argc > 0)
 		dispatch(argc, argv);
