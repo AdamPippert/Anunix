@@ -745,7 +745,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		{
 			/* Complete the first word (command name) of current input */
 			static const char *const cmds[] = {
-				"ask", "api", "browser", "browser_init", "browser_stop",
+				"agent", "ask", "api", "browser", "browser_init", "browser_stop",
 				"cap", "cat", "cell", "cells", "clear", "compctl",
 				"cp", "disk", "dns", "echo", "edit", "engine",
 				"envctl", "evctl", "fetch", "fb_info", "fb_test",
