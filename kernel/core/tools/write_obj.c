@@ -74,8 +74,8 @@ static void uobj_save(void)
 	anx_disk_write_obj(&oid, UOBJ_DISK_TYPE, t, sizeof(*t));
 }
 
-static void uobj_record(const char *ns, const char *path,
-			 const void *payload, uint32_t payload_len)
+void uobj_record(const char *ns, const char *path,
+		 const void *payload, uint32_t payload_len)
 {
 	struct uobj_disk *t = uobj_table();
 	struct uobj_entry *e;
