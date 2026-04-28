@@ -17,6 +17,8 @@
 #include <anx/state_object.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/model_client.h>
+#include <anx/alloc.h>
 #include "loop_internal.h"
 
 /* ------------------------------------------------------------------ */
@@ -107,15 +109,42 @@ int anx_loop_llm_propose(anx_oid_t session_oid, uint32_t iteration,
 		     "Actions: idle,route_local,route_remote,route_fallback,"
 		     "mem_promote,mem_demote,mem_forget,"
 		     "cell_spawn,cell_cancel,cap_validate,cap_suspend,security_alert\n"
-		     "Which single action best serves the goal? Reply with the action name.",
+		     "Reply with ONE action name only (e.g. 'mem_promote').",
 		     s->world_uri, s->goal_text, iteration);
 
-	/* Create prompt State Object */
+	/* Fast path: call the real model if configured */
+	if (anx_model_client_ready()) {
+		struct anx_model_request  req;
+		struct anx_model_response model_resp;
+		static char resp_buf[128];
+
+		anx_memset(&req, 0, sizeof(req));
+		req.model       = "claude-haiku-4-5-20251001";
+		req.system      = "You are an Anunix kernel action selector. "
+				  "Reply with a single action name, nothing else.";
+		req.user_message = prompt;
+		req.max_tokens  = 20;
+
+		rc = anx_model_call(&req, &model_resp);
+		if (rc == ANX_OK && model_resp.content) {
+			/* Truncate to first line */
+			char *nl = model_resp.content;
+			while (*nl && *nl != '\n' && *nl != '\r')
+				nl++;
+			*nl = '\0';
+			anx_strlcpy(resp_buf, model_resp.content, sizeof(resp_buf));
+			resp = resp_buf;
+		}
+		anx_model_response_free(&model_resp);
+		action_id = response_to_action(resp);
+		goto build_proposal;
+	}
+
+	/* Fallback: run single-step RLM rollout (non-blocking, no tool loops) */
 	rc = make_prompt_obj(prompt, &prompt_oid);
 	if (rc != ANX_OK)
 		goto fallback;
 
-	/* Run single-step RLM rollout (non-blocking, no tool loops) */
 	anx_rlm_config_default(&cfg);
 	cfg.max_steps       = 1;
 	cfg.persist_trace   = false;
