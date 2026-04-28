@@ -14,6 +14,8 @@
 #include <anx/kprintf.h>
 #include <anx/shell.h>
 #include <anx/clipboard.h>
+#include <anx/namespace.h>
+#include <anx/state_object.h>
 
 #define WM_CLIPBOARD_CID	((anx_cid_t){.hi = 0, .lo = 0xFFFF0001u})
 
@@ -21,22 +23,14 @@
 /* Layout constants                                                    */
 /* ------------------------------------------------------------------ */
 
-#define TERM_W		800
-#define TERM_H		500
-#define TERM_X		80
-#define TERM_Y		60
-
 #define FONT_W		ANX_FONT_WIDTH
 #define FONT_H		ANX_FONT_HEIGHT
 #define LINE_H		(FONT_H + 4)
 
 #define INPUT_H		28
-#define INPUT_Y		(TERM_H - INPUT_H)
 
 #define HIST_LINES	200
 #define HIST_COLS	120
-
-#define VISIBLE_LINES	((INPUT_Y - 8) / LINE_H)
 
 #define CAPTURE_SZ	(HIST_COLS * 80)
 
@@ -49,6 +43,15 @@
 static struct {
 	struct anx_surface *surf;
 	uint32_t           *pixels;
+
+	/* Display geometry — computed from framebuffer at open time */
+	uint32_t w, h;		/* terminal pixel dimensions */
+	uint32_t x, y;		/* surface position on screen */
+	uint32_t input_y;	/* y offset of input bar within terminal */
+	uint32_t vis_lines;	/* number of history lines visible */
+
+	/* Dirty flag: set when pixels are updated, cleared after commit */
+	bool dirty;
 
 	char     hist[HIST_LINES][HIST_COLS];
 	uint32_t hist_count;
@@ -64,6 +67,25 @@ static struct {
 } g_term;
 
 /* ------------------------------------------------------------------ */
+/* Text editor state                                                   */
+/* ------------------------------------------------------------------ */
+
+#define EDIT_MAX_LINES	200
+#define EDIT_STATUS_H	LINE_H		/* status bar height at top */
+
+static struct {
+	bool     active;
+	char     ns[32];
+	char     path[96];
+	char     lines[EDIT_MAX_LINES][HIST_COLS];
+	uint32_t line_count;
+	uint32_t cur_line;
+	uint32_t cur_col;
+	uint32_t scroll;		/* first visible line */
+	bool     modified;
+} g_editor;
+
+/* ------------------------------------------------------------------ */
 /* Pixel helpers                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -72,9 +94,9 @@ static void term_fill(uint32_t x, uint32_t y,
 {
 	uint32_t row, col;
 
-	for (row = y; row < y + h && row < TERM_H; row++)
-		for (col = x; col < x + w && col < TERM_W; col++)
-			g_term.pixels[row * TERM_W + col] = color;
+	for (row = y; row < y + h && row < g_term.h; row++)
+		for (col = x; col < x + w && col < g_term.w; col++)
+			g_term.pixels[row * g_term.w + col] = color;
 }
 
 static void term_draw_char(uint32_t x, uint32_t y, char c,
@@ -83,11 +105,11 @@ static void term_draw_char(uint32_t x, uint32_t y, char c,
 	const uint16_t *glyph = anx_font_glyph(c);
 	uint32_t row, col;
 
-	for (row = 0; row < (uint32_t)FONT_H && (y + row) < TERM_H; row++) {
+	for (row = 0; row < (uint32_t)FONT_H && (y + row) < g_term.h; row++) {
 		uint16_t bits = glyph[row];
 
-		for (col = 0; col < (uint32_t)FONT_W && (x + col) < TERM_W; col++)
-			g_term.pixels[(y + row) * TERM_W + (x + col)] =
+		for (col = 0; col < (uint32_t)FONT_W && (x + col) < g_term.w; col++)
+			g_term.pixels[(y + row) * g_term.w + (x + col)] =
 				(bits & (0x800u >> col)) ? fg : bg;
 	}
 }
@@ -96,7 +118,7 @@ static void term_draw_str(uint32_t x, uint32_t y, const char *s,
 			   uint32_t fg, uint32_t bg)
 {
 	for (; *s; s++, x += FONT_W) {
-		if (x + FONT_W > TERM_W)
+		if (x + FONT_W > g_term.w)
 			break;
 		term_draw_char(x, y, *s, fg, bg);
 	}
@@ -148,15 +170,15 @@ static void term_render(void)
 		return;
 
 	/* Background */
-	term_fill(0, 0, TERM_W, TERM_H, bg);
+	term_fill(0, 0, g_term.w, g_term.h, bg);
 
 	/* Separator line */
-	term_fill(0, INPUT_Y - 1, TERM_W, 1, accent);
+	term_fill(0, g_term.input_y - 1, g_term.w, 1, accent);
 
 	/* Output history — bottom-anchored */
 	count       = g_term.hist_count;
 	scroll      = (uint32_t)g_term.scroll_off;
-	vis         = VISIBLE_LINES;
+	vis         = g_term.vis_lines;
 	first_line  = (count > vis + scroll) ? count - vis - scroll : 0;
 
 	for (i = 0; i < vis; i++) {
@@ -170,7 +192,7 @@ static void term_render(void)
 	}
 
 	/* Input area */
-	term_fill(0, INPUT_Y, TERM_W, INPUT_H, 0x00111111);
+	term_fill(0, g_term.input_y, g_term.w, INPUT_H, 0x00111111);
 
 	{
 		char prompt[HIST_COLS + 4];
@@ -179,13 +201,16 @@ static void term_render(void)
 		anx_snprintf(prompt, sizeof(prompt), "> %s", g_term.input);
 		pl = (uint32_t)anx_strlen(prompt);
 
-		term_draw_str(4, INPUT_Y + 4, prompt, fg, 0x00111111);
+		term_draw_str(4, g_term.input_y + 4, prompt, fg, 0x00111111);
 
 		/* Teal cursor block */
-		term_fill(4 + pl * FONT_W, INPUT_Y + 4, 2, FONT_H, accent);
+		term_fill(4 + pl * FONT_W, g_term.input_y + 4, 2, FONT_H, accent);
 	}
 
-	anx_iface_surface_commit(g_term.surf);
+	/* Mark dirty — actual commit deferred to main WM loop via
+	 * anx_wm_terminal_flush_if_dirty() to avoid slow PCI MMIO
+	 * writes in IRQ handler context. */
+	g_term.dirty = true;
 }
 
 /* ------------------------------------------------------------------ */
@@ -224,11 +249,392 @@ static void term_run_command(const char *cmd)
 }
 
 /* ------------------------------------------------------------------ */
+/* Text editor render and key handling                                 */
+/* ------------------------------------------------------------------ */
+
+static void editor_render(void)
+{
+	const struct anx_theme *theme = anx_theme_get();
+	uint32_t bg      = 0x00060C12u;	/* slightly darker than terminal */
+	uint32_t fg      = theme->palette.text_primary;
+	uint32_t cur_bg  = theme->palette.accent;
+	uint32_t stat_bg = theme->palette.surface;
+	uint32_t dim     = theme->palette.text_dim;
+	uint32_t vis;
+	uint32_t i;
+	char     status[HIST_COLS];
+
+	if (!g_term.pixels || !g_editor.active)
+		return;
+
+	/* Background */
+	term_fill(0, 0, g_term.w, g_term.h, bg);
+
+	/* Status bar at top */
+	term_fill(0, 0, g_term.w, EDIT_STATUS_H, stat_bg);
+	anx_snprintf(status, sizeof(status), " %s:%s%s  Ctrl+S save  Ctrl+Q quit",
+		     g_editor.ns, g_editor.path,
+		     g_editor.modified ? " [+]" : "");
+	term_draw_str(4, 4, status, dim, stat_bg);
+
+	/* Visible line count */
+	vis = (g_term.h > EDIT_STATUS_H + 8)
+	      ? (g_term.h - EDIT_STATUS_H - 8) / LINE_H : 1;
+
+	/* File content */
+	for (i = 0; i < vis; i++) {
+		uint32_t lnum = g_editor.scroll + i;
+		uint32_t y    = EDIT_STATUS_H + i * LINE_H;
+
+		if (lnum >= g_editor.line_count) {
+			term_draw_str(4, y + 4, "~", dim, bg);
+			continue;
+		}
+
+		if (lnum == g_editor.cur_line) {
+			/* Highlight current line bg */
+			term_fill(0, y, g_term.w, LINE_H, 0x00101820u);
+
+			/* Draw text, then cursor block */
+			term_draw_str(4, y + 4, g_editor.lines[lnum], fg,
+				      0x00101820u);
+
+			/* Cursor block at current column */
+			{
+				uint32_t cx = 4 + g_editor.cur_col * FONT_W;
+
+				if (cx + FONT_W <= g_term.w) {
+					char cur_char[2] = {
+						g_editor.lines[lnum][g_editor.cur_col]
+						? g_editor.lines[lnum][g_editor.cur_col]
+						: ' ',
+						'\0'
+					};
+					term_fill(cx, y + 4, FONT_W, FONT_H, cur_bg);
+					term_draw_str(cx, y + 4, cur_char,
+						      0x00000000u, cur_bg);
+				}
+			}
+		} else {
+			term_draw_str(4, y + 4, g_editor.lines[lnum], fg, bg);
+		}
+	}
+
+	g_term.dirty = true;
+}
+
+static void editor_save(void)
+{
+	static char buf[EDIT_MAX_LINES * HIST_COLS];
+	uint32_t pos = 0;
+	uint32_t i;
+	anx_oid_t oid;
+
+	for (i = 0; i < g_editor.line_count; i++) {
+		uint32_t len = (uint32_t)anx_strlen(g_editor.lines[i]);
+
+		if (pos + len + 1 >= sizeof(buf))
+			break;
+		anx_memcpy(buf + pos, g_editor.lines[i], len);
+		pos += len;
+		buf[pos++] = '\n';
+	}
+
+	if (anx_ns_resolve(g_editor.ns, g_editor.path, &oid) == ANX_OK) {
+		/* Object exists — open and replace payload */
+		struct anx_object_handle h;
+
+		if (anx_so_open(&oid, ANX_OPEN_WRITE, &h) == ANX_OK) {
+			anx_so_replace_payload(&h, buf, pos);
+			anx_so_close(&h);
+		}
+	} else {
+		/* New object */
+		struct anx_so_create_params p;
+		struct anx_state_object *obj;
+
+		anx_memset(&p, 0, sizeof(p));
+		p.object_type  = ANX_OBJ_BYTE_DATA;
+		p.payload      = buf;
+		p.payload_size = pos;
+
+		if (anx_so_create(&p, &obj) == ANX_OK) {
+			anx_ns_bind(g_editor.ns, g_editor.path, &obj->oid);
+			anx_objstore_release(obj);
+		}
+	}
+
+	g_editor.modified = false;
+	hist_append_str("[editor] saved");
+}
+
+static void editor_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
+{
+	char *line = g_editor.lines[g_editor.cur_line];
+	uint32_t len = (uint32_t)anx_strlen(line);
+	uint32_t vis;
+
+	if (mods & ANX_MOD_CTRL) {
+		if (key == ANX_KEY_S) {
+			editor_save();
+			editor_render();
+			return;
+		}
+		if (key == ANX_KEY_Q) {
+			g_editor.active = false;
+			term_render();
+			if (g_editor.modified)
+				hist_append_str("[editor] quit without saving");
+			return;
+		}
+	}
+
+	vis = (g_term.h > EDIT_STATUS_H + 8)
+	      ? (g_term.h - EDIT_STATUS_H - 8) / LINE_H : 1;
+
+	switch (key) {
+	case ANX_KEY_LEFT:
+		if (g_editor.cur_col > 0)
+			g_editor.cur_col--;
+		else if (g_editor.cur_line > 0) {
+			g_editor.cur_line--;
+			g_editor.cur_col =
+				(uint32_t)anx_strlen(
+					g_editor.lines[g_editor.cur_line]);
+		}
+		break;
+
+	case ANX_KEY_RIGHT:
+		if (g_editor.cur_col < len)
+			g_editor.cur_col++;
+		else if (g_editor.cur_line + 1 < g_editor.line_count) {
+			g_editor.cur_line++;
+			g_editor.cur_col = 0;
+		}
+		break;
+
+	case ANX_KEY_UP:
+		if (g_editor.cur_line > 0) {
+			g_editor.cur_line--;
+			{
+				uint32_t nlen = (uint32_t)anx_strlen(
+					g_editor.lines[g_editor.cur_line]);
+				if (g_editor.cur_col > nlen)
+					g_editor.cur_col = nlen;
+			}
+		}
+		break;
+
+	case ANX_KEY_DOWN:
+		if (g_editor.cur_line + 1 < g_editor.line_count) {
+			g_editor.cur_line++;
+			{
+				uint32_t nlen = (uint32_t)anx_strlen(
+					g_editor.lines[g_editor.cur_line]);
+				if (g_editor.cur_col > nlen)
+					g_editor.cur_col = nlen;
+			}
+		}
+		break;
+
+	case ANX_KEY_HOME:
+		g_editor.cur_col = 0;
+		break;
+
+	case ANX_KEY_END:
+		g_editor.cur_col = len;
+		break;
+
+	case ANX_KEY_PAGEUP:
+		if (g_editor.cur_line >= vis)
+			g_editor.cur_line -= vis;
+		else
+			g_editor.cur_line = 0;
+		{
+			uint32_t nlen = (uint32_t)anx_strlen(
+				g_editor.lines[g_editor.cur_line]);
+			if (g_editor.cur_col > nlen)
+				g_editor.cur_col = nlen;
+		}
+		break;
+
+	case ANX_KEY_PAGEDOWN:
+		g_editor.cur_line += vis;
+		if (g_editor.cur_line >= g_editor.line_count)
+			g_editor.cur_line = g_editor.line_count > 0
+					    ? g_editor.line_count - 1 : 0;
+		{
+			uint32_t nlen = (uint32_t)anx_strlen(
+				g_editor.lines[g_editor.cur_line]);
+			if (g_editor.cur_col > nlen)
+				g_editor.cur_col = nlen;
+		}
+		break;
+
+	case ANX_KEY_ENTER:
+		if (g_editor.line_count >= EDIT_MAX_LINES)
+			break;
+		/* Split line at cursor */
+		{
+			uint32_t rest_len = len - g_editor.cur_col;
+			uint32_t i;
+
+			/* Shift lines down */
+			for (i = g_editor.line_count;
+			     i > g_editor.cur_line + 1; i--)
+				anx_memcpy(g_editor.lines[i],
+					   g_editor.lines[i - 1],
+					   HIST_COLS);
+
+			/* New line gets the rest */
+			anx_memcpy(g_editor.lines[g_editor.cur_line + 1],
+				   line + g_editor.cur_col, rest_len);
+			g_editor.lines[g_editor.cur_line + 1][rest_len] = '\0';
+
+			/* Truncate current line */
+			line[g_editor.cur_col] = '\0';
+
+			g_editor.line_count++;
+			g_editor.cur_line++;
+			g_editor.cur_col = 0;
+			g_editor.modified = true;
+		}
+		break;
+
+	case ANX_KEY_BACKSPACE:
+		if (g_editor.cur_col > 0) {
+			/* Delete char before cursor */
+			anx_memmove(line + g_editor.cur_col - 1,
+				    line + g_editor.cur_col,
+				    len - g_editor.cur_col + 1);
+			g_editor.cur_col--;
+			g_editor.modified = true;
+		} else if (g_editor.cur_line > 0) {
+			/* Merge with previous line */
+			uint32_t prev = g_editor.cur_line - 1;
+			uint32_t prev_len = (uint32_t)anx_strlen(
+					g_editor.lines[prev]);
+			uint32_t i;
+
+			if (prev_len + len < HIST_COLS) {
+				anx_memcpy(g_editor.lines[prev] + prev_len,
+					   line, len + 1);
+				/* Shift lines up */
+				for (i = g_editor.cur_line;
+				     i + 1 < g_editor.line_count; i++)
+					anx_memcpy(g_editor.lines[i],
+						   g_editor.lines[i + 1],
+						   HIST_COLS);
+				g_editor.lines[g_editor.line_count - 1][0]
+					= '\0';
+				g_editor.line_count--;
+				g_editor.cur_line = prev;
+				g_editor.cur_col  = prev_len;
+				g_editor.modified = true;
+			}
+		}
+		break;
+
+	case ANX_KEY_DELETE:
+		if (g_editor.cur_col < len) {
+			anx_memmove(line + g_editor.cur_col,
+				    line + g_editor.cur_col + 1,
+				    len - g_editor.cur_col);
+			g_editor.modified = true;
+		}
+		break;
+
+	default:
+		if (unicode >= 0x20 && unicode < 0x7F &&
+		    len < (uint32_t)(HIST_COLS - 1)) {
+			anx_memmove(line + g_editor.cur_col + 1,
+				    line + g_editor.cur_col,
+				    len - g_editor.cur_col + 1);
+			line[g_editor.cur_col] = (char)unicode;
+			g_editor.cur_col++;
+			g_editor.modified = true;
+		}
+		break;
+	}
+
+	/* Keep scroll window around cursor */
+	if (g_editor.cur_line < g_editor.scroll)
+		g_editor.scroll = g_editor.cur_line;
+	else if (g_editor.cur_line >= g_editor.scroll + vis)
+		g_editor.scroll = g_editor.cur_line - vis + 1;
+
+	editor_render();
+}
+
+/* Public: open a state object for editing in the terminal */
+void anx_wm_terminal_edit(const char *ns_name, const char *path)
+{
+	anx_oid_t oid;
+	uint32_t  i;
+
+	anx_memset(&g_editor, 0, sizeof(g_editor));
+	anx_strlcpy(g_editor.ns,   ns_name, sizeof(g_editor.ns));
+	anx_strlcpy(g_editor.path, path,    sizeof(g_editor.path));
+
+	/* Load existing content if object exists */
+	if (anx_ns_resolve(ns_name, path, &oid) == ANX_OK) {
+		struct anx_state_object *obj = anx_objstore_lookup(&oid);
+
+		if (obj && obj->payload && obj->payload_size > 0) {
+			const char *src = (const char *)obj->payload;
+			uint32_t src_len = (uint32_t)obj->payload_size;
+			uint32_t col = 0;
+
+			i = 0;
+			while (i < src_len && g_editor.line_count < EDIT_MAX_LINES) {
+				char c = src[i++];
+
+				if (c == '\n' || col >= HIST_COLS - 1) {
+					g_editor.lines[g_editor.line_count][col] = '\0';
+					g_editor.line_count++;
+					col = 0;
+					if (c != '\n' && col < HIST_COLS - 1)
+						g_editor.lines[g_editor.line_count][col++] = c;
+				} else {
+					g_editor.lines[g_editor.line_count][col++] = c;
+				}
+			}
+			if (col > 0 &&
+			    g_editor.line_count < EDIT_MAX_LINES) {
+				g_editor.lines[g_editor.line_count][col] = '\0';
+				g_editor.line_count++;
+			}
+			anx_objstore_release(obj);
+		}
+	}
+
+	if (g_editor.line_count == 0) {
+		g_editor.lines[0][0] = '\0';
+		g_editor.line_count  = 1;
+	}
+
+	g_editor.active   = true;
+	g_editor.cur_line = 0;
+	g_editor.cur_col  = 0;
+	g_editor.scroll   = 0;
+	g_editor.modified = false;
+
+	anx_wm_terminal_open();
+	editor_render();
+}
+
+/* ------------------------------------------------------------------ */
 /* Key event routing (called by wm.c key interceptor)                 */
 /* ------------------------------------------------------------------ */
 
 void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 {
+	/* Route to text editor when active */
+	if (g_editor.active) {
+		editor_key_event(key, mods, unicode);
+		return;
+	}
+
 	(void)mods;
 
 	switch (key) {
@@ -310,9 +716,10 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 
 	case ANX_KEY_PAGEUP:
 		{
-			uint32_t max_scroll = g_term.hist_count > (uint32_t)VISIBLE_LINES
-					      ? g_term.hist_count - VISIBLE_LINES : 0;
-			uint32_t step = VISIBLE_LINES / 2;
+			uint32_t vl = g_term.vis_lines;
+			uint32_t max_scroll = g_term.hist_count > vl
+					      ? g_term.hist_count - vl : 0;
+			uint32_t step = vl / 2;
 
 			if ((uint32_t)g_term.scroll_off + step <= max_scroll)
 				g_term.scroll_off += (int32_t)step;
@@ -322,7 +729,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		break;
 
 	case ANX_KEY_PAGEDOWN:
-		g_term.scroll_off -= (int32_t)(VISIBLE_LINES / 2);
+		g_term.scroll_off -= (int32_t)(g_term.vis_lines / 2);
 		if (g_term.scroll_off < 0)
 			g_term.scroll_off = 0;
 		break;
@@ -348,13 +755,34 @@ void anx_wm_terminal_open(void)
 {
 	struct anx_content_node *cn;
 	uint32_t buf_size;
+	const struct anx_fb_info *fb;
 
 	if (g_term.surf) {
 		anx_wm_window_focus(g_term.surf);
 		return;
 	}
 
-	buf_size     = TERM_W * TERM_H * 4;
+	/* Compute dimensions from live framebuffer; fall back to 640×480. */
+	fb = anx_fb_get_info();
+	if (fb && fb->available && fb->width > 0 && fb->height > 0) {
+		uint32_t avail_h = fb->height;
+
+		if (avail_h > ANX_WM_MENUBAR_H + ANX_WM_TASKBAR_H + 32)
+			avail_h -= ANX_WM_MENUBAR_H + ANX_WM_TASKBAR_H;
+		g_term.w = fb->width;
+		g_term.h = avail_h;
+		g_term.x = 0;
+		g_term.y = ANX_WM_MENUBAR_H;
+	} else {
+		g_term.w = 640;
+		g_term.h = 424;
+		g_term.x = 0;
+		g_term.y = ANX_WM_MENUBAR_H;
+	}
+	g_term.input_y   = g_term.h - INPUT_H;
+	g_term.vis_lines = (g_term.input_y > 8) ? (g_term.input_y - 8) / LINE_H : 1;
+
+	buf_size      = g_term.w * g_term.h * 4;
 	g_term.pixels = anx_alloc(buf_size);
 	if (!g_term.pixels)
 		return;
@@ -371,11 +799,11 @@ void anx_wm_terminal_open(void)
 	cn->data_len = buf_size;
 
 	if (anx_iface_surface_create(ANX_ENGINE_RENDERER_GPU, cn,
-				     TERM_X, TERM_Y, TERM_W, TERM_H,
+				     g_term.x, g_term.y, g_term.w, g_term.h,
 				     &g_term.surf) != ANX_OK) {
 		anx_free(cn);
 		anx_free(g_term.pixels);
-		g_term.pixels = NULL;
+		g_term.pixels  = NULL;
 		return;
 	}
 
@@ -383,15 +811,27 @@ void anx_wm_terminal_open(void)
 	g_term.input_len    = 0;
 	g_term.scroll_off   = 0;
 	g_term.cmd_hist_pos = -1;
+	g_term.dirty        = false;
 
 	if (g_term.hist_count == 0)
 		hist_append_str("Anunix terminal  -  type 'help' for commands");
 
 	anx_iface_surface_set_title(g_term.surf, "Terminal");
+	/* Fill pixels BEFORE mapping so no compositor tick can commit
+	 * uninitialized data.  term_render() sets dirty=true; the main
+	 * WM loop's flush_if_dirty() will commit on the next iteration. */
+	term_render();
 	anx_iface_surface_map(g_term.surf);
 	anx_wm_window_open(g_term.surf);
-	term_render();
 	kprintf("[terminal] opened\n");
+}
+
+void anx_wm_terminal_flush_if_dirty(void)
+{
+	if (g_term.dirty && g_term.surf) {
+		g_term.dirty = false;
+		anx_iface_surface_commit(g_term.surf);
+	}
 }
 
 struct anx_surface *anx_wm_terminal_surface(void)

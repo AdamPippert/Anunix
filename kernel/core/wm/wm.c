@@ -24,6 +24,11 @@
 #include <anx/spinlock.h>
 #include <anx/arch.h>
 #include <anx/mt7925.h>
+#include <anx/e1000.h>
+#include <anx/httpd.h>
+#include <anx/sshd.h>
+#include <anx/net.h>
+#include <anx/browser_cell.h>
 
 /* ------------------------------------------------------------------ */
 /* Global state                                                        */
@@ -1282,6 +1287,17 @@ void anx_wm_run(void)
 				break;
 			}
 		}
+
+		/* Flush terminal pixel buffer if a key event marked it dirty */
+		anx_wm_terminal_flush_if_dirty();
+
+		/* Poll network stack — keeps HTTP/SSH/TCP alive in desktop mode */
+		anx_e1000_poll();
+		anx_mt7925_poll();
+		anx_net_poll();
+		anx_httpd_poll();
+		anx_sshd_poll();
+		anx_browser_cell_tick();
 
 		/* Refresh menu bar (includes clock) every ~60 polls */
 		g_wm_tick++;

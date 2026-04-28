@@ -29,12 +29,18 @@
 static void
 render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 {
+	const struct anx_fb_info *fbinfo;
 	const uint32_t *src;
-	uint32_t        row, col;
-	uint32_t        dst_x, dst_y;
+	uint32_t        row;
+	uint32_t        dst_y;
 	uint32_t        r0, r1, c0, c1;
+	uint32_t        fb_x0, copy_w;
 
 	if (!node->data || node->data_len < surf->width * surf->height * 4)
+		return;
+
+	fbinfo = anx_fb_get_info();
+	if (!fbinfo || !fbinfo->available)
 		return;
 
 	src = (const uint32_t *)node->data;
@@ -58,13 +64,29 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 		c0 = 0;  c1 = surf->width;
 	}
 
+	/* Compute framebuffer x offset and clip to framebuffer width. */
+	if (surf->x < 0 || surf->y < 0)
+		return;
+	fb_x0  = (uint32_t)surf->x + c0;
+	copy_w = c1 - c0;
+	if (fb_x0 >= fbinfo->width)
+		return;
+	if (fb_x0 + copy_w > fbinfo->width)
+		copy_w = fbinfo->width - fb_x0;
+
+	/* Row-at-a-time blit using 32-bit pixel writes (avoids 64-bit MMIO issues). */
 	for (row = r0; row < r1; row++) {
+		uint32_t       *dst_row;
+		const uint32_t *src_row;
+		uint32_t        col;
+
 		dst_y = (uint32_t)surf->y + row;
-		for (col = c0; col < c1; col++) {
-			dst_x = (uint32_t)surf->x + col;
-			anx_fb_putpixel(dst_x, dst_y,
-			                src[row * surf->width + col]);
-		}
+		if (dst_y >= fbinfo->height)
+			break;
+		dst_row = anx_fb_row_ptr(dst_y) + fb_x0;
+		src_row = src + row * surf->width + c0;
+		for (col = 0; col < copy_w; col++)
+			dst_row[col] = src_row[col];
 	}
 }
 
@@ -185,21 +207,21 @@ gpu_commit(struct anx_surface *surf)
 		anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H, tbg);
 		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 2, surf->width, 2,
 				 theme->palette.accent);
-		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, 1, tfg, tbg);
+		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, tfg, tbg, 1);
 
 		/* Maximize button: accent colour, "+" label */
 		anx_fb_fill_rect(mx, by, btn, btn, theme->palette.accent);
 		anx_gui_draw_string_scaled(mx + (btn - ANX_FONT_WIDTH) / 2,
 					   by + (btn - ANX_FONT_HEIGHT) / 2,
-					   "+", 1,
-					   0x00FFFFFF, theme->palette.accent);
+					   "+", 0x00FFFFFFu,
+					   theme->palette.accent, 1);
 
 		/* Close button: filled square in error colour, "x" label */
 		anx_fb_fill_rect(bx, by, btn, btn, theme->palette.error);
 		anx_gui_draw_string_scaled(bx + (btn - ANX_FONT_WIDTH) / 2,
 					   by + (btn - ANX_FONT_HEIGHT) / 2,
-					   "x", 1,
-					   0x00FFFFFF, theme->palette.error);
+					   "x", 0x00FFFFFFu,
+					   theme->palette.error, 1);
 	}
 
 	/* Draw 2px border around focused window canvas */

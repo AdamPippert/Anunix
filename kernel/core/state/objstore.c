@@ -12,7 +12,6 @@
 #include <anx/uuid.h>
 #include <anx/hashtable.h>
 #include <anx/arch.h>
-#include <anx/kprintf.h>
 #include <anx/crypto.h>
 
 int anx_lifecycle_transition(struct anx_state_object *obj,

@@ -204,22 +204,7 @@ void anx_wm_menubar_refresh(void)
 		dot_x += 20;
 	}
 
-	/* ---- Focused window title ------------------------------------ */
-	{
-		anx_oid_t         foc = anx_input_focus_get();
-		struct anx_surface *s = NULL;
-
-		if ((foc.hi || foc.lo) &&
-		    anx_iface_surface_lookup(foc, &s) == ANX_OK &&
-		    s && s->title[0]) {
-			uint32_t tx = dot_x + 16;
-
-			mb_draw_str(tx, text_y, s->title,
-				    theme->palette.text_primary, bg);
-		}
-	}
-
-	/* ---- Clock + date (centred) ---------------------------------- */
+	/* ---- Clock + date (centred) — compute position first ---------- */
 	{
 		char date_str[8];
 		char combined[16];
@@ -236,6 +221,41 @@ void anx_wm_menubar_refresh(void)
 		clock_x = (mb_width > tw) ? (mb_width - tw) / 2 : 0;
 		mb_draw_str(clock_x, text_y, combined,
 			    theme->palette.text_primary, bg);
+	}
+
+	/* ---- Focused window title — clipped to stay left of clock ---- */
+	{
+		anx_oid_t         foc = anx_input_focus_get();
+		struct anx_surface *s = NULL;
+
+		if ((foc.hi || foc.lo) &&
+		    anx_iface_surface_lookup(foc, &s) == ANX_OK &&
+		    s && s->title[0]) {
+			uint32_t tx        = dot_x + 16;
+			uint32_t max_w     = (clock_x > tx + 8) ? clock_x - tx - 8 : 0;
+			uint32_t max_chars = max_w / ANX_FONT_WIDTH;
+			char     clipped[64];
+			uint32_t tlen      = (uint32_t)anx_strlen(s->title);
+
+			if (max_chars == 0)
+				goto skip_title;
+
+			if (tlen > max_chars) {
+				/* Truncate with ellipsis */
+				uint32_t copy = (max_chars > 2) ? max_chars - 1 : max_chars;
+				uint32_t i;
+				for (i = 0; i < copy && i < 63; i++)
+					clipped[i] = s->title[i];
+				if (copy < 63) clipped[copy++] = '~';
+				clipped[copy] = '\0';
+				mb_draw_str(tx, text_y, clipped,
+					    theme->palette.text_dim, bg);
+			} else {
+				mb_draw_str(tx, text_y, s->title,
+					    theme->palette.text_primary, bg);
+			}
+		skip_title:;
+		}
 	}
 
 	/* ---- Network status dot + short label ------------------------ */

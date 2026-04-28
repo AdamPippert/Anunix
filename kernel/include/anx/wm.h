@@ -23,7 +23,7 @@
 #define ANX_WM_HOTKEYS		64	/* max registered hotkeys */
 #define ANX_WM_MENUBAR_H	34	/* menu bar height in pixels */
 #define ANX_WM_TASKBAR_H	22	/* taskbar height in pixels */
-#define ANX_WM_DECOR_H		18	/* window titlebar decoration height */
+#define ANX_WM_DECOR_H		28	/* window titlebar decoration height */
 
 /* ------------------------------------------------------------------ */
 /* Workspace                                                           */
@@ -149,6 +149,13 @@ struct anx_key_event {
 
 /* ---- Terminal paste ---- */
 void anx_wm_terminal_paste(const char *text, uint32_t len);
+
+/* Open a state object for interactive editing in the terminal.
+ * ns_name: namespace (e.g. "default"), path: object path. */
+void anx_wm_terminal_edit(const char *ns_name, const char *path);
+
+/* Flush terminal pixel buffer to framebuffer if dirty (call from main WM loop). */
+void anx_wm_terminal_flush_if_dirty(void);
 
 /* Print a line of text to the terminal history (opens terminal if needed). */
 void anx_wm_terminal_print(const char *text);

@@ -50,6 +50,8 @@
 #include <anx/loop.h>
 #include <anx/rlm.h>
 #include <anx/memory.h>
+#include <anx/wm.h>
+#include <anx/fb.h>
 
 /* --- Line input with history --- */
 
@@ -1860,6 +1862,39 @@ static void dispatch(int argc, char **argv)
 		cmd_cat(argc, argv);
 	} else if (anx_strcmp(argv[0], "write") == 0) {
 		cmd_write_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "edit") == 0) {
+		/* edit [ns:]<path>  — open text editor for a state object */
+		if (argc < 2) {
+			kprintf("usage: edit [ns:]<path>\n");
+		} else if (!anx_fb_available()) {
+			kprintf("edit: requires framebuffer (GUI mode)\n");
+		} else {
+			const char *arg = argv[1];
+			const char *colon = arg;
+			static char ns_buf[32];
+			static char path_buf[96];
+
+			while (*colon && *colon != ':')
+				colon++;
+
+			if (*colon == ':') {
+				uint32_t nlen = (uint32_t)(colon - arg);
+				if (nlen < sizeof(ns_buf)) {
+					anx_memcpy(ns_buf, arg, nlen);
+					ns_buf[nlen] = '\0';
+				} else {
+					anx_strlcpy(ns_buf, "default",
+						    sizeof(ns_buf));
+				}
+				anx_strlcpy(path_buf, colon + 1,
+					    sizeof(path_buf));
+			} else {
+				anx_strlcpy(ns_buf, "default",
+					    sizeof(ns_buf));
+				anx_strlcpy(path_buf, arg, sizeof(path_buf));
+			}
+			anx_wm_terminal_edit(ns_buf, path_buf);
+		}
 	} else if (anx_strcmp(argv[0], "cp") == 0) {
 		cmd_cp(argc, argv);
 	} else if (anx_strcmp(argv[0], "mv") == 0) {
