@@ -99,29 +99,10 @@ static void term_fill(uint32_t x, uint32_t y,
 			g_term.pixels[row * g_term.w + col] = color;
 }
 
-static void term_draw_char(uint32_t x, uint32_t y, char c,
-			    uint32_t fg, uint32_t bg)
-{
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	for (row = 0; row < (uint32_t)FONT_H && (y + row) < g_term.h; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < (uint32_t)FONT_W && (x + col) < g_term.w; col++)
-			g_term.pixels[(y + row) * g_term.w + (x + col)] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
-}
-
 static void term_draw_str(uint32_t x, uint32_t y, const char *s,
 			   uint32_t fg, uint32_t bg)
 {
-	for (; *s; s++, x += FONT_W) {
-		if (x + FONT_W > g_term.w)
-			break;
-		term_draw_char(x, y, *s, fg, bg);
-	}
+	anx_font_blit_str(g_term.pixels, g_term.w, g_term.h, x, y, s, fg, bg);
 }
 
 /* ------------------------------------------------------------------ */

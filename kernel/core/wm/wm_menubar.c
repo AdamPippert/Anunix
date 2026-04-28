@@ -73,28 +73,12 @@ static void mb_fill_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color)
 	}
 }
 
-/* Draw a single character at scale 1 directly into the menubar pixel buffer. */
-static void mb_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg)
-{
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	if (!g_menubar_pixels)
-		return;
-	for (row = 0; row < ANX_FONT_HEIGHT && (y + row) < mb_height; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < ANX_FONT_WIDTH && (x + col) < mb_width; col++)
-			g_menubar_pixels[(y + row) * mb_width + (x + col)] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
-}
-
 static void mb_draw_str(uint32_t x, uint32_t y, const char *s,
 			uint32_t fg, uint32_t bg)
 {
-	for (; *s; s++, x += ANX_FONT_WIDTH)
-		mb_draw_char(x, y, *s, fg, bg);
+	if (g_menubar_pixels)
+		anx_font_blit_str(g_menubar_pixels, mb_width, mb_height,
+				  x, y, s, fg, bg);
 }
 
 /* ------------------------------------------------------------------ */

@@ -120,8 +120,6 @@ void anx_wm_notify(const char *msg)
 	struct anx_content_node  *cn;
 	uint32_t buf_size, i, fg, bg;
 	int32_t  sx, sy;
-	const char *p;
-	uint32_t x;
 
 	if (!msg)
 		return;
@@ -171,25 +169,12 @@ void anx_wm_notify(const char *msg)
 	for (i = 0; i < TOAST_W; i++)
 		g_toast.pixels[i] = theme->palette.accent;
 
-	/* Draw message text at (8, (TOAST_H - ANX_FONT_HEIGHT)/2) */
+	/* Draw message text centred vertically in the toast strip */
 	{
 		uint32_t ty = (TOAST_H - ANX_FONT_HEIGHT) / 2;
-		const uint16_t *glyph;
-		uint32_t row, col;
 
-		x = 8;
-		for (p = msg; *p && x + ANX_FONT_WIDTH <= TOAST_W - 8; p++) {
-			glyph = anx_font_glyph(*p);
-			for (row = 0; row < ANX_FONT_HEIGHT; row++) {
-				uint16_t bits = glyph[row];
-				for (col = 0; col < ANX_FONT_WIDTH; col++) {
-					uint32_t px = (ty + row) * TOAST_W + x + col;
-					g_toast.pixels[px] =
-						(bits & (0x800u >> col)) ? fg : bg;
-				}
-			}
-			x += ANX_FONT_WIDTH;
-		}
+		anx_font_blit_str(g_toast.pixels, TOAST_W, TOAST_H,
+				  8, ty, msg, fg, bg);
 	}
 
 	g_toast.age = 0;

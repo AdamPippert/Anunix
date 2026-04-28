@@ -73,28 +73,10 @@ static struct {
 /* Rendering helpers                                                   */
 /* ------------------------------------------------------------------ */
 
-static void h_draw_char(uint32_t x, uint32_t y, char c,
-			 uint32_t fg, uint32_t bg)
-{
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	for (row = 0; row < ANX_FONT_HEIGHT && (y + row) < (uint32_t)HELP_H; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < ANX_FONT_WIDTH &&
-		     (x + col) < (uint32_t)HELP_W; col++)
-			g_help.pixels[(y + row) * HELP_W + x + col] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
-}
-
 static void h_draw_str(uint32_t x, uint32_t y, const char *s,
 		        uint32_t fg, uint32_t bg)
 {
-	for (; *s && x + ANX_FONT_WIDTH <= (uint32_t)HELP_W;
-	     s++, x += ANX_FONT_WIDTH)
-		h_draw_char(x, y, *s, fg, bg);
+	anx_font_blit_str(g_help.pixels, HELP_W, HELP_H, x, y, s, fg, bg);
 }
 
 static void h_fill_rect(uint32_t x, uint32_t y,
@@ -210,8 +192,8 @@ void anx_wm_help_toggle(void)
 		if (i & 1)
 			h_fill_rect(1, row_y, HELP_W - 2, HELP_ROW_H,
 				    bg ^ 0x00060606u);
-		h_draw_str(HELP_PAD_X, ty, help_rows[i].keys,  dim, 0);
-		h_draw_str(HELP_COL2_X, ty, help_rows[i].desc, fg,  0);
+		h_draw_str(HELP_PAD_X, ty, help_rows[i].keys,  dim, ANX_FONT_TRANSPARENT);
+		h_draw_str(HELP_COL2_X, ty, help_rows[i].desc, fg,  ANX_FONT_TRANSPARENT);
 	}
 
 	anx_iface_surface_map(g_help.surf);

@@ -53,26 +53,12 @@ static void tb_fill_rect(uint32_t x, uint32_t y,
 	}
 }
 
-static void tb_draw_char(uint32_t x, uint32_t y, char c,
-			  uint32_t fg, uint32_t bg)
-{
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	for (row = 0; row < ANX_FONT_HEIGHT && (y + row) < tb_height; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < ANX_FONT_WIDTH && (x + col) < tb_width; col++)
-			g_taskbar_pixels[(y + row) * tb_width + (x + col)] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
-}
-
 static void tb_draw_str(uint32_t x, uint32_t y, const char *s,
 			 uint32_t fg, uint32_t bg)
 {
-	for (; *s && x < tb_width; s++, x += ANX_FONT_WIDTH)
-		tb_draw_char(x, y, *s, fg, bg);
+	if (g_taskbar_pixels)
+		anx_font_blit_str(g_taskbar_pixels, tb_width, tb_height,
+				  x, y, s, fg, bg);
 }
 
 /* ------------------------------------------------------------------ */
