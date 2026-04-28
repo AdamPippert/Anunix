@@ -30,6 +30,7 @@
 #include <anx/http.h>
 #include <anx/credential.h>
 #include <anx/virtio_blk.h>
+#include <anx/blk.h>
 #include <anx/objstore_disk.h>
 #include <anx/auth.h>
 #include <anx/model_client.h>
@@ -74,6 +75,68 @@ static void kputs(const char *s)
 	kprintf("%s", s);
 }
 
+/* Shell history persistence — uses a fixed OID on the disk store */
+#define HIST_DISK_OID_HI	0x0000000000000001ULL
+#define HIST_DISK_OID_LO	0x0000000000000002ULL
+#define HIST_DISK_TYPE		0x00005348	/* 'SH' */
+#define HIST_MAGIC		0x48535448	/* 'HSTH' */
+
+struct history_disk {
+	uint32_t magic;
+	uint32_t count;
+	uint32_t write_idx;
+	uint32_t _pad;
+	char     entries[HISTORY_SIZE][MAX_LINE];
+};
+
+static void history_save_to_disk(void)
+{
+	static struct history_disk disk;
+	anx_oid_t oid;
+
+	if (!anx_blk_ready())
+		return;
+
+	disk.magic     = HIST_MAGIC;
+	disk.count     = history_count;
+	disk.write_idx = history_write;
+	disk._pad      = 0;
+	anx_memcpy(disk.entries, history, sizeof(history));
+
+	oid.hi = HIST_DISK_OID_HI;
+	oid.lo = HIST_DISK_OID_LO;
+	anx_disk_delete_obj(&oid);
+	anx_disk_write_obj(&oid, HIST_DISK_TYPE, &disk, sizeof(disk));
+}
+
+static void history_load_from_disk(void)
+{
+	static struct history_disk disk;
+	anx_oid_t oid;
+	uint32_t actual = 0, obj_type = 0;
+
+	if (!anx_blk_ready())
+		return;
+
+	oid.hi = HIST_DISK_OID_HI;
+	oid.lo = HIST_DISK_OID_LO;
+	if (anx_disk_read_obj(&oid, &disk, sizeof(disk), &actual, &obj_type)
+	    != ANX_OK)
+		return;
+	if (disk.magic != HIST_MAGIC || actual < sizeof(disk))
+		return;
+
+	anx_memcpy(history, disk.entries, sizeof(history));
+	history_count = disk.count;
+	history_write = disk.write_idx;
+
+	/* Clamp to valid range */
+	if (history_count > HISTORY_SIZE)
+		history_count = HISTORY_SIZE;
+	if (history_write >= HISTORY_SIZE)
+		history_write = 0;
+}
+
 static void history_add(const char *line)
 {
 	if (line[0] == '\0')
@@ -103,6 +166,8 @@ static void history_add(const char *line)
 	history_write = (history_write + 1) % HISTORY_SIZE;
 	if (history_count < HISTORY_SIZE)
 		history_count++;
+
+	history_save_to_disk();
 }
 
 /* Clear the current line on the terminal and redraw with new content */
@@ -306,10 +371,12 @@ static void cmd_help(int argc, char **argv)
 	kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
 	kputs("  echo <text...>             Print text ($? for return code)\n");
 	kputs("\nPipe filters (use with |):\n");
-	kputs("  grep <pattern>             Filter lines matching pattern\n");
+	kputs("  grep [-v] [-i] <pattern>   Filter lines (v=invert, i=ignore-case)\n");
 	kputs("  head [-n N]                First N lines (default 10)\n");
 	kputs("  tail [-n N]                Last N lines (default 10)\n");
 	kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
+	kputs("  sort [-r]                  Sort piped lines (r=reverse)\n");
+	kputs("  history                    Show command history\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
 	kputs("  version                    Show kernel version\n");
@@ -1859,8 +1926,14 @@ static int last_return_code;	/* $? */
 
 /* --- Pipe-aware filter commands --- */
 
-/* Simple substring search within a length-bounded string */
-static bool line_contains(const char *line, uint32_t len, const char *pat)
+static char to_lower(char c)
+{
+	return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+}
+
+/* Substring search within a length-bounded string, optionally case-insensitive */
+static bool line_contains(const char *line, uint32_t len, const char *pat,
+			   bool ignore_case)
 {
 	uint32_t plen = (uint32_t)anx_strlen(pat);
 	uint32_t i, j;
@@ -1871,7 +1944,9 @@ static bool line_contains(const char *line, uint32_t len, const char *pat)
 	for (i = 0; i + plen <= len; i++) {
 		bool match = true;
 		for (j = 0; j < plen; j++) {
-			if (line[i + j] != pat[j]) {
+			char a = ignore_case ? to_lower(line[i + j]) : line[i + j];
+			char b = ignore_case ? to_lower(pat[j]) : pat[j];
+			if (a != b) {
 				match = false;
 				break;
 			}
@@ -1896,14 +1971,30 @@ static void print_line(const char *s, uint32_t len)
 
 static void cmd_grep(int argc, char **argv)
 {
-	const char *pattern;
+	const char *pattern = NULL;
 	const char *p;
+	bool invert = false;
+	bool ignore_case = false;
+	int i;
 
-	if (argc < 2) {
-		kprintf("usage: grep <pattern>\n");
+	/* Parse flags: -v (invert), -i (case-insensitive) */
+	for (i = 1; i < argc; i++) {
+		if (argv[i][0] == '-' && argv[i][1] != '\0') {
+			const char *f = argv[i] + 1;
+			while (*f) {
+				if (*f == 'v') invert = true;
+				else if (*f == 'i') ignore_case = true;
+				f++;
+			}
+		} else if (!pattern) {
+			pattern = argv[i];
+		}
+	}
+
+	if (!pattern) {
+		kprintf("usage: grep [-v] [-i] <pattern>\n");
 		return;
 	}
-	pattern = argv[1];
 
 	if (!g_pipe_stdin) {
 		kprintf("grep: no piped input\n");
@@ -1916,8 +2007,12 @@ static void cmd_grep(int argc, char **argv)
 		uint32_t len = 0;
 
 		while (*p && *p != '\n') { p++; len++; }
-		if (line_contains(start, len, pattern))
-			print_line(start, len);
+		{
+			bool found = line_contains(start, len, pattern,
+						   ignore_case);
+			if (found != invert)
+				print_line(start, len);
+		}
 		if (*p == '\n')
 			p++;
 	}
@@ -2033,6 +2128,73 @@ static void cmd_wc(int argc, char **argv)
 	if (count_words) kprintf(count_lines ? " %u" : "%u", words);
 	if (count_chars) kprintf((count_lines || count_words) ? " %u" : "%u", chars);
 	kprintf("\n");
+}
+
+#define SORT_MAX_LINES	256
+#define SORT_LINE_BUF	(SORT_MAX_LINES * 128)
+
+static void cmd_sort(int argc, char **argv)
+{
+	static char   sort_buf[SORT_LINE_BUF];
+	static const char *lines[SORT_MAX_LINES];
+	static uint32_t    lens[SORT_MAX_LINES];
+	uint32_t nlines = 0;
+	uint32_t buf_used = 0;
+	const char *p;
+	bool reverse = false;
+	int i;
+
+	for (i = 1; i < argc; i++) {
+		if (anx_strcmp(argv[i], "-r") == 0)
+			reverse = true;
+	}
+
+	if (!g_pipe_stdin) {
+		kprintf("sort: no piped input\n");
+		return;
+	}
+
+	/* Copy lines into sort_buf, record pointers */
+	p = g_pipe_stdin;
+	while (*p && nlines < SORT_MAX_LINES) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		if (*p == '\n') p++;
+
+		if (buf_used + len + 1 >= SORT_LINE_BUF)
+			break;
+
+		anx_memcpy(sort_buf + buf_used, start, len);
+		sort_buf[buf_used + len] = '\0';
+		lines[nlines] = sort_buf + buf_used;
+		lens[nlines]  = len;
+		buf_used += len + 1;
+		nlines++;
+	}
+
+	/* Insertion sort (small N) */
+	for (i = 1; i < (int)nlines; i++) {
+		const char *key  = lines[i];
+		uint32_t    klen = lens[i];
+		int j = i - 1;
+
+		while (j >= 0) {
+			int cmp = anx_strcmp(lines[j], key);
+			/* ascending: stop when lines[j] <= key; reverse: when >= key */
+			if (reverse ? cmp >= 0 : cmp <= 0)
+				break;
+			lines[j + 1] = lines[j];
+			lens[j + 1]  = lens[j];
+			j--;
+		}
+		lines[j + 1] = key;
+		lens[j + 1]  = klen;
+	}
+
+	for (i = 0; i < (int)nlines; i++)
+		print_line(lines[i], lens[i]);
 }
 
 /* --- Command dispatch --- */
@@ -2312,6 +2474,17 @@ static void dispatch(int argc, char **argv)
 		cmd_tail(argc, argv);
 	} else if (anx_strcmp(argv[0], "wc") == 0) {
 		cmd_wc(argc, argv);
+	} else if (anx_strcmp(argv[0], "sort") == 0) {
+		cmd_sort(argc, argv);
+	} else if (anx_strcmp(argv[0], "history") == 0) {
+		uint32_t i;
+		uint32_t start = history_write >= history_count
+			? history_write - history_count
+			: HISTORY_SIZE + history_write - history_count;
+		for (i = 0; i < history_count; i++) {
+			uint32_t idx = (start + i) % HISTORY_SIZE;
+			kprintf("%3u  %s\n", (unsigned)(i + 1), history[idx]);
+		}
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 		last_return_code = -1;
@@ -2387,6 +2560,14 @@ static void execute_line(const char *input)
 
 void anx_shell_execute(const char *command)
 {
+	static bool history_loaded;
+
+	if (!history_loaded) {
+		history_loaded = true;
+		history_load_from_disk();
+	}
+	if (command && command[0])
+		history_add(command);
 	execute_line(command);
 }
 
@@ -2396,6 +2577,7 @@ void anx_shell_run(void)
 	char *argv[MAX_ARGS];
 	int argc;
 
+	history_load_from_disk();
 	kputs("\nansh ready. Type 'help' for commands.\n\n");
 
 	for (;;) {
