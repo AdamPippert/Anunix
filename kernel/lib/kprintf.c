@@ -145,6 +145,7 @@ int kprintf(const char *fmt, ...)
 
 		/* Optional width specifier, e.g., "%02x" for 2-digit hex */
 		int width = 0;
+		int prec = -1;	/* -1 = no precision */
 		char pad = ' ';
 		if (*fmt == '0' && !left_align) {
 			pad = '0';
@@ -153,6 +154,20 @@ int kprintf(const char *fmt, ...)
 		while (*fmt >= '0' && *fmt <= '9') {
 			width = width * 10 + (*fmt - '0');
 			fmt++;
+		}
+		/* Optional precision: ".N" or ".*" */
+		if (*fmt == '.') {
+			fmt++;
+			if (*fmt == '*') {
+				prec = va_arg(ap, int);
+				fmt++;
+			} else {
+				prec = 0;
+				while (*fmt >= '0' && *fmt <= '9') {
+					prec = prec * 10 + (*fmt - '0');
+					fmt++;
+				}
+			}
 		}
 
 		/* Length modifiers: l → long, ll → long long */
@@ -167,12 +182,14 @@ int kprintf(const char *fmt, ...)
 				s = "(null)";
 			slen = 0;
 			while (s[slen]) slen++;
+			if (prec >= 0 && slen > prec)
+				slen = prec;
 			if (left_align) {
-				puts(s);
+				for (j = 0; j < slen; j++) putc(s[j]);
 				for (j = slen; j < width; j++) putc(' ');
 			} else {
 				for (j = slen; j < width; j++) putc(pad);
-				puts(s);
+				for (j = 0; j < slen; j++) putc(s[j]);
 			}
 			break;
 		}
