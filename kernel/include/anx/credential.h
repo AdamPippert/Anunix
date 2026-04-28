@@ -35,6 +35,10 @@ struct anx_credential_info {
 
 /* Initialize the credential store */
 void anx_credstore_init(void);
+/* Persist all credentials to disk */
+void anx_credstore_save(void);
+/* Load credentials from disk (called at init after disk is ready) */
+void anx_credstore_load(void);
 
 /* Create a new credential (sealed immediately, payload zeroed from input) */
 int anx_credential_create(const char *name,

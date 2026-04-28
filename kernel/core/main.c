@@ -54,6 +54,7 @@
 #include <anx/ebm.h>
 #include <anx/memory.h>
 #include <anx/installer.h>
+#include <anx/model_client.h>
 
 #define ANX_VERSION "2026.4.23"
 
@@ -285,6 +286,8 @@ void kernel_main(void)
 	/* Load previously persisted PAL state before hardware priming so that
 	 * organic session data from prior boots is not overwritten by priming */
 	anx_pal_persist_load();
+	anx_credstore_load();
+	anx_model_client_load();
 
 	/* Prime PAL cross-session priors from detected hardware */
 	anx_pal_prime_hardware();
