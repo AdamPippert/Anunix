@@ -330,13 +330,21 @@ static int parse_args(char *line, char **argv, int max_args)
 		if (*line == '\0')
 			break;
 
-		argv[argc++] = line;
-
-		/* Find end of token */
-		while (*line && *line != ' ' && *line != '\t')
-			line++;
-		if (*line)
-			*line++ = '\0';
+		if (*line == '"' || *line == '\'') {
+			/* Quoted argument: strip quotes, allow spaces inside */
+			char q = *line++;
+			argv[argc++] = line;
+			while (*line && *line != q)
+				line++;
+			if (*line)
+				*line++ = '\0';
+		} else {
+			argv[argc++] = line;
+			while (*line && *line != ' ' && *line != '\t')
+				line++;
+			if (*line)
+				*line++ = '\0';
+		}
 	}
 
 	return argc;
