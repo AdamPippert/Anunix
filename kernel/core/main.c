@@ -55,6 +55,7 @@
 #include <anx/memory.h>
 #include <anx/installer.h>
 #include <anx/model_client.h>
+#include <anx/tools.h>
 
 #define ANX_VERSION "2026.4.23"
 
@@ -288,6 +289,7 @@ void kernel_main(void)
 	anx_pal_persist_load();
 	anx_credstore_load();
 	anx_model_client_load();
+	anx_uobj_load();
 
 	/* Prime PAL cross-session priors from detected hardware */
 	anx_pal_prime_hardware();

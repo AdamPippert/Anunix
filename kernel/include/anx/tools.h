@@ -13,6 +13,10 @@
 void cmd_ls(int argc, char **argv);
 void cmd_cat(int argc, char **argv);
 void cmd_write_obj(int argc, char **argv);
+/* Load user-created objects from disk journal (call after disk init) */
+void anx_uobj_load(void);
+/* Remove a user object from the disk journal (called by rm) */
+void uobj_remove(const char *ns, const char *path);
 void cmd_cp(int argc, char **argv);
 void cmd_mv(int argc, char **argv);
 void cmd_rm_obj(int argc, char **argv);
