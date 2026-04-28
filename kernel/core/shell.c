@@ -410,6 +410,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
 	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  ask <message...>           Ask Claude a question\n");
+	kputs("  agent <goal...>            Run AI agent loop to complete a task\n");
 	kputs("  model-init <cred> <host> <port>  Configure model endpoint\n");
 	kputs("  hw-inventory               Show hardware summary\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
@@ -1484,6 +1485,8 @@ static void cmd_secret(int argc, char **argv)
 
 /* --- Model commands --- */
 
+static void execute_line(const char *input);	/* forward */
+
 static void cmd_model_init(int argc, char **argv)
 {
 	struct anx_model_endpoint ep;
@@ -1567,6 +1570,168 @@ static void cmd_ask(int argc, char **argv)
 			resp.input_tokens, resp.output_tokens);
 	}
 	anx_model_response_free(&resp);
+}
+
+/* --- Agent: iterative LLM + shell execution loop --- */
+
+#define AGENT_MAX_ITERS	8
+#define AGENT_HIST_SZ	3072
+#define AGENT_CAP_SZ	2048
+
+static const char *const AGENT_SYS =
+	"You are a shell agent inside Anunix OS. "
+	"CRITICAL: Your ENTIRE response must be ONE LINE ONLY — no newlines, no extra text. "
+	"Output EITHER 'CMD: <shell-command>' (runs the command and shows you the output) "
+	"OR 'DONE: <brief summary>' (terminates the session). "
+	"Anunix commands: ls [ns:path], cat <path>, write <path> <data>, "
+	"echo <text>, grep <pattern>, head [-N], tail [-N], wc, sort [-r], "
+	"sysinfo, netinfo, date, history, tensor, cells, loop, state, disk. "
+	"Wait to see real output before drawing conclusions. Do not fabricate output.";
+
+static void cmd_agent(int argc, char **argv)
+{
+	char   goal[512];
+	char  *hist;
+	char  *capture;
+	uint32_t hist_off = 0;
+	int    iter, i;
+
+	if (!anx_model_client_ready()) {
+		kputs("model not configured (use 'model-init' first)\n");
+		return;
+	}
+	if (argc < 2) {
+		kputs("usage: agent <goal text...>\n");
+		return;
+	}
+
+	/* Build goal string from args */
+	{
+		uint32_t off = 0;
+		for (i = 1; i < argc && off < sizeof(goal) - 2; i++) {
+			uint32_t l = (uint32_t)anx_strlen(argv[i]);
+			if (i > 1 && off < sizeof(goal) - 1)
+				goal[off++] = ' ';
+			if (off + l >= sizeof(goal) - 1)
+				l = (uint32_t)(sizeof(goal) - 1 - off);
+			anx_memcpy(goal + off, argv[i], l);
+			off += l;
+		}
+		goal[off] = '\0';
+	}
+
+	hist = anx_alloc(AGENT_HIST_SZ);
+	capture = anx_alloc(AGENT_CAP_SZ);
+	if (!hist || !capture) {
+		anx_free(hist);
+		anx_free(capture);
+		kprintf("agent: out of memory\n");
+		return;
+	}
+
+	kprintf("agent: goal=\"%s\"\n", goal);
+
+	/* Seed history with goal */
+	hist_off = (uint32_t)anx_strlen(goal);
+	if (hist_off >= AGENT_HIST_SZ - 1)
+		hist_off = AGENT_HIST_SZ - 2;
+	anx_memcpy(hist, goal, hist_off);
+	hist[hist_off++] = '\n';
+	hist[hist_off]   = '\0';
+
+	for (iter = 0; iter < AGENT_MAX_ITERS; iter++) {
+		struct anx_model_request  req;
+		struct anx_model_response resp;
+		int ret;
+
+		anx_memset(&req, 0, sizeof(req));
+		req.model       = "claude-haiku-4-5-20251001";
+		req.system      = AGENT_SYS;
+		req.user_message = hist;
+		req.max_tokens  = 128;
+
+		ret = anx_model_call(&req, &resp);
+		if (ret != ANX_OK) {
+			kprintf("agent: model error (%d)\n", ret);
+			break;
+		}
+		if (!resp.content) {
+			kprintf("agent: empty response\n");
+			anx_model_response_free(&resp);
+			break;
+		}
+
+		/* Truncate to first line — model must respond with one line */
+		{
+			char *nl = resp.content;
+			while (*nl && *nl != '\n' && *nl != '\r')
+				nl++;
+			*nl = '\0';
+		}
+
+		kprintf("agent[%d]: %s\n", iter + 1, resp.content);
+
+		if (anx_strncmp(resp.content, "DONE:", 5) == 0) {
+			anx_model_response_free(&resp);
+			break;
+		}
+
+		if (anx_strncmp(resp.content, "CMD:", 4) == 0) {
+			const char *cmd = resp.content + 4;
+			uint32_t cap;
+			struct anx_capture_state outer;
+
+			while (*cmd == ' ')
+				cmd++;
+
+			/* Capture command output without disrupting caller's capture */
+			anx_kprintf_capture_save(&outer);
+			anx_kprintf_capture_start(capture, AGENT_CAP_SZ);
+			execute_line(cmd);
+			cap = anx_kprintf_capture_stop();
+			anx_kprintf_capture_restore(&outer);
+
+			if (cap >= AGENT_CAP_SZ)
+				cap = AGENT_CAP_SZ - 1;
+			capture[cap] = '\0';
+
+			/* Show output to user too */
+			kprintf("  -> %s", capture[0] ? capture : "(empty)\n");
+
+			/* Append cmd + truncated output to history */
+			{
+				uint32_t rem = AGENT_HIST_SZ - hist_off - 1;
+				uint32_t n;
+
+				n = (uint32_t)anx_strlen(cmd);
+				if (n + 6 < rem) {
+					anx_memcpy(hist + hist_off, "CMD: ", 5);
+					hist_off += 5;
+					anx_memcpy(hist + hist_off, cmd, n);
+					hist_off += n;
+					hist[hist_off++] = '\n';
+				}
+				rem = AGENT_HIST_SZ - hist_off - 1;
+				n = cap < rem ? cap : rem;
+				if (n > 512)
+					n = 512;	/* cap per-step output in history */
+				if (n > 0) {
+					anx_memcpy(hist + hist_off, "OUTPUT: ", 8);
+					hist_off += 8;
+					anx_memcpy(hist + hist_off, capture, n);
+					hist_off += n;
+					if (hist[hist_off - 1] != '\n')
+						hist[hist_off++] = '\n';
+				}
+				hist[hist_off] = '\0';
+			}
+		}
+
+		anx_model_response_free(&resp);
+	}
+
+	anx_free(hist);
+	anx_free(capture);
 }
 
 /* --- HW Inventory --- */
@@ -2319,6 +2484,8 @@ static void dispatch(int argc, char **argv)
 			kputs("usage: ping <ip>\n");
 	} else if (anx_strcmp(argv[0], "ask") == 0) {
 		cmd_ask(argc, argv);
+	} else if (anx_strcmp(argv[0], "agent") == 0) {
+		cmd_agent(argc, argv);
 	} else if (anx_strcmp(argv[0], "model-init") == 0) {
 		cmd_model_init(argc, argv);
 	} else if (anx_strcmp(argv[0], "hw-inventory") == 0) {
