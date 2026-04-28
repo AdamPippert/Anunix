@@ -61,6 +61,7 @@
 #define MAX_ARGS	16
 #define HISTORY_SIZE	32
 #define PIPE_CAP_SZ	8192
+#define MAX_PIPE_STAGES	8
 
 /* Pipe stdin — set by execute_line when running right side of a pipe */
 static const char *g_pipe_stdin;
@@ -2521,47 +2522,77 @@ static void execute_line(const char *input)
 		pipe_pos++;
 
 	if (*pipe_pos == '|') {
-		char right_cmd[MAX_LINE];
-		char *capture;
-		uint32_t captured;
-		const char *right;
+		char *segs[MAX_PIPE_STAGES];
+		int nseg = 0;
+		char *p = line_copy;
+		char *bufa, *bufb;
+		char *cur_out, *cur_in;
+		uint32_t cur_in_len;
 		struct anx_capture_state outer;
+		int i;
 
-		*pipe_pos = '\0';
-		right = pipe_pos + 1;
-		while (*right == ' ')
-			right++;
-		anx_strlcpy(right_cmd, right, MAX_LINE);
+		/* Split line by '|' into segments */
+		segs[nseg++] = p;
+		while (*p && nseg < MAX_PIPE_STAGES) {
+			if (*p == '|') {
+				*p = '\0';
+				segs[nseg++] = p + 1;
+			}
+			p++;
+		}
+		for (i = 0; i < nseg; i++) {
+			while (*segs[i] == ' ')
+				segs[i]++;
+		}
 
-		capture = anx_alloc(PIPE_CAP_SZ);
-		if (!capture) {
+		/* Two ping-pong buffers for intermediate captures */
+		bufa = anx_alloc(PIPE_CAP_SZ);
+		bufb = anx_alloc(PIPE_CAP_SZ);
+		if (!bufa || !bufb) {
+			anx_free(bufa);
+			anx_free(bufb);
 			kprintf("pipe: out of memory\n");
 			return;
 		}
 
-		/* Save outer capture (e.g., HTTP API's buffer), install inner */
 		anx_kprintf_capture_save(&outer);
-		anx_kprintf_capture_start(capture, PIPE_CAP_SZ);
-		argc = parse_args(line_copy, argv, MAX_ARGS);
-		if (argc > 0)
-			dispatch(argc, argv);
-		captured = anx_kprintf_capture_stop();
-		capture[captured < PIPE_CAP_SZ ? captured : PIPE_CAP_SZ - 1] = '\0';
 
-		/* Restore outer capture so right-side output goes to caller */
-		anx_kprintf_capture_restore(&outer);
+		cur_out    = bufa;
+		cur_in     = NULL;
+		cur_in_len = 0;
 
-		/* Run right side with captured output as pipe stdin */
-		g_pipe_stdin     = capture;
-		g_pipe_stdin_len = captured;
+		for (i = 0; i < nseg; i++) {
+			bool last = (i == nseg - 1);
 
-		argc = parse_args(right_cmd, argv, MAX_ARGS);
-		if (argc > 0)
-			dispatch(argc, argv);
+			g_pipe_stdin     = cur_in;
+			g_pipe_stdin_len = cur_in_len;
+
+			if (!last) {
+				anx_kprintf_capture_start(cur_out, PIPE_CAP_SZ);
+			} else {
+				/* Last stage: output goes back to caller */
+				anx_kprintf_capture_restore(&outer);
+			}
+
+			argc = parse_args(segs[i], argv, MAX_ARGS);
+			if (argc > 0)
+				dispatch(argc, argv);
+
+			if (!last) {
+				uint32_t cap = anx_kprintf_capture_stop();
+				if (cap >= PIPE_CAP_SZ)
+					cap = PIPE_CAP_SZ - 1;
+				cur_out[cap] = '\0';
+				cur_in     = cur_out;
+				cur_in_len = cap;
+				cur_out    = (cur_out == bufa) ? bufb : bufa;
+			}
+		}
 
 		g_pipe_stdin     = NULL;
 		g_pipe_stdin_len = 0;
-		anx_free(capture);
+		anx_free(bufa);
+		anx_free(bufb);
 		return;
 	}
 
