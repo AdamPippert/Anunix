@@ -222,6 +222,7 @@ int anx_dhcp_discover(struct anx_net_config *cfg);
 
 /* NTP time sync */
 int anx_ntp_sync(uint32_t server_ip);
+uint32_t anx_ntp_unix_time(void);	/* last synced UNIX timestamp, 0 if never */
 
 /* Poll the network device and process any received packets */
 void anx_net_poll(void);

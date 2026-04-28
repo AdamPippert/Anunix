@@ -359,6 +359,7 @@ int anx_http_post_authed(const char *h, uint16_t p, const char *pa,
 void anx_http_response_free(struct anx_http_response *r)
 { if(r) { r->body=NULL; r->body_len=0; } }
 int anx_ntp_sync(uint32_t ip) { (void)ip; return ANX_ETIMEDOUT; }
+uint32_t anx_ntp_unix_time(void) { return 0; }
 
 /* Mock E1000 NIC — hardware excluded from test build */
 int anx_e1000_init(void) { return ANX_ENODEV; }

@@ -377,6 +377,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
 	kputs("  sort [-r]                  Sort piped lines (r=reverse)\n");
 	kputs("  history                    Show command history\n");
+	kputs("  date                       Show current date and time\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
 	kputs("  version                    Show kernel version\n");
@@ -2476,6 +2477,17 @@ static void dispatch(int argc, char **argv)
 		cmd_wc(argc, argv);
 	} else if (anx_strcmp(argv[0], "sort") == 0) {
 		cmd_sort(argc, argv);
+	} else if (anx_strcmp(argv[0], "date") == 0) {
+		char time_buf[16];
+		char date_buf[16];
+		uint32_t unix_ts = anx_ntp_unix_time();
+
+		anx_gui_get_time(time_buf, sizeof(time_buf));
+		anx_gui_get_date(date_buf, sizeof(date_buf));
+		if (unix_ts)
+			kprintf("%s %s  (unix %u)\n", date_buf, time_buf, unix_ts);
+		else
+			kprintf("%s %s\n", date_buf, time_buf);
 	} else if (anx_strcmp(argv[0], "history") == 0) {
 		uint32_t i;
 		uint32_t start = history_write >= history_count
