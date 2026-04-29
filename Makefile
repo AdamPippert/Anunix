@@ -5,6 +5,7 @@
 #   make kernel ARCH=arm64
 #   make kernel ARCH=x86_64
 #   make qemu              Boot kernel in QEMU (headless, serial console)
+#   make qemu-iso          Boot ISO in QEMU via UEFI — same path as bare metal/USB
 #   make qemu-deps         Build QEMU and dependencies from source
 #   make clean             Remove all build artifacts
 #   make test              Run kernel unit tests (host-native)
@@ -51,10 +52,15 @@ else
 endif
 
 LOCAL_QEMU := tools/qemu/bin
+OVMF_FD    := $(firstword $(wildcard \
+    /usr/share/edk2/x64/OVMF.4m.fd \
+    /usr/share/OVMF/OVMF.fd \
+    /usr/share/ovmf/OVMF.fd \
+    /usr/share/qemu/OVMF.fd))
 
 ifeq ($(ARCH),arm64)
   TARGET  := aarch64-none-elf
-  ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-aarch64),)
+  ifneq ($(shell test -x $(LOCAL_QEMU)/qemu-system-aarch64 && echo yes),)
     QEMU  := $(LOCAL_QEMU)/qemu-system-aarch64
   else
     QEMU  := qemu-system-aarch64
@@ -65,7 +71,7 @@ ifeq ($(ARCH),arm64)
              -kernel
 else ifeq ($(ARCH),x86_64)
   TARGET  := x86_64-none-elf
-  ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-x86_64),)
+  ifneq ($(shell test -x $(LOCAL_QEMU)/qemu-system-x86_64 && echo yes),)
     QEMU  := $(LOCAL_QEMU)/qemu-system-x86_64
   else
     QEMU  := qemu-system-x86_64
@@ -146,7 +152,7 @@ KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
-.PHONY: kernel qemu qemu-fb qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
+.PHONY: kernel qemu qemu-fb qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -253,6 +259,23 @@ endif
 
 qemu-fb: $(QEMU_KERNEL)
 	$(QEMU) $(QFLAGS_FB) $(QEMU_KERNEL)
+
+# Boot the ISO in QEMU via UEFI — identical boot path to bare metal and USB stick.
+# Requires OVMF firmware (edk2-ovmf on Arch, ovmf on Debian/Ubuntu).
+qemu-iso: iso
+ifeq ($(ARCH),x86_64)
+	@[ -n "$(OVMF_FD)" ] || (echo "ERROR: OVMF not found — install edk2-ovmf (Arch) or ovmf (Debian/Ubuntu)" && exit 1)
+	$(QEMU) -machine q35 -m 2G -no-reboot \
+	    -bios $(OVMF_FD) \
+	    -cdrom build/anunix-x86_64.iso -boot d \
+	    -device virtio-vga -display vnc=:1 \
+	    -serial mon:stdio \
+	    -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+	    -device virtio-net-pci,netdev=net0
+else
+	@echo "qemu-iso is only supported for ARCH=x86_64" && exit 1
+endif
+
 
 # Build QEMU and dependencies from source into tools/qemu/
 qemu-deps:
