@@ -19,13 +19,12 @@
  * FLAGS bits:
  *   bit 0 (0x1) — align modules on 4 KiB pages
  *   bit 1 (0x2) — provide memory map
- *   bit 2 (0x4) — provide framebuffer (video mode) info
  *
- * Bit 2 requires the video fields at header +32. QEMU's built-in -kernel
- * loader ignores this bit (prints a warning but still boots); GRUB honours it
- * and fills in the multiboot info framebuffer fields (info flags bit 12).
+ * Bit 2 (framebuffer request) is intentionally omitted: some QEMU builds
+ * reject it and abort. The kernel detects the Bochs VBE framebuffer directly
+ * via I/O port probing (fb_detect_bochs) which works with -vga std.
  */
-.set FLAGS,	0x00000007
+.set FLAGS,	0x00000003
 .set CHECKSUM,	-(MAGIC + FLAGS)
 
 /* --- Multiboot header (must be in first 8 KiB) --- */
