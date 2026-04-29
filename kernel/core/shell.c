@@ -51,6 +51,7 @@
 #include <anx/vm.h>
 #include <anx/loop.h>
 #include <anx/rlm.h>
+#include <anx/jepa.h>
 #include <anx/memory.h>
 #include <anx/wm.h>
 #include <anx/fb.h>
@@ -451,7 +452,7 @@ static void cmd_version(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Anunix 2026.4.23 (kernel monitor)\n");
+	kprintf("Anunix 2026.4.29 (kernel monitor)\n");
 }
 
 /* --- Memory commands --- */
@@ -1036,6 +1037,173 @@ static void cmd_cap(int argc, char **argv)
 	} else {
 		kputs("usage: cap <create|list|validate|install> [args]\n");
 	}
+}
+
+/* --- JEPA commands --- */
+
+static void cmd_jepa(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: jepa <status|world|traj> [args]\n");
+		return;
+	}
+
+	/* jepa status */
+	if (anx_strcmp(argv[1], "status") == 0) {
+		static const char *const status_names[] = {
+			"uninitialized", "initializing", "ready",
+			"training", "degraded", "unavailable",
+		};
+		enum anx_jepa_status st = anx_jepa_status_get();
+		const char *st_name = ((unsigned)st < 6) ? status_names[st] : "?";
+
+		kprintf("jepa: status=%s available=%s train_steps=%u\n",
+			st_name,
+			anx_jepa_available() ? "yes" : "no",
+			anx_jepa_get_train_step_count());
+
+		if (anx_jepa_available()) {
+			const struct anx_jepa_world_profile *w =
+				anx_jepa_world_get_active();
+			if (w)
+				kprintf("jepa: world=%s obs_dim=%u "
+					"latent_dim=%u actions=%u\n",
+					w->uri, w->arch.obs_dim,
+					w->arch.latent_dim, w->action_count);
+		}
+		return;
+	}
+
+	/* jepa world [list|active|set <uri>] */
+	if (anx_strcmp(argv[1], "world") == 0) {
+		if (argc < 3 || anx_strcmp(argv[2], "list") == 0) {
+			const char *uris[ANX_JEPA_MAX_WORLDS];
+			uint32_t found = 0, i;
+
+			anx_jepa_world_list(uris, ANX_JEPA_MAX_WORLDS, &found);
+			kprintf("jepa: %u registered world(s):\n", found);
+			for (i = 0; i < found; i++)
+				kprintf("  %s\n", uris[i]);
+			return;
+		}
+
+		if (anx_strcmp(argv[2], "active") == 0) {
+			const struct anx_jepa_world_profile *w =
+				anx_jepa_world_get_active();
+			if (!w) {
+				kputs("jepa: no active world\n");
+				return;
+			}
+			kprintf("jepa: active world=%s\n", w->uri);
+			kprintf("  display_name=%s\n", w->display_name);
+			kprintf("  obs_dim=%u latent_dim=%u "
+				"action_count=%u\n",
+				w->arch.obs_dim, w->arch.latent_dim,
+				w->action_count);
+			kprintf("  collect_obs=%s\n",
+				w->collect_obs ? "registered" : "(stub)");
+			return;
+		}
+
+		if (anx_strcmp(argv[2], "set") == 0) {
+			int ret;
+
+			if (argc < 4) {
+				kputs("usage: jepa world set <uri>\n");
+				return;
+			}
+			ret = anx_jepa_world_set_active(argv[3]);
+			if (ret != ANX_OK)
+				kprintf("jepa: world set failed (%d)\n", ret);
+			else
+				kprintf("jepa: active world → %s\n", argv[3]);
+			return;
+		}
+
+		kputs("usage: jepa world [list|active|set <uri>]\n");
+		return;
+	}
+
+	/* jepa traj [count|reset|dump] */
+	if (anx_strcmp(argv[1], "traj") == 0) {
+		const char *sub = (argc >= 3) ? argv[2] : "count";
+
+		if (anx_strcmp(sub, "reset") == 0) {
+			anx_jepa_traj_reset();
+			kputs("jepa: trajectory ring buffer cleared\n");
+			return;
+		}
+
+		if (anx_strcmp(sub, "count") == 0 ||
+		    anx_strcmp(sub, "dump") == 0) {
+			uint8_t  *buf;
+			uint32_t  written = 0;
+			uint32_t  buf_size = 32768;
+			int ret;
+
+			buf = (uint8_t *)anx_alloc(buf_size);
+			if (!buf) {
+				kputs("jepa: out of memory\n");
+				return;
+			}
+
+			ret = anx_jepa_export_trajectory(buf, buf_size,
+							  &written);
+
+			if (ret == ANX_ENOENT) {
+				kputs("jepa: trajectory ring buffer is empty\n");
+				anx_free(buf);
+				return;
+			}
+			if (ret != ANX_OK) {
+				kprintf("jepa: export failed (%d)\n", ret);
+				anx_free(buf);
+				return;
+			}
+
+			if (anx_strcmp(sub, "count") == 0) {
+				const struct anx_jepa_traj_header *h =
+					(const struct anx_jepa_traj_header *)buf;
+				kprintf("jepa: trajectory entries=%u "
+					"(%u bytes)\n",
+					h->entry_count, written);
+				anx_free(buf);
+				return;
+			}
+
+			/* dump: store as state object, print OID */
+			{
+				struct anx_so_create_params params;
+				struct anx_state_object     *obj;
+
+				anx_memset(&params, 0, sizeof(params));
+				params.object_type  = ANX_OBJ_BYTE_DATA;
+				params.schema_uri   = "anx:schema/jepa-trajectory/v1";
+				params.payload      = buf;
+				params.payload_size = written;
+
+				ret = anx_so_create(&params, &obj);
+				anx_free(buf);
+				if (ret != ANX_OK) {
+					kprintf("jepa: store failed (%d)\n",
+						ret);
+					return;
+				}
+				kprintf("jepa: trajectory stored: "
+					"%016llx%016llx (%u bytes)\n",
+					(unsigned long long)obj->oid.hi,
+					(unsigned long long)obj->oid.lo,
+					written);
+				anx_objstore_release(obj);
+			}
+			return;
+		}
+
+		kputs("usage: jepa traj [count|reset|dump]\n");
+		return;
+	}
+
+	kputs("usage: jepa <status|world|traj> [args]\n");
 }
 
 /* --- RLM commands --- */
@@ -2633,6 +2801,8 @@ static void dispatch(int argc, char **argv)
 		cmd_workflow(argc, argv);
 	} else if (anx_strcmp(argv[0], "rlm") == 0) {
 		cmd_rlm(argc, argv);
+	} else if (anx_strcmp(argv[0], "jepa") == 0) {
+		cmd_jepa(argc, argv);
 	} else if (anx_strcmp(argv[0], "loop") == 0) {
 		anx_loop_shell_dispatch(argc, (const char *const *)argv);
 	} else if (anx_strcmp(argv[0], "theme") == 0) {

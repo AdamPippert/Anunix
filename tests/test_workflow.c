@@ -219,6 +219,36 @@ int test_workflow(void)
 			if (ret != ANX_OK) return -41;
 			if (s != ANX_WF_RUN_COMPLETED) return -42;
 		}
+
+		/* Test 23: traj_ingest with JEPA available records an entry. */
+		{
+			struct anx_jepa_obs obs;
+
+			anx_memset(&obs, 0, sizeof(obs));
+			obs.active_cell_count = 3;
+
+			anx_jepa_traj_reset();
+			ret = anx_jepa_traj_ingest(&obs, 1 /* route_local */,
+						   "anx:world/os-default");
+			if (ret != ANX_OK) return -43;
+		}
+
+		/* Test 24: export produces a valid self-describing header. */
+		{
+			static uint8_t  buf[8192];
+			uint32_t written = 0;
+			const struct anx_jepa_traj_header *hdr;
+
+			ret = anx_jepa_export_trajectory(buf, sizeof(buf),
+							  &written);
+			if (ret != ANX_OK) return -44;
+			if (written < sizeof(struct anx_jepa_traj_header))
+				return -45;
+
+			hdr = (const struct anx_jepa_traj_header *)buf;
+			if (hdr->magic       != ANX_JEPA_TRAJ_MAGIC) return -45;
+			if (hdr->entry_count != 1)                   return -45;
+		}
 	}
 
 	return 0;

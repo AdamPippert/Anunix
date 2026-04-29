@@ -51,6 +51,9 @@ int anx_loop_jepa_ingest(anx_oid_t session_oid, const char *world_uri)
 	/* Advance the online training step counter */
 	anx_jepa_record_winner(action_id);
 
+	/* Record (obs, action) in the trajectory ring buffer for export */
+	anx_jepa_traj_ingest(&obs, action_id, world_uri);
+
 	kprintf("[loop-jepa] session %016llx: action=%u obs=%s\n",
 		(unsigned long long)session_oid.lo, action_id,
 		anx_uuid_is_nil(&obs_oid) ? "nil" : "ok");

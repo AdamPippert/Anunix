@@ -32,8 +32,11 @@ uint32_t anx_jepa_get_train_step_count(void)
 
 uint32_t anx_jepa_get_action_divergences(float *out, uint32_t max)
 {
-	uint32_t n = (max < (uint32_t)ANX_JEPA_ACT_COUNT)
-		     ? max : (uint32_t)ANX_JEPA_ACT_COUNT;
+	const struct anx_jepa_world_profile *world = anx_jepa_world_get_active();
+	uint32_t act_count = (world && world->action_count > 0)
+				? world->action_count
+				: (uint32_t)ANX_JEPA_ACT_COUNT;
+	uint32_t n = (max < act_count) ? max : act_count;
 	uint32_t i;
 
 	if (!out)

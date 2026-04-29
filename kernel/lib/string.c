@@ -11,19 +11,23 @@
 
 void *anx_memcpy(void *dst, const void *src, size_t n)
 {
-	uint64_t       *d64 = dst;
-	const uint64_t *s64 = src;
-	uint8_t        *d8;
-	const uint8_t  *s8;
-	size_t          words = n / 8;
-	size_t          tail  = n % 8;
+	uint8_t       *d8 = (uint8_t *)dst;
+	const uint8_t *s8 = (const uint8_t *)src;
 
-	while (words--)
-		*d64++ = *s64++;
+	if ((((size_t)dst | (size_t)src) & 7) == 0) {
+		uint64_t       *d64 = (uint64_t *)dst;
+		const uint64_t *s64 = (const uint64_t *)src;
+		size_t          words = n / 8;
 
-	d8 = (uint8_t *)d64;
-	s8 = (const uint8_t *)s64;
-	while (tail--)
+		while (words--)
+			*d64++ = *s64++;
+
+		d8 = (uint8_t *)d64;
+		s8 = (const uint8_t *)s64;
+		n  = n % 8;
+	}
+
+	while (n--)
 		*d8++ = *s8++;
 
 	return dst;
@@ -32,17 +36,21 @@ void *anx_memcpy(void *dst, const void *src, size_t n)
 void *anx_memset(void *dst, int val, size_t n)
 {
 	uint8_t  v8  = (uint8_t)val;
-	uint64_t v64 = (uint64_t)v8 * 0x0101010101010101ULL;
-	uint64_t *d64 = dst;
-	uint8_t  *d8;
-	size_t    words = n / 8;
-	size_t    tail  = n % 8;
+	uint8_t *d8  = (uint8_t *)dst;
 
-	while (words--)
-		*d64++ = v64;
+	if (((size_t)dst & 7) == 0) {
+		uint64_t  v64 = (uint64_t)v8 * 0x0101010101010101ULL;
+		uint64_t *d64 = (uint64_t *)dst;
+		size_t    words = n / 8;
 
-	d8 = (uint8_t *)d64;
-	while (tail--)
+		while (words--)
+			*d64++ = v64;
+
+		d8 = (uint8_t *)d64;
+		n  = n % 8;
+	}
+
+	while (n--)
 		*d8++ = v8;
 
 	return dst;

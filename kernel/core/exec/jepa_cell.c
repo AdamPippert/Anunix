@@ -19,32 +19,25 @@
 #include <anx/types.h>
 
 /* ------------------------------------------------------------------ */
-/* Action name → action_id table                                       */
+/* Action name → action_id (resolved from active world profile)       */
 /* ------------------------------------------------------------------ */
 
 static uint32_t action_from_suffix(const char *suffix)
 {
-	static const char *names[] = {
-		"idle",
-		"route_local",
-		"route_remote",
-		"route_fallback",
-		"mem_promote",
-		"mem_demote",
-		"mem_forget",
-		"cell_spawn",
-		"cell_cancel",
-		"cap_validate",
-		"cap_suspend",
-		"security_alert",
-	};
+	const struct anx_jepa_world_profile *world;
 	uint32_t i;
 
-	for (i = 0; i < (uint32_t)(sizeof(names) / sizeof(names[0])); i++) {
-		if (anx_strcmp(suffix, names[i]) == 0)
-			return i;
+	if (!suffix || suffix[0] == '\0')
+		return 0;
+
+	world = anx_jepa_world_get_active();
+	if (world && world->action_count > 0) {
+		for (i = 0; i < world->action_count; i++) {
+			if (anx_strcmp(suffix, world->action_names[i]) == 0)
+				return i;
+		}
 	}
-	return 0; /* default: IDLE */
+	return 0; /* default: IDLE (index 0 by convention across all profiles) */
 }
 
 /* ------------------------------------------------------------------ */

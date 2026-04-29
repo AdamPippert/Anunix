@@ -48,16 +48,48 @@ static int make_prompt_obj(const char *text, anx_oid_t *oid_out)
 }
 
 /* ------------------------------------------------------------------ */
+/* Dynamic action list from active world profile                       */
+/* ------------------------------------------------------------------ */
+
+static void build_action_list(char *buf, uint32_t buf_size)
+{
+	const struct anx_jepa_world_profile *world = anx_jepa_world_get_active();
+	uint32_t i, pos = 0, len;
+
+	if (world && world->action_count > 0) {
+		for (i = 0; i < world->action_count; i++) {
+			if (i > 0 && pos + 1 < buf_size)
+				buf[pos++] = ',';
+			len = (uint32_t)anx_strlen(world->action_names[i]);
+			if (pos + len >= buf_size)
+				break;
+			anx_memcpy(buf + pos, world->action_names[i], len);
+			pos += len;
+		}
+		buf[pos] = '\0';
+		return;
+	}
+	/* Fallback: hardcoded OS-default list */
+	anx_strlcpy(buf,
+		"idle,route_local,route_remote,route_fallback,"
+		"mem_promote,mem_demote,mem_forget,"
+		"cell_spawn,cell_cancel,cap_validate,cap_suspend,security_alert",
+		buf_size);
+}
+
+/* ------------------------------------------------------------------ */
 /* Response → action_id mapping                                        */
 /* ------------------------------------------------------------------ */
 
 /*
- * Find the action that is most goal-aligned with the LLM's response text.
- * Reuses anx_loop_goal_alignment_energy: the action with the lowest energy
- * (most aligned) is selected.  Falls back to 0 (IDLE) on no match.
+ * Find the action most goal-aligned with the LLM's response text.
+ * Uses the active world profile's action_count so this works across domains.
  */
 static uint32_t response_to_action(const char *resp)
 {
+	const struct anx_jepa_world_profile *world = anx_jepa_world_get_active();
+	uint32_t act_count = world ? world->action_count
+				   : (uint32_t)ANX_JEPA_ACT_COUNT;
 	uint32_t best_id = 0;
 	float    best_e  = 1.0f;
 	uint32_t i;
@@ -65,7 +97,7 @@ static uint32_t response_to_action(const char *resp)
 	if (!resp || resp[0] == '\0')
 		return 0;
 
-	for (i = 0; i < (uint32_t)ANX_JEPA_ACT_COUNT; i++) {
+	for (i = 0; i < act_count; i++) {
 		float e = anx_loop_goal_alignment_energy(resp, i);
 
 		if (e < best_e) {
@@ -103,14 +135,18 @@ int anx_loop_llm_propose(anx_oid_t session_oid, uint32_t iteration,
 	if (!s)
 		return ANX_ENOENT;
 
-	/* Build a structured prompt for the inference model */
-	anx_snprintf(prompt, sizeof(prompt),
-		     "World: %s\nGoal: %s\nIteration: %u\n"
-		     "Actions: idle,route_local,route_remote,route_fallback,"
-		     "mem_promote,mem_demote,mem_forget,"
-		     "cell_spawn,cell_cancel,cap_validate,cap_suspend,security_alert\n"
-		     "Reply with ONE action name only (e.g. 'mem_promote').",
-		     s->world_uri, s->goal_text, iteration);
+	/* Build a structured prompt using the active world's action vocabulary */
+	{
+		char action_list[256];
+
+		build_action_list(action_list, sizeof(action_list));
+		anx_snprintf(prompt, sizeof(prompt),
+			     "World: %s\nGoal: %s\nIteration: %u\n"
+			     "Actions: %s\n"
+			     "Reply with ONE action name only.",
+			     s->world_uri, s->goal_text, iteration,
+			     action_list);
+	}
 
 	/* Fast path: call the real model if configured */
 	if (anx_model_client_ready()) {
@@ -178,8 +214,15 @@ int anx_loop_llm_propose(anx_oid_t session_oid, uint32_t iteration,
 
 fallback:
 	/* RLM unavailable: use PAL-preferred action as implicit LLM suggestion */
-	action_id = anx_loop_select_action_by_prior(s->world_uri,
-						     (uint32_t)ANX_JEPA_ACT_COUNT);
+	{
+		const struct anx_jepa_world_profile *world =
+			anx_jepa_world_get_active();
+		uint32_t act_count = world ? world->action_count
+					   : (uint32_t)ANX_JEPA_ACT_COUNT;
+
+		action_id = anx_loop_select_action_by_prior(s->world_uri,
+							     act_count);
+	}
 
 build_proposal:
 	/* Obtain a predicted latent for the suggested action */
