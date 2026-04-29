@@ -478,6 +478,64 @@ int anx_jepa_tool_predict(const char *action_name,
 int anx_jepa_tool_anomaly_score(char *out_buf, uint32_t buf_size);
 
 /* ------------------------------------------------------------------ */
+/* Trajectory recording and export                                     */
+/* ------------------------------------------------------------------ */
+
+#define ANX_JEPA_TRAJ_RING_SIZE	64		/* ring buffer capacity (entries) */
+#define ANX_JEPA_TRAJ_MAGIC	0x4A455041u	/* "JEPA" LE — export header sentinel */
+
+/*
+ * One trajectory timestep: the linearized observation at time t and the
+ * action taken at time t.  Consecutive entries with the same world_uri
+ * form (s_t, a_t, s_{t+1}) triples for offline training.
+ */
+struct anx_jepa_traj_entry {
+	uint64_t timestamp_ns;
+	uint32_t action_id;
+	uint32_t obs_dim;	/* valid dimensions in obs_vec[] */
+	float    obs_vec[ANX_JEPA_MAX_OBS_FIELDS];
+	char     world_uri[ANX_JEPA_WORLD_URI_MAX];
+};
+
+/*
+ * Binary export header — prepended to a flat array of anx_jepa_traj_entry.
+ * magic = 0x4A455041 ("JEPA" LE); version = 1.
+ * obs_field_names / action_names duplicate the active world profile at
+ * export time so the file is self-describing for cross-system use.
+ */
+struct anx_jepa_traj_header {
+	uint32_t magic;
+	uint32_t version;
+	uint32_t entry_count;
+	uint32_t obs_dim;
+	uint32_t action_count;
+	uint32_t _pad;
+	char     world_uri[ANX_JEPA_WORLD_URI_MAX];
+	char     obs_field_names[ANX_JEPA_MAX_OBS_FIELDS][ANX_JEPA_FIELD_NAME_MAX];
+	char     action_names[ANX_JEPA_MAX_ACTIONS][ANX_JEPA_FIELD_NAME_MAX];
+};
+
+/*
+ * Serialise the trajectory ring buffer into buf_out as:
+ *   [anx_jepa_traj_header][anx_jepa_traj_entry * entry_count]
+ * Sets *bytes_written_out to the number of bytes written.
+ * Returns ANX_ENOMEM if buf_size is too small, ANX_ENOENT if no entries.
+ */
+int anx_jepa_export_trajectory(void *buf_out, uint32_t buf_size,
+				uint32_t *bytes_written_out);
+
+/*
+ * Linearise obs using the active world profile and append it to the ring
+ * buffer paired with action_id.  No-op if JEPA is unavailable.
+ * This is the preferred call site for modules outside kernel/core/jepa/.
+ */
+int anx_jepa_traj_ingest(const struct anx_jepa_obs *obs, uint32_t action_id,
+			  const char *world_uri);
+
+/* Clear the trajectory ring buffer. */
+void anx_jepa_traj_reset(void);
+
+/* ------------------------------------------------------------------ */
 /* Online learning integration (Phase 10)                              */
 /* ------------------------------------------------------------------ */
 

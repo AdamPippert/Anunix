@@ -57,7 +57,7 @@
 #include <anx/model_client.h>
 #include <anx/tools.h>
 
-#define ANX_VERSION "2026.4.23"
+#define ANX_VERSION "2026.4.29"
 
 
 void kernel_main(void)

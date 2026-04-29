@@ -587,5 +587,35 @@ int test_ibal(void)
 		if (count_after != count_before + 1) return -38;
 	}
 
+	/* ------------------------------------------------------------------ */
+	/* Tests 39-41: trajectory ring buffer API                             */
+	/* ------------------------------------------------------------------ */
+
+	/* Test 39: reset clears the buffer; export returns ENOENT on empty. */
+	{
+		uint8_t  buf[256];
+		uint32_t written = 0;
+
+		anx_jepa_traj_reset();
+		rc = anx_jepa_export_trajectory(buf, sizeof(buf), &written);
+		if (rc != ANX_ENOENT) return -39;
+		if (written != 0)     return -39;
+	}
+
+	/* Test 40: traj_ingest with NULL obs returns EINVAL. */
+	{
+		rc = anx_jepa_traj_ingest(NULL, 0, "anx:world/os-default");
+		if (rc != ANX_EINVAL) return -40;
+	}
+
+	/* Test 41: traj_ingest when JEPA unavailable is ANX_OK (non-fatal). */
+	{
+		struct anx_jepa_obs obs;
+
+		anx_memset(&obs, 0, sizeof(obs));
+		rc = anx_jepa_traj_ingest(&obs, 0, "anx:world/os-default");
+		if (rc != ANX_OK) return -41;
+	}
+
 	return 0;
 }
