@@ -69,7 +69,7 @@ static void pl011_init(void)
 
 void arch_early_init(void)
 {
-	uint64_t cpacr;
+	uint64_t cpacr, sctlr;
 
 	/*
 	 * Enable FP/SIMD at EL1 and EL0.  Clang emits NEON for struct copies
@@ -78,6 +78,15 @@ void arch_early_init(void)
 	__asm__ volatile("mrs %0, cpacr_el1" : "=r"(cpacr));
 	cpacr |= (3ULL << 20);
 	__asm__ volatile("msr cpacr_el1, %0; isb" :: "r"(cpacr));
+
+	/*
+	 * Clear SCTLR_EL1.A (bit 1) — disable strict alignment checking.
+	 * Clang auto-vectorises float loops with 64-bit NEON ldur/stur, which
+	 * fault on sub-8-byte-aligned structs when A=1.  Standard Linux practice.
+	 */
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+	sctlr &= ~(1ULL << 1);
+	__asm__ volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr));
 
 	pl011_init();
 }
