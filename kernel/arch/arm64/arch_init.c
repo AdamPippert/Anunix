@@ -69,6 +69,16 @@ static void pl011_init(void)
 
 void arch_early_init(void)
 {
+	uint64_t cpacr;
+
+	/*
+	 * Enable FP/SIMD at EL1 and EL0.  Clang emits NEON for struct copies
+	 * and memset; without FPEN=0b11 every such instruction faults (EC=0x07).
+	 */
+	__asm__ volatile("mrs %0, cpacr_el1" : "=r"(cpacr));
+	cpacr |= (3ULL << 20);
+	__asm__ volatile("msr cpacr_el1, %0; isb" :: "r"(cpacr));
+
 	pl011_init();
 }
 
