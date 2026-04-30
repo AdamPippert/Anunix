@@ -13,7 +13,14 @@ set -e
 TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${TOOLS_DIR}/.." && pwd)"
 GRUB_DIR="${TOOLS_DIR}/grub"
-XORRISO="${GRUB_DIR}/bin/xorriso"
+# Prefer bundled xorriso; fall back to system xorriso if bundled is non-executable (wrong platform)
+if [ -x "${GRUB_DIR}/bin/xorriso" ]; then
+	XORRISO="${GRUB_DIR}/bin/xorriso"
+elif command -v xorriso >/dev/null 2>&1; then
+	XORRISO="$(command -v xorriso)"
+else
+	XORRISO="${GRUB_DIR}/bin/xorriso"  # will fail the -x check below with proper error
+fi
 GRUB_I386="${GRUB_DIR}/lib/grub/i386-pc"
 GRUB_EFI="${GRUB_DIR}/lib/grub/x86_64-efi"
 
