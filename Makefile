@@ -176,9 +176,11 @@ $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.S
 	$(AS) $(ASFLAGS) -c $< -o $@
 
 # JEPA uses float for ML inference; omit -mgeneral-regs-only so the compiler
-# uses SSE2 hardware FP instead of soft-float library calls.  JEPA must never
+# uses hardware FP instead of soft-float library calls.  JEPA must never
 # run in interrupt context (no FPU state save/restore at interrupt entry).
-JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS))
+# -mno-unaligned-access: prevent NEON d-register loads/stores to sub-8-byte-
+# aligned struct fields — QEMU enforces NEON alignment even when SCTLR_EL1.A=0.
+JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS)) -mno-unaligned-access
 
 $(BUILD_DIR)/core/jepa/%.o: $(CORE_DIR)/jepa/%.c
 	@mkdir -p $(dir $@)
