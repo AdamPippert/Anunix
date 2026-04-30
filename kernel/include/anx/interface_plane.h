@@ -102,6 +102,8 @@ struct anx_renderer_ops {
 #define ANX_CAP_ENV_SWITCH     (1u << 26)
 #define ANX_CAP_RENDERER_REG   (1u << 27)
 
+struct anx_event;	/* forward — defined below in Event Objects section */
+
 /* ------------------------------------------------------------------ */
 /* Surface Object                                                       */
 /* ------------------------------------------------------------------ */
@@ -148,6 +150,9 @@ struct anx_surface {
 	struct anx_list_head     z_node;
 
 	struct anx_spinlock      lock;
+
+	/* Optional key event handler — called by WM dispatch for focused surface */
+	void (*on_event)(struct anx_surface *surf, const struct anx_event *ev);
 };
 
 /* ------------------------------------------------------------------ */
@@ -255,6 +260,8 @@ int anx_iface_event_unsubscribe(anx_oid_t surf_oid, anx_cid_t cell_cid);
 int anx_iface_event_poll(anx_cid_t cell_cid, struct anx_event *out);
 /* Poll for next WM-targeted event (target_surf == null) — used by anx_wm_run() */
 int anx_iface_event_poll_wm(struct anx_event *out);
+/* Poll for next event addressed to a specific surface OID — used by WM dispatch */
+int anx_iface_event_poll_surf(anx_oid_t surf_oid, struct anx_event *out);
 
 #define ANX_IFACE_EVENT_RING_SIZE 256u
 

@@ -300,7 +300,7 @@ static void hk_paste(uint32_t mods, uint32_t key, void *arg)
 static void hk_shell(uint32_t mods, uint32_t key, void *arg)
 {
 	(void)mods; (void)key; (void)arg;
-	anx_wm_terminal_open();
+	anx_wm_launch_terminal();
 }
 
 static void hk_search(uint32_t mods, uint32_t key, void *arg)

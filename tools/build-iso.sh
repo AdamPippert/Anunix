@@ -13,13 +13,9 @@ set -e
 TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${TOOLS_DIR}/.." && pwd)"
 GRUB_DIR="${TOOLS_DIR}/grub"
-# Bundled xorriso is a macOS binary; on Linux use system xorriso instead.
-if [ "$(uname -s)" = "Darwin" ] && [ -x "${GRUB_DIR}/bin/xorriso" ]; then
-	XORRISO="${GRUB_DIR}/bin/xorriso"
-elif command -v xorriso >/dev/null 2>&1; then
-	XORRISO="$(command -v xorriso)"
-else
-	XORRISO="${GRUB_DIR}/bin/xorriso"  # will fail the -x check below with proper error
+XORRISO="${GRUB_DIR}/bin/xorriso"
+if ! "${XORRISO}" --version >/dev/null 2>&1; then
+	XORRISO="$(which xorriso 2>/dev/null || true)"
 fi
 GRUB_I386="${GRUB_DIR}/lib/grub/i386-pc"
 GRUB_EFI="${GRUB_DIR}/lib/grub/x86_64-efi"
@@ -35,8 +31,8 @@ ISO_OUT="${PROJECT_DIR}/build/anunix-x86_64.iso"
 # Checks
 # ---------------------------------------------------------------
 
-if [ ! -x "${XORRISO}" ]; then
-	echo "ERROR: xorriso not found. Run 'make iso-deps' first." >&2
+if [ -z "${XORRISO}" ] || [ ! -x "${XORRISO}" ]; then
+	echo "ERROR: xorriso not found. Run 'make iso-deps' first or install xorriso." >&2
 	exit 1
 fi
 

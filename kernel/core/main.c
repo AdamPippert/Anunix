@@ -51,6 +51,7 @@
 #include <anx/sshd.h>
 #include <anx/jepa.h>
 #include <anx/loop.h>
+#include <anx/browser.h>
 #include <anx/ebm.h>
 #include <anx/memory.h>
 #include <anx/installer.h>
