@@ -240,9 +240,9 @@ static void kbd_irq_handler(uint32_t irq, void *arg)
 		kbd_e0 = false;
 		if (hid != ANX_KEY_NONE) {
 			if (is_release)
-				anx_input_key_up(hid, 0);
+				anx_input_key_up(hid, anx_input_get_modifiers());
 			else
-				anx_input_key_down(hid, 0, 0);
+				anx_input_key_down(hid, anx_input_get_modifiers(), 0);
 		}
 		return;
 	}
@@ -667,8 +667,8 @@ static bool fb_detect_mb1(struct anx_fb_info *info)
 #define VBE_DISPI_ENABLED	0x01u
 #define VBE_DISPI_LFB_ENABLED	0x40u	/* use linear framebuffer */
 
-#define BOCHS_VBE_WIDTH		640u
-#define BOCHS_VBE_HEIGHT	480u
+#define BOCHS_VBE_WIDTH		1280u
+#define BOCHS_VBE_HEIGHT	800u
 
 static uint16_t bochs_vbe_read(uint16_t idx)
 {

@@ -49,6 +49,18 @@ void anx_fb_fill_rect(uint32_t x, uint32_t y,
 /* Clear entire screen to a color */
 void anx_fb_clear(uint32_t color);
 
+/* Fill a rectangle with rounded corners (radius in pixels) */
+void anx_fb_fill_rounded_rect(uint32_t x, uint32_t y,
+			       uint32_t w, uint32_t h,
+			       uint32_t radius, uint32_t color);
+
+/* Fill a rectangle with a two-stop linear gradient.
+ * vertical=true: top→bottom; false: left→right. */
+void anx_fb_fill_gradient(uint32_t x, uint32_t y,
+			   uint32_t w, uint32_t h,
+			   uint32_t color_start, uint32_t color_end,
+			   bool vertical);
+
 /* Scroll the framebuffer up by n pixel rows, fill gap with color */
 void anx_fb_scroll(uint32_t rows, uint32_t fill_color);
 

@@ -51,6 +51,64 @@ static void mb_fill_rect(uint32_t x, uint32_t y,
 	}
 }
 
+static void mb_fill_rounded_rect(uint32_t x, uint32_t y,
+				  uint32_t w, uint32_t h,
+				  uint32_t radius, uint32_t color)
+{
+	uint32_t r, row_y, col_x, dx, dy;
+
+	if (w == 0 || h == 0 || !g_menubar_pixels)
+		return;
+	r = radius;
+	if (r > w / 2) r = w / 2;
+	if (r > h / 2) r = h / 2;
+
+	for (row_y = y; row_y < y + h && row_y < mb_height; row_y++) {
+		uint32_t row_off = row_y - y;
+		uint32_t x_start = x;
+		uint32_t x_end   = x + w;
+
+		if (row_off < r) {
+			dy = r - row_off;
+			for (col_x = x; col_x < x + r; col_x++) {
+				dx = r - (col_x - x);
+				if (dx * dx + dy * dy > r * r)
+					x_start = col_x + 1;
+				else
+					break;
+			}
+			for (col_x = x + w - 1; col_x >= x + w - r && col_x >= x; col_x--) {
+				dx = r - (x + w - 1 - col_x);
+				if (dx * dx + dy * dy > r * r)
+					x_end = col_x;
+				else
+					break;
+			}
+		} else if (row_off >= h - r) {
+			dy = r - (h - 1 - row_off);
+			for (col_x = x; col_x < x + r; col_x++) {
+				dx = r - (col_x - x);
+				if (dx * dx + dy * dy > r * r)
+					x_start = col_x + 1;
+				else
+					break;
+			}
+			for (col_x = x + w - 1; col_x >= x + w - r && col_x >= x; col_x--) {
+				dx = r - (x + w - 1 - col_x);
+				if (dx * dx + dy * dy > r * r)
+					x_end = col_x;
+				else
+					break;
+			}
+		}
+
+		if (x_start < x_end) {
+			for (col_x = x_start; col_x < x_end && col_x < mb_width; col_x++)
+				g_menubar_pixels[row_y * mb_width + col_x] = color;
+		}
+	}
+}
+
 static void mb_fill_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color)
 {
 	int32_t dx, dy;
@@ -152,13 +210,21 @@ void anx_wm_menubar_refresh(void)
 	success = theme->palette.success;
 	err_col = theme->palette.error;
 
-	/* Background fill */
-	mb_fill_rect(0, 0, mb_width, mb_height, bg);
+	/* Floating pill: clear full surface to desktop background, then draw
+	 * an inset rounded pill as the actual menubar. */
+	{
+		uint32_t pill_margin_x = 6;
+		uint32_t pill_margin_y = 4;
+		uint32_t pill_w = mb_width - pill_margin_x * 2;
+		uint32_t pill_h = mb_height - pill_margin_y * 2;
 
-	/* Teal accent line at bottom */
-	mb_fill_rect(0, mb_height - 2, mb_width, 2, accent);
+		mb_fill_rect(0, 0, mb_width, mb_height,
+			     theme->palette.background);
+		mb_fill_rounded_rect(pill_margin_x, pill_margin_y,
+				     pill_w, pill_h, 10, bg);
+	}
 
-	/* Vertical centre for dots and icons */
+	/* Vertical centre for dots and icons (within pill) */
 	cy    = mb_height / 2;
 	dot_r = 4;
 	text_y = (mb_height > ANX_FONT_HEIGHT)
@@ -221,7 +287,7 @@ void anx_wm_menubar_refresh(void)
 			char     clipped[64];
 			uint32_t tlen      = (uint32_t)anx_strlen(s->title);
 
-			if (max_chars == 0)
+			if (max_chars < 4)
 				goto skip_title;
 
 			if (tlen > max_chars) {

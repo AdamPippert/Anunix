@@ -188,40 +188,53 @@ gpu_commit(struct anx_surface *surf)
 
 	render_node(surf, surf->content_root);
 
-	/* Window decoration: thin titlebar above the surface canvas.
+	/* Window decoration: gradient titlebar + traffic-light buttons.
 	 * Skipped for untitled surfaces and surfaces flush with the top. */
 	if (surf->title[0] && surf->y >= (int32_t)ANX_WM_DECOR_H) {
 		const struct anx_theme *theme = anx_theme_get();
 		anx_oid_t foc    = anx_input_focus_get();
 		bool      is_foc = (foc.hi == surf->oid.hi && foc.lo == surf->oid.lo);
-		uint32_t  tbg    = is_foc ? theme->palette.accent : theme->palette.surface;
 		uint32_t  tfg    = is_foc ? 0x00FFFFFFu : theme->palette.text_dim;
 		uint32_t tx  = (uint32_t)surf->x;
 		uint32_t ty  = (uint32_t)(surf->y - (int32_t)ANX_WM_DECOR_H);
 		uint32_t fy  = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
-		uint32_t btn = ANX_WM_DECOR_H - 4;		/* button side */
-		uint32_t bx  = tx + surf->width - btn - 2;	/* close-btn x */
-		uint32_t mx  = bx - btn - 3;			/* maximize-btn x */
-		uint32_t by  = ty + 2;				/* buttons y */
 
-		anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H, tbg);
-		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 2, surf->width, 2,
-				 theme->palette.accent);
-		anx_gui_draw_string_scaled(tx + 4, fy, surf->title, tfg, tbg, 1);
+		/* Traffic-light circles: 14px diameter, left side, 8px margin */
+		uint32_t dot_d  = 14;
+		uint32_t dot_r  = dot_d / 2;
+		uint32_t dot_y  = ty + (ANX_WM_DECOR_H - dot_d) / 2;
+		uint32_t dot_cl = tx + 8;		/* close (red) */
+		uint32_t dot_ml = dot_cl + dot_d + 5;	/* minimize (yellow) */
+		uint32_t dot_xl = dot_ml + dot_d + 5;	/* maximize (green) */
 
-		/* Maximize button: accent colour, "+" label */
-		anx_fb_fill_rect(mx, by, btn, btn, theme->palette.accent);
-		anx_gui_draw_string_scaled(mx + (btn - ANX_FONT_WIDTH) / 2,
-					   by + (btn - ANX_FONT_HEIGHT) / 2,
-					   "+", 0x00FFFFFFu,
-					   theme->palette.accent, 1);
+		/* Titlebar background: horizontal gradient when focused */
+		if (is_foc) {
+			anx_fb_fill_gradient(tx, ty, surf->width, ANX_WM_DECOR_H,
+					     theme->palette.surface,
+					     theme->palette.accent, false);
+		} else {
+			anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H,
+					 theme->palette.surface);
+		}
 
-		/* Close button: filled square in error colour, "x" label */
-		anx_fb_fill_rect(bx, by, btn, btn, theme->palette.error);
-		anx_gui_draw_string_scaled(bx + (btn - ANX_FONT_WIDTH) / 2,
-					   by + (btn - ANX_FONT_HEIGHT) / 2,
-					   "x", 0x00FFFFFFu,
-					   theme->palette.error, 1);
+		/* 1px bottom separator */
+		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 1, surf->width, 1,
+				 is_foc ? theme->palette.accent
+					: theme->palette.border);
+
+		/* Traffic-light circles */
+		anx_fb_fill_rounded_rect(dot_cl, dot_y, dot_d, dot_d, dot_r,
+					 theme->palette.error);
+		anx_fb_fill_rounded_rect(dot_ml, dot_y, dot_d, dot_d, dot_r,
+					 theme->palette.warning);
+		anx_fb_fill_rounded_rect(dot_xl, dot_y, dot_d, dot_d, dot_r,
+					 theme->palette.success);
+
+		/* Title: left-aligned after traffic lights */
+		anx_gui_draw_string_scaled(dot_xl + dot_d + 8, fy,
+					   surf->title, tfg,
+					   is_foc ? theme->palette.accent
+						  : theme->palette.surface, 1);
 	}
 
 	/* Draw 2px border around focused window canvas */

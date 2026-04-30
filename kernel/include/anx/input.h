@@ -158,6 +158,9 @@ struct anx_input_stats {
 void anx_input_stats_get(struct anx_input_stats *out);
 void anx_input_stats_reset(void);
 
+/* Return the current modifier bitmask (ANX_MOD_* flags). */
+uint32_t anx_input_get_modifiers(void);
+
 /* Generic key event injection (USB HID, synthetic) */
 void anx_input_key_down(uint32_t hid_key, uint32_t modifiers, uint32_t unicode);
 void anx_input_key_up(uint32_t hid_key, uint32_t modifiers);
