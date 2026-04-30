@@ -37,6 +37,10 @@ float anx_jepa_vec_cosine(const float *a, const float *b, uint32_t dim);
 /* Built-in world profile registration (jepa_world.c) */
 int anx_jepa_world_register_builtins(void);
 
+/* Trajectory ring buffer — record one (obs_at_t, action) entry (jepa_traj.c) */
+void anx_jepa_traj_record(const float *obs_vec, uint32_t obs_dim,
+			  uint32_t action_id, const char *world_uri);
+
 /* Built-in workflow registration (jepa_workflow.c) */
 int anx_jepa_workflow_register(void);
 

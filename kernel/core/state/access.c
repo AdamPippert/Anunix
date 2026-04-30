@@ -1,20 +1,21 @@
 /*
- * access.c — Capability-based access policy evaluation (RFC-0002 §9.2).
+ * access.c — Capability-based access policy evaluation (RFC-0002 Phase 2).
  *
- * Rules are evaluated in order; the first matching rule wins.
- * A rule matches when:
- *   - its operations bitmask covers the requested op, AND
- *   - its principal is the nil CID (matches any caller), OR equals cell.
+ * Rules are evaluated in declaration order; the first rule whose principal
+ * and operation mask both match determines the outcome.  A nil principal
+ * (all-zero UUID) matches any cell identity.  If no rule matches the
+ * request, access is permitted (permissive default, consistent with the
+ * Phase 1 always-allow behavior for objects that carry no rules).
  *
- * If the creator_cell is provided and matches cell, the creator is
- * treated as the implicit owner and allowed read/write regardless of
- * explicit rules (owner override).
- *
- * If no rule matches the default is ANX_OK (allow).
+ * Cell identity (RFC-0003) is not yet available at the kernel level, so
+ * callers pass a nil cell; rules with specific principals therefore only
+ * take effect once cell runtime is wired in.
  */
 
 #include <anx/types.h>
 #include <anx/access.h>
+#include <anx/uuid.h>
+#include <anx/kprintf.h>
 
 static bool cid_eq(const anx_cid_t *a, const anx_cid_t *b)
 {
@@ -36,37 +37,39 @@ int anx_access_evaluate(const struct anx_access_policy *policy,
 	if (!policy || policy->rule_count == 0)
 		return ANX_OK;
 
-	/*
-	 * Owner override: if cell identity matches the object's creator cell,
-	 * allow read and write unconditionally.  This covers the common case
-	 * where a cell accesses its own objects without needing explicit rules.
-	 */
-	if (creator_cell && cell &&
-	    creator_cell->hi == cell->hi && creator_cell->lo == cell->lo) {
-		uint32_t owner_ops = ANX_ACCESS_READ_PAYLOAD |
-				     ANX_ACCESS_READ_META   |
-				     ANX_ACCESS_WRITE_PAYLOAD |
-				     ANX_ACCESS_WRITE_META;
-		if ((uint32_t)op & owner_ops)
-			return ANX_OK;
-	}
+	for (i = 0; i < policy->rule_count && i < ANX_MAX_ACCESS_RULES; i++) {
+		const struct anx_access_rule *rule = &policy->rules[i];
+		bool principal_match;
 
-	/* First-match rule evaluation */
-	for (i = 0; i < policy->rule_count; i++) {
-		const struct anx_access_rule *r = &policy->rules[i];
+		/* Nil principal matches any requesting cell */
+		if (anx_uuid_is_nil(&rule->principal)) {
+			principal_match = true;
+		} else if (cell && anx_uuid_compare(&rule->principal, cell) == 0) {
+			principal_match = true;
+		} else if (creator_cell &&
+			   anx_uuid_compare(&rule->principal,
+					    (const struct anx_uuid *)creator_cell) == 0) {
+			principal_match = true;
+		} else {
+			principal_match = false;
+		}
 
-		/* Skip rules that don't cover this operation */
-		if (!(r->operations & (uint32_t)op))
+		if (!principal_match)
 			continue;
 
-		/* Check principal: nil = any, otherwise must match caller */
-		if (!cid_nil(&r->principal) && !cid_eq(&r->principal, cell))
+		if (!(rule->operations & (uint32_t)op))
 			continue;
 
-		/* Rule matches */
-		return (r->effect == ANX_EFFECT_DENY) ? ANX_EPERM : ANX_OK;
+		/* First matching rule determines outcome */
+		if (rule->effect == ANX_EFFECT_DENY) {
+			if (policy->audit >= ANX_AUDIT_DENIED)
+				kprintf("[access] denied op=0x%x rule=%u\n",
+					(unsigned)op, i);
+			return ANX_EPERM;
+		}
+		return ANX_OK;
 	}
 
-	/* No matching rule → default allow */
+	/* No rule matched: permissive default */
 	return ANX_OK;
 }

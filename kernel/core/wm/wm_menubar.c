@@ -15,6 +15,7 @@
 #include <anx/wm.h>
 #include <anx/types.h>
 #include <anx/interface_plane.h>
+#include <anx/input.h>
 #include <anx/fb.h>
 #include <anx/gui.h>
 #include <anx/font.h>
@@ -22,6 +23,9 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/net.h>
+#include <anx/virtio_net.h>
+#include <anx/mt7925.h>
 
 /* Exposed to wm.c so it can set g_menubar */
 extern struct anx_surface *g_menubar;
@@ -69,28 +73,12 @@ static void mb_fill_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color)
 	}
 }
 
-/* Draw a single character at scale 1 directly into the menubar pixel buffer. */
-static void mb_draw_char(uint32_t x, uint32_t y, char c, uint32_t fg, uint32_t bg)
-{
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	if (!g_menubar_pixels)
-		return;
-	for (row = 0; row < ANX_FONT_HEIGHT && (y + row) < mb_height; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < ANX_FONT_WIDTH && (x + col) < mb_width; col++)
-			g_menubar_pixels[(y + row) * mb_width + (x + col)] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
-}
-
 static void mb_draw_str(uint32_t x, uint32_t y, const char *s,
 			uint32_t fg, uint32_t bg)
 {
-	for (; *s; s++, x += ANX_FONT_WIDTH)
-		mb_draw_char(x, y, *s, fg, bg);
+	if (g_menubar_pixels)
+		anx_font_blit_str(g_menubar_pixels, mb_width, mb_height,
+				  x, y, s, fg, bg);
 }
 
 /* ------------------------------------------------------------------ */
@@ -180,31 +168,109 @@ void anx_wm_menubar_refresh(void)
 	/* ---- Workspace dots ------------------------------------------ */
 	dot_x = 16;
 	for (ws = 1; ws <= ANX_WM_WORKSPACES; ws++) {
-		bool is_active = (ws == anx_wm_workspace_active());
-		uint32_t color = is_active ? accent : dim;
+		bool is_active   = (ws == anx_wm_workspace_active());
+		bool is_occupied = anx_wm_workspace_occupied(ws);
+		uint32_t color;
+
+		if (is_active)
+			color = accent;
+		else if (is_occupied)
+			color = theme->palette.text_primary;
+		else
+			color = dim;
 
 		mb_fill_circle(dot_x, cy, dot_r, color);
+
+		/* Hollow ring for occupied-but-inactive: paint centre with bg */
+		if (is_occupied && !is_active)
+			mb_fill_circle(dot_x, cy, dot_r - 2, bg);
+
 		dot_x += 20;
 	}
 
-	/* ---- Clock (scale 1: 12×24px, centred vertically) ------------ */
-	anx_gui_get_time(clock_str, sizeof(clock_str));
-	clock_x = (mb_width - (uint32_t)anx_strlen(clock_str) * ANX_FONT_WIDTH) / 2;
-	mb_draw_str(clock_x, text_y, clock_str, theme->palette.text_primary, bg);
-
-	/* ---- Network status dot --------------------------------------- */
+	/* ---- Clock + date (centred) — compute position first ---------- */
 	{
-		uint32_t net_x = mb_width - 48;
+		char date_str[8];
+		char combined[16];
+		uint32_t tw;
 
-		mb_fill_circle(net_x, cy, 4, success);	/* Phase 2: query net stack */
-		(void)err_col;
+		anx_gui_get_time(clock_str, sizeof(clock_str));
+		anx_gui_get_date(date_str,  sizeof(date_str));
+
+		/* "Mon 26  14:30" — date + two spaces + time */
+		anx_snprintf(combined, sizeof(combined), "%s  %s",
+			     date_str, clock_str);
+
+		tw      = (uint32_t)anx_strlen(combined) * ANX_FONT_WIDTH;
+		clock_x = (mb_width > tw) ? (mb_width - tw) / 2 : 0;
+		mb_draw_str(clock_x, text_y, combined,
+			    theme->palette.text_primary, bg);
+	}
+
+	/* ---- Focused window title — clipped to stay left of clock ---- */
+	{
+		anx_oid_t         foc = anx_input_focus_get();
+		struct anx_surface *s = NULL;
+
+		if ((foc.hi || foc.lo) &&
+		    anx_iface_surface_lookup(foc, &s) == ANX_OK &&
+		    s && s->title[0]) {
+			uint32_t tx        = dot_x + 16;
+			uint32_t max_w     = (clock_x > tx + 8) ? clock_x - tx - 8 : 0;
+			uint32_t max_chars = max_w / ANX_FONT_WIDTH;
+			char     clipped[64];
+			uint32_t tlen      = (uint32_t)anx_strlen(s->title);
+
+			if (max_chars == 0)
+				goto skip_title;
+
+			if (tlen > max_chars) {
+				/* Truncate with ellipsis */
+				uint32_t copy = (max_chars > 2) ? max_chars - 1 : max_chars;
+				uint32_t i;
+				for (i = 0; i < copy && i < 63; i++)
+					clipped[i] = s->title[i];
+				if (copy < 63) clipped[copy++] = '~';
+				clipped[copy] = '\0';
+				mb_draw_str(tx, text_y, clipped,
+					    theme->palette.text_dim, bg);
+			} else {
+				mb_draw_str(tx, text_y, s->title,
+					    theme->palette.text_primary, bg);
+			}
+		skip_title:;
+		}
+	}
+
+	/* ---- Network status dot + short label ------------------------ */
+	{
+		uint32_t net_x = mb_width - 72;
+		uint32_t dot_color;
+		uint32_t local_ip = anx_ipv4_local_ip();
+		const char *net_label;
+
+		if (local_ip != 0) {
+			dot_color = success;
+			net_label = anx_mt7925_state() >= MT7925_STATE_ASSOC
+				    ? "wifi" : "lan";
+		} else if (anx_virtio_net_ready() ||
+			   anx_mt7925_state() >= MT7925_STATE_ASSOC) {
+			dot_color = theme->palette.warning;
+			net_label = "link";
+		} else {
+			dot_color = err_col;
+			net_label = "off";
+		}
+
+		mb_fill_circle(net_x, cy, 4, dot_color);
+		mb_draw_str(net_x + 8, text_y, net_label, dim, bg);
 	}
 
 	/* ---- Power icon (simple rectangle) ---------------------------- */
 	{
-		uint32_t pw_x = mb_width - 20;
+		uint32_t pw_x = mb_width - 18;
 
-		mb_fill_rect(pw_x, cy - 5, 10, 10, dim);
+		mb_fill_rect(pw_x,     cy - 5, 10, 10, dim);
 		mb_fill_rect(pw_x + 3, cy - 9,  4,  6, dim);
 	}
 

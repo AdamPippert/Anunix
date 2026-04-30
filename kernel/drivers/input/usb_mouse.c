@@ -116,6 +116,10 @@ anx_usb_mouse_report(const struct anx_hid_mouse_report *report,
 		                          (uint32_t)report->buttons, 0);
 		prev_buttons = (uint32_t)report->buttons;
 	}
+
+	/* Post scroll event for wheel movement */
+	if (report->wheel != 0)
+		anx_input_pointer_scroll(cur_x, cur_y, (int32_t)report->wheel);
 }
 
 /* ------------------------------------------------------------------ */

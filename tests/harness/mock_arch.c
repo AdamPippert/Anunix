@@ -22,6 +22,9 @@
 #include <anx/page.h>
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
+#include <anx/driver_table.h>
+#include <anx/dt.h>
+#include <anx/mt7925.h>
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
@@ -171,6 +174,8 @@ void anx_gui_terminal_putc(char c) { (void)c; }
 void anx_gui_update_time(void) {}
 void anx_gui_get_time(char *buf, uint32_t buflen)
 { if (buf && buflen >= 6) { buf[0]='0';buf[1]='0';buf[2]=':';buf[3]='0';buf[4]='0';buf[5]='\0'; } }
+void anx_gui_get_date(char *buf, uint32_t buflen)
+{ if (buf && buflen >= 8) { buf[0]='M';buf[1]='o';buf[2]='n';buf[3]=' ';buf[4]='0';buf[5]='1';buf[6]='\0'; } }
 void anx_gui_set_tz_offset(int32_t h) { (void)h; }
 void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
     uint32_t fg, uint32_t bg, uint32_t scale)
@@ -354,6 +359,7 @@ int anx_http_post_authed(const char *h, uint16_t p, const char *pa,
 void anx_http_response_free(struct anx_http_response *r)
 { if(r) { r->body=NULL; r->body_len=0; } }
 int anx_ntp_sync(uint32_t ip) { (void)ip; return ANX_ETIMEDOUT; }
+uint32_t anx_ntp_unix_time(void) { return 0; }
 
 /* Mock E1000 NIC — hardware excluded from test build */
 int anx_e1000_init(void) { return ANX_ENODEV; }
@@ -366,6 +372,7 @@ void anx_browser_poll(void) {}
 
 /* Mock XDNA NPU — hardware excluded from test build */
 int anx_xdna_init(void) { return ANX_ENODEV; }
+bool anx_xdna_present(void) { return false; }
 bool anx_xdna_ready(void) { return false; }
 int anx_xdna_load_firmware(void) { return ANX_ENODEV; }
 int anx_xdna_submit(const void *in, uint32_t in_len, void *out, uint32_t out_sz,
@@ -373,3 +380,20 @@ int anx_xdna_submit(const void *in, uint32_t in_len, void *out, uint32_t out_sz,
 { (void)in; (void)in_len; (void)out; (void)out_sz; (void)part; (void)flags;
   return ANX_ENODEV; }
 void anx_xdna_info(void) {}
+
+/* Mock driver table — driver_table.c excluded from test build (references
+ * hardware-only symbols: nvme, ahci, apple_ans).  These stubs satisfy
+ * references from test_main.c / kernel_main(). */
+void anx_drivers_probe(void) {}
+bool anx_net_probe_ok(void) { return false; }
+
+/* Mock device tree — architecture init provides the real implementation;
+ * mock_arch.c provides it for test builds where arch_init.c is not compiled. */
+bool anx_dt_has_compatible(const char *compatible)
+{
+	(void)compatible;
+	return false;
+}
+
+/* Mock MT7925 state — used by kernel_main() post-probe WiFi connect logic */
+anx_mt7925_state_t anx_mt7925_state(void) { return MT7925_STATE_DOWN; }

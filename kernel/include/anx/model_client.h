@@ -36,8 +36,10 @@ struct anx_model_endpoint {
 	const char *cred_name;		/* credential name for x-api-key */
 };
 
-/* Initialize the model client with an endpoint config */
+/* Initialize the model client with an endpoint config (also persists to disk) */
 void anx_model_client_init(const struct anx_model_endpoint *ep);
+/* Restore endpoint config from disk (called at boot after disk init) */
+void anx_model_client_load(void);
 
 /* Send a message to the Claude API and get a response */
 int anx_model_call(const struct anx_model_request *req,

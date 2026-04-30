@@ -18,6 +18,7 @@
 #include <anx/string.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
+#include <anx/objstore_disk.h>
 
 /* Owned copies of endpoint strings (argv pointers are transient) */
 static char ep_host[128];	/* connect-to address */
@@ -224,6 +225,59 @@ static int parse_response(const char *body, uint32_t body_len,
 
 /* --- Public API --- */
 
+/* --- Endpoint disk persistence --- */
+
+#define EP_DISK_OID_HI  0x4D44454E44504F49ULL  /* "MENDPOI" */
+#define EP_DISK_OID_LO  0x0000000000000001ULL
+#define EP_DISK_MAGIC   0x4D4F444CU             /* "MODL"    */
+#define EP_DISK_TYPE    0xED4D5E00U
+
+struct ep_disk {
+	uint32_t magic;
+	uint16_t port;
+	uint16_t _pad;
+	char     host[128];
+	char     cred[128];
+};
+
+static void ep_persist(void)
+{
+	struct ep_disk d;
+	anx_oid_t oid;
+
+	d.magic  = EP_DISK_MAGIC;
+	d.port   = ep_port;
+	d._pad   = 0;
+	anx_strlcpy(d.host, ep_host, sizeof(d.host));
+	anx_strlcpy(d.cred, ep_cred, sizeof(d.cred));
+
+	oid.hi = EP_DISK_OID_HI;
+	oid.lo = EP_DISK_OID_LO;
+	anx_disk_delete_obj(&oid);
+	anx_disk_write_obj(&oid, EP_DISK_TYPE, &d, sizeof(d));
+}
+
+void anx_model_client_load(void)
+{
+	struct ep_disk d;
+	anx_oid_t oid;
+	uint32_t actual, obj_type;
+	int rc;
+
+	oid.hi = EP_DISK_OID_HI;
+	oid.lo = EP_DISK_OID_LO;
+	rc = anx_disk_read_obj(&oid, &d, sizeof(d), &actual, &obj_type);
+	if (rc != ANX_OK || d.magic != EP_DISK_MAGIC)
+		return;
+
+	anx_strlcpy(ep_host, d.host, sizeof(ep_host));
+	anx_strlcpy(ep_cred, d.cred, sizeof(ep_cred));
+	ep_port = d.port;
+	configured = true;
+	kprintf("model: restored endpoint %s:%u (credential: %s)\n",
+		ep_host, (uint32_t)ep_port, ep_cred);
+}
+
 void anx_model_client_init(const struct anx_model_endpoint *ep)
 {
 	anx_strlcpy(ep_host, ep->host, sizeof(ep_host));
@@ -232,6 +286,7 @@ void anx_model_client_init(const struct anx_model_endpoint *ep)
 	configured = true;
 	kprintf("model: endpoint %s:%u (credential: %s)\n",
 		ep_host, (uint32_t)ep_port, ep_cred);
+	ep_persist();
 }
 
 bool anx_model_client_ready(void)

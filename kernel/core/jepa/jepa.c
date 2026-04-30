@@ -129,13 +129,15 @@ int anx_jepa_init(void)
 		const struct anx_hw_inventory *hw = anx_hwprobe_get();
 		const char *world_uri = "anx:world/os-default";
 
-		if (hw) {
+		if (hw && hw->cpu_count > 0) {
 			/*
 			 * Heuristic: cellular = genuinely constrained device
 			 * (≤1 GiB RAM, ≤2 CPUs, no accel) — phones, IoT, SBCs.
 			 * enterprise-it = many cores, no dedicated ML accel.
 			 * os-default covers everything else, including dev machines
 			 * and QEMU test environments with limited memory.
+			 * Guard: cpu_count==0 means hwprobe not yet initialised;
+			 * default to os-default rather than misclassifying as cellular.
 			 */
 			bool has_accel = hw->accel_count > 0;
 

@@ -64,7 +64,7 @@ struct anx_rlm_config {
 	uint32_t max_steps;		/* hard cap on inference iterations */
 	uint32_t max_tokens;		/* per call (step 0 baseline) */
 	uint32_t min_tokens;		/* lower bound after lambda decay */
-	float lambda_decay;		/* lambda-RLM token decay per infer step */
+	uint16_t lambda_decay;		/* lambda-RLM token decay, Q8: 256=1.0, e.g. 210≈0.82 */
 	bool persist_trace;		/* finalize trace as State Object */
 	bool admit_responses;		/* admit responses to memplane L1 */
 	enum anx_sched_priority priority;
@@ -190,5 +190,18 @@ void anx_rlm_batch_destroy(struct anx_rlm_batch *batch);
 
 /* Aggregate throughput since started_at. Returns 0 if batch not yet run. */
 uint32_t anx_rlm_batch_tokens_per_second(const struct anx_rlm_batch *batch);
+
+/* --- PAL feedback bridge (Phase 16) --- */
+
+/*
+ * Feed a completed rollout's score into the PAL cross-session accumulator.
+ * action_id (0..ANX_MEMORY_ACT_COUNT-1) selects which action slot to update.
+ * Low-scoring rollouts (score < 30) also emit a counterexample State Object
+ * so the CEXL critic can refine per-action priors in the next IBAL session.
+ * Returns ANX_EPERM if the rollout is not COMPLETED.
+ */
+int anx_rlm_pal_feedback(struct anx_rlm_rollout *r,
+			  const char *world_uri,
+			  uint32_t action_id);
 
 #endif /* ANX_RLM_H */

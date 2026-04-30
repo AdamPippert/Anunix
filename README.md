@@ -338,6 +338,49 @@ ssh -p 12222 anunix@localhost -- sysinfo
 ssh -i ~/.ssh/id_ed25519 -p 12222 anunix@localhost   # interactive shell
 ```
 
+### Running in QEMU
+
+#### x86_64 on Linux
+
+```sh
+make kernel ARCH=x86_64
+qemu-system-x86_64 -m 512M -no-reboot -serial mon:stdio \
+  -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+  -device virtio-net-pci,netdev=net0 \
+  -kernel build/x86_64/anunix-qemu.elf
+```
+
+#### x86_64 on macOS
+
+The local QEMU build (`tools/qemu/bin/`) does not include `user` networking — use `vmnet-shared` (requires sudo) or install a full QEMU via another method:
+
+```sh
+make kernel ARCH=x86_64
+sudo tools/qemu/bin/qemu-system-x86_64 -m 512M -no-reboot -serial mon:stdio \
+  -netdev vmnet-shared,id=net0 \
+  -device virtio-net-pci,netdev=net0 \
+  -kernel build/x86_64/anunix-qemu.elf
+```
+
+#### Apple Silicon (macOS, arm64)
+
+Uses HVF acceleration for near-native performance. Requires sudo for `vmnet-shared` networking:
+
+```sh
+make kernel ARCH=arm64
+sudo tools/qemu/bin/qemu-system-aarch64 \
+  -M virt,highmem=off -cpu host -accel hvf \
+  -m 512M -device ramfb -display cocoa \
+  -serial mon:stdio \
+  -netdev vmnet-shared,id=net0 \
+  -device virtio-net-device,netdev=net0 \
+  -kernel build/arm64/anunix.elf
+```
+
+Convenience scripts are in `build/`:
+- `build/intel-mac-test-script.sh` — Intel Mac (emulated arm64)
+- `build/apple-silicon-test-script.sh` — Apple Silicon Mac (HVF-accelerated)
+
 ## Project Structure
 
 ```

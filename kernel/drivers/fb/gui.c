@@ -159,6 +159,40 @@ void anx_gui_get_time(char *buf, uint32_t buflen)
 	buf[5] = '\0';
 }
 
+void anx_gui_get_date(char *buf, uint32_t buflen)
+{
+	static const char * const day_names[8] = {
+		"???", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+	};
+	uint8_t dow, day, status_b;
+	const char *dn;
+	uint32_t i;
+
+	if (buflen < 8)
+		return;
+
+	dow      = rtc_read(0x06);   /* CMOS weekday: 1=Sunday..7=Saturday */
+	day      = rtc_read(0x07);   /* day of month (BCD or binary) */
+	status_b = rtc_read(0x0B);
+
+	if (!(status_b & 0x04)) {
+		day = bcd_to_bin(day);
+		/* weekday register is 1-7 — not BCD */
+	}
+
+	if (dow < 1 || dow > 7)
+		dow = 0;
+	dn = day_names[dow];
+
+	/* "Mon 26" */
+	for (i = 0; i < 3; i++)
+		buf[i] = dn[i];
+	buf[3] = ' ';
+	buf[4] = '0' + (char)(day / 10);
+	buf[5] = '0' + (char)(day % 10);
+	buf[6] = '\0';
+}
+
 void anx_gui_update_time(void)
 {
 	char timebuf[16];

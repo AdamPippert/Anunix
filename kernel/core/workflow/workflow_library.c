@@ -523,6 +523,255 @@ static const struct anx_wf_template tmpl_observe = {
 	},
 };
 
+/*
+ * 9. anx:workflow/ibal/default/v1
+ *    TRIGGER → CELL_CALL(ibal-run) → OUTPUT
+ *    Full IBAL loop: create session, advance to halt, output committed plan.
+ */
+static const struct anx_wf_template tmpl_ibal_default = {
+	.uri          = "anx:workflow/ibal/default/v1",
+	.display_name = "IBAL Default",
+	.description  = "Iterative Belief-Action Loop: full session with EBM scoring and memory consolidation.",
+	.tags         = { "ibal", "loop", "iterative", "belief", "plan", "agent" },
+	.tag_count    = 6,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "ibal-run",
+			.params.cell_call = {
+				.intent = "anx:cell/loop/ibal-runner goal=${goal}",
+			},
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "out", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "plan",
+			.params.output = { .dest_name = "committed_plan" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
+/*
+ * 10. anx:workflow/ibal/lite/v1
+ *     TRIGGER → CELL_CALL(ibal-lite) → OUTPUT
+ *     Lightweight IBAL: fixed 4-iteration budget, no memory consolidation.
+ */
+static const struct anx_wf_template tmpl_ibal_lite = {
+	.uri          = "anx:workflow/ibal/lite/v1",
+	.display_name = "IBAL Lite",
+	.description  = "Lightweight IBAL loop: 4-iteration budget, fast path without memory consolidation.",
+	.tags         = { "ibal", "lite", "fast", "loop", "quick", "plan" },
+	.tag_count    = 6,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "ibal-lite",
+			.params.cell_call = {
+				.intent = "anx:cell/loop/ibal-runner-lite goal=${goal}",
+			},
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "out", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "plan",
+			.params.output = { .dest_name = "lite_plan" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
+/*
+ * 11. anx:workflow/ibal/symbolic/v1
+ *     TRIGGER → CELL_CALL(ibal-symbolic) → OUTPUT
+ *     Symbolic IBAL: goal decomposition + rule-based proposal generation.
+ */
+static const struct anx_wf_template tmpl_ibal_symbolic = {
+	.uri          = "anx:workflow/ibal/symbolic/v1",
+	.display_name = "IBAL Symbolic",
+	.description  = "Symbolic IBAL loop: rule-based proposal generation without learned JEPA weights.",
+	.tags         = { "ibal", "symbolic", "rules", "deterministic", "loop", "plan" },
+	.tag_count    = 6,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "ibal-symbolic",
+			.params.cell_call = {
+				.intent = "anx:cell/loop/ibal-runner-symbolic goal=${goal}",
+			},
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "out", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "plan",
+			.params.output = { .dest_name = "symbolic_plan" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
+/*
+ * 12. anx:workflow/jepa/observe-encode/v1
+ *     TRIGGER → CELL_CALL(jepa-observe) → CELL_CALL(jepa-encode) → OUTPUT
+ *     Capture a JEPA observation and encode it to a latent vector.
+ *     Useful as the first stage of a prediction or anomaly-detection pipeline.
+ */
+static const struct anx_wf_template tmpl_jepa_observe_encode = {
+	.uri          = "anx:workflow/jepa/observe-encode/v1",
+	.display_name = "JEPA Observe + Encode",
+	.description  = "Capture a world observation via JEPA and encode it to "
+			"a latent vector.",
+	.tags         = {
+		"jepa", "observe", "encode", "latent", "world", "state",
+	},
+	.tag_count    = 6,
+	.node_count   = 4,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "observe",
+			.params.cell_call = { .intent = "jepa-observe" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "obs", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "encode",
+			.params.cell_call = { .intent = "jepa-encode" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "obs",    .dir = ANX_WF_PORT_IN  },
+				{ .name = "latent", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 4, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "latent",
+			.params.output = { .dest_name = "jepa_latent" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 3,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+		{ .from_node = 3, .from_port = 1, .to_node = 4, .to_port = 0 },
+	},
+};
+
+/*
+ * 13. anx:workflow/jepa/predict-route/v1
+ *     TRIGGER → jepa-observe-encode → jepa-predict:route_local → OUTPUT
+ *     Full single-step prediction pipeline: observe current world state,
+ *     encode to latent, then predict the next latent for the route_local
+ *     action.  Used by the IBAL loop to generate JEPA proposals.
+ */
+static const struct anx_wf_template tmpl_jepa_predict_route = {
+	.uri          = "anx:workflow/jepa/predict-route/v1",
+	.display_name = "JEPA Predict (route_local)",
+	.description  = "Observe + encode world state, then predict the next "
+			"latent under the route_local action.",
+	.tags         = {
+		"jepa", "predict", "route", "latent", "planning", "ibal",
+	},
+	.tag_count    = 6,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "start",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "observe-encode",
+			.params.cell_call = { .intent = "jepa-observe-encode" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",     .dir = ANX_WF_PORT_IN  },
+				{ .name = "latent", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "predict",
+			.params.cell_call = { .intent = "jepa-predict:route_local" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "latent",    .dir = ANX_WF_PORT_IN  },
+				{ .name = "predicted", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
 /* All built-in templates in order. */
 static const struct anx_wf_template *g_builtins[] = {
 	&tmpl_infer,
@@ -533,6 +782,11 @@ static const struct anx_wf_template *g_builtins[] = {
 	&tmpl_spawn_collect,
 	&tmpl_decompose,
 	&tmpl_observe,
+	&tmpl_ibal_default,
+	&tmpl_ibal_lite,
+	&tmpl_ibal_symbolic,
+	&tmpl_jepa_observe_encode,
+	&tmpl_jepa_predict_route,
 };
 #define BUILTIN_COUNT ((uint32_t)(sizeof(g_builtins) / sizeof(g_builtins[0])))
 
@@ -600,7 +854,7 @@ int anx_wf_lib_init(void)
 
 	for (i = 0; i < BUILTIN_COUNT; i++) {
 		rc = anx_wf_lib_register(g_builtins[i]);
-		if (rc != ANX_OK)
+		if (rc != ANX_OK && rc != ANX_EEXIST)
 			return rc;
 	}
 

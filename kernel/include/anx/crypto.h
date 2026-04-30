@@ -12,6 +12,42 @@
 
 #include <anx/types.h>
 
+/* --- SHA-1 (needed for WPA2 key derivation) --- */
+
+struct anx_sha1_ctx {
+	uint32_t state[5];
+	uint8_t  buf[64];
+	uint64_t total;
+};
+
+void anx_sha1_init(struct anx_sha1_ctx *ctx);
+void anx_sha1_update(struct anx_sha1_ctx *ctx, const void *data, uint32_t len);
+void anx_sha1_final(struct anx_sha1_ctx *ctx, uint8_t out[20]);
+void anx_sha1(const void *data, uint32_t len, uint8_t out[20]);
+
+/* HMAC-SHA-1 */
+void anx_hmac_sha1(const void *key, uint32_t key_len,
+		   const void *data, uint32_t data_len,
+		   uint8_t out[20]);
+
+/* PBKDF2(HMAC-SHA-1, password, salt, iterations, dkLen) — for WPA2 PMK */
+void anx_pbkdf2_hmac_sha1(const void *pass, uint32_t pass_len,
+			   const void *salt, uint32_t salt_len,
+			   uint32_t iters, uint8_t *out, uint32_t out_len);
+
+/* PRF-SHA-1 (IEEE 802.11 §12.7.1.2) — for WPA2 PTK */
+void anx_prf_sha1(const void *key, uint32_t key_len,
+		  const char *label, uint32_t label_len,
+		  const void *data, uint32_t data_len,
+		  uint8_t *out, uint32_t out_len);
+
+/* RFC 3394 AES-128 key unwrap — for GTK decryption from EAPOL M3.
+ * kek: 16-byte Key Encryption Key; wrapped_len must be multiple of 8.
+ * Returns 0 on success, -1 if integrity check fails. */
+int anx_aes128_unwrap(const uint8_t kek[16],
+		      const uint8_t *wrapped, uint32_t wrapped_len,
+		      uint8_t *out, uint32_t out_len);
+
 /* --- SHA-256 --- */
 
 struct anx_sha256_ctx {

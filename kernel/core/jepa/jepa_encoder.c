@@ -250,7 +250,8 @@ int anx_jepa_encode(const anx_oid_t *obs_oid, anx_oid_t *latent_oid_out)
 		rc = anx_so_read_payload(&obs_handle, 0,
 					 &obs_snap, sizeof(obs_snap));
 		anx_so_close(&obs_handle);
-		if (rc != ANX_OK)
+		/* anx_so_read_payload returns byte count on success */
+		if (rc < 0)
 			return rc;
 
 		anx_jepa_obs_linearize(&obs_snap, obs_vec, obs_dim);

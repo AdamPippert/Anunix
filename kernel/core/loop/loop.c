@@ -96,10 +96,13 @@ int anx_loop_session_create(const struct anx_loop_create_params *params,
 
 	anx_spin_lock(&g_loop_lock);
 
-	/* Find a free slot; also reclaim committed/aborted sessions */
+	/* Find a free or completed slot (completed sessions are recycled) */
 	s = NULL;
 	for (i = 0; i < ANX_LOOP_MAX_SESSIONS; i++) {
-		if (!g_loop_sessions[i].in_use) {
+		if (!g_loop_sessions[i].in_use ||
+		    g_loop_sessions[i].status == ANX_LOOP_COMMITTED ||
+		    g_loop_sessions[i].status == ANX_LOOP_ABORTED  ||
+		    g_loop_sessions[i].status == ANX_LOOP_HALTED) {
 			s = &g_loop_sessions[i];
 			break;
 		}
@@ -330,9 +333,14 @@ int anx_loop_session_record_score(anx_oid_t session_oid, float best_energy,
 			if (d < 0.0f) d = -d;
 			if (d < s->halt_threshold) {
 				s->status = ANX_LOOP_HALTED;
-				kprintf("[loop] session %016llx converged iter=%u delta=%.4f\n",
-					(unsigned long long)s->session_oid.lo,
-					s->iteration, entry->delta);
+				{
+					float d = entry->delta;
+					kprintf("[loop] session %016llx converged iter=%u delta=%u.%04u\n",
+						(unsigned long long)s->session_oid.lo,
+						s->iteration,
+						(unsigned int)d,
+						(unsigned int)((d - (float)(unsigned int)d) * 10000.0f + 0.5f));
+				}
 
 				/*
 				 * Trigger a world model rebuild when the loop
@@ -369,6 +377,7 @@ int anx_loop_session_apply_decision(anx_oid_t session_oid,
 				    enum anx_loop_arb_decision decision)
 {
 	struct anx_loop_session *s;
+	int do_branch = 0;
 
 	anx_spin_lock(&g_loop_lock);
 	s = anx_loop_session_get(session_oid);
@@ -387,13 +396,18 @@ int anx_loop_session_apply_decision(anx_oid_t session_oid,
 		s->status = ANX_LOOP_ABORTED;
 		break;
 	case ANX_LOOP_ARB_BRANCH:
-		/* Phase 4: branch group scheduler. Treat as continue for now. */
+		/* Only root sessions (branch_depth==0) may spawn branches */
+		do_branch = (s->branch_depth == 0) ? 1 : 0;
 		break;
 	default:
 		break;
 	}
 
 	anx_spin_unlock(&g_loop_lock);
+
+	if (do_branch)
+		anx_loop_branch_schedule_and_merge(session_oid);
+
 	return ANX_OK;
 }
 
@@ -425,6 +439,8 @@ int anx_loop_session_status_get(anx_oid_t session_oid,
 	info_out->capability_scope = s->capability_scope;
 	info_out->started_at_ns    = s->started_at_ns;
 	info_out->halted_at_ns     = s->halted_at_ns;
+	info_out->branch_depth       = s->branch_depth;
+	info_out->branch_child_count = s->branch_child_count;
 	anx_strlcpy(info_out->goal_text, s->goal_text, sizeof(info_out->goal_text));
 
 	if (s->score_hist_count > 0) {

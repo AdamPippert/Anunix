@@ -32,6 +32,25 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/memory.h>
+#include <anx/driver_table.h>
+#include <anx/mt7925.h>
+#include <anx/xdna.h>
+
+/* Build PAL prime hardware flags from currently-detected hardware. */
+static uint32_t detect_hw_flags(void)
+{
+	uint32_t flags = 0;
+
+	if (anx_xdna_present())
+		flags |= ANX_PAL_PRIME_HW_NPU;
+	if (anx_net_probe_ok() &&
+	    anx_mt7925_state() >= MT7925_STATE_FW_UP)
+		flags |= ANX_PAL_PRIME_HW_WIFI;
+	if (anx_blk_ready())
+		flags |= ANX_PAL_PRIME_HW_STORAGE;
+	return flags;
+}
 
 /* --- TUI helpers --- */
 
@@ -307,6 +326,11 @@ int anx_installer_run(const char *provision_json, uint32_t json_len)
 		}
 	}
 
+	/* Seed PAL priors from detected hardware so first boot is warm-started */
+	anx_pal_prime_install(detect_hw_flags());
+	/* Immediately persist so the primed state survives into first boot */
+	anx_pal_persist_save();
+
 	/* Done */
 	banner("Installation Complete");
 	kprintf("  Hostname: %s\n", hostname);
@@ -392,11 +416,17 @@ int anx_installer_interactive(void)
 	/* Zero password */
 	anx_memset(password, 0, sizeof(password));
 
+	/* Seed PAL priors from detected hardware so first boot is warm-started */
+	anx_pal_prime_install(detect_hw_flags());
+	/* Persist so the primed state survives into first boot */
+	anx_pal_persist_save();
+
 	/* Done */
 	banner("Installation Complete");
 	kprintf("  Hostname: %s\n", hostname);
 	kprintf("  User:     %s\n", username);
 	kprintf("  Object store: formatted\n");
+	kprintf("  PAL state: persisted\n");
 	kprintf("\n  You can now reboot into the installed system.\n\n");
 
 	return ANX_OK;

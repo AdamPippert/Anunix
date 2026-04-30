@@ -23,12 +23,14 @@
 #include <anx/netplane.h>
 #include <anx/capability.h>
 #include <anx/page.h>
+#include <anx/alloc.h>
 #include <anx/pci.h>
 #include <anx/net.h>
 #include <anx/virtio_net.h>
 #include <anx/http.h>
 #include <anx/credential.h>
 #include <anx/virtio_blk.h>
+#include <anx/blk.h>
 #include <anx/objstore_disk.h>
 #include <anx/auth.h>
 #include <anx/model_client.h>
@@ -49,12 +51,23 @@
 #include <anx/browser_cell.h>
 #include <anx/vm.h>
 #include <anx/loop.h>
+#include <anx/rlm.h>
+#include <anx/jepa.h>
+#include <anx/memory.h>
+#include <anx/wm.h>
+#include <anx/fb.h>
 
 /* --- Line input with history --- */
 
 #define MAX_LINE	256
 #define MAX_ARGS	16
 #define HISTORY_SIZE	32
+#define PIPE_CAP_SZ	8192
+#define MAX_PIPE_STAGES	8
+
+/* Pipe stdin — set by execute_line when running right side of a pipe */
+static const char *g_pipe_stdin;
+static uint32_t    g_pipe_stdin_len;
 
 static char history[HISTORY_SIZE][MAX_LINE];
 static uint32_t history_count;
@@ -63,6 +76,68 @@ static uint32_t history_write;	/* next slot to write */
 static void kputs(const char *s)
 {
 	kprintf("%s", s);
+}
+
+/* Shell history persistence — uses a fixed OID on the disk store */
+#define HIST_DISK_OID_HI	0x0000000000000001ULL
+#define HIST_DISK_OID_LO	0x0000000000000002ULL
+#define HIST_DISK_TYPE		0x00005348	/* 'SH' */
+#define HIST_MAGIC		0x48535448	/* 'HSTH' */
+
+struct history_disk {
+	uint32_t magic;
+	uint32_t count;
+	uint32_t write_idx;
+	uint32_t _pad;
+	char     entries[HISTORY_SIZE][MAX_LINE];
+};
+
+static void history_save_to_disk(void)
+{
+	static struct history_disk disk;
+	anx_oid_t oid;
+
+	if (!anx_blk_ready())
+		return;
+
+	disk.magic     = HIST_MAGIC;
+	disk.count     = history_count;
+	disk.write_idx = history_write;
+	disk._pad      = 0;
+	anx_memcpy(disk.entries, history, sizeof(history));
+
+	oid.hi = HIST_DISK_OID_HI;
+	oid.lo = HIST_DISK_OID_LO;
+	anx_disk_delete_obj(&oid);
+	anx_disk_write_obj(&oid, HIST_DISK_TYPE, &disk, sizeof(disk));
+}
+
+static void history_load_from_disk(void)
+{
+	static struct history_disk disk;
+	anx_oid_t oid;
+	uint32_t actual = 0, obj_type = 0;
+
+	if (!anx_blk_ready())
+		return;
+
+	oid.hi = HIST_DISK_OID_HI;
+	oid.lo = HIST_DISK_OID_LO;
+	if (anx_disk_read_obj(&oid, &disk, sizeof(disk), &actual, &obj_type)
+	    != ANX_OK)
+		return;
+	if (disk.magic != HIST_MAGIC || actual < sizeof(disk))
+		return;
+
+	anx_memcpy(history, disk.entries, sizeof(history));
+	history_count = disk.count;
+	history_write = disk.write_idx;
+
+	/* Clamp to valid range */
+	if (history_count > HISTORY_SIZE)
+		history_count = HISTORY_SIZE;
+	if (history_write >= HISTORY_SIZE)
+		history_write = 0;
 }
 
 static void history_add(const char *line)
@@ -94,6 +169,8 @@ static void history_add(const char *line)
 	history_write = (history_write + 1) % HISTORY_SIZE;
 	if (history_count < HISTORY_SIZE)
 		history_count++;
+
+	history_save_to_disk();
 }
 
 /* Clear the current line on the terminal and redraw with new content */
@@ -256,13 +333,21 @@ static int parse_args(char *line, char **argv, int max_args)
 		if (*line == '\0')
 			break;
 
-		argv[argc++] = line;
-
-		/* Find end of token */
-		while (*line && *line != ' ' && *line != '\t')
-			line++;
-		if (*line)
-			*line++ = '\0';
+		if (*line == '"' || *line == '\'') {
+			/* Quoted argument: strip quotes, allow spaces inside */
+			char q = *line++;
+			argv[argc++] = line;
+			while (*line && *line != q)
+				line++;
+			if (*line)
+				*line++ = '\0';
+		} else {
+			argv[argc++] = line;
+			while (*line && *line != ' ' && *line != '\t')
+				line++;
+			if (*line)
+				*line++ = '\0';
+		}
 	}
 
 	return argc;
@@ -297,6 +382,14 @@ static void cmd_help(int argc, char **argv)
 	kputs("  model info|layers|diff|import  Model namespace\n");
 	kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
 	kputs("  echo <text...>             Print text ($? for return code)\n");
+	kputs("\nPipe filters (use with |):\n");
+	kputs("  grep [-v] [-i] <pattern>   Filter lines (v=invert, i=ignore-case)\n");
+	kputs("  head [-n N]                First N lines (default 10)\n");
+	kputs("  tail [-n N]                Last N lines (default 10)\n");
+	kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
+	kputs("  sort [-r]                  Sort piped lines (r=reverse)\n");
+	kputs("  history                    Show command history\n");
+	kputs("  date                       Show current date and time\n");
 	kputs("\nSubsystems:\n");
 	kputs("  help                       Show this help\n");
 	kputs("  version                    Show kernel version\n");
@@ -314,6 +407,10 @@ static void cmd_help(int argc, char **argv)
 	kputs("  engine list                List registered engines\n");
 	kputs("  cap create <name>          Create a capability (draft)\n");
 	kputs("  cap list                   List capabilities\n");
+	kputs("  cap validate <index>       Validate a draft capability\n");
+	kputs("  cap install <index>        Install a validated capability\n");
+	kputs("  rlm run [prompt]           Run a rollout with current adapter\n");
+	kputs("  rlm pal <i> <world> [s] [a] Feed rollout score to PAL\n");
 	kputs("  sched status               Show scheduler queue depths\n");
 	kputs("  net status                 Show network plane status\n");
 	kputs("  ping <ip>                  Send ICMP echo request\n");
@@ -324,6 +421,7 @@ static void cmd_help(int argc, char **argv)
 	kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
 	kputs("  secret revoke <name>       Revoke a credential\n");
 	kputs("  ask <message...>           Ask Claude a question\n");
+	kputs("  agent <goal...>            Run AI agent loop to complete a task\n");
 	kputs("  model-init <cred> <host> <port>  Configure model endpoint\n");
 	kputs("  hw-inventory               Show hardware summary\n");
 	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
@@ -356,7 +454,7 @@ static void cmd_version(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Anunix 2026.4.19 (kernel monitor)\n");
+	kprintf("Anunix 2026.4.29 (kernel monitor)\n");
 }
 
 /* --- Memory commands --- */
@@ -883,13 +981,316 @@ static void cmd_cap(int argc, char **argv)
 			if (cap) {
 				anx_uuid_to_string(&cap->cap_oid, buf,
 						   sizeof(buf));
-				kprintf("  %s  %s v%s  %s\n",
-					buf, cap->name, cap->version,
-					cap_status_name(cap->status));
+				kprintf("  [%u] %s  %s v%s  %s  score=%u\n",
+					i, buf, cap->name, cap->version,
+					cap_status_name(cap->status),
+					cap->validation_score);
 			}
 		}
+	} else if (anx_strcmp(argv[1], "validate") == 0) {
+		struct anx_capability *cap;
+		uint32_t idx;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: cap validate <index>\n");
+			return;
+		}
+		idx = (uint32_t)anx_strtoul(argv[2], NULL, 10);
+		if (idx >= shell_cap_count) {
+			kprintf("error: index %u out of range\n", idx);
+			return;
+		}
+		cap = anx_cap_lookup(&shell_cap_oids[idx]);
+		if (!cap) {
+			kputs("error: capability not found\n");
+			return;
+		}
+		ret = anx_cap_validate(cap);
+		if (ret != ANX_OK)
+			kprintf("validate failed (%d): score=%u\n",
+				ret, cap->validation_score);
+
+	} else if (anx_strcmp(argv[1], "install") == 0) {
+		struct anx_capability *cap;
+		uint32_t idx;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: cap install <index>\n");
+			return;
+		}
+		idx = (uint32_t)anx_strtoul(argv[2], NULL, 10);
+		if (idx >= shell_cap_count) {
+			kprintf("error: index %u out of range\n", idx);
+			return;
+		}
+		cap = anx_cap_lookup(&shell_cap_oids[idx]);
+		if (!cap) {
+			kputs("error: capability not found\n");
+			return;
+		}
+		ret = anx_cap_install(cap);
+		if (ret != ANX_OK)
+			kprintf("install failed (%d)\n", ret);
+		else
+			kprintf("installed: %s v%s\n", cap->name, cap->version);
+
 	} else {
-		kputs("usage: cap <create|list>\n");
+		kputs("usage: cap <create|list|validate|install> [args]\n");
+	}
+}
+
+/* --- JEPA commands --- */
+
+static void cmd_jepa(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: jepa <status|world|traj> [args]\n");
+		return;
+	}
+
+	/* jepa status */
+	if (anx_strcmp(argv[1], "status") == 0) {
+		static const char *const status_names[] = {
+			"uninitialized", "initializing", "ready",
+			"training", "degraded", "unavailable",
+		};
+		enum anx_jepa_status st = anx_jepa_status_get();
+		const char *st_name = ((unsigned)st < 6) ? status_names[st] : "?";
+
+		kprintf("jepa: status=%s available=%s train_steps=%u\n",
+			st_name,
+			anx_jepa_available() ? "yes" : "no",
+			anx_jepa_get_train_step_count());
+
+		if (anx_jepa_available()) {
+			const struct anx_jepa_world_profile *w =
+				anx_jepa_world_get_active();
+			if (w)
+				kprintf("jepa: world=%s obs_dim=%u "
+					"latent_dim=%u actions=%u\n",
+					w->uri, w->arch.obs_dim,
+					w->arch.latent_dim, w->action_count);
+		}
+		return;
+	}
+
+	/* jepa world [list|active|set <uri>] */
+	if (anx_strcmp(argv[1], "world") == 0) {
+		if (argc < 3 || anx_strcmp(argv[2], "list") == 0) {
+			const char *uris[ANX_JEPA_MAX_WORLDS];
+			uint32_t found = 0, i;
+
+			anx_jepa_world_list(uris, ANX_JEPA_MAX_WORLDS, &found);
+			kprintf("jepa: %u registered world(s):\n", found);
+			for (i = 0; i < found; i++)
+				kprintf("  %s\n", uris[i]);
+			return;
+		}
+
+		if (anx_strcmp(argv[2], "active") == 0) {
+			const struct anx_jepa_world_profile *w =
+				anx_jepa_world_get_active();
+			if (!w) {
+				kputs("jepa: no active world\n");
+				return;
+			}
+			kprintf("jepa: active world=%s\n", w->uri);
+			kprintf("  display_name=%s\n", w->display_name);
+			kprintf("  obs_dim=%u latent_dim=%u "
+				"action_count=%u\n",
+				w->arch.obs_dim, w->arch.latent_dim,
+				w->action_count);
+			kprintf("  collect_obs=%s\n",
+				w->collect_obs ? "registered" : "(stub)");
+			return;
+		}
+
+		if (anx_strcmp(argv[2], "set") == 0) {
+			int ret;
+
+			if (argc < 4) {
+				kputs("usage: jepa world set <uri>\n");
+				return;
+			}
+			ret = anx_jepa_world_set_active(argv[3]);
+			if (ret != ANX_OK)
+				kprintf("jepa: world set failed (%d)\n", ret);
+			else
+				kprintf("jepa: active world → %s\n", argv[3]);
+			return;
+		}
+
+		kputs("usage: jepa world [list|active|set <uri>]\n");
+		return;
+	}
+
+	/* jepa traj [count|reset|dump] */
+	if (anx_strcmp(argv[1], "traj") == 0) {
+		const char *sub = (argc >= 3) ? argv[2] : "count";
+
+		if (anx_strcmp(sub, "reset") == 0) {
+			anx_jepa_traj_reset();
+			kputs("jepa: trajectory ring buffer cleared\n");
+			return;
+		}
+
+		if (anx_strcmp(sub, "count") == 0 ||
+		    anx_strcmp(sub, "dump") == 0) {
+			uint8_t  *buf;
+			uint32_t  written = 0;
+			uint32_t  buf_size = 32768;
+			int ret;
+
+			buf = (uint8_t *)anx_alloc(buf_size);
+			if (!buf) {
+				kputs("jepa: out of memory\n");
+				return;
+			}
+
+			ret = anx_jepa_export_trajectory(buf, buf_size,
+							  &written);
+
+			if (ret == ANX_ENOENT) {
+				kputs("jepa: trajectory ring buffer is empty\n");
+				anx_free(buf);
+				return;
+			}
+			if (ret != ANX_OK) {
+				kprintf("jepa: export failed (%d)\n", ret);
+				anx_free(buf);
+				return;
+			}
+
+			if (anx_strcmp(sub, "count") == 0) {
+				const struct anx_jepa_traj_header *h =
+					(const struct anx_jepa_traj_header *)buf;
+				kprintf("jepa: trajectory entries=%u "
+					"(%u bytes)\n",
+					h->entry_count, written);
+				anx_free(buf);
+				return;
+			}
+
+			/* dump: store as state object, print OID */
+			{
+				struct anx_so_create_params params;
+				struct anx_state_object     *obj;
+
+				anx_memset(&params, 0, sizeof(params));
+				params.object_type  = ANX_OBJ_BYTE_DATA;
+				params.schema_uri   = "anx:schema/jepa-trajectory/v1";
+				params.payload      = buf;
+				params.payload_size = written;
+
+				ret = anx_so_create(&params, &obj);
+				anx_free(buf);
+				if (ret != ANX_OK) {
+					kprintf("jepa: store failed (%d)\n",
+						ret);
+					return;
+				}
+				kprintf("jepa: trajectory stored: "
+					"%016llx%016llx (%u bytes)\n",
+					(unsigned long long)obj->oid.hi,
+					(unsigned long long)obj->oid.lo,
+					written);
+				anx_objstore_release(obj);
+			}
+			return;
+		}
+
+		kputs("usage: jepa traj [count|reset|dump]\n");
+		return;
+	}
+
+	kputs("usage: jepa <status|world|traj> [args]\n");
+}
+
+/* --- RLM commands --- */
+
+#define MAX_SHELL_ROLLOUTS 8
+static struct anx_rlm_rollout *shell_rollouts[MAX_SHELL_ROLLOUTS];
+static uint32_t shell_rollout_count;
+
+static void cmd_rlm(int argc, char **argv)
+{
+	if (argc < 2) {
+		kputs("usage: rlm <run|pal> [args]\n");
+		return;
+	}
+
+	if (anx_strcmp(argv[1], "run") == 0) {
+		const char *text = argc >= 3 ? argv[2] : "hello";
+		struct anx_so_create_params params;
+		struct anx_state_object *obj;
+		struct anx_rlm_config cfg;
+		struct anx_rlm_rollout *r;
+		anx_oid_t prompt_oid;
+		int ret;
+
+		anx_memset(&params, 0, sizeof(params));
+		params.object_type  = ANX_OBJ_BYTE_DATA;
+		params.payload      = text;
+		params.payload_size = (uint32_t)anx_strlen(text);
+		ret = anx_so_create(&params, &obj);
+		if (ret != ANX_OK) {
+			kprintf("error: prompt create failed (%d)\n", ret);
+			return;
+		}
+		prompt_oid = obj->oid;
+		anx_objstore_release(obj);
+
+		anx_rlm_config_default(&cfg);
+		cfg.max_steps = 4;
+		cfg.admit_responses = false;
+
+		ret = anx_rlm_rollout_create(&prompt_oid, &cfg, &r);
+		if (ret != ANX_OK) {
+			kprintf("error: rollout create failed (%d)\n", ret);
+			return;
+		}
+
+		ret = anx_rlm_rollout_run(r);
+		kprintf("rollout [%u]: status=%d steps=%u in=%d out=%d\n",
+			shell_rollout_count, r->status, r->step_count,
+			r->total_input_tokens, r->total_output_tokens);
+
+		if (shell_rollout_count < MAX_SHELL_ROLLOUTS)
+			shell_rollouts[shell_rollout_count++] = r;
+
+	} else if (anx_strcmp(argv[1], "pal") == 0) {
+		struct anx_rlm_rollout *r;
+		const char *world;
+		uint32_t idx, action_id;
+		int32_t score;
+		int ret;
+
+		if (argc < 4) {
+			kputs("usage: rlm pal <index> <world-uri> [score] [action-id]\n");
+			return;
+		}
+		idx = (uint32_t)anx_strtoul(argv[2], NULL, 10);
+		if (idx >= shell_rollout_count) {
+			kprintf("error: index %u out of range\n", idx);
+			return;
+		}
+		r = shell_rollouts[idx];
+		world = argv[3];
+		score = argc >= 5 ? (int32_t)anx_strtoul(argv[4], NULL, 10) : 50;
+		action_id = argc >= 6 ? (uint32_t)anx_strtoul(argv[5], NULL, 10) : 0;
+
+		anx_rlm_rollout_set_score(r, score);
+		ret = anx_rlm_pal_feedback(r, world, action_id);
+		if (ret != ANX_OK)
+			kprintf("pal feedback failed (%d)\n", ret);
+		else
+			kprintf("pal updated: world=%s action=%u score=%d\n",
+				world, action_id, (int)score);
+
+	} else {
+		kputs("usage: rlm <run|pal> [args]\n");
 	}
 }
 
@@ -1262,6 +1663,8 @@ static void cmd_secret(int argc, char **argv)
 
 /* --- Model commands --- */
 
+static void execute_line(const char *input);	/* forward */
+
 static void cmd_model_init(int argc, char **argv)
 {
 	struct anx_model_endpoint ep;
@@ -1345,6 +1748,168 @@ static void cmd_ask(int argc, char **argv)
 			resp.input_tokens, resp.output_tokens);
 	}
 	anx_model_response_free(&resp);
+}
+
+/* --- Agent: iterative LLM + shell execution loop --- */
+
+#define AGENT_MAX_ITERS	8
+#define AGENT_HIST_SZ	3072
+#define AGENT_CAP_SZ	2048
+
+static const char *const AGENT_SYS =
+	"You are a shell agent inside Anunix OS. "
+	"CRITICAL: Your ENTIRE response must be ONE LINE ONLY — no newlines, no extra text. "
+	"Output EITHER 'CMD: <shell-command>' (runs the command and shows you the output) "
+	"OR 'DONE: <brief summary>' (terminates the session). "
+	"Anunix commands: ls [ns:path], cat <path>, write <path> <data>, "
+	"echo <text>, grep <pattern>, head [-N], tail [-N], wc, sort [-r], "
+	"sysinfo, netinfo, date, history, tensor, cells, loop, state, disk. "
+	"Wait to see real output before drawing conclusions. Do not fabricate output.";
+
+static void cmd_agent(int argc, char **argv)
+{
+	char   goal[512];
+	char  *hist;
+	char  *capture;
+	uint32_t hist_off = 0;
+	int    iter, i;
+
+	if (!anx_model_client_ready()) {
+		kputs("model not configured (use 'model-init' first)\n");
+		return;
+	}
+	if (argc < 2) {
+		kputs("usage: agent <goal text...>\n");
+		return;
+	}
+
+	/* Build goal string from args */
+	{
+		uint32_t off = 0;
+		for (i = 1; i < argc && off < sizeof(goal) - 2; i++) {
+			uint32_t l = (uint32_t)anx_strlen(argv[i]);
+			if (i > 1 && off < sizeof(goal) - 1)
+				goal[off++] = ' ';
+			if (off + l >= sizeof(goal) - 1)
+				l = (uint32_t)(sizeof(goal) - 1 - off);
+			anx_memcpy(goal + off, argv[i], l);
+			off += l;
+		}
+		goal[off] = '\0';
+	}
+
+	hist = anx_alloc(AGENT_HIST_SZ);
+	capture = anx_alloc(AGENT_CAP_SZ);
+	if (!hist || !capture) {
+		anx_free(hist);
+		anx_free(capture);
+		kprintf("agent: out of memory\n");
+		return;
+	}
+
+	kprintf("agent: goal=\"%s\"\n", goal);
+
+	/* Seed history with goal */
+	hist_off = (uint32_t)anx_strlen(goal);
+	if (hist_off >= AGENT_HIST_SZ - 1)
+		hist_off = AGENT_HIST_SZ - 2;
+	anx_memcpy(hist, goal, hist_off);
+	hist[hist_off++] = '\n';
+	hist[hist_off]   = '\0';
+
+	for (iter = 0; iter < AGENT_MAX_ITERS; iter++) {
+		struct anx_model_request  req;
+		struct anx_model_response resp;
+		int ret;
+
+		anx_memset(&req, 0, sizeof(req));
+		req.model       = "claude-haiku-4-5-20251001";
+		req.system      = AGENT_SYS;
+		req.user_message = hist;
+		req.max_tokens  = 128;
+
+		ret = anx_model_call(&req, &resp);
+		if (ret != ANX_OK) {
+			kprintf("agent: model error (%d)\n", ret);
+			break;
+		}
+		if (!resp.content) {
+			kprintf("agent: empty response\n");
+			anx_model_response_free(&resp);
+			break;
+		}
+
+		/* Truncate to first line — model must respond with one line */
+		{
+			char *nl = resp.content;
+			while (*nl && *nl != '\n' && *nl != '\r')
+				nl++;
+			*nl = '\0';
+		}
+
+		kprintf("agent[%d]: %s\n", iter + 1, resp.content);
+
+		if (anx_strncmp(resp.content, "DONE:", 5) == 0) {
+			anx_model_response_free(&resp);
+			break;
+		}
+
+		if (anx_strncmp(resp.content, "CMD:", 4) == 0) {
+			const char *cmd = resp.content + 4;
+			uint32_t cap;
+			struct anx_capture_state outer;
+
+			while (*cmd == ' ')
+				cmd++;
+
+			/* Capture command output without disrupting caller's capture */
+			anx_kprintf_capture_save(&outer);
+			anx_kprintf_capture_start(capture, AGENT_CAP_SZ);
+			execute_line(cmd);
+			cap = anx_kprintf_capture_stop();
+			anx_kprintf_capture_restore(&outer);
+
+			if (cap >= AGENT_CAP_SZ)
+				cap = AGENT_CAP_SZ - 1;
+			capture[cap] = '\0';
+
+			/* Show output to user too */
+			kprintf("  -> %s", capture[0] ? capture : "(empty)\n");
+
+			/* Append cmd + truncated output to history */
+			{
+				uint32_t rem = AGENT_HIST_SZ - hist_off - 1;
+				uint32_t n;
+
+				n = (uint32_t)anx_strlen(cmd);
+				if (n + 6 < rem) {
+					anx_memcpy(hist + hist_off, "CMD: ", 5);
+					hist_off += 5;
+					anx_memcpy(hist + hist_off, cmd, n);
+					hist_off += n;
+					hist[hist_off++] = '\n';
+				}
+				rem = AGENT_HIST_SZ - hist_off - 1;
+				n = cap < rem ? cap : rem;
+				if (n > 512)
+					n = 512;	/* cap per-step output in history */
+				if (n > 0) {
+					anx_memcpy(hist + hist_off, "OUTPUT: ", 8);
+					hist_off += 8;
+					anx_memcpy(hist + hist_off, capture, n);
+					hist_off += n;
+					if (hist[hist_off - 1] != '\n')
+						hist[hist_off++] = '\n';
+				}
+				hist[hist_off] = '\0';
+			}
+		}
+
+		anx_model_response_free(&resp);
+	}
+
+	anx_free(hist);
+	anx_free(capture);
 }
 
 /* --- HW Inventory --- */
@@ -1704,6 +2269,279 @@ static void cmd_pci(int argc, char **argv)
 
 static int last_return_code;	/* $? */
 
+/* --- Pipe-aware filter commands --- */
+
+static char to_lower(char c)
+{
+	return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+}
+
+/* Substring search within a length-bounded string, optionally case-insensitive */
+static bool line_contains(const char *line, uint32_t len, const char *pat,
+			   bool ignore_case)
+{
+	uint32_t plen = (uint32_t)anx_strlen(pat);
+	uint32_t i, j;
+
+	if (plen == 0 || plen > len)
+		return plen == 0;
+
+	for (i = 0; i + plen <= len; i++) {
+		bool match = true;
+		for (j = 0; j < plen; j++) {
+			char a = ignore_case ? to_lower(line[i + j]) : line[i + j];
+			char b = ignore_case ? to_lower(pat[j]) : pat[j];
+			if (a != b) {
+				match = false;
+				break;
+			}
+		}
+		if (match)
+			return true;
+	}
+	return false;
+}
+
+/* Print a length-bounded line (kprintf doesn't support %.*s) */
+static void print_line(const char *s, uint32_t len)
+{
+	char buf[256];
+	uint32_t copy = len < sizeof(buf) - 2 ? len : sizeof(buf) - 2;
+
+	anx_memcpy(buf, s, copy);
+	buf[copy]     = '\n';
+	buf[copy + 1] = '\0';
+	kprintf("%s", buf);
+}
+
+static void cmd_grep(int argc, char **argv)
+{
+	const char *pattern = NULL;
+	const char *p;
+	bool invert = false;
+	bool ignore_case = false;
+	int i;
+
+	/* Parse flags: -v (invert), -i (case-insensitive) */
+	for (i = 1; i < argc; i++) {
+		if (argv[i][0] == '-' && argv[i][1] != '\0') {
+			const char *f = argv[i] + 1;
+			while (*f) {
+				if (*f == 'v') invert = true;
+				else if (*f == 'i') ignore_case = true;
+				f++;
+			}
+		} else if (!pattern) {
+			pattern = argv[i];
+		}
+	}
+
+	if (!pattern) {
+		kprintf("usage: grep [-v] [-i] <pattern>\n");
+		return;
+	}
+
+	if (!g_pipe_stdin) {
+		kprintf("grep: no piped input\n");
+		return;
+	}
+
+	p = g_pipe_stdin;
+	while (*p) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		{
+			bool found = line_contains(start, len, pattern,
+						   ignore_case);
+			if (found != invert)
+				print_line(start, len);
+		}
+		if (*p == '\n')
+			p++;
+	}
+}
+
+static void cmd_head(int argc, char **argv)
+{
+	int n = 10;
+	const char *p;
+	int count = 0;
+
+	if (argc >= 3 && anx_strcmp(argv[1], "-n") == 0)
+		n = (int)anx_strtoul(argv[2], NULL, 10);
+	else if (argc >= 2 && argv[1][0] == '-' && argv[1][1] >= '1')
+		n = (int)anx_strtoul(argv[1] + 1, NULL, 10);
+
+	if (!g_pipe_stdin) {
+		kprintf("head: no piped input\n");
+		return;
+	}
+
+	p = g_pipe_stdin;
+	while (*p && count < n) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		print_line(start, len);
+		if (*p == '\n')
+			p++;
+		count++;
+	}
+}
+
+static void cmd_tail(int argc, char **argv)
+{
+	int n = 10;
+	const char *p;
+	const char *lines[64];
+	uint32_t lens[64];
+	int total = 0, i;
+
+	if (argc >= 3 && anx_strcmp(argv[1], "-n") == 0)
+		n = (int)anx_strtoul(argv[2], NULL, 10);
+	else if (argc >= 2 && argv[1][0] == '-' && argv[1][1] >= '1')
+		n = (int)anx_strtoul(argv[1] + 1, NULL, 10);
+	if (n > 64) n = 64;
+
+	if (!g_pipe_stdin) {
+		kprintf("tail: no piped input\n");
+		return;
+	}
+
+	/* Collect all lines (ring buffer of last n) */
+	p = g_pipe_stdin;
+	while (*p) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		lines[total % 64] = start;
+		lens[total % 64]  = len;
+		total++;
+		if (*p == '\n')
+			p++;
+	}
+
+	{
+		int start_idx = total > n ? total - n : 0;
+		for (i = start_idx; i < total; i++) {
+			int slot = i % 64;
+			print_line(lines[slot], lens[slot]);
+		}
+	}
+}
+
+static void cmd_wc(int argc, char **argv)
+{
+	const char *p;
+	uint32_t lines = 0, words = 0, chars = 0;
+	bool in_word = false;
+	bool count_lines = false, count_words = false, count_chars = false;
+	int i;
+
+	for (i = 1; i < argc; i++) {
+		if (anx_strcmp(argv[i], "-l") == 0) count_lines = true;
+		else if (anx_strcmp(argv[i], "-w") == 0) count_words = true;
+		else if (anx_strcmp(argv[i], "-c") == 0) count_chars = true;
+	}
+	if (!count_lines && !count_words && !count_chars)
+		count_lines = count_words = count_chars = true;
+
+	if (!g_pipe_stdin) {
+		kprintf("wc: no piped input\n");
+		return;
+	}
+
+	p = g_pipe_stdin;
+	while (*p) {
+		chars++;
+		if (*p == '\n') {
+			lines++;
+			in_word = false;
+		} else if (*p == ' ' || *p == '\t') {
+			in_word = false;
+		} else {
+			if (!in_word) { words++; in_word = true; }
+		}
+		p++;
+	}
+
+	if (count_lines) kprintf("%u", lines);
+	if (count_words) kprintf(count_lines ? " %u" : "%u", words);
+	if (count_chars) kprintf((count_lines || count_words) ? " %u" : "%u", chars);
+	kprintf("\n");
+}
+
+#define SORT_MAX_LINES	256
+#define SORT_LINE_BUF	(SORT_MAX_LINES * 128)
+
+static void cmd_sort(int argc, char **argv)
+{
+	static char   sort_buf[SORT_LINE_BUF];
+	static const char *lines[SORT_MAX_LINES];
+	static uint32_t    lens[SORT_MAX_LINES];
+	uint32_t nlines = 0;
+	uint32_t buf_used = 0;
+	const char *p;
+	bool reverse = false;
+	int i;
+
+	for (i = 1; i < argc; i++) {
+		if (anx_strcmp(argv[i], "-r") == 0)
+			reverse = true;
+	}
+
+	if (!g_pipe_stdin) {
+		kprintf("sort: no piped input\n");
+		return;
+	}
+
+	/* Copy lines into sort_buf, record pointers */
+	p = g_pipe_stdin;
+	while (*p && nlines < SORT_MAX_LINES) {
+		const char *start = p;
+		uint32_t len = 0;
+
+		while (*p && *p != '\n') { p++; len++; }
+		if (*p == '\n') p++;
+
+		if (buf_used + len + 1 >= SORT_LINE_BUF)
+			break;
+
+		anx_memcpy(sort_buf + buf_used, start, len);
+		sort_buf[buf_used + len] = '\0';
+		lines[nlines] = sort_buf + buf_used;
+		lens[nlines]  = len;
+		buf_used += len + 1;
+		nlines++;
+	}
+
+	/* Insertion sort (small N) */
+	for (i = 1; i < (int)nlines; i++) {
+		const char *key  = lines[i];
+		uint32_t    klen = lens[i];
+		int j = i - 1;
+
+		while (j >= 0) {
+			int cmp = anx_strcmp(lines[j], key);
+			/* ascending: stop when lines[j] <= key; reverse: when >= key */
+			if (reverse ? cmp >= 0 : cmp <= 0)
+				break;
+			lines[j + 1] = lines[j];
+			lens[j + 1]  = lens[j];
+			j--;
+		}
+		lines[j + 1] = key;
+		lens[j + 1]  = klen;
+	}
+
+	for (i = 0; i < (int)nlines; i++)
+		print_line(lines[i], lens[i]);
+}
+
 /* --- Command dispatch --- */
 
 static void dispatch(int argc, char **argv)
@@ -1720,6 +2558,39 @@ static void dispatch(int argc, char **argv)
 		cmd_cat(argc, argv);
 	} else if (anx_strcmp(argv[0], "write") == 0) {
 		cmd_write_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "edit") == 0) {
+		/* edit [ns:]<path>  — open text editor for a state object */
+		if (argc < 2) {
+			kprintf("usage: edit [ns:]<path>\n");
+		} else if (!anx_fb_available()) {
+			kprintf("edit: requires framebuffer (GUI mode)\n");
+		} else {
+			const char *arg = argv[1];
+			const char *colon = arg;
+			static char ns_buf[32];
+			static char path_buf[96];
+
+			while (*colon && *colon != ':')
+				colon++;
+
+			if (*colon == ':') {
+				uint32_t nlen = (uint32_t)(colon - arg);
+				if (nlen < sizeof(ns_buf)) {
+					anx_memcpy(ns_buf, arg, nlen);
+					ns_buf[nlen] = '\0';
+				} else {
+					anx_strlcpy(ns_buf, "default",
+						    sizeof(ns_buf));
+				}
+				anx_strlcpy(path_buf, colon + 1,
+					    sizeof(path_buf));
+			} else {
+				anx_strlcpy(ns_buf, "default",
+					    sizeof(ns_buf));
+				anx_strlcpy(path_buf, arg, sizeof(path_buf));
+			}
+			anx_wm_terminal_edit(ns_buf, path_buf);
+		}
 	} else if (anx_strcmp(argv[0], "cp") == 0) {
 		cmd_cp(argc, argv);
 	} else if (anx_strcmp(argv[0], "mv") == 0) {
@@ -1791,6 +2662,8 @@ static void dispatch(int argc, char **argv)
 			kputs("usage: ping <ip>\n");
 	} else if (anx_strcmp(argv[0], "ask") == 0) {
 		cmd_ask(argc, argv);
+	} else if (anx_strcmp(argv[0], "agent") == 0) {
+		cmd_agent(argc, argv);
 	} else if (anx_strcmp(argv[0], "model-init") == 0) {
 		cmd_model_init(argc, argv);
 	} else if (anx_strcmp(argv[0], "hw-inventory") == 0) {
@@ -1928,6 +2801,10 @@ static void dispatch(int argc, char **argv)
 		cmd_vm(argc, argv);
 	} else if (anx_strcmp(argv[0], "workflow") == 0) {
 		cmd_workflow(argc, argv);
+	} else if (anx_strcmp(argv[0], "rlm") == 0) {
+		cmd_rlm(argc, argv);
+	} else if (anx_strcmp(argv[0], "jepa") == 0) {
+		cmd_jepa(argc, argv);
 	} else if (anx_strcmp(argv[0], "loop") == 0) {
 		anx_loop_shell_dispatch(argc, (const char *const *)argv);
 	} else if (anx_strcmp(argv[0], "theme") == 0) {
@@ -1938,6 +2815,36 @@ static void dispatch(int argc, char **argv)
 		last_return_code = cmd_mode(argc, argv);
 	} else if (anx_strcmp(argv[0], "kickstart") == 0) {
 		cmd_kickstart(argc, argv);
+	} else if (anx_strcmp(argv[0], "grep") == 0) {
+		cmd_grep(argc, argv);
+	} else if (anx_strcmp(argv[0], "head") == 0) {
+		cmd_head(argc, argv);
+	} else if (anx_strcmp(argv[0], "tail") == 0) {
+		cmd_tail(argc, argv);
+	} else if (anx_strcmp(argv[0], "wc") == 0) {
+		cmd_wc(argc, argv);
+	} else if (anx_strcmp(argv[0], "sort") == 0) {
+		cmd_sort(argc, argv);
+	} else if (anx_strcmp(argv[0], "date") == 0) {
+		char time_buf[16];
+		char date_buf[16];
+		uint32_t unix_ts = anx_ntp_unix_time();
+
+		anx_gui_get_time(time_buf, sizeof(time_buf));
+		anx_gui_get_date(date_buf, sizeof(date_buf));
+		if (unix_ts)
+			kprintf("%s %s  (unix %u)\n", date_buf, time_buf, unix_ts);
+		else
+			kprintf("%s %s\n", date_buf, time_buf);
+	} else if (anx_strcmp(argv[0], "history") == 0) {
+		uint32_t i;
+		uint32_t start = history_write >= history_count
+			? history_write - history_count
+			: HISTORY_SIZE + history_write - history_count;
+		for (i = 0; i < history_count; i++) {
+			uint32_t idx = (start + i) % HISTORY_SIZE;
+			kprintf("%3u  %s\n", (unsigned)(i + 1), history[idx]);
+		}
 	} else {
 		kprintf("unknown command: %s (type 'help')\n", argv[0]);
 		last_return_code = -1;
@@ -1952,8 +2859,90 @@ static void execute_line(const char *input)
 	char line_copy[MAX_LINE];
 	char *argv[MAX_ARGS];
 	int argc;
+	char *pipe_pos;
 
 	anx_strlcpy(line_copy, input, MAX_LINE);
+
+	/* Detect pipe operator */
+	pipe_pos = line_copy;
+	while (*pipe_pos && *pipe_pos != '|')
+		pipe_pos++;
+
+	if (*pipe_pos == '|') {
+		char *segs[MAX_PIPE_STAGES];
+		int nseg = 0;
+		char *p = line_copy;
+		char *bufa, *bufb;
+		char *cur_out, *cur_in;
+		uint32_t cur_in_len;
+		struct anx_capture_state outer;
+		int i;
+
+		/* Split line by '|' into segments */
+		segs[nseg++] = p;
+		while (*p && nseg < MAX_PIPE_STAGES) {
+			if (*p == '|') {
+				*p = '\0';
+				segs[nseg++] = p + 1;
+			}
+			p++;
+		}
+		for (i = 0; i < nseg; i++) {
+			while (*segs[i] == ' ')
+				segs[i]++;
+		}
+
+		/* Two ping-pong buffers for intermediate captures */
+		bufa = anx_alloc(PIPE_CAP_SZ);
+		bufb = anx_alloc(PIPE_CAP_SZ);
+		if (!bufa || !bufb) {
+			anx_free(bufa);
+			anx_free(bufb);
+			kprintf("pipe: out of memory\n");
+			return;
+		}
+
+		anx_kprintf_capture_save(&outer);
+
+		cur_out    = bufa;
+		cur_in     = NULL;
+		cur_in_len = 0;
+
+		for (i = 0; i < nseg; i++) {
+			bool last = (i == nseg - 1);
+
+			g_pipe_stdin     = cur_in;
+			g_pipe_stdin_len = cur_in_len;
+
+			if (!last) {
+				anx_kprintf_capture_start(cur_out, PIPE_CAP_SZ);
+			} else {
+				/* Last stage: output goes back to caller */
+				anx_kprintf_capture_restore(&outer);
+			}
+
+			argc = parse_args(segs[i], argv, MAX_ARGS);
+			if (argc > 0)
+				dispatch(argc, argv);
+
+			if (!last) {
+				uint32_t cap = anx_kprintf_capture_stop();
+				if (cap >= PIPE_CAP_SZ)
+					cap = PIPE_CAP_SZ - 1;
+				cur_out[cap] = '\0';
+				cur_in     = cur_out;
+				cur_in_len = cap;
+				cur_out    = (cur_out == bufa) ? bufb : bufa;
+			}
+		}
+
+		g_pipe_stdin     = NULL;
+		g_pipe_stdin_len = 0;
+		anx_free(bufa);
+		anx_free(bufb);
+		return;
+	}
+
 	argc = parse_args(line_copy, argv, MAX_ARGS);
 	if (argc > 0)
 		dispatch(argc, argv);
@@ -1961,6 +2950,14 @@ static void execute_line(const char *input)
 
 void anx_shell_execute(const char *command)
 {
+	static bool history_loaded;
+
+	if (!history_loaded) {
+		history_loaded = true;
+		history_load_from_disk();
+	}
+	if (command && command[0])
+		history_add(command);
 	execute_line(command);
 }
 
@@ -1970,6 +2967,7 @@ void anx_shell_run(void)
 	char *argv[MAX_ARGS];
 	int argc;
 
+	history_load_from_disk();
 	kputs("\nansh ready. Type 'help' for commands.\n\n");
 
 	for (;;) {

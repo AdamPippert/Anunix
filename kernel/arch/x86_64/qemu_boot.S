@@ -15,7 +15,16 @@
  */
 
 .set MAGIC,	0x1BADB002
-.set FLAGS,	0x00000003	/* align modules + meminfo (no VBE — QEMU 10.x rejects bit 2) */
+/*
+ * FLAGS bits:
+ *   bit 0 (0x1) — align modules on 4 KiB pages
+ *   bit 1 (0x2) — provide memory map
+ *
+ * Bit 2 (framebuffer request) is intentionally omitted: some QEMU builds
+ * reject it and abort. The kernel detects the Bochs VBE framebuffer directly
+ * via I/O port probing (fb_detect_bochs) which works with -vga std.
+ */
+.set FLAGS,	0x00000003
 .set CHECKSUM,	-(MAGIC + FLAGS)
 
 /* --- Multiboot header (must be in first 8 KiB) --- */
@@ -24,12 +33,17 @@
 	.long MAGIC
 	.long FLAGS
 	.long CHECKSUM
-	/* Address fields (unused — ELF headers used instead) */
+	/* Address fields (unused — ELF headers used instead; required before video fields) */
 	.long 0			/* header_addr */
 	.long 0			/* load_addr */
 	.long 0			/* load_end_addr */
 	.long 0			/* bss_end_addr */
 	.long 0			/* entry_addr */
+	/* Video mode fields (FLAGS bit 2) — 0 = any linear-framebuffer mode */
+	.long 0			/* mode_type: 0 = linear graphics */
+	.long 0			/* width:     0 = no preference */
+	.long 0			/* height:    0 = no preference */
+	.long 0			/* depth:     0 = no preference */
 
 /* --- 32-bit entry point --- */
 .section .text
@@ -242,14 +256,14 @@ trampoline:
 	xorq	%r9, %r9		/* r9 = framebuffer_addr (0 = none) */
 	xorl	%r10d, %r10d		/* r10d = pitch */
 	xorl	%r11d, %r11d		/* r11d = width */
-	movq	$0, %rcx		/* rcx = height (reuse below) */
+	xorl	%r14d, %r14d		/* r14d = height (0 = unknown) */
 
 	testl	$(1 << 12), %r8d	/* framebuffer field present? */
 	jz	.Lno_fb
 	movq	88(%rbx), %r9		/* framebuffer_addr */
 	movl	96(%rbx), %r10d		/* pitch */
 	movl	100(%rbx), %r11d	/* width */
-	movl	104(%rbx), %ecx		/* height (discard — not needed) */
+	movl	104(%rbx), %r14d	/* height */
 	movzbl	108(%rbx), %eax		/* bpp */
 	movl	%eax, %r12d		/* save bpp */
 	movzbl	109(%rbx), %eax		/* type */
@@ -273,7 +287,7 @@ trampoline:
 	movq	%r9, 0x1008		/* framebuffer_addr */
 	movl	%r10d, 0x1010		/* pitch */
 	movl	%r11d, 0x1014		/* width */
-	movl	$0, 0x1018		/* height (0 is fine — not used) */
+	movl	%r14d, 0x1018		/* height */
 	movb	%r12b, 0x101C		/* bpp */
 	movb	%r13b, 0x101D		/* type */
 	movq	%rcx, 0x1020		/* cmdline pointer */

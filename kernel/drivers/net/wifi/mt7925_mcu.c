@@ -231,7 +231,13 @@ static int mcu_wait_for(struct mt7925_dev *dev,
 			    txd->seq_num == seq)
 				return 0;
 		}
+#if defined(__x86_64__) || defined(__i386__)
 		__asm__ volatile("pause" ::: "memory");
+#elif defined(__aarch64__)
+		__asm__ volatile("wfe" ::: "memory");
+#else
+		__asm__ volatile("" ::: "memory");
+#endif
 	}
 	return -1;
 }
@@ -245,6 +251,12 @@ static int mcu_wait_for(struct mt7925_dev *dev,
 #define MCU_EXT_CMD_CHANNEL_SWITCH      0x34
 #define MCU_EXT_CMD_GET_MAC_INFO        0x3a
 
+int mt7925_mcu_send_cmd(struct mt7925_dev *dev, uint8_t ext_cid,
+			const void *payload, uint16_t payload_len)
+{
+	return mcu_send(dev, ext_cid, payload, payload_len);
+}
+
 int mt7925_mcu_connect(struct mt7925_dev *dev,
 		       const char *ssid, const char *psk)
 {
@@ -252,9 +264,9 @@ int mt7925_mcu_connect(struct mt7925_dev *dev,
 	int seq;
 
 	anx_memset(&bss, 0, sizeof(bss));
-	bss.bss_idx   = 0;
-	bss.net_type  = 1;  /* infrastructure (STA mode) */
-	bss.active    = 1;
+	bss.bss_idx    = 0;
+	bss.net_type   = 1;  /* infrastructure (STA mode) */
+	bss.active     = 1;
 	bss.encryption = (psk && psk[0]) ? 4 : 0;  /* 4 = WPA2-CCMP */
 
 	size_t slen = anx_strlen(ssid);
@@ -265,20 +277,25 @@ int mt7925_mcu_connect(struct mt7925_dev *dev,
 	kprintf("mt7925: connecting to \"%s\" (%s)\n",
 		ssid, psk ? "WPA2" : "open");
 
-	seq = mcu_send(dev, MCU_EXT_CMD_BSS_INFO_UPDATE,
-		       &bss, sizeof(bss));
+	seq = mcu_send(dev, MCU_EXT_CMD_BSS_INFO_UPDATE, &bss, sizeof(bss));
 	if (seq < 0) return -1;
 
-	/* Wait up to 10 seconds for association */
-	if (mcu_wait_for(dev, MCU_EXT_CMD_BSS_INFO_UPDATE,
-			 (uint16_t)seq, 10000000) != 0) {
-		kprintf("mt7925: connect timeout\n");
-		return -1;
+	/* Wait up to 5s for MCU to ack the BSS config, then proceed.
+	 * A timeout here is non-fatal — the MCU may already be scanning. */
+	mcu_wait_for(dev, MCU_EXT_CMD_BSS_INFO_UPDATE,
+		     (uint16_t)seq, 50000000);
+
+	if (psk && psk[0]) {
+		/* WPA2: drive the full 4-way handshake */
+		dev->state = MT7925_STATE_SCANNING;
+		return mt7925_wpa_connect(dev, ssid, psk);
 	}
 
-	/* Extract MAC from STA record event */
-	kprintf("mt7925: associated\n");
+	/* Open network: association is implicit in the MCU scan */
+	kprintf("mt7925: open network associated\n");
 	dev->state = MT7925_STATE_ASSOC;
+	if (mt7925_on_connect)
+		mt7925_on_connect(ssid);
 	return 0;
 }
 
@@ -293,4 +310,6 @@ void mt7925_mcu_disconnect(struct mt7925_dev *dev)
 	mcu_send(dev, MCU_EXT_CMD_BSS_INFO_UPDATE, &bss, sizeof(bss));
 	dev->state = MT7925_STATE_FW_UP;
 	kprintf("mt7925: disconnected\n");
+	if (mt7925_on_disconnect)
+		mt7925_on_disconnect();
 }

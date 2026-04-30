@@ -49,7 +49,7 @@ void anx_rlm_config_default(struct anx_rlm_config *cfg)
 	cfg->max_steps = 8;
 	cfg->max_tokens = 1024;
 	cfg->min_tokens = 256;
-	cfg->lambda_decay = 0.82f;
+	cfg->lambda_decay = 210;	/* 210/256 ≈ 0.82 */
 	cfg->persist_trace = true;
 	cfg->admit_responses = true;
 	cfg->priority = ANX_PRIO_NORMAL;
@@ -91,8 +91,7 @@ static int read_oid_text(const anx_oid_t *oid, char *buf,
 
 static uint32_t lambda_rlm_tokens_for_step(const struct anx_rlm_rollout *r)
 {
-	uint32_t step, tokens;
-	float decay;
+	uint32_t step, tokens, decay;
 
 	if (!r)
 		return 0;
@@ -101,11 +100,11 @@ static uint32_t lambda_rlm_tokens_for_step(const struct anx_rlm_rollout *r)
 		return 0;
 
 	decay = r->config.lambda_decay;
-	if (decay <= 0.0f || decay >= 1.0f)
+	if (decay == 0 || decay >= 256)
 		return tokens;
 
 	for (step = 0; step < r->step_count; step++)
-		tokens = (uint32_t)((float)tokens * decay);
+		tokens = (tokens * decay) >> 8;
 
 	if (r->config.min_tokens && tokens < r->config.min_tokens)
 		tokens = r->config.min_tokens;

@@ -46,6 +46,7 @@ enum anx_object_type {
 	ANX_OBJ_SCORE,			/* energy score from one EBM cell */
 	ANX_OBJ_PLAN,			/* committed or candidate action plan */
 	ANX_OBJ_COUNTEREXAMPLE,	/* rejected hypothesis (negative knowledge) */
+	ANX_OBJ_MEMORY_CONSOLIDATION,	/* RFC-0020 Phase 5: cross-session memory */
 
 	ANX_OBJ_TYPE_COUNT,
 };

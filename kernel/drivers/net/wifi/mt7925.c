@@ -161,7 +161,7 @@ int mt7925_tx_frame(struct mt7925_dev *dev, const void *frame, uint16_t len)
 {
 	(void)dev;
 
-	if (!g_ready || g_dev.state < MT7925_STATE_ASSOC)
+	if (!g_ready || g_dev.state < MT7925_STATE_SCANNING)
 		return ANX_EIO;
 	if (len > DATA_TX_BUF_SIZE)
 		return ANX_EINVAL;
@@ -193,6 +193,38 @@ int mt7925_tx_frame(struct mt7925_dev *dev, const void *frame, uint16_t len)
 /* ------------------------------------------------------------------ */
 /* RX path                                                             */
 /* ------------------------------------------------------------------ */
+
+/*
+ * Consume one frame from the data RX ring and return a pointer to it.
+ * The frame is valid until the next call to mt7925_data_rx_one().
+ * Does NOT call anx_eth_recv — caller decides what to do with the frame.
+ * Returns NULL if no frame is available.
+ */
+const uint8_t *mt7925_data_rx_one(struct mt7925_dev *dev, uint32_t *out_len)
+{
+	struct mt7925_dma_desc *desc;
+	uint32_t didx, cidx, len;
+	const uint8_t *buf;
+
+	(void)dev;
+	if (!g_ready) return NULL;
+
+	didx = nic_rd(MT_WFDMA0_RX_RING_DIDX(MT_DATA_RXRING));
+	cidx = rx_cidx % DATA_RX_RING_SIZE;
+	if (cidx == didx) return NULL;
+
+	desc = &data_rx_ring[cidx];
+	len  = desc->ctrl & MT_DMA_CTRL_SD_LEN0_MASK;
+	buf  = data_rx_bufs + cidx * DATA_RX_BUF_SIZE;
+
+	desc->ctrl = DATA_RX_BUF_SIZE | MT_DMA_CTRL_DMA_DONE;
+	rx_cidx++;
+	nic_wr(MT_WFDMA0_RX_RING_CIDX(MT_DATA_RXRING),
+	       rx_cidx % DATA_RX_RING_SIZE);
+
+	if (out_len) *out_len = len;
+	return buf;
+}
 
 void mt7925_rx_poll(struct mt7925_dev *dev)
 {
@@ -344,3 +376,11 @@ void anx_mt7925_info(void)
 		kprintf("mt7925: SSID \"%s\"\n", g_dev.ssid);
 	}
 }
+
+/* Default (no-op) implementations of the state-change hooks.
+ * Override these in higher-level code (e.g., wm.c) to add notifications. */
+void mt7925_on_connect(const char *ssid)    __attribute__((weak));
+void mt7925_on_connect(const char *ssid)    { (void)ssid; }
+
+void mt7925_on_disconnect(void)             __attribute__((weak));
+void mt7925_on_disconnect(void)             { }
