@@ -28,6 +28,7 @@ enum anx_ks_section {
 	ANX_KS_SECTION_CREDENTIALS,
 	ANX_KS_SECTION_WORKFLOWS,
 	ANX_KS_SECTION_DRIVERS,
+	ANX_KS_SECTION_UPDATES,
 };
 
 /* A single parsed key-value pair with its section */

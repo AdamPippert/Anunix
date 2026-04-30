@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Anunix superrouter — hardware profile library and driver stub registry.
+Anunix superrouter — workflow distribution, hardware profiles, and OS updates.
 
 HTTP/JSON API over SQLite. Standard library only.
-Default port: 8420. See RFC-0011 for full API specification.
+Default port: 8420.
 
 Usage:
-    python3 server.py [--port PORT] [--db PATH] [--admin-secret SECRET]
+    python3 server.py [--port PORT] [--db PATH] [--blobs DIR]
 """
 
 import hashlib
@@ -15,22 +15,58 @@ import json
 import logging
 import os
 import sqlite3
+import struct
 import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DEFAULT_PORT = 8420
 DEFAULT_DB = "/var/lib/anunix-superrouter/db.sqlite3"
-SCHEMA_FILE = Path(__file__).parent / "schema.sql"
+DEFAULT_BLOBS = "/var/lib/anunix-superrouter/blobs"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger("superrouter")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS workflows (
+    uri          TEXT PRIMARY KEY,
+    display_name TEXT,
+    description  TEXT,
+    blob_path    TEXT,
+    blob_size    INTEGER,
+    created_at   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tokens (
+    token_hash TEXT PRIMARY KEY,
+    label      TEXT,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS hw_profiles (
+    profile_id   TEXT PRIMARY KEY,
+    node_id      TEXT,
+    hostname     TEXT,
+    arch         TEXT,
+    submitted_at TEXT,
+    profile_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS updates (
+    channel   TEXT,
+    arch      TEXT,
+    version   TEXT,
+    blob_path TEXT,
+    blob_size INTEGER,
+    PRIMARY KEY (channel, arch)
+);
+"""
 
 
 def now_iso() -> str:
@@ -47,16 +83,26 @@ def open_db(path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
-    with open(SCHEMA_FILE) as f:
-        conn.executescript(f.read())
+    conn.executescript(SCHEMA)
     conn.commit()
     return conn
+
+
+def _check_token(db: sqlite3.Connection, headers) -> bool:
+    header = headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return False
+    h = hash_token(header[7:])
+    row = db.execute(
+        "SELECT token_hash FROM tokens WHERE token_hash=?", (h,)
+    ).fetchone()
+    return row is not None
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
 
     db: sqlite3.Connection
-    admin_secret: str
+    blobs_dir: str
 
     def log_message(self, fmt, *args):
         log.info("%s %s", self.address_string(), fmt % args)
@@ -69,290 +115,245 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def send_error_json(self, code: int, message: str):
+    def send_blob(self, code: int, data: bytes, content_type: str = "application/octet-stream"):
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def send_err(self, code: int, message: str):
         self.send_json(code, {"error": message})
 
-    def read_body(self) -> dict | None:
+    def read_raw(self) -> bytes:
         length = int(self.headers.get("Content-Length", 0))
         if not length:
+            return b""
+        return self.rfile.read(length)
+
+    def read_json(self):
+        data = self.read_raw()
+        if not data:
             return {}
         try:
-            return json.loads(self.rfile.read(length))
+            return json.loads(data)
         except json.JSONDecodeError:
             return None
 
-    def auth_node(self) -> str | None:
-        """Return node_id for a valid bearer token, or None."""
-        header = self.headers.get("Authorization", "")
-        if not header.startswith("Bearer "):
-            return None
-        raw = header[7:]
-        h = hash_token(raw)
-        row = self.db.execute(
-            "SELECT node_id FROM api_tokens WHERE token_hash=? AND revoked=0",
-            (h,)
-        ).fetchone()
-        if row:
-            self.db.execute(
-                "UPDATE api_tokens SET last_used=? WHERE token_hash=?",
-                (now_iso(), h)
-            )
-            self.db.commit()
-            return row["node_id"]
-        return None
-
-    def auth_admin(self) -> bool:
-        header = self.headers.get("Authorization", "")
-        if not header.startswith("Bearer "):
-            return False
-        return header[7:] == self.admin_secret
+    def authed(self) -> bool:
+        return _check_token(self.db, self.headers)
 
     # ------------------------------------------------------------------ #
-    # Routing                                                              #
+    # GET routing                                                          #
     # ------------------------------------------------------------------ #
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
-        qs = parse_qs(parsed.query)
+        path = parsed.path
 
-        if path == "/v1/health":
-            self.send_json(200, {"status": "ok", "version": VERSION})
+        # Public: workflow listing
+        if path == "/workflows/" or path == "/workflows":
+            self._get_workflow_list()
             return
 
-        node_id = self.auth_node()
-        if not node_id:
-            self.send_error_json(401, "unauthorized")
+        # Public: fetch individual workflow blob
+        if path.startswith("/workflows/"):
+            uri = path[len("/workflows/"):]
+            if uri:
+                self._get_workflow(uri)
+                return
+
+        # Public: OS updates
+        if path.startswith("/updates/"):
+            self._get_update(path)
             return
 
-        if path.startswith("/v1/profiles"):
-            self._get_profiles(path, qs)
-        elif path.startswith("/v1/stubs"):
-            self._get_stubs(path, qs)
+        self.send_err(404, "not found")
+
+    def _get_workflow_list(self):
+        rows = self.db.execute("SELECT uri FROM workflows ORDER BY uri").fetchall()
+        self.send_json(200, [r["uri"] for r in rows])
+
+    def _get_workflow(self, uri: str):
+        row = self.db.execute(
+            "SELECT blob_path FROM workflows WHERE uri=?", (uri,)
+        ).fetchone()
+        if not row:
+            self.send_err(404, "workflow not found")
+            return
+        try:
+            data = Path(row["blob_path"]).read_bytes()
+        except OSError:
+            self.send_err(500, "blob missing")
+            return
+        self.send_blob(200, data)
+
+    def _get_update(self, path: str):
+        # /updates/<channel>/<arch>/anunix.bin  or  /updates/<channel>/<arch>/manifest.json
+        parts = [p for p in path.split("/") if p]
+        if len(parts) != 4 or parts[0] != "updates":
+            self.send_err(404, "not found")
+            return
+        _, channel, arch, filename = parts
+        row = self.db.execute(
+            "SELECT version, blob_path, blob_size FROM updates WHERE channel=? AND arch=?",
+            (channel, arch)
+        ).fetchone()
+        if not row:
+            self.send_err(404, "no update for channel/arch")
+            return
+        if filename == "manifest.json":
+            self.send_json(200, {"version": row["version"], "size": row["blob_size"]})
+        elif filename == "anunix.bin":
+            try:
+                data = Path(row["blob_path"]).read_bytes()
+            except OSError:
+                self.send_err(500, "blob missing")
+                return
+            self.send_blob(200, data)
         else:
-            self.send_error_json(404, "not found")
+            self.send_err(404, "not found")
+
+    # ------------------------------------------------------------------ #
+    # PUT routing                                                          #
+    # ------------------------------------------------------------------ #
+
+    def do_PUT(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if not self.authed():
+            self.send_err(401, "unauthorized")
+            return
+
+        if path.startswith("/workflows/"):
+            uri = path[len("/workflows/"):]
+            if uri:
+                self._put_workflow(uri)
+                return
+
+        if path.startswith("/updates/"):
+            self._put_update(path)
+            return
+
+        self.send_err(404, "not found")
+
+    def _put_workflow(self, uri: str):
+        data = self.read_raw()
+        if not data:
+            self.send_err(400, "empty body")
+            return
+        blob_dir = Path(self.blobs_dir) / "workflows"
+        blob_dir.mkdir(parents=True, exist_ok=True)
+        safe = uri.replace("/", "_").replace(":", "_")
+        blob_path = str(blob_dir / f"{safe}.wf")
+        Path(blob_path).write_bytes(data)
+        self.db.execute(
+            "INSERT OR REPLACE INTO workflows(uri, blob_path, blob_size, created_at) VALUES(?,?,?,?)",
+            (uri, blob_path, len(data), now_iso())
+        )
+        self.db.commit()
+        self.send_json(201, {"uri": uri, "size": len(data)})
+
+    def _put_update(self, path: str):
+        parts = [p for p in path.split("/") if p]
+        # /updates/<channel>/<arch>/anunix.bin
+        if len(parts) != 4 or parts[0] != "updates" or parts[3] != "anunix.bin":
+            self.send_err(404, "not found")
+            return
+        _, channel, arch, _ = parts
+        version = self.headers.get("X-Anunix-Version", "unknown")
+        data = self.read_raw()
+        if not data:
+            self.send_err(400, "empty body")
+            return
+        blob_dir = Path(self.blobs_dir) / "updates" / channel / arch
+        blob_dir.mkdir(parents=True, exist_ok=True)
+        blob_path = str(blob_dir / "anunix.bin")
+        Path(blob_path).write_bytes(data)
+        self.db.execute(
+            "INSERT OR REPLACE INTO updates(channel, arch, version, blob_path, blob_size) VALUES(?,?,?,?,?)",
+            (channel, arch, version, blob_path, len(data))
+        )
+        self.db.commit()
+        self.send_json(201, {"channel": channel, "arch": arch, "version": version, "size": len(data)})
+
+    # ------------------------------------------------------------------ #
+    # POST routing                                                         #
+    # ------------------------------------------------------------------ #
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/")
+        path = parsed.path
 
-        if path == "/v1/admin/tokens":
-            if not self.auth_admin():
-                self.send_error_json(401, "unauthorized")
-                return
-            self._provision_token()
+        if path == "/hw-profiles/" or path == "/hw-profiles":
+            self._post_hw_profile()
             return
 
-        node_id = self.auth_node()
-        if not node_id:
-            self.send_error_json(401, "unauthorized")
+        if path == "/tokens/" or path == "/tokens":
+            self._post_token()
             return
 
-        if path == "/v1/profiles":
-            self._post_profile(node_id)
-        elif path == "/v1/stubs":
-            self._post_stub(node_id)
-        elif path.startswith("/v1/stubs/") and path.endswith("/download"):
-            stub_id = path.split("/")[3]
-            self._record_download(stub_id)
-        else:
-            self.send_error_json(404, "not found")
+        self.send_err(404, "not found")
 
-    # ------------------------------------------------------------------ #
-    # Profile handlers                                                     #
-    # ------------------------------------------------------------------ #
-
-    def _get_profiles(self, path: str, qs: dict):
-        parts = path.split("/")
-        if len(parts) == 4 and parts[3]:
-            row = self.db.execute(
-                "SELECT payload FROM profiles WHERE profile_id=?",
-                (parts[3],)
-            ).fetchone()
-            if row:
-                self.send_json(200, json.loads(row["payload"]))
-            else:
-                self.send_error_json(404, "profile not found")
-            return
-
-        clauses, params = [], []
-        if "node_id" in qs:
-            clauses.append("node_id=?"); params.append(qs["node_id"][0])
-        if "arch" in qs:
-            clauses.append("arch=?"); params.append(qs["arch"][0])
-
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        rows = self.db.execute(
-            f"SELECT payload FROM profiles {where} ORDER BY submitted_at DESC",
-            params
-        ).fetchall()
-        self.send_json(200, [json.loads(r["payload"]) for r in rows])
-
-    def _post_profile(self, node_id: str):
-        body = self.read_body()
+    def _post_hw_profile(self):
+        body = self.read_json()
         if body is None:
-            self.send_error_json(400, "invalid JSON")
+            self.send_err(400, "invalid JSON")
             return
-
-        body["node_id"] = node_id
-        body.setdefault("submitted_at", now_iso())
-        body.setdefault("arch", "unknown")
-
-        existing = self.db.execute(
-            "SELECT profile_id, profile_version FROM profiles WHERE node_id=? ORDER BY submitted_at DESC LIMIT 1",
-            (node_id,)
-        ).fetchone()
-
-        version = (existing["profile_version"] + 1) if existing else 1
         profile_id = str(uuid.uuid4())
-        body["profile_id"] = profile_id
-        body["profile_version"] = version
-
+        submitted_at = now_iso()
         self.db.execute(
-            "INSERT INTO profiles(profile_id,node_id,hostname,arch,submitted_at,profile_version,payload) VALUES(?,?,?,?,?,?,?)",
-            (profile_id, node_id, body.get("hostname"), body["arch"],
-             body["submitted_at"], version, json.dumps(body))
+            "INSERT INTO hw_profiles(profile_id, node_id, hostname, arch, submitted_at, profile_json) VALUES(?,?,?,?,?,?)",
+            (profile_id,
+             body.get("node_id"),
+             body.get("hostname"),
+             body.get("arch"),
+             submitted_at,
+             json.dumps(body))
         )
         self.db.commit()
+        self.send_json(201, {"profile_id": profile_id})
 
-        new_stubs_requested = self._check_missing_stubs(body)
-        self.send_json(201, {
-            "profile_id": profile_id,
-            "profile_version": version,
-            "new_stubs_requested": new_stubs_requested,
-        })
-
-    def _check_missing_stubs(self, profile: dict) -> bool:
-        for dev in profile.get("pci_devices", []):
-            row = self.db.execute(
-                "SELECT stub_id FROM driver_stubs WHERE vendor_id=? AND device_id=? AND arch=? AND superseded_by IS NULL LIMIT 1",
-                (dev.get("vendor_id"), dev.get("device_id"), profile.get("arch"))
-            ).fetchone()
-            if not row:
-                return True
-        return False
-
-    # ------------------------------------------------------------------ #
-    # Stub handlers                                                        #
-    # ------------------------------------------------------------------ #
-
-    def _get_stubs(self, path: str, qs: dict):
-        parts = path.split("/")
-        if len(parts) == 4 and parts[3] and not parts[3].startswith("?"):
-            row = self.db.execute(
-                "SELECT * FROM driver_stubs WHERE stub_id=?",
-                (parts[3],)
-            ).fetchone()
-            if row:
-                self.send_json(200, dict(row))
-            else:
-                self.send_error_json(404, "stub not found")
+    def _post_token(self):
+        # Bootstrap: allow creation when tokens table is empty; otherwise require auth.
+        count = self.db.execute("SELECT COUNT(*) FROM tokens").fetchone()[0]
+        if count > 0 and not self.authed():
+            self.send_err(401, "unauthorized")
             return
-
-        clauses, params = ["superseded_by IS NULL"], []
-        if "vendor_id" in qs:
-            clauses.append("vendor_id=?"); params.append(qs["vendor_id"][0])
-        if "device_id" in qs:
-            clauses.append("device_id=?"); params.append(qs["device_id"][0])
-        if "arch" in qs:
-            clauses.append("arch=?"); params.append(qs["arch"][0])
-
-        where = "WHERE " + " AND ".join(clauses)
-        rows = self.db.execute(
-            f"SELECT * FROM driver_stubs {where} ORDER BY generated_at DESC",
-            params
-        ).fetchall()
-        self.send_json(200, [dict(r) for r in rows])
-
-    def _post_stub(self, _node_id: str):
-        body = self.read_body()
-        if body is None:
-            self.send_error_json(400, "invalid JSON")
-            return
-
-        required = ("vendor_id", "device_id", "class_code", "arch",
-                    "profile_id", "stub_text", "generated_by")
-        for field in required:
-            if field not in body:
-                self.send_error_json(400, f"missing field: {field}")
-                return
-
-        stub_id = str(uuid.uuid4())
-        generated_at = body.get("generated_at", now_iso())
-
-        self.db.execute(
-            "INSERT INTO driver_stubs(stub_id,vendor_id,device_id,class_code,arch,profile_id,stub_text,generated_at,generated_by,stub_oid) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (stub_id, body["vendor_id"], body["device_id"], body["class_code"],
-             body["arch"], body["profile_id"], body["stub_text"],
-             generated_at, body["generated_by"], body.get("stub_oid"))
-        )
-        self.db.commit()
-
-        stub_dir = Path(DEFAULT_DB).parent / "stubs"
-        stub_dir.mkdir(parents=True, exist_ok=True)
-        (stub_dir / f"{stub_id}.c").write_text(body["stub_text"])
-
-        self.send_json(201, {"stub_id": stub_id})
-
-    def _record_download(self, stub_id: str):
-        result = self.db.execute(
-            "UPDATE driver_stubs SET download_count=download_count+1 WHERE stub_id=?",
-            (stub_id,)
-        )
-        self.db.commit()
-        if result.rowcount == 0:
-            self.send_error_json(404, "stub not found")
-            return
-        self.send_response(204)
-        self.end_headers()
-
-    # ------------------------------------------------------------------ #
-    # Admin                                                                #
-    # ------------------------------------------------------------------ #
-
-    def _provision_token(self):
-        body = self.read_body()
-        if body is None:
-            self.send_error_json(400, "invalid JSON")
-            return
-        node_id = body.get("node_id")
-        if not node_id:
-            self.send_error_json(400, "missing node_id")
-            return
-
+        body = self.read_json()
+        label = body.get("label", "") if body else ""
         raw = str(uuid.uuid4())
         self.db.execute(
-            "INSERT INTO api_tokens(token_hash,node_id,hostname,created_at) VALUES(?,?,?,?)",
-            (hash_token(raw), node_id, body.get("hostname"), now_iso())
+            "INSERT INTO tokens(token_hash, label, created_at) VALUES(?,?,?)",
+            (hash_token(raw), label, now_iso())
         )
         self.db.commit()
-        self.send_json(201, {"token": raw})
+        self.send_json(201, {"token": raw, "label": label})
 
 
-def make_handler(db: sqlite3.Connection, admin_secret: str):
+def make_handler(db: sqlite3.Connection, blobs_dir: str):
     class BoundHandler(Handler):
         pass
     BoundHandler.db = db
-    BoundHandler.admin_secret = admin_secret
+    BoundHandler.blobs_dir = blobs_dir
     return BoundHandler
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Anunix superrouter server")
+    parser = argparse.ArgumentParser(description="Anunix superrouter")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--db", default=os.environ.get("SUPERROUTER_DB", DEFAULT_DB))
-    parser.add_argument("--admin-secret", default=os.environ.get("SUPERROUTER_ADMIN_SECRET", ""))
+    parser.add_argument("--blobs", default=os.environ.get("SUPERROUTER_BLOBS", DEFAULT_BLOBS))
     args = parser.parse_args()
 
-    if not args.admin_secret:
-        log.warning("No admin secret configured — token provisioning disabled")
-
+    Path(args.blobs).mkdir(parents=True, exist_ok=True)
     db = open_db(args.db)
-    handler = make_handler(db, args.admin_secret)
+    handler = make_handler(db, args.blobs)
     server = http.server.HTTPServer(("0.0.0.0", args.port), handler)
-    log.info("superrouter v%s listening on port %d", VERSION, args.port)
-    log.info("database: %s", args.db)
+    log.info("superrouter v%s listening on :%d", VERSION, args.port)
+    log.info("db=%s  blobs=%s", args.db, args.blobs)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
