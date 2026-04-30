@@ -11,6 +11,7 @@
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
 #include <anx/string.h>
+#include <anx/kprintf.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
@@ -69,7 +70,7 @@ static void pl011_init(void)
 
 void arch_early_init(void)
 {
-	uint64_t cpacr, sctlr;
+	uint64_t cpacr, sctlr, cur_el;
 
 	/*
 	 * Enable FP/SIMD at EL1 and EL0.  Clang emits NEON for struct copies
@@ -89,6 +90,13 @@ void arch_early_init(void)
 	__asm__ volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr));
 
 	pl011_init();
+
+	__asm__ volatile("mrs %0, CurrentEL" : "=r"(cur_el));
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+	kprintf("[arch] CurrentEL=%u sctlr_el1=0x%x (A=%u)\n",
+		(uint32_t)((cur_el >> 2) & 3),
+		(uint32_t)sctlr,
+		(uint32_t)((sctlr >> 1) & 1));
 }
 
 void arch_init(void)
