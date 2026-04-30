@@ -178,9 +178,11 @@ $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.S
 # JEPA uses float for ML inference; omit -mgeneral-regs-only so the compiler
 # uses hardware FP instead of soft-float library calls.  JEPA must never
 # run in interrupt context (no FPU state save/restore at interrupt entry).
-# -mno-unaligned-access: prevent NEON d-register loads/stores to sub-8-byte-
-# aligned struct fields — QEMU enforces NEON alignment even when SCTLR_EL1.A=0.
-JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS)) -mno-unaligned-access
+# -fno-vectorize: QEMU 10.x enforces NEON d-register alignment even when
+# SCTLR_EL1.A=0; clang's SLP vectorizer combines adjacent float/uint32 fields
+# into 8-byte NEON pairs at 4-byte-aligned addresses, causing EC=0x25 faults.
+# Disabling vectorization avoids this entirely — these paths are not hot loops.
+JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS)) -fno-vectorize
 
 $(BUILD_DIR)/core/jepa/%.o: $(CORE_DIR)/jepa/%.c
 	@mkdir -p $(dir $@)
