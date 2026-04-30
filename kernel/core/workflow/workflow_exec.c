@@ -27,6 +27,7 @@
 #include <anx/kprintf.h>
 #include <anx/arch.h>
 #include <anx/jepa.h>
+#include <anx/jepa_cell.h>
 #include <anx/agent_cell.h>
 
 /* ------------------------------------------------------------------ */
@@ -173,12 +174,44 @@ wf_dispatch_cell_node(struct anx_wf_object *wf, uint32_t slot,
 	anx_memset(&intent, 0, sizeof(intent));
 
 	switch (node->kind) {
-	case ANX_WF_NODE_CELL_CALL:
+	case ANX_WF_NODE_CELL_CALL: {
+		const char *ci = node->params.cell_call.intent;
+
+		/* JEPA intents are dispatched directly — no generic cell created */
+		if (ci[0]=='j' && ci[1]=='e' && ci[2]=='p' && ci[3]=='a' && ci[4]=='-') {
+			anx_oid_t in_oids[ANX_WF_MAX_PORTS];
+			anx_oid_t out_oid;
+			uint32_t  p, n_in = 0;
+
+			anx_memset(in_oids, 0, sizeof(in_oids));
+			anx_memset(&out_oid, 0, sizeof(out_oid));
+
+			for (p = 0; p < node->port_count; p++) {
+				if (node->ports[p].dir == ANX_WF_PORT_IN)
+					in_oids[n_in++] = wf_get_input_oid(
+						wf, node->id, p, slot_by_id, port_oid);
+			}
+
+			ret = anx_jepa_cell_dispatch(ci, in_oids, n_in, &out_oid);
+
+			/* Write the output OID to the first OUT port */
+			for (p = 0; p < node->port_count; p++) {
+				if (node->ports[p].dir == ANX_WF_PORT_OUT) {
+					port_oid[slot][p] = out_oid;
+					break;
+				}
+			}
+
+			anx_memset(cid_out,      0, sizeof(*cid_out));
+			anx_memset(trace_oid_out, 0, sizeof(*trace_oid_out));
+			return ret;
+		}
+
 		ctype = ANX_CELL_TASK_EXECUTION;
 		anx_strlcpy(intent.name,      node->label, sizeof(intent.name));
-		anx_strlcpy(intent.objective, node->params.cell_call.intent,
-			    sizeof(intent.objective));
+		anx_strlcpy(intent.objective, ci, sizeof(intent.objective));
 		break;
+	}
 	case ANX_WF_NODE_MODEL_CALL:
 		ctype = ANX_CELL_MODEL_SERVER;
 		anx_strlcpy(intent.name, node->label, sizeof(intent.name));

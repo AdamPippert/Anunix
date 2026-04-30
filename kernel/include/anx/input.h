@@ -166,5 +166,7 @@ void anx_input_key_up(uint32_t hid_key, uint32_t modifiers);
 void anx_input_pointer_move(int32_t x, int32_t y, uint32_t buttons);
 void anx_input_pointer_button(int32_t x, int32_t y,
                                uint32_t buttons, uint32_t modifiers);
+/* delta > 0 = scroll up, delta < 0 = scroll down */
+void anx_input_pointer_scroll(int32_t x, int32_t y, int32_t delta);
 
 #endif /* ANX_INPUT_H */

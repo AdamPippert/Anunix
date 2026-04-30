@@ -42,6 +42,20 @@ uint32_t anx_kprintf_capture_stop(void)
 	return n;
 }
 
+void anx_kprintf_capture_save(struct anx_capture_state *s)
+{
+	s->buf  = capture_buf;
+	s->size = capture_size;
+	s->pos  = capture_pos;
+}
+
+void anx_kprintf_capture_restore(const struct anx_capture_state *s)
+{
+	capture_buf  = s->buf;
+	capture_size = s->size;
+	capture_pos  = s->pos;
+}
+
 static void putc(char c)
 {
 	arch_console_putc(c);
@@ -67,37 +81,45 @@ static void puts(const char *s)
 		putc(*s++);
 }
 
-static void put_uint(uint64_t val, int base, int width, char pad)
+static void put_uint(uint64_t val, int base, int width, char pad,
+		     int left_align)
 {
 	char buf[20];
-	int i = 0;
+	int i = 0, j;
 
 	if (val == 0) {
 		buf[i++] = '0';
 	} else {
 		while (val > 0) {
-			int digit = val % base;
+			int digit = (int)(val % base);
 			buf[i++] = digit < 10 ? '0' + digit : 'a' + digit - 10;
 			val /= base;
 		}
 	}
 
-	/* pad */
-	while (i < width)
-		buf[i++] = pad;
-
-	/* reverse output */
-	while (i > 0)
-		putc(buf[--i]);
+	if (left_align) {
+		/* print digits, then trailing spaces */
+		for (j = i - 1; j >= 0; j--)
+			putc(buf[j]);
+		for (j = i; j < width; j++)
+			putc(' ');
+	} else {
+		/* prepend padding (right-align) */
+		while (i < width)
+			buf[i++] = pad;
+		while (i > 0)
+			putc(buf[--i]);
+	}
 }
 
-static void put_int(int64_t val)
+static void put_int(int64_t val, int width, char pad, int left_align)
 {
 	if (val < 0) {
 		putc('-');
-		put_uint(-val, 10, 0, '0');
+		put_uint((uint64_t)(-val), 10, width > 1 ? width - 1 : 0, pad,
+			 left_align);
 	} else {
-		put_uint(val, 10, 0, '0');
+		put_uint((uint64_t)val, 10, width, pad, left_align);
 	}
 }
 
@@ -117,10 +139,15 @@ int kprintf(const char *fmt, ...)
 
 		fmt++; /* skip '%' */
 
+		/* Optional flags */
+		int left_align = 0;
+		if (*fmt == '-') { left_align = 1; fmt++; }
+
 		/* Optional width specifier, e.g., "%02x" for 2-digit hex */
 		int width = 0;
+		int prec = -1;	/* -1 = no precision */
 		char pad = ' ';
-		if (*fmt == '0') {
+		if (*fmt == '0' && !left_align) {
 			pad = '0';
 			fmt++;
 		}
@@ -128,34 +155,69 @@ int kprintf(const char *fmt, ...)
 			width = width * 10 + (*fmt - '0');
 			fmt++;
 		}
+		/* Optional precision: ".N" or ".*" */
+		if (*fmt == '.') {
+			fmt++;
+			if (*fmt == '*') {
+				prec = va_arg(ap, int);
+				fmt++;
+			} else {
+				prec = 0;
+				while (*fmt >= '0' && *fmt <= '9') {
+					prec = prec * 10 + (*fmt - '0');
+					fmt++;
+				}
+			}
+		}
+
+		/* Length modifiers: l → long, ll → long long */
+		int is_long = 0;
+		while (*fmt == 'l') { is_long++; fmt++; }
 
 		switch (*fmt) {
 		case 's': {
 			const char *s = va_arg(ap, const char *);
+			int slen, j;
 			if (!s)
 				s = "(null)";
-			puts(s);
+			slen = 0;
+			while (s[slen]) slen++;
+			if (prec >= 0 && slen > prec)
+				slen = prec;
+			if (left_align) {
+				for (j = 0; j < slen; j++) putc(s[j]);
+				for (j = slen; j < width; j++) putc(' ');
+			} else {
+				for (j = slen; j < width; j++) putc(pad);
+				for (j = 0; j < slen; j++) putc(s[j]);
+			}
 			break;
 		}
 		case 'd': {
-			int64_t val = va_arg(ap, int);
-			put_int(val);
+			int64_t val = (is_long >= 2) ? (int64_t)va_arg(ap, long long) :
+				      (is_long == 1) ? (int64_t)va_arg(ap, long) :
+						       (int64_t)va_arg(ap, int);
+			put_int(val, width, pad, left_align);
 			break;
 		}
 		case 'u': {
-			uint64_t val = va_arg(ap, unsigned int);
-			put_uint(val, 10, width, pad);
+			uint64_t val = (is_long >= 2) ? (uint64_t)va_arg(ap, unsigned long long) :
+				       (is_long == 1) ? (uint64_t)va_arg(ap, unsigned long) :
+						        (uint64_t)va_arg(ap, unsigned int);
+			put_uint(val, 10, width, pad, left_align);
 			break;
 		}
 		case 'x': {
-			uint64_t val = va_arg(ap, unsigned int);
-			put_uint(val, 16, width, pad);
+			uint64_t val = (is_long >= 2) ? (uint64_t)va_arg(ap, unsigned long long) :
+				       (is_long == 1) ? (uint64_t)va_arg(ap, unsigned long) :
+						        (uint64_t)va_arg(ap, unsigned int);
+			put_uint(val, 16, width, pad, left_align);
 			break;
 		}
 		case 'p': {
 			uintptr_t val = (uintptr_t)va_arg(ap, void *);
 			puts("0x");
-			put_uint(val, 16, 16, '0');
+			put_uint(val, 16, 16, '0', 0);
 			break;
 		}
 		case 'c': {

@@ -48,6 +48,20 @@ int test_route_planner(void);
 int test_vm_object(void);
 int test_workflow(void);
 int test_theme(void);
+int test_event_qos(void);
+int test_compositor_dirty_rect(void);
+int test_multi_surface(void);
+int test_clipboard(void);
+int test_text_shaping(void);
+int test_transfer_policy(void);
+int test_diag(void);
+int test_isolation(void);
+int test_a11y(void);
+int test_media(void);
+int test_conformance_gate(void);
+int test_ibal(void);
+int test_ebm(void);
+int test_kickstart(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -80,6 +94,20 @@ static struct test_case tests[] = {
 	{ "vm_object",		test_vm_object },
 	{ "workflow",		test_workflow },
 	{ "theme",		test_theme },
+	{ "event_qos",		test_event_qos },
+	{ "compositor_dirty_rect", test_compositor_dirty_rect },
+	{ "multi_surface",	test_multi_surface },
+	{ "clipboard",		test_clipboard },
+	{ "text_shaping",	test_text_shaping },
+	{ "transfer_policy",	test_transfer_policy },
+	{ "diag",		test_diag },
+	{ "isolation",		test_isolation },
+	{ "a11y",		test_a11y },
+	{ "media",		test_media },
+	{ "conformance_gate",	test_conformance_gate },
+	{ "ibal",		test_ibal },
+	{ "ebm",		test_ebm },
+	{ "kickstart",		test_kickstart },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

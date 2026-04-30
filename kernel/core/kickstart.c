@@ -17,6 +17,8 @@
 #include <anx/theme.h>
 #include <anx/credential.h>
 #include <anx/workflow.h>
+#include <anx/workflow_library.h>
+#include <anx/memory.h>
 
 /* Last parse/apply error message */
 static char ks_error[128];
@@ -270,12 +272,34 @@ handle_credentials(const struct anx_ks_entry *e)
 static int
 handle_workflows(const struct anx_ks_entry *e)
 {
+	anx_oid_t wf_oid;
+	int ret;
+
 	if (anx_strcmp(e->key, "load") == 0) {
-		kprintf("kickstart: workflow load=%s (Phase 2)\n", e->value);
+		ret = anx_wf_lib_instantiate(e->value, e->value, &wf_oid);
+		if (ret != ANX_OK)
+			kprintf("kickstart: workflow load=%s failed (%d)\n",
+				e->value, ret);
+		else {
+			kprintf("kickstart: workflow loaded: %s\n", e->value);
+			anx_pal_prime_kickstart(e->value);
+		}
 		return ANX_OK;
 	}
 	if (anx_strcmp(e->key, "autorun") == 0) {
-		kprintf("kickstart: workflow autorun=%s (Phase 2)\n", e->value);
+		ret = anx_wf_lib_instantiate(e->value, e->value, &wf_oid);
+		if (ret != ANX_OK) {
+			kprintf("kickstart: workflow autorun=%s failed (%d)\n",
+				e->value, ret);
+			return ANX_OK;
+		}
+		anx_pal_prime_kickstart(e->value);
+		ret = anx_wf_run(&wf_oid, NULL);
+		if (ret != ANX_OK)
+			kprintf("kickstart: workflow autorun=%s run failed (%d)\n",
+				e->value, ret);
+		else
+			kprintf("kickstart: workflow autorunning: %s\n", e->value);
 		return ANX_OK;
 	}
 	kprintf("kickstart: [workflows] unknown key '%s'\n", e->key);

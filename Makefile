@@ -5,6 +5,7 @@
 #   make kernel ARCH=arm64
 #   make kernel ARCH=x86_64
 #   make qemu              Boot kernel in QEMU (headless, serial console)
+#   make qemu-iso          Boot ISO in QEMU via UEFI — same path as bare metal/USB
 #   make qemu-deps         Build QEMU and dependencies from source
 #   make clean             Remove all build artifacts
 #   make test              Run kernel unit tests (host-native)
@@ -30,7 +31,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.4.19
+ANX_VERSION := 2026.4.23
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -51,10 +52,15 @@ else
 endif
 
 LOCAL_QEMU := tools/qemu/bin
+OVMF_FD    := $(firstword $(wildcard \
+    /usr/share/edk2/x64/OVMF.4m.fd \
+    /usr/share/OVMF/OVMF.fd \
+    /usr/share/ovmf/OVMF.fd \
+    /usr/share/qemu/OVMF.fd))
 
 ifeq ($(ARCH),arm64)
   TARGET  := aarch64-none-elf
-  ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-aarch64),)
+  ifneq ($(shell test -x $(LOCAL_QEMU)/qemu-system-aarch64 && echo yes),)
     QEMU  := $(LOCAL_QEMU)/qemu-system-aarch64
   else
     QEMU  := qemu-system-aarch64
@@ -65,7 +71,7 @@ ifeq ($(ARCH),arm64)
              -kernel
 else ifeq ($(ARCH),x86_64)
   TARGET  := x86_64-none-elf
-  ifneq ($(wildcard $(LOCAL_QEMU)/qemu-system-x86_64),)
+  ifneq ($(shell test -x $(LOCAL_QEMU)/qemu-system-x86_64 && echo yes),)
     QEMU  := $(LOCAL_QEMU)/qemu-system-x86_64
   else
     QEMU  := qemu-system-x86_64
@@ -146,7 +152,7 @@ KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
-.PHONY: kernel qemu qemu-fb qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
+.PHONY: kernel qemu qemu-fb qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -170,15 +176,32 @@ $(BUILD_DIR)/arch/%.o: $(ARCH_DIR)/%.S
 	$(AS) $(ASFLAGS) -c $< -o $@
 
 # JEPA uses float for ML inference; omit -mgeneral-regs-only so the compiler
-# uses SSE2 hardware FP instead of soft-float library calls.  JEPA must never
+# uses hardware FP instead of soft-float library calls.  JEPA must never
 # run in interrupt context (no FPU state save/restore at interrupt entry).
-JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS))
+# -fno-vectorize -fno-slp-vectorize: QEMU 10.x enforces NEON d-register
+# alignment even when SCTLR_EL1.A=0; clang's SLP vectorizer combines adjacent
+# float/uint32 struct fields into 8-byte NEON pairs at 4-byte-aligned addresses,
+# causing EC=0x25 faults.  Both loop and SLP vectorizers must be disabled.
+# These are control-plane paths, not hot loops, so there is no performance cost.
+JEPA_CFLAGS := $(filter-out -mgeneral-regs-only,$(CFLAGS)) -fno-vectorize -fno-slp-vectorize
 
 $(BUILD_DIR)/core/jepa/%.o: $(CORE_DIR)/jepa/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(JEPA_CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/core/loop/%.o: $(CORE_DIR)/loop/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/core/rlm/%.o: $(CORE_DIR)/rlm/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/core/ebm/%.o: $(CORE_DIR)/ebm/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(JEPA_CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/core/exec/jepa_cell.o: $(CORE_DIR)/exec/jepa_cell.c
 	@mkdir -p $(dir $@)
 	$(CC) $(JEPA_CFLAGS) -c $< -o $@
 
@@ -252,6 +275,23 @@ endif
 
 qemu-fb: $(QEMU_KERNEL)
 	$(QEMU) $(QFLAGS_FB) $(QEMU_KERNEL)
+
+# Boot the ISO in QEMU via UEFI — identical boot path to bare metal and USB stick.
+# Requires OVMF firmware (edk2-ovmf on Arch, ovmf on Debian/Ubuntu).
+qemu-iso: iso
+ifeq ($(ARCH),x86_64)
+	@[ -n "$(OVMF_FD)" ] || (echo "ERROR: OVMF not found — install edk2-ovmf (Arch) or ovmf (Debian/Ubuntu)" && exit 1)
+	$(QEMU) -machine q35 -m 2G -no-reboot \
+	    -bios $(OVMF_FD) \
+	    -cdrom build/anunix-x86_64.iso -boot d \
+	    -device virtio-vga -display vnc=:1 \
+	    -serial mon:stdio \
+	    -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+	    -device virtio-net-pci,netdev=net0
+else
+	@echo "qemu-iso is only supported for ARCH=x86_64" && exit 1
+endif
+
 
 # Build QEMU and dependencies from source into tools/qemu/
 qemu-deps:
@@ -346,8 +386,10 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 # fb/*.c included (tests need it) except gui.c (needs kernel GUI subsystem).
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
-		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/browser/*' \
+		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/storage/*' \
+		  ! -path '*/browser/*' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
+		  ! -name 'driver_table.c' \
 		  2>/dev/null)
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
@@ -380,7 +422,21 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_route_planner.c \
                tests/test_vm_object.c \
                tests/test_workflow.c \
-               tests/test_theme.c
+               tests/test_theme.c \
+               tests/test_event_qos.c \
+               tests/test_compositor_dirty_rect.c \
+               tests/test_multi_surface.c \
+               tests/test_clipboard.c \
+               tests/test_text_shaping.c \
+               tests/test_transfer_policy.c \
+               tests/test_diag.c \
+               tests/test_isolation.c \
+               tests/test_a11y.c \
+               tests/test_media.c \
+               tests/test_conformance_gate.c \
+               tests/test_ibal.c \
+               tests/test_ebm.c \
+               tests/test_kickstart.c
 TEST_BIN    := build/test/anunix_test
 
 test:

@@ -19,11 +19,9 @@
 #define ANX_LOOP_MAX_ITERATIONS   256
 #define ANX_LOOP_MAX_CANDIDATES    16
 #define ANX_LOOP_MAX_SCORE_HIST    64
-#define ANX_LOOP_MAX_BRANCHES       8   /* Phase 4: max child branch sessions */
-
-/* Phase 5: memory consolidation constants */
-#define ANX_MEMORY_ACT_COUNT       12   /* matches JEPA_ACTION_DIM */
-#define ANX_MEMORY_WAYPOINTS        8   /* trajectory summary waypoints */
+#define ANX_LOOP_MAX_BRANCHES       8   /* max parallel branch sessions */
+#define ANX_MEMORY_ACT_COUNT     12   /* one entry per ANX_JEPA_ACT_* */
+#define ANX_MEMORY_WAYPOINTS      8   /* trajectory shape sample count */
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
@@ -107,11 +105,11 @@ struct anx_loop_session {
 	uint64_t   started_at_ns;
 	uint64_t   halted_at_ns;
 
-	/* Phase 4: branch/merge scheduler */
-	anx_oid_t  branch_from_oid;           /* parent session OID, or zero if root */
-	uint32_t   branch_depth;              /* 0 for root, 1 for branches */
-	uint32_t   branch_id;                 /* index within parent's child list */
-	anx_oid_t  branch_child_oids[8];      /* child branch session OIDs */
+	/* Phase 4: branch/merge tracking */
+	anx_oid_t  branch_from_oid;			/* parent OID; zero for root */
+	uint32_t   branch_depth;			/* 0=root, 1=branch */
+	uint32_t   branch_id;				/* index within parent's list */
+	anx_oid_t  branch_child_oids[ANX_LOOP_MAX_BRANCHES];
 	uint32_t   branch_child_count;
 };
 
@@ -259,6 +257,16 @@ int anx_loop_proposal_get_action_id(anx_oid_t proposal_oid,
 /* Update the aggregate energy score on a proposal (called after EBM). */
 int anx_loop_proposal_set_score(anx_oid_t proposal_oid, float aggregate);
 
+/*
+ * Generate one LLM-sourced world proposal for the session.  Runs a single-step
+ * RLM rollout, maps the response text to the best-matching action via goal
+ * alignment energy, then creates an ANX_OBJ_WORLD_PROPOSAL with
+ * source=ANX_LOOP_PROPOSAL_LLM.  Falls back to the PAL-preferred action when
+ * the RLM harness is unavailable.
+ */
+int anx_loop_llm_propose(anx_oid_t session_oid, uint32_t iteration,
+			  anx_oid_t *proposal_oid_out);
+
 /* ------------------------------------------------------------------ */
 /* Score object API (Phase 2: loop_score.c)                           */
 /* ------------------------------------------------------------------ */
@@ -280,43 +288,6 @@ int anx_loop_counterexample_record(anx_oid_t session_oid,
 				   anx_oid_t rejected_proposal_oid,
 				   uint32_t reason, float rejection_score,
 				   const char *context_summary);
-
-/* ------------------------------------------------------------------ */
-/* Phase 5: per-action statistics and memory consolidation payload    */
-/* ------------------------------------------------------------------ */
-
-/*
- * Per-action accumulator filled during a single IBAL session.
- * Passed to anx_loop_consolidate() and then to anx_pal_memory_update().
- */
-struct anx_loop_session_action_stats {
-	uint32_t  total_proposals;   /* how many times this action was scored */
-	uint32_t  win_count;         /* how many times this action was selected */
-	float     energy_sum;        /* sum of scored energies */
-	float     min_energy;        /* lowest energy seen (sentinel: 1.0) */
-};
-
-/*
- * Per-action summary packed into the memory payload (EMA-friendly form).
- * This is what anx_pal_memory_update() consumes.
- */
-struct anx_loop_action_stats {
-	uint32_t  total_updates;  /* sessions that scored this action */
-	float     win_rate;       /* fraction of sessions where this action won */
-	float     avg_energy;     /* mean scored energy across sessions */
-	float     min_energy;     /* best (lowest) energy seen */
-};
-
-/*
- * Full memory payload produced by anx_loop_consolidate() for one session.
- * Passed verbatim to anx_pal_memory_update().
- */
-struct anx_loop_memory_payload {
-	float                          avg_final_energy;
-	float                          avg_iters;
-	float                          energy_waypoints[ANX_MEMORY_WAYPOINTS];
-	struct anx_loop_action_stats   action_stats[ANX_MEMORY_ACT_COUNT];
-};
 
 /* ------------------------------------------------------------------ */
 /* Session creation parameters                                         */
@@ -351,12 +322,41 @@ struct anx_loop_session_info {
 	char                          goal_text[512];	/* Phase 3 */
 	uint64_t                      started_at_ns;
 	uint64_t                      halted_at_ns;
-	/* Phase 4 */
-	anx_oid_t                     branch_from_oid;
-	uint32_t                      branch_depth;
-	uint32_t                      branch_id;
-	anx_oid_t                     branch_child_oids[8];
-	uint32_t                      branch_child_count;
+	uint32_t   branch_depth;
+	uint32_t   branch_child_count;
+};
+
+/* ------------------------------------------------------------------ */
+/* Memory consolidation (Phase 5)                                      */
+/* ------------------------------------------------------------------ */
+
+/* Per-action EMA statistics stored in the consolidation payload */
+struct anx_loop_action_stats {
+	float    avg_energy;      /* EMA average energy across iterations */
+	float    win_rate;        /* EMA fraction of iters this action won */
+	float    min_energy;      /* best (lowest) energy seen             */
+	uint32_t total_updates;   /* raw sample count (for cold-start gate) */
+};
+
+/* Payload stored as ANX_OBJ_MEMORY_CONSOLIDATION */
+struct anx_loop_memory_payload {
+	char     world_uri[128];
+	uint32_t session_version;        /* increments monotonically      */
+	uint32_t sessions_committed;     /* 0 or 1 for a single session   */
+	uint32_t sessions_aborted;       /* 0 or 1 for a single session   */
+	float    avg_final_energy;
+	float    avg_iters;
+	float    energy_waypoints[ANX_MEMORY_WAYPOINTS];
+	uint32_t _pad;		/* align action_stats to 8-byte boundary (offset 184) */
+	struct anx_loop_action_stats  action_stats[ANX_MEMORY_ACT_COUNT];
+};
+
+/* Per-session per-action stats passed to anx_loop_consolidate() */
+struct anx_loop_session_action_stats {
+	uint32_t  total_proposals; /* iterations where action was scored  */
+	uint32_t  win_count;       /* iterations where action had min energy */
+	float     energy_sum;      /* sum of final energies for this action  */
+	float     min_energy;      /* best energy seen this session          */
 };
 
 /* ------------------------------------------------------------------ */
@@ -370,6 +370,14 @@ struct anx_loop_session_info {
  * entirely misaligned.  Returns 0.5 when goal_text is empty (neutral).
  */
 float anx_loop_goal_alignment_energy(const char *goal_text, uint32_t action_id);
+
+/*
+ * Return the action_id in [0, action_count) with the lowest PAL-learned
+ * prior for world_uri.  Falls back to 0 when PAL has no data (cold-start).
+ * Used to bias JEPA proposal generation toward historically low-cost actions.
+ */
+uint32_t anx_loop_select_action_by_prior(const char *world_uri,
+					  uint32_t action_count);
 
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
@@ -409,20 +417,49 @@ int anx_loop_session_score_history(anx_oid_t session_oid,
 /* Internal accessor used by loop_*.c subsystems */
 struct anx_loop_session *anx_loop_session_get(anx_oid_t session_oid);
 
+/* Memory consolidation (Phase 5: loop_memory.c) */
+int anx_loop_consolidate(anx_oid_t session_oid,
+			 const struct anx_loop_session_action_stats *action_stats,
+			 uint32_t action_count);
+
 /* Shell command entry point */
 int anx_loop_shell_dispatch(int argc, const char *const *argv);
 
-/* Phase 4: branch/merge scheduler (loop_branch.c) */
-int anx_loop_branch_create(anx_oid_t parent_oid, uint32_t branch_id,
-                           uint32_t max_iterations,
-                           anx_oid_t *branch_oid_out);
-int anx_loop_branch_merge(anx_oid_t parent_oid, anx_oid_t branch_oid);
-int anx_loop_branch_list(anx_oid_t parent_oid, anx_oid_t *oids_out,
-                         uint32_t max_oids, uint32_t *found_out);
+/* ------------------------------------------------------------------ */
+/* Branch/merge scheduler (Phase 4: loop_branch.c)                    */
+/* ------------------------------------------------------------------ */
 
-/* Phase 5: memory consolidation (loop_memory.c) */
-int anx_loop_consolidate(anx_oid_t session_oid,
-                         const struct anx_loop_session_action_stats *stats,
-                         uint32_t stats_count);
+/*
+ * Create a child branch session that inherits parent's goal + world.
+ * branch_id is a caller-assigned index [0, ANX_LOOP_MAX_BRANCHES).
+ * branch_max_iterations sets the child's iteration budget.
+ */
+int anx_loop_branch_create(anx_oid_t parent_oid, uint32_t branch_id,
+			   uint32_t branch_max_iterations,
+			   anx_oid_t *child_oid_out);
+
+/*
+ * If child found a lower-energy candidate than parent's current best,
+ * adopt it into the parent session.
+ */
+int anx_loop_branch_merge(anx_oid_t parent_oid, anx_oid_t child_oid);
+
+/* List the OIDs of all child branches registered for parent. */
+int anx_loop_branch_list(anx_oid_t parent_oid,
+			 anx_oid_t *oids_out, uint32_t max_count,
+			 uint32_t *count_out);
+
+/* ------------------------------------------------------------------ */
+/* JEPA online training pipeline (Phase 17: loop_jepa_train.c)        */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Ingest a completed session's best action into the JEPA online training
+ * pipeline.  Collects a fresh system observation, stores it as
+ * ANX_OBJ_JEPA_OBS, and calls anx_jepa_record_winner() so the training
+ * step counter advances.  Non-fatal if JEPA is unavailable.
+ * Returns ANX_ENOENT if session_oid is not found, ANX_EINVAL on bad args.
+ */
+int anx_loop_jepa_ingest(anx_oid_t session_oid, const char *world_uri);
 
 #endif /* ANX_LOOP_H */

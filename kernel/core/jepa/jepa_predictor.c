@@ -154,7 +154,8 @@ int anx_jepa_predict(const anx_oid_t *latent_oid, uint32_t action_id,
 		return rc;
 	rc = anx_so_read_payload(&lat_h, 0, &src_pay, sizeof(src_pay));
 	anx_so_close(&lat_h);
-	if (rc != ANX_OK)
+	/* anx_so_read_payload returns byte count on success */
+	if (rc < 0)
 		return rc;
 
 	pred_pay = (struct anx_jepa_latent_payload *)
@@ -271,7 +272,7 @@ float anx_jepa_divergence(const anx_oid_t *predicted_oid,
 		return -1.0f;
 	rc = anx_so_read_payload(&ph, 0, &ppay, sizeof(ppay));
 	anx_so_close(&ph);
-	if (rc != ANX_OK)
+	if (rc < 0)
 		return -1.0f;
 
 	rc = anx_so_open(actual_oid, ANX_OPEN_READ, &ah);
@@ -279,7 +280,7 @@ float anx_jepa_divergence(const anx_oid_t *predicted_oid,
 		return -1.0f;
 	rc = anx_so_read_payload(&ah, 0, &apay, sizeof(apay));
 	anx_so_close(&ah);
-	if (rc != ANX_OK)
+	if (rc < 0)
 		return -1.0f;
 
 	if (ppay.dim != apay.dim)

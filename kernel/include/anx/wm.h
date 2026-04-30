@@ -22,6 +22,8 @@
 #define ANX_WM_WS_SURFS		32	/* max surfaces per workspace */
 #define ANX_WM_HOTKEYS		64	/* max registered hotkeys */
 #define ANX_WM_MENUBAR_H	34	/* menu bar height in pixels */
+#define ANX_WM_TASKBAR_H	22	/* taskbar height in pixels */
+#define ANX_WM_DECOR_H		28	/* window titlebar decoration height */
 
 /* ------------------------------------------------------------------ */
 /* Workspace                                                           */
@@ -65,6 +67,7 @@ void anx_wm_run(void);
 /* ---- Workspace management ---- */
 int  anx_wm_workspace_switch(uint32_t ws_id);		/* 1-9 */
 uint32_t anx_wm_workspace_active(void);
+bool     anx_wm_workspace_occupied(uint32_t ws_id);	/* true if ws has windows */
 
 /* Open a surface on the current workspace (maps + raises + focuses). */
 int  anx_wm_window_open(struct anx_surface *surf);
@@ -78,8 +81,21 @@ int  anx_wm_window_focus(struct anx_surface *surf);
 /* Minimize a surface (MINIMIZED state, removed from view). */
 int  anx_wm_window_minimize(struct anx_surface *surf);
 
+/* Restore a minimized surface to VISIBLE and focus it. */
+int  anx_wm_window_restore(struct anx_surface *surf);
+
 /* Toggle fullscreen for a surface. */
 int  anx_wm_window_fullscreen_toggle(struct anx_surface *surf);
+
+/* Snap a surface to the left or right half of the screen. */
+int  anx_wm_window_tile_left(struct anx_surface *surf);
+int  anx_wm_window_tile_right(struct anx_surface *surf);
+
+/* Restore a tiled surface to its pre-tile floating bounds. */
+int  anx_wm_window_float(struct anx_surface *surf);
+
+/* Move a surface to a different workspace (1-based). */
+int  anx_wm_window_send_to_workspace(struct anx_surface *surf, uint32_t ws_id);
 
 /* Cycle keyboard focus to the next window on the active workspace. */
 void anx_wm_focus_cycle(void);
@@ -91,12 +107,92 @@ int  anx_wm_hotkey_register(uint32_t mods, uint32_t key,
 /* Called by input subsystem before forwarding key to focused surface. */
 bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key);
 
+/* Route key to focused WM-managed app (terminal/viewer/designer). */
+bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode);
+
 /* ---- Menu bar ---- */
 void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
+
+/* ---- Taskbar (minimized window dock, bottom strip) ---- */
+int  anx_wm_taskbar_create(void);
+void anx_wm_taskbar_refresh(void);
+void anx_wm_taskbar_raise(void);
+bool anx_wm_taskbar_pointer(int32_t x, int32_t y, uint32_t buttons,
+			     bool move_only);
+
+/* Return OIDs of minimized windows on the active workspace. */
+uint32_t anx_wm_minimized_list(anx_oid_t *out, uint32_t max);
+
+/* ---- Toast notification (auto-dismisses after ~3 seconds) ---- */
+void anx_wm_notify(const char *msg);
 
 /* ---- Built-in applications ---- */
 void anx_wm_launch_workflow_designer(void);
 void anx_wm_launch_object_viewer(void);
 void anx_wm_launch_command_search(void);
+
+/* ---- Terminal surface ---- */
+void anx_wm_terminal_open(void);
+void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode);
+struct anx_surface *anx_wm_terminal_surface(void);
+
+/* ---- Command search overlay ---- */
+void anx_wm_search_key_event(uint32_t key, uint32_t mods, uint32_t unicode);
+struct anx_surface *anx_wm_search_surface(void);
+
+/* ---- Key event struct (used by switcher / app_menu) ---- */
+struct anx_key_event {
+	uint32_t keycode;
+	uint32_t modifiers;
+	uint32_t unicode;
+};
+
+/* ---- Terminal paste ---- */
+void anx_wm_terminal_paste(const char *text, uint32_t len);
+
+/* Open a state object for interactive editing in the terminal.
+ * ns_name: namespace (e.g. "default"), path: object path. */
+void anx_wm_terminal_edit(const char *ns_name, const char *path);
+
+/* Flush terminal pixel buffer to framebuffer if dirty (call from main WM loop). */
+void anx_wm_terminal_flush_if_dirty(void);
+
+/* Print a line of text to the terminal history (opens terminal if needed). */
+void anx_wm_terminal_print(const char *text);
+
+/* Clear the current input line (undo). */
+void anx_wm_terminal_clear_input(void);
+
+/* Cut current input line to clipboard. */
+void anx_wm_terminal_cut_input(void);
+
+/* ---- App switcher (Meta+Tab) ---- */
+void anx_wm_switcher_open(void);
+void anx_wm_switcher_key_event(struct anx_key_event *ev);
+void anx_wm_switcher_meta_released(void);
+bool anx_wm_switcher_active(void);
+
+/* Internal: record surface focus timestamp for switcher ordering. */
+void anx_wm_activity_touch(anx_oid_t oid);
+
+/* ---- App menu panels ---- */
+void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid);
+void anx_wm_app_menu_key_event(struct anx_key_event *ev);
+bool anx_wm_app_menu_active(void);
+
+/* ---- Keyboard shortcut help overlay (F1) ---- */
+void anx_wm_help_toggle(void);
+void anx_wm_help_close(void);
+bool anx_wm_help_active(void);
+bool anx_wm_help_key(uint32_t key);
+
+/* ---- Right-click context menu ---- */
+/* Open a window context menu for surf at screen position (x, y). */
+void anx_wm_ctx_menu_open(struct anx_surface *surf, int32_t x, int32_t y);
+void anx_wm_ctx_menu_close(void);
+bool anx_wm_ctx_menu_active(void);
+/* Pass pointer events; returns true if consumed by the menu. */
+bool anx_wm_ctx_menu_pointer(int32_t x, int32_t y, uint32_t buttons,
+			      bool move_only);
 
 #endif /* ANX_WM_H */

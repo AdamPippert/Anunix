@@ -126,9 +126,22 @@ struct anx_surface {
 	uint32_t                 width, height;
 	uint32_t                 z_order;        /* higher = closer to front */
 
+	/* P1-001: Dirty-rect damage tracking (surface-relative coordinates). */
+	int32_t                  damage_x, damage_y;
+	uint32_t                 damage_w, damage_h;
+	bool                     damage_valid;   /* pending damage to render */
+	uint32_t                 commit_count;   /* incremented on each committed frame */
+
 	/* Hierarchy */
 	anx_oid_t                parent_oid;
 	struct anx_list_head     children;       /* child surfaces */
+
+	/* Optional window title (set by creator; shown in menubar) */
+	char                     title[64];
+
+	/* Set by WM when user explicitly minimizes; cleared on restore.
+	 * Distinguishes user-minimized from workspace-hidden surfaces. */
+	bool                     user_minimized;
 
 	/* Internal: hashtable chain and z-order list membership */
 	struct anx_list_head     ht_node;
@@ -161,10 +174,20 @@ enum anx_event_type {
 	ANX_EVENT_SURFACE_DESTROYED,
 };
 
+/* Event priority levels for QoS — ordered from highest to lowest for integer comparison */
+enum anx_event_prio {
+	ANX_EVENT_PRIO_CRITICAL = 0,  /* input events — pointer, key, touch; also default for uninit */
+	ANX_EVENT_PRIO_NORMAL = 1,     /* default for most events */
+	ANX_EVENT_PRIO_LOW = 2,        /* cosmetic updates — surface damage hints */
+	ANX_EVENT_PRIO_COUNT,          /* must be last */
+	ANX_EVENT_PRIO_UNSET = -1,     /* sentinel for uninitialized (outside valid range) */
+};
+
 struct anx_event {
 	anx_oid_t           oid;            /* event's own OID */
 	enum anx_event_type type;
-	uint64_t            timestamp_ns;
+	enum anx_event_prio priority;      /* QoS priority */
+	uint64_t            timestamp_ns;   /* posted timestamp */
 	anx_oid_t           target_surf;    /* surface this event targets */
 	anx_cid_t           source_cell;
 	uint32_t            device_id;
@@ -217,6 +240,11 @@ int anx_iface_surface_destroy(struct anx_surface *surf);
 /* Surface queries */
 int anx_iface_surface_list(anx_oid_t *oids_out, uint32_t max,
                             uint32_t *count_out);
+/* Query the current accumulated damage rect for a surface. */
+void anx_iface_surface_damage_query(struct anx_surface *surf,
+                                     int32_t *x_out, int32_t *y_out,
+                                     uint32_t *w_out, uint32_t *h_out,
+                                     bool *valid_out);
 int anx_iface_surface_lookup(anx_oid_t oid, struct anx_surface **out);
 
 /* Event routing */
@@ -230,14 +258,28 @@ int anx_iface_event_poll_wm(struct anx_event *out);
 
 #define ANX_IFACE_EVENT_RING_SIZE 256u
 
+/* Latency histogram buckets (nanoseconds) */
+#define ANX_LAT_BUCKET_0_NS   1000000ULL   /* <1ms:     <1,000,000 ns */
+#define ANX_LAT_BUCKET_1_NS   5000000ULL   /* 1-5ms:    1,000,000-5,000,000 ns */
+#define ANX_LAT_BUCKET_2_NS  10000000ULL   /* 5-10ms:   5,000,000-10,000,000 ns */
+#define ANX_LAT_BUCKET_3_NS  10000001ULL   /* >10ms:    >=10,000,001 ns */
+#define ANX_LAT_BUCKETS       4
+
 struct anx_iface_event_stats {
 	uint64_t posted;
 	uint64_t overflow_drops;
+	uint32_t current_depth;               /* events currently in ring */
+	uint64_t latency_histogram[ANX_LAT_BUCKETS]; /* <1ms, 1-5ms, 5-10ms, >10ms */
 };
 
 /* Resets event queue state (ring + subscriptions + counters). */
 void anx_iface_event_reset(void);
 void anx_iface_event_stats(struct anx_iface_event_stats *out);
+void anx_iface_event_stats_full(struct anx_iface_event_stats *out);
+
+/* Backpressure threshold configuration (fraction of ring size, 1-255). */
+void anx_iface_event_set_backpressure_threshold(uint32_t fraction_of_ring);
+uint32_t anx_iface_event_backpressure_threshold(void);
 
 /* Renderer registration */
 int       anx_iface_renderer_register(int renderer_class,
@@ -299,6 +341,7 @@ struct anx_iface_compositor_stats {
 	uint64_t repaint_cycles;
 	uint64_t committed_surfaces;
 	uint32_t last_cycle_commits;
+	uint64_t last_cycle_ns;       /* wall time of last repaint cycle (ns) */
 };
 
 /* Start compositor cell for a domain. Exactly one per domain. */
@@ -342,7 +385,13 @@ int anx_iface_surface_raise(struct anx_surface *surf);
 /* Lower surface to back of z-order (appears behind all others). */
 int anx_iface_surface_lower(struct anx_surface *surf);
 
+/* Set the parent of child; child is repositioned just above parent in z-order. */
+int anx_iface_surface_set_parent(struct anx_surface *child, anx_oid_t parent_oid);
+
 /* Return topmost VISIBLE surface whose bounds contain (x, y), or NULL. */
 struct anx_surface *anx_iface_surface_at(int32_t x, int32_t y);
+
+/* Set the display title for a surface (shown in menubar, switcher, etc.). */
+void anx_iface_surface_set_title(struct anx_surface *surf, const char *title);
 
 #endif /* ANX_INTERFACE_PLANE_H */

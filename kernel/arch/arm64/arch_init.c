@@ -11,6 +11,7 @@
 #include <anx/fb.h>
 #include <anx/hwprobe.h>
 #include <anx/string.h>
+#include <anx/kprintf.h>
 
 /* Linker-defined heap region */
 extern char _heap_start[];
@@ -69,7 +70,33 @@ static void pl011_init(void)
 
 void arch_early_init(void)
 {
+	uint64_t cpacr, sctlr, cur_el;
+
+	/*
+	 * Enable FP/SIMD at EL1 and EL0.  Clang emits NEON for struct copies
+	 * and memset; without FPEN=0b11 every such instruction faults (EC=0x07).
+	 */
+	__asm__ volatile("mrs %0, cpacr_el1" : "=r"(cpacr));
+	cpacr |= (3ULL << 20);
+	__asm__ volatile("msr cpacr_el1, %0; isb" :: "r"(cpacr));
+
+	/*
+	 * Clear SCTLR_EL1.A (bit 1) — disable strict alignment checking.
+	 * Clang auto-vectorises float loops with 64-bit NEON ldur/stur, which
+	 * fault on sub-8-byte-aligned structs when A=1.  Standard Linux practice.
+	 */
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+	sctlr &= ~(1ULL << 1);
+	__asm__ volatile("msr sctlr_el1, %0; isb" :: "r"(sctlr));
+
 	pl011_init();
+
+	__asm__ volatile("mrs %0, CurrentEL" : "=r"(cur_el));
+	__asm__ volatile("mrs %0, sctlr_el1" : "=r"(sctlr));
+	kprintf("[arch] CurrentEL=%u sctlr_el1=0x%x (A=%u)\n",
+		(uint32_t)((cur_el >> 2) & 3),
+		(uint32_t)sctlr,
+		(uint32_t)((sctlr >> 1) & 1));
 }
 
 void arch_init(void)
@@ -338,4 +365,18 @@ const char *arch_boot_cmdline(void)
 {
 	/* ARM64 QEMU virt has no multiboot cmdline; use device tree in future */
 	return NULL;
+}
+
+void arch_set_timer_callback(void (*fn)(void))
+{
+	/* Stub: ARM64 generic timer IRQ wiring is TODO (Phase N+1). */
+	(void)fn;
+}
+
+#include <anx/dt.h>
+
+bool anx_dt_has_compatible(const char *compatible)
+{
+	(void)compatible;
+	return false;	/* TODO: parse Apple device tree */
 }

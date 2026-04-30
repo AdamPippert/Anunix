@@ -10,6 +10,7 @@
 
 #include <anx/loop.h>
 #include <anx/jepa.h>
+#include <anx/memory.h>
 #include <anx/string.h>
 
 /* ------------------------------------------------------------------ */
@@ -130,6 +131,27 @@ static bool kw_match(const char *haystack, const char *needle)
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
+
+uint32_t anx_loop_select_action_by_prior(const char *world_uri,
+					  uint32_t action_count)
+{
+	uint32_t best_id    = 0;
+	float    best_prior = 1.0f;
+	uint32_t i;
+
+	if (!world_uri || action_count == 0)
+		return 0;
+
+	for (i = 0; i < action_count; i++) {
+		float p = anx_pal_action_prior(world_uri, i);
+
+		if (p < best_prior) {
+			best_prior = p;
+			best_id    = i;
+		}
+	}
+	return best_id;
+}
 
 float anx_loop_goal_alignment_energy(const char *goal_text, uint32_t action_id)
 {

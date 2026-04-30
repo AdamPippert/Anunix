@@ -16,6 +16,7 @@
 #include <anx/string.h>
 #include <anx/spinlock.h>
 #include <anx/kprintf.h>
+#include <anx/objstore_disk.h>
 
 #define CREDSTORE_MAX	16
 
@@ -118,8 +119,8 @@ int anx_credential_create(const char *name,
 
 	anx_spin_unlock_irqrestore(&credstore_lock, irq_state);
 
-	kprintf("credential: %s stored (%u bytes)\n",
-		name, secret_len);
+	kprintf("credential: %s stored (%u bytes)\n", name, secret_len);
+	anx_credstore_save();
 	return ANX_OK;
 }
 
@@ -228,6 +229,7 @@ int anx_credential_rotate(const char *name,
 	anx_free(old_secret);
 
 	kprintf("credential: %s rotated (%u bytes)\n", name, new_len);
+	anx_credstore_save();
 	return ANX_OK;
 }
 
@@ -258,6 +260,7 @@ int anx_credential_revoke(const char *name)
 	anx_free(old_secret);
 
 	kprintf("credential: %s revoked\n", name);
+	anx_credstore_save();
 	return ANX_OK;
 }
 
@@ -301,4 +304,111 @@ bool anx_credential_exists(const char *name)
 	anx_spin_unlock_irqrestore(&credstore_lock, irq_state);
 
 	return found;
+}
+
+/* ------------------------------------------------------------------ */
+/* Disk persistence (plaintext; encryption is a Phase 2 concern)      */
+/* ------------------------------------------------------------------ */
+
+#define CRED_DISK_OID_HI  0x4352454453544F52ULL  /* "CREDSTOR" */
+#define CRED_DISK_OID_LO  0x0000000000000001ULL
+#define CRED_DISK_MAGIC   0x43524544U             /* "CRED"    */
+#define CRED_DISK_TYPE    0xCE4D5E00U
+#define CRED_MAX_SECRET   512
+
+struct cred_disk_entry {
+	char     name[128];
+	uint32_t cred_type;
+	uint32_t secret_len;
+	uint8_t  secret[CRED_MAX_SECRET];
+};
+
+struct cred_disk_hdr {
+	uint32_t magic;
+	uint32_t count;
+	uint32_t _pad[2];
+};
+
+static uint8_t g_cred_disk_buf[sizeof(struct cred_disk_hdr) +
+				CREDSTORE_MAX * sizeof(struct cred_disk_entry)];
+
+void anx_credstore_save(void)
+{
+	struct cred_disk_hdr   *hdr;
+	struct cred_disk_entry *entries;
+	anx_oid_t oid;
+	uint32_t i, n = 0;
+	uint32_t total;
+	bool irq_state;
+
+	hdr     = (struct cred_disk_hdr *)g_cred_disk_buf;
+	entries = (struct cred_disk_entry *)(g_cred_disk_buf +
+					     sizeof(struct cred_disk_hdr));
+
+	anx_spin_lock_irqsave(&credstore_lock, &irq_state);
+
+	for (i = 0; i < CREDSTORE_MAX; i++) {
+		struct credential_entry *e = &credstore[i];
+		struct cred_disk_entry  *d = &entries[n];
+		uint32_t slen;
+
+		if (!e->active)
+			continue;
+
+		anx_strlcpy(d->name, e->name, sizeof(d->name));
+		d->cred_type = (uint32_t)e->cred_type;
+		slen = e->secret_len < CRED_MAX_SECRET ? e->secret_len : CRED_MAX_SECRET;
+		d->secret_len = slen;
+		anx_memcpy(d->secret, e->secret, slen);
+		n++;
+	}
+
+	anx_spin_unlock_irqrestore(&credstore_lock, irq_state);
+
+	hdr->magic = CRED_DISK_MAGIC;
+	hdr->count = n;
+	hdr->_pad[0] = 0;
+	hdr->_pad[1] = 0;
+
+	total = sizeof(struct cred_disk_hdr) + n * sizeof(struct cred_disk_entry);
+	oid.hi = CRED_DISK_OID_HI;
+	oid.lo = CRED_DISK_OID_LO;
+	anx_disk_delete_obj(&oid);
+	anx_disk_write_obj(&oid, CRED_DISK_TYPE, g_cred_disk_buf, total);
+}
+
+void anx_credstore_load(void)
+{
+	struct cred_disk_hdr   *hdr;
+	struct cred_disk_entry *entries;
+	anx_oid_t oid;
+	uint32_t actual, obj_type;
+	uint32_t i;
+	int rc;
+
+	oid.hi = CRED_DISK_OID_HI;
+	oid.lo = CRED_DISK_OID_LO;
+
+	rc = anx_disk_read_obj(&oid, g_cred_disk_buf, sizeof(g_cred_disk_buf),
+			       &actual, &obj_type);
+	if (rc != ANX_OK)
+		return;
+
+	hdr = (struct cred_disk_hdr *)g_cred_disk_buf;
+	if (hdr->magic != CRED_DISK_MAGIC || hdr->count > CREDSTORE_MAX)
+		return;
+
+	entries = (struct cred_disk_entry *)(g_cred_disk_buf +
+					     sizeof(struct cred_disk_hdr));
+
+	for (i = 0; i < hdr->count; i++) {
+		struct cred_disk_entry *d = &entries[i];
+
+		anx_credential_create(d->name, (enum anx_credential_type)d->cred_type,
+				      d->secret, d->secret_len);
+		/* Zero the in-buffer copy after loading */
+		secure_zero(d->secret, sizeof(d->secret));
+	}
+
+	kprintf("credential: loaded %u credential(s) from disk\n", hdr->count);
 }

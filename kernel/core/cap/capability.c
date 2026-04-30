@@ -13,6 +13,7 @@
 #include <anx/uuid.h>
 #include <anx/hashtable.h>
 #include <anx/string.h>
+#include <anx/kprintf.h>
 
 #define CAP_STORE_BITS	6	/* 64 buckets */
 
@@ -202,4 +203,51 @@ void anx_cap_record_invocation(struct anx_capability *cap, bool success)
 	if (success)
 		cap->success_count++;
 	anx_spin_unlock(&cap->lock);
+}
+
+int anx_cap_validate(struct anx_capability *cap)
+{
+	int score = 100;
+	uint32_t i;
+	int ret;
+
+	if (!cap)
+		return ANX_EINVAL;
+	if (cap->status != ANX_CAP_DRAFT)
+		return ANX_EPERM;
+
+	ret = anx_cap_transition(cap, ANX_CAP_VALIDATING);
+	if (ret != ANX_OK)
+		return ret;
+
+	if (cap->name[0] == '\0')
+		score -= 20;
+	if (cap->version[0] == '\0')
+		score -= 20;
+
+	for (i = 0; i < cap->required_engine_count; i++) {
+		struct anx_engine *eng = anx_engine_lookup(&cap->required_engines[i]);
+		if (!eng) {
+			score -= 25;
+			kprintf("[cap] validate: required engine %u not found\n", i);
+		}
+	}
+
+	if (score < 0)
+		score = 0;
+	cap->validation_score = (uint32_t)score;
+
+	if (score >= 50) {
+		ret = anx_cap_transition(cap, ANX_CAP_VALIDATED);
+		if (ret != ANX_OK)
+			return ret;
+		kprintf("[cap] validated: %s v%s score=%u\n",
+			cap->name, cap->version, (unsigned int)score);
+		return ANX_OK;
+	}
+
+	anx_cap_transition(cap, ANX_CAP_DRAFT);
+	kprintf("[cap] validation failed: %s v%s score=%u\n",
+		cap->name, cap->version, (unsigned int)score);
+	return ANX_EPERM;
 }

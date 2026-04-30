@@ -36,6 +36,7 @@ uint64_t anx_hash_u64(uint64_t val)
 int anx_htable_init(struct anx_htable *ht, uint32_t bits)
 {
 	uint32_t nbuckets = 1U << bits;
+	uint32_t i;
 
 	ht->buckets = anx_alloc(nbuckets * sizeof(struct anx_list_head));
 	if (!ht->buckets)
@@ -44,7 +45,7 @@ int anx_htable_init(struct anx_htable *ht, uint32_t bits)
 	ht->bits = bits;
 	ht->count = 0;
 
-	for (uint32_t i = 0; i < nbuckets; i++)
+	for (i = 0; i < nbuckets; i++)
 		anx_list_init(&ht->buckets[i]);
 
 	return ANX_OK;
