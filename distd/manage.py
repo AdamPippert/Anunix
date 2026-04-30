@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-superrouter management CLI.
+anunix-distd management CLI.
 
 Commands:
     add-token <label>                          — generate token, store hash, print token
@@ -19,8 +19,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_DB = "/var/lib/anunix-superrouter/db.sqlite3"
-DEFAULT_BLOBS = "/var/lib/anunix-superrouter/blobs"
+DEFAULT_DB = "/var/lib/anunix-distd/db.sqlite3"
+DEFAULT_BLOBS = "/var/lib/anunix-distd/blobs"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS workflows (

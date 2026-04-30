@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Anunix superrouter — workflow distribution, hardware profiles, and OS updates.
+Anunix Distribution Services — workflow distribution, hardware profiles, and OS updates.
 
 HTTP/JSON API over SQLite. Standard library only.
 Default port: 8420.
@@ -24,14 +24,14 @@ from urllib.parse import urlparse, parse_qs
 
 VERSION = "0.2.0"
 DEFAULT_PORT = 8420
-DEFAULT_DB = "/var/lib/anunix-superrouter/db.sqlite3"
-DEFAULT_BLOBS = "/var/lib/anunix-superrouter/blobs"
+DEFAULT_DB = "/var/lib/anunix-distd/db.sqlite3"
+DEFAULT_BLOBS = "/var/lib/anunix-distd/blobs"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
-log = logging.getLogger("superrouter")
+log = logging.getLogger("anunix-distd")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS workflows (
@@ -342,7 +342,7 @@ def make_handler(db: sqlite3.Connection, blobs_dir: str):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Anunix superrouter")
+    parser = argparse.ArgumentParser(description="Anunix Distribution Services")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--db", default=os.environ.get("SUPERROUTER_DB", DEFAULT_DB))
     parser.add_argument("--blobs", default=os.environ.get("SUPERROUTER_BLOBS", DEFAULT_BLOBS))
@@ -352,7 +352,7 @@ def main():
     db = open_db(args.db)
     handler = make_handler(db, args.blobs)
     server = http.server.HTTPServer(("0.0.0.0", args.port), handler)
-    log.info("superrouter v%s listening on :%d", VERSION, args.port)
+    log.info("anunix-distd v%s listening on :%d", VERSION, args.port)
     log.info("db=%s  blobs=%s", args.db, args.blobs)
     try:
         server.serve_forever()
