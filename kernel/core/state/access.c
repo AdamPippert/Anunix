@@ -17,15 +17,6 @@
 #include <anx/uuid.h>
 #include <anx/kprintf.h>
 
-static bool cid_eq(const anx_cid_t *a, const anx_cid_t *b)
-{
-	return a && b && a->hi == b->hi && a->lo == b->lo;
-}
-
-static bool cid_nil(const anx_cid_t *c)
-{
-	return !c || (c->hi == 0 && c->lo == 0);
-}
 
 int anx_access_evaluate(const struct anx_access_policy *policy,
 			const anx_cid_t *cell,
