@@ -158,6 +158,12 @@ void anx_wm_terminal_edit(const char *ns_name, const char *path);
 /* Flush terminal pixel buffer to framebuffer if dirty (call from main WM loop). */
 void anx_wm_terminal_flush_if_dirty(void);
 
+/* ---- Boot-time AI agent surface ---- */
+void anx_wm_agent_open(void);
+void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode);
+void anx_wm_agent_flush_if_dirty(void);
+struct anx_surface *anx_wm_agent_surface(void);
+
 /* Print a line of text to the terminal history (opens terminal if needed). */
 void anx_wm_terminal_print(const char *text);
 
