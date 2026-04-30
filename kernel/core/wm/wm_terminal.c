@@ -231,6 +231,15 @@ static void term_run_command(const char *cmd)
 	uint32_t captured;
 	char echo[HIST_COLS + 4];
 
+	/* "exit" / "quit" closes the terminal window */
+	if (anx_strcmp(cmd, "exit") == 0 || anx_strcmp(cmd, "quit") == 0) {
+		if (g_term.surf) {
+			anx_wm_window_close(g_term.surf);
+			g_term.surf = NULL;
+		}
+		return;
+	}
+
 	anx_snprintf(echo, sizeof(echo), "> %s", cmd);
 	hist_append_str(echo);
 
@@ -724,7 +733,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 
 	case ANX_KEY_TAB:
 		{
-			/* Complete the first word (command name) of current input */
+			/* Command name table */
 			static const char *const cmds[] = {
 				"agent", "ask", "api", "browser", "browser_init", "browser_stop",
 				"cap", "cat", "cell", "cells", "clear", "compctl",
@@ -742,18 +751,349 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 				"tz", "useradd", "version", "vm", "wc", "wifi",
 				"workflow", "write", "xdna", NULL
 			};
+
+			/* Per-command subcommand table */
+			static const struct { const char *cmd; const char *subs; }
+			subcmds[] = {
+				{"cell",     "create run show list"},
+				{"state",    "create show seal delete"},
+				{"model",    "info layers diff import"},
+				{"tensor",   "create info stats fill slice diff quantize search"},
+				{"workflow", "run list show create"},
+				{"vm",       "create start stop list info"},
+				{"cap",      "create list validate install"},
+				{"memplane", "admit show"},
+				{"engine",   "register list"},
+				{"net",      "status"},
+				{"store",    "format mount stats"},
+				{"secret",   "set list show fetch revoke"},
+				{"wifi",     "status connect disconnect mac"},
+				{"sched",    "status"},
+				{"loop",     "status run"},
+				{"rlm",      "run pal"},
+				{"disk",     ""},
+				{NULL, NULL}
+			};
+
+			/* Object commands that accept namespace path arguments */
+			static const char *const obj_cmds[] = {
+				"ls", "cat", "rm", "inspect", "cp", "mv",
+				"write", "meta", "head", "tail", "search", NULL
+			};
+
 			uint32_t cursor = g_term.input_len;
 			uint32_t i;
 			const char *best = NULL;
 			uint32_t match_count = 0;
 			uint32_t best_len = 0;
 
-			/* Only complete the first token (no space yet) */
+			/* Find first space — determines whether we complete cmd or arg */
+			uint32_t space_pos = 0;
+			bool has_space = false;
+
 			for (i = 0; i < cursor; i++) {
-				if (g_term.input[i] == ' ')
-					goto tab_done;
+				if (g_term.input[i] == ' ') {
+					space_pos = i;
+					has_space = true;
+					break;
+				}
 			}
 
+			if (has_space) {
+				/* --- argument completion --- */
+				char cmd_word[HIST_COLS];
+				char arg_partial[HIST_COLS];
+
+				anx_strlcpy(cmd_word, g_term.input, space_pos + 1);
+				anx_strlcpy(arg_partial,
+					    g_term.input + space_pos + 1,
+					    sizeof(arg_partial));
+
+				/* Skip if there's already a second space */
+				for (i = 0; arg_partial[i]; i++) {
+					if (arg_partial[i] == ' ')
+						goto tab_done;
+				}
+
+				/* 1. Subcommand completion */
+				for (i = 0; subcmds[i].cmd; i++) {
+					if (anx_strcmp(cmd_word, subcmds[i].cmd) == 0) {
+						/* Walk subcommand list (space-separated) */
+						const char *sp = subcmds[i].subs;
+						uint32_t plen =
+							(uint32_t)anx_strlen(arg_partial);
+						const char *sub_best = NULL;
+						uint32_t sub_best_len = 0;
+						uint32_t sub_count = 0;
+						char sub_list[HIST_COLS];
+						uint32_t sl_pos = 0;
+
+						while (*sp) {
+							/* Extract one token */
+							const char *tok = sp;
+							uint32_t tlen = 0;
+
+							while (*sp && *sp != ' ')
+								sp++, tlen++;
+							if (*sp == ' ')
+								sp++;
+
+							if (tlen == 0)
+								continue;
+							if (anx_strncmp(tok, arg_partial,
+									plen) != 0)
+								continue;
+
+							/* Match */
+							if (sub_count == 0) {
+								sub_best = tok;
+								sub_best_len = tlen;
+							} else {
+								uint32_t j = plen;
+
+								while (j < sub_best_len
+								       && j < tlen
+								       && tok[j] == sub_best[j])
+									j++;
+								sub_best_len = j;
+							}
+							/* Append to display list */
+							if (sl_pos + tlen + 2 <
+							    HIST_COLS) {
+								anx_memcpy(sub_list + sl_pos,
+									   tok, tlen);
+								sl_pos += tlen;
+								sub_list[sl_pos++] = ' ';
+							}
+							sub_count++;
+						}
+
+						if (sub_count == 1 && sub_best) {
+							/* Unique match: complete it */
+							uint32_t new_len =
+								space_pos + 1 + sub_best_len;
+
+							if (new_len + 1 < HIST_COLS) {
+								anx_memcpy(g_term.input + space_pos + 1,
+									   sub_best, sub_best_len);
+								g_term.input[new_len] = ' ';
+								g_term.input[new_len + 1] = '\0';
+								g_term.input_len = new_len + 1;
+							}
+						} else if (sub_count > 1 &&
+							   sub_best_len > plen) {
+							/* Partial common prefix */
+							uint32_t new_len =
+								space_pos + 1 + sub_best_len;
+
+							if (new_len < HIST_COLS) {
+								anx_memcpy(g_term.input + space_pos + 1,
+									   sub_best, sub_best_len);
+								g_term.input[new_len] = '\0';
+								g_term.input_len = new_len;
+							}
+						} else if (sub_count > 1) {
+							sub_list[sl_pos] = '\0';
+							hist_append_str(sub_list);
+						}
+						goto tab_done;
+					}
+				}
+
+				/* 2. Namespace path completion for object commands */
+				{
+					bool is_obj_cmd = false;
+
+					for (i = 0; obj_cmds[i]; i++) {
+						if (anx_strcmp(cmd_word,
+							       obj_cmds[i]) == 0) {
+							is_obj_cmd = true;
+							break;
+						}
+					}
+
+					if (is_obj_cmd) {
+						uint32_t plen =
+							(uint32_t)anx_strlen(arg_partial);
+						/* Find ':' in arg_partial */
+						uint32_t colon_pos = plen; /* sentinel */
+
+						for (i = 0; i < plen; i++) {
+							if (arg_partial[i] == ':') {
+								colon_pos = i;
+								break;
+							}
+						}
+
+						if (colon_pos < plen) {
+							/* Complete object path within ns */
+							char ns_name[ANX_NS_NAME_MAX];
+							const char *path_prefix =
+								arg_partial + colon_pos + 1;
+							struct anx_ns_list_entry entries[32];
+							uint32_t count = 0;
+							const char *ent_best = NULL;
+							uint32_t ent_best_len = 0;
+							uint32_t ent_count = 0;
+							uint32_t pp_len =
+								(uint32_t)anx_strlen(path_prefix);
+							char ent_list[HIST_COLS];
+							uint32_t el_pos = 0;
+
+							anx_strlcpy(ns_name,
+								    arg_partial,
+								    colon_pos + 1);
+							anx_ns_list(ns_name, "/",
+								    entries, 32, &count);
+
+							for (i = 0; i < count; i++) {
+								const char *nm =
+									entries[i].name;
+								uint32_t nlen =
+									(uint32_t)anx_strlen(nm);
+
+								if (anx_strncmp(nm, path_prefix,
+										pp_len) != 0)
+									continue;
+								if (ent_count == 0) {
+									ent_best = nm;
+									ent_best_len = nlen;
+								} else {
+									uint32_t j = pp_len;
+
+									while (j < ent_best_len
+									       && j < nlen
+									       && nm[j] == ent_best[j])
+										j++;
+									ent_best_len = j;
+								}
+								if (el_pos + nlen + 2 <
+								    HIST_COLS) {
+									anx_memcpy(ent_list + el_pos,
+										   nm, nlen);
+									el_pos += nlen;
+									ent_list[el_pos++] = ' ';
+								}
+								ent_count++;
+							}
+
+							if (ent_count == 1 && ent_best) {
+								uint32_t new_arg_len =
+									colon_pos + 1 + ent_best_len;
+								uint32_t new_total =
+									space_pos + 1 + new_arg_len;
+
+								if (new_total < HIST_COLS) {
+									anx_memcpy(g_term.input + space_pos + 1,
+										   arg_partial,
+										   colon_pos + 1);
+									anx_memcpy(g_term.input + space_pos + 1 + colon_pos + 1,
+										   ent_best,
+										   ent_best_len);
+									g_term.input[new_total] = '\0';
+									g_term.input_len = new_total;
+								}
+							} else if (ent_count > 1 &&
+								   ent_best_len > pp_len) {
+								uint32_t new_arg_len =
+									colon_pos + 1 + ent_best_len;
+								uint32_t new_total =
+									space_pos + 1 + new_arg_len;
+
+								if (new_total < HIST_COLS) {
+									anx_memcpy(g_term.input + space_pos + 1,
+										   arg_partial,
+										   colon_pos + 1);
+									anx_memcpy(g_term.input + space_pos + 1 + colon_pos + 1,
+										   ent_best,
+										   ent_best_len);
+									g_term.input[new_total] = '\0';
+									g_term.input_len = new_total;
+								}
+							} else if (ent_count > 1) {
+								ent_list[el_pos] = '\0';
+								hist_append_str(ent_list);
+							}
+						} else {
+							/* Complete namespace name */
+							char ns_names[16][ANX_NS_NAME_MAX];
+							uint32_t count = 0;
+							const char *ns_best = NULL;
+							uint32_t ns_best_len = 0;
+							uint32_t ns_count = 0;
+							char ns_list[HIST_COLS];
+							uint32_t nl_pos = 0;
+
+							anx_ns_list_namespaces(ns_names,
+									       16, &count);
+							for (i = 0; i < count; i++) {
+								const char *nm = ns_names[i];
+								uint32_t nlen =
+									(uint32_t)anx_strlen(nm);
+
+								if (anx_strncmp(nm, arg_partial,
+										plen) != 0)
+									continue;
+								if (ns_count == 0) {
+									ns_best = nm;
+									ns_best_len = nlen;
+								} else {
+									uint32_t j = plen;
+
+									while (j < ns_best_len
+									       && j < nlen
+									       && nm[j] == ns_best[j])
+										j++;
+									ns_best_len = j;
+								}
+								/* list: name + ':' */
+								if (nl_pos + nlen + 3 <
+								    HIST_COLS) {
+									anx_memcpy(ns_list + nl_pos,
+										   nm, nlen);
+									nl_pos += nlen;
+									ns_list[nl_pos++] = ':';
+									ns_list[nl_pos++] = ' ';
+								}
+								ns_count++;
+							}
+
+							if (ns_count == 1 && ns_best) {
+								/* Append ':' after ns name */
+								uint32_t new_total =
+									space_pos + 1 + ns_best_len + 1;
+
+								if (new_total < HIST_COLS) {
+									anx_memcpy(g_term.input + space_pos + 1,
+										   ns_best,
+										   ns_best_len);
+									g_term.input[space_pos + 1 + ns_best_len] = ':';
+									g_term.input[new_total] = '\0';
+									g_term.input_len = new_total;
+								}
+							} else if (ns_count > 1 &&
+								   ns_best_len > plen) {
+								uint32_t new_total =
+									space_pos + 1 + ns_best_len;
+
+								if (new_total < HIST_COLS) {
+									anx_memcpy(g_term.input + space_pos + 1,
+										   ns_best,
+										   ns_best_len);
+									g_term.input[new_total] = '\0';
+									g_term.input_len = new_total;
+								}
+							} else if (ns_count > 1) {
+								ns_list[nl_pos] = '\0';
+								hist_append_str(ns_list);
+							}
+						}
+					}
+				}
+				goto tab_done;
+			}
+
+			/* --- command name completion (no space in input yet) --- */
 			for (i = 0; cmds[i]; i++) {
 				if (anx_strncmp(cmds[i], g_term.input, cursor) == 0) {
 					if (match_count == 0) {
@@ -761,6 +1101,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 						best_len = (uint32_t)anx_strlen(cmds[i]);
 					} else {
 						uint32_t j = cursor;
+
 						while (j < best_len && cmds[i][j] == best[j])
 							j++;
 						best_len = j;
@@ -771,6 +1112,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 
 			if (match_count == 1) {
 				uint32_t clen = (uint32_t)anx_strlen(best);
+
 				if (clen + 1 < HIST_COLS - 1) {
 					anx_strlcpy(g_term.input, best, HIST_COLS);
 					g_term.input[clen]     = ' ';
@@ -790,6 +1132,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 							cursor) == 0) {
 						uint32_t clen =
 							(uint32_t)anx_strlen(cmds[i]);
+
 						if (pos + clen + 2 < HIST_COLS) {
 							anx_memcpy(line + pos,
 								   cmds[i], clen);

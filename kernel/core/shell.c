@@ -357,97 +357,134 @@ static int parse_args(char *line, char **argv, int max_args)
 
 static void cmd_help(int argc, char **argv)
 {
-	(void)argc;
-	(void)argv;
-	kputs("ansh — Anunix Shell\n\n");
-	kputs("Object tools:\n");
-	kputs("  ls [ns:path]               List namespace entries\n");
-	kputs("  cat <oid-or-path>          Read object payload\n");
-	kputs("  write <ns:path> <content>  Create a State Object\n");
-	kputs("  cp <src> <dst>             Copy object with provenance\n");
-	kputs("  mv <src> <dst>             Move/rename namespace binding\n");
-	kputs("  rm [-f] <ns:path>          Delete a State Object\n");
-	kputs("  inspect <oid-or-path>      Full object inspection\n");
-	kputs("  search [-i] <pattern>      Search object payloads\n");
-	kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET → object\n");
-	kputs("  cells                      List execution cells\n");
-	kputs("  sysinfo                    System overview\n");
-	kputs("  wifi status|connect|disconnect|mac  WiFi management\n");
-	kputs("  netinfo                    Network configuration\n");
-	kputs("  ntp [server-ip]            Sync time from NTP server\n");
-	kputs("  install -i                 Interactive OS installer\n");
-	kputs("  meta show|set|get <path>   Object metadata editor\n");
-	kputs("  tensor create|info|stats|fill  Tensor operations\n");
-	kputs("  tensor slice|diff|quantize|search  Tensor ops (Phase 2)\n");
-	kputs("  model info|layers|diff|import  Model namespace\n");
-	kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
-	kputs("  echo <text...>             Print text ($? for return code)\n");
-	kputs("\nPipe filters (use with |):\n");
-	kputs("  grep [-v] [-i] <pattern>   Filter lines (v=invert, i=ignore-case)\n");
-	kputs("  head [-n N]                First N lines (default 10)\n");
-	kputs("  tail [-n N]                Last N lines (default 10)\n");
-	kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
-	kputs("  sort [-r]                  Sort piped lines (r=reverse)\n");
-	kputs("  history                    Show command history\n");
-	kputs("  date                       Show current date and time\n");
-	kputs("\nSubsystems:\n");
-	kputs("  help                       Show this help\n");
-	kputs("  version                    Show kernel version\n");
-	kputs("  mem stats                  Page allocator statistics\n");
-	kputs("  state create [type]        Create a state object\n");
-	kputs("  state show <oid-prefix>    Show object details\n");
-	kputs("  state seal <oid-prefix>    Seal an object\n");
-	kputs("  state delete <oid-prefix>  Delete an object\n");
-	kputs("  cell create <name>         Create an execution cell\n");
-	kputs("  cell run <cid-prefix>      Run a cell through pipeline\n");
-	kputs("  cell show <cid-prefix>     Show cell details\n");
-	kputs("  memplane admit <oid-pfx>   Admit object to memory plane\n");
-	kputs("  memplane show <oid-pfx>    Show memory entry\n");
-	kputs("  engine register <name>     Register a local tool engine\n");
-	kputs("  engine list                List registered engines\n");
-	kputs("  cap create <name>          Create a capability (draft)\n");
-	kputs("  cap list                   List capabilities\n");
-	kputs("  cap validate <index>       Validate a draft capability\n");
-	kputs("  cap install <index>        Install a validated capability\n");
-	kputs("  rlm run [prompt]           Run a rollout with current adapter\n");
-	kputs("  rlm pal <i> <world> [s] [a] Feed rollout score to PAL\n");
-	kputs("  sched status               Show scheduler queue depths\n");
-	kputs("  net status                 Show network plane status\n");
-	kputs("  ping <ip>                  Send ICMP echo request\n");
-	kputs("  dns <hostname>             Resolve hostname to IP\n");
-	kputs("  secret set <name> <value>  Store a credential\n");
-	kputs("  secret list                List credentials (no values)\n");
-	kputs("  secret show <name>         Show credential metadata\n");
-	kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
-	kputs("  secret revoke <name>       Revoke a credential\n");
-	kputs("  ask <message...>           Ask Claude a question\n");
-	kputs("  agent <goal...>            Run AI agent loop to complete a task\n");
-	kputs("  model-init <cred> <host> <port>  Configure model endpoint\n");
-	kputs("  hw-inventory               Show hardware summary\n");
-	kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
-	kputs("  http-get <host> [port] [path]  HTTP GET request\n");
-	kputs("  login <user>               Login with password\n");
-	kputs("  logout                     End session\n");
-	kputs("  useradd <user> <pass>      Create user account\n");
-	kputs("  ssh-addkey <b64-blob>      Authorize an SSH public key\n");
-	kputs("  store format [label]       Format disk with object store\n");
-	kputs("  store mount                Mount existing object store\n");
-	kputs("  store stats                Show store statistics\n");
-	kputs("  disk                       Show block device info\n");
-	kputs("  pci                        List PCI devices\n");
-	kputs("  perf                       Show boot performance profile\n");
-	kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
-	kputs("  reboot                     Reboot the system\n");
-	kputs("  halt                       Halt the system\n");
-	kputs("\nDisplay:\n");
-	kputs("  fb_info                    Framebuffer geometry (JSON)\n");
-	kputs("  gop_list                   List GOP modes available at boot\n");
-	kputs("  fb_test                    Paint 8-bar color test pattern\n");
-	kputs("\nBrowser:\n");
-	kputs("  browser_init [host [port]] Connect to anxbrowserd and start streaming\n");
-	kputs("  browser <url>              Navigate active session to URL\n");
-	kputs("  browser status             Show browser cell state\n");
-	kputs("  browser_stop               Stop streaming\n");
+	const char *topic = (argc >= 2) ? argv[1] : NULL;
+
+	if (!topic) {
+		kputs("ansh — Anunix Shell.  Type 'help <topic>' for details.\n\n");
+		kputs("Topics:\n");
+		kputs("  help objects    State objects, namespaces\n");
+		kputs("  help model      AI models, agents, tensors\n");
+		kputs("  help network    Networking, HTTP, WiFi\n");
+		kputs("  help system     System info, hardware, scheduler\n");
+		kputs("  help workflow   Workflow engine\n");
+		kputs("  help security   Credentials, auth\n");
+		kputs("  help shell      Builtins, pipes, history\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "objects") == 0) {
+		kputs("State objects and namespaces:\n");
+		kputs("  ls [ns:path]               List namespace entries\n");
+		kputs("  cat <oid-or-path>          Read object payload\n");
+		kputs("  write <ns:path> <content>  Create a State Object\n");
+		kputs("  cp <src> <dst>             Copy object with provenance\n");
+		kputs("  mv <src> <dst>             Move/rename namespace binding\n");
+		kputs("  rm [-f] <ns:path>          Delete a State Object\n");
+		kputs("  inspect <oid-or-path>      Full object inspection\n");
+		kputs("  search [-i] <pattern>      Search object payloads\n");
+		kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET -> object\n");
+		kputs("  state create|show|seal|delete  State object lifecycle\n");
+		kputs("  meta show|set|get <path>   Object metadata editor\n");
+		kputs("  store format|mount|stats   Object store management\n");
+		kputs("  disk                       Show block device info\n");
+		kputs("  cells                      List execution cells\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "model") == 0) {
+		kputs("AI models, agents, tensors:\n");
+		kputs("  ask <message...>           Ask Claude a question\n");
+		kputs("  agent <goal...>            Run AI agent loop\n");
+		kputs("  model-init <cred> <host> <port>  Configure model endpoint\n");
+		kputs("  model info|layers|diff|import  Model namespace\n");
+		kputs("  tensor create|info|stats|fill  Tensor operations\n");
+		kputs("  tensor slice|diff|quantize|search  Tensor ops (Phase 2)\n");
+		kputs("  rlm run [prompt]           Run a rollout with current adapter\n");
+		kputs("  rlm pal <i> <world> [s] [a]  Feed rollout score to PAL\n");
+		kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
+		kputs("  loop status|run            IBAL training loop\n");
+		kputs("  jepa                       JEPA world-model status\n");
+		kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "network") == 0) {
+		kputs("Networking, HTTP, WiFi:\n");
+		kputs("  net status                 Show network plane status\n");
+		kputs("  netinfo                    Network configuration\n");
+		kputs("  ntp [server-ip]            Sync time from NTP server\n");
+		kputs("  ping <ip>                  Send ICMP echo request\n");
+		kputs("  dns <hostname>             Resolve hostname to IP\n");
+		kputs("  wifi status|connect|disconnect|mac  WiFi management\n");
+		kputs("  http-get <host> [port] [path]  HTTP GET request\n");
+		kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET -> object\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "system") == 0) {
+		kputs("System info, hardware, scheduler:\n");
+		kputs("  sysinfo                    System overview\n");
+		kputs("  mem stats                  Page allocator statistics\n");
+		kputs("  sched status               Show scheduler queue depths\n");
+		kputs("  engine register|list       Tool engine registry\n");
+		kputs("  memplane admit|show        Memory control plane\n");
+		kputs("  cap create|list|validate|install  Capability objects\n");
+		kputs("  cell create|run|show|list  Execution cell runtime\n");
+		kputs("  vm create|start|stop|list|info  Virtual machine control\n");
+		kputs("  pci                        List PCI devices\n");
+		kputs("  perf                       Show boot performance profile\n");
+		kputs("  reboot                     Reboot the system\n");
+		kputs("  halt                       Halt the system\n");
+		kputs("  version                    Show kernel version\n");
+		kputs("  hwd                        Hardware detection summary\n");
+		kputs("  hw-inventory               Show hardware summary\n");
+		kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
+		kputs("  theme                      Theme selector\n");
+		kputs("  fb_info                    Framebuffer geometry (JSON)\n");
+		kputs("  mode                       Display mode selection\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "workflow") == 0) {
+		kputs("Workflow engine:\n");
+		kputs("  workflow run|list|show|create  Workflow management\n");
+		kputs("  kickstart                  Kickstart provisioning agent\n");
+		kputs("  install -i                 Interactive OS installer\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "security") == 0) {
+		kputs("Credentials and auth:\n");
+		kputs("  secret set <name> <value>  Store a credential\n");
+		kputs("  secret list                List credentials (no values)\n");
+		kputs("  secret show <name>         Show credential metadata\n");
+		kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
+		kputs("  secret revoke <name>       Revoke a credential\n");
+		kputs("  login <user>               Login with password\n");
+		kputs("  logout                     End session\n");
+		kputs("  useradd <user> <pass>      Create user account\n");
+		kputs("  ssh-addkey <b64-blob>      Authorize an SSH public key\n");
+		return;
+	}
+
+	if (anx_strcmp(topic, "shell") == 0) {
+		kputs("Shell builtins, pipes, history:\n");
+		kputs("  echo <text...>             Print text ($? for return code)\n");
+		kputs("  grep [-v] [-i] <pattern>   Filter lines\n");
+		kputs("  head [-n N]                First N lines (default 10)\n");
+		kputs("  tail [-n N]                Last N lines (default 10)\n");
+		kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
+		kputs("  sort [-r]                  Sort piped lines (r=reverse)\n");
+		kputs("  history                    Show command history\n");
+		kputs("  date                       Show current date and time\n");
+		kputs("  clear                      Clear terminal output\n");
+		kputs("  edit <ns:path>             Open text editor\n");
+		kputs("  help [topic]               This help\n");
+		return;
+	}
+
+	kprintf("help: unknown topic '%s'  (objects|model|network|system|workflow|security|shell)\n",
+		topic);
 }
 
 static void cmd_version(int argc, char **argv)
