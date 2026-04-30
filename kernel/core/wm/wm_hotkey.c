@@ -268,8 +268,13 @@ static void hk_fullscreen(uint32_t mods, uint32_t key, void *arg)
 
 static void hk_switcher(uint32_t mods, uint32_t key, void *arg)
 {
+	anx_oid_t foc;
+	struct anx_surface *s = NULL;
 	(void)mods; (void)key; (void)arg;
-	anx_wm_switcher_open();
+	anx_wm_focus_cycle();
+	foc = anx_input_focus_get();
+	if (anx_iface_surface_lookup(foc, &s) == ANX_OK && s && s->title[0])
+		anx_wm_notify(s->title);
 }
 
 static void hk_copy(uint32_t mods, uint32_t key, void *arg)
