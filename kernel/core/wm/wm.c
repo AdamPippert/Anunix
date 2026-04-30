@@ -15,6 +15,7 @@
 #include <anx/interface_plane.h>
 #include <anx/input.h>
 #include <anx/fb.h>
+#include <anx/fbcon.h>
 #include <anx/gui.h>
 #include <anx/font.h>
 #include <anx/theme.h>
@@ -1198,8 +1199,10 @@ void anx_wm_run(void)
 
 	g_wm_running = true;
 
-	/* Erase the pre-WM GUI framebuffer content (boot splash, old terminal
-	 * frame) so the desktop starts with a clean background. */
+	/* Take framebuffer ownership: disable text console and clear screen */
+	anx_fbcon_disable();
+
+	/* Paint desktop background */
 	if (fb && fb->available) {
 		anx_fb_fill_rect(0, 0, fb->width, fb->height,
 				 0x000B1A2B /* ANX_COLOR_AX_BG */);
@@ -1223,6 +1226,9 @@ void anx_wm_run(void)
 	kprintf("[wm]   Meta+O         object viewer\n");
 	kprintf("[wm]   Meta+M         minimize window\n");
 	kprintf("[wm]   Meta+Shift+H   halt system\n");
+
+	/* Open a terminal on the initial workspace */
+	anx_wm_launch_terminal();
 
 	while (g_wm_running) {
 		struct anx_event ev;
@@ -1276,6 +1282,22 @@ void anx_wm_run(void)
 		/* Flush terminal pixel buffer if a key event marked it dirty */
 		anx_wm_terminal_flush_if_dirty();
 
+		/* Dispatch surface-targeted events to the focused surface handler */
+		{
+			struct anx_wm_workspace *ws = active_ws();
+			struct anx_surface *focused = NULL;
+
+			if (!oid_null(&ws->focused))
+				anx_iface_surface_lookup(ws->focused, &focused);
+
+			if (focused && focused->on_event) {
+				struct anx_event sev;
+
+				while (anx_iface_event_poll_surf(focused->oid, &sev) == ANX_OK)
+					focused->on_event(focused, &sev);
+			}
+		}
+
 		/* Poll network stack — keeps HTTP/SSH/TCP alive in desktop mode */
 		anx_e1000_poll();
 		anx_mt7925_poll();
@@ -1295,6 +1317,13 @@ void anx_wm_run(void)
 			if (g_toast.age >= TOAST_LIFE)
 				toast_dismiss();
 		}
+
+		/* Yield to reduce CPU pressure on bare metal */
+#if defined(__x86_64__) || defined(__i386__)
+		__asm__ volatile("pause");
+#else
+		__asm__ volatile("yield");
+#endif
 	}
 }
 

@@ -27,6 +27,9 @@ void anx_fbcon_puts(const char *s);
 /* Clear the console */
 void anx_fbcon_clear(void);
 
+/* Disable fbcon — WM takes ownership of the framebuffer */
+void anx_fbcon_disable(void);
+
 /* Get console dimensions in character cells */
 uint32_t anx_fbcon_cols(void);
 uint32_t anx_fbcon_rows(void);

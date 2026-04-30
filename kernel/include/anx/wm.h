@@ -127,6 +127,7 @@ uint32_t anx_wm_minimized_list(anx_oid_t *out, uint32_t max);
 void anx_wm_notify(const char *msg);
 
 /* ---- Built-in applications ---- */
+void anx_wm_launch_terminal(void);
 void anx_wm_launch_workflow_designer(void);
 void anx_wm_launch_object_viewer(void);
 void anx_wm_launch_command_search(void);

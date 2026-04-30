@@ -491,14 +491,15 @@ int session_navigate(struct browser_session *s, const char *url)
 				if (s->n_imgs >= SESSION_IMG_MAX)
 					break;
 
-				if (r->body[0] == 0xFF && r->body[1] == 0xD8) {
+				if ((unsigned char)r->body[0] == 0xFF &&
+				    (unsigned char)r->body[1] == 0xD8) {
 					/* JPEG: FF D8 */
 					struct jpeg_image ji;
 					if (jpeg_decode(r->body, r->body_len, &ji) == 0) {
 						px = ji.pixels; iw = ji.width; ih = ji.height;
 						fmt = "JPEG";
 					}
-				} else if (r->body[0] == 0x89 && r->body[1] == 'P' &&
+				} else if ((unsigned char)r->body[0] == 0x89 && r->body[1] == 'P' &&
 					    r->body[2] == 'N' && r->body[3] == 'G') {
 					/* PNG: 89 50 4E 47 */
 					struct png_image pi;
