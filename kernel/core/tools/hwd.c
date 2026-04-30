@@ -3,7 +3,7 @@
  *
  * Probes PCI and ACPI, synthesises an anx:hw-profile/v1 structured data
  * State Object, and stores it in the object store for inspection and
- * eventual upload to superrouter.
+ * eventual upload to anunix-distd.
  *
  * Sub-commands:
  *   hwd scan       — probe hardware and print summary

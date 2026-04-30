@@ -1,7 +1,7 @@
 /*
  * update.c — OS update channel: check, fetch, stage, and apply.
  *
- * Uses the HTTP client to contact a superrouter instance.  Downloaded
+ * Uses the HTTP client to contact an anunix-distd instance.  Downloaded
  * kernel images are stored in the disk object store under a fixed "pending
  * update" OID.  The actual overwrite of the boot image happens when the
  * system reboots and a future early-boot stage detects the pending object.
@@ -151,7 +151,7 @@ make_update_path(const char *channel, const char *arch,
 
 /*
  * Parse http://host[:port]/... from a server string.
- * Port defaults to 8420 (superrouter default) if not specified.
+ * Port defaults to 8420 (anunix-distd default) if not specified.
  */
 static int
 parse_server(const char *server, char host[128], uint16_t *port)

@@ -1,7 +1,7 @@
 /*
  * anx/update.h — OS update channel.
  *
- * Fetches a kernel update image from the superrouter, stages it on disk,
+ * Fetches a kernel update image from anunix-distd, stages it on disk,
  * and reboots.  Version strings use YYYY.M.D dot notation.
  *
  * Typical call sequence (driven by kickstart auto_apply):
