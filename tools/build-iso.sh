@@ -13,8 +13,8 @@ set -e
 TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "${TOOLS_DIR}/.." && pwd)"
 GRUB_DIR="${TOOLS_DIR}/grub"
-# Prefer bundled xorriso; fall back to system xorriso if bundled is non-executable (wrong platform)
-if [ -x "${GRUB_DIR}/bin/xorriso" ]; then
+# Bundled xorriso is a macOS binary; on Linux use system xorriso instead.
+if [ "$(uname -s)" = "Darwin" ] && [ -x "${GRUB_DIR}/bin/xorriso" ]; then
 	XORRISO="${GRUB_DIR}/bin/xorriso"
 elif command -v xorriso >/dev/null 2>&1; then
 	XORRISO="$(command -v xorriso)"
