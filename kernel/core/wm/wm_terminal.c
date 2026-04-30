@@ -240,6 +240,14 @@ static void term_run_command(const char *cmd)
 		return;
 	}
 
+	/* "clear" resets scroll history without going through the shell */
+	if (anx_strcmp(cmd, "clear") == 0) {
+		g_term.hist_count = 0;
+		g_term.scroll_off = 0;
+		term_render();
+		return;
+	}
+
 	anx_snprintf(echo, sizeof(echo), "> %s", cmd);
 	hist_append_str(echo);
 
@@ -1192,7 +1200,12 @@ void anx_wm_terminal_open(void)
 	const struct anx_fb_info *fb;
 
 	if (g_term.surf) {
-		anx_wm_window_focus(g_term.surf);
+		/* Move to current workspace (handles cross-workspace re-open) */
+		anx_wm_window_send_to_workspace(g_term.surf,
+						anx_wm_workspace_active());
+		/* Restore to visible + focused (handles minimized-on-same-ws) */
+		anx_wm_window_restore(g_term.surf);
+		term_render();
 		return;
 	}
 

@@ -43,6 +43,7 @@
 #include <anx/acpi.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/crypto.h>
 #include <anx/browser.h>
 #include <anx/base64.h>
 #include <anx/e1000.h>
@@ -463,6 +464,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  login <user>               Login with password\n");
 		kputs("  logout                     End session\n");
 		kputs("  useradd <user> <pass>      Create user account\n");
+		kputs("  ssh-keygen                 Generate Ed25519 keypair; print public key\n");
 		kputs("  ssh-addkey <b64-blob>      Authorize an SSH public key\n");
 		return;
 	}
@@ -2137,9 +2139,9 @@ static void cmd_ssh_addkey(int argc, char **argv)
 	if (anx_strncmp(b64, "ssh-ed25519", 11) == 0 && argc >= 3)
 		b64 = argv[2];
 
-	ret = anx_base64_decode(b64, (uint32_t)anx_strlen(b64),
-				decoded, sizeof(decoded), &dec_len);
-	if (ret != ANX_OK || dec_len < 4) {
+	dec_len = (uint32_t)anx_base64_decode(b64, anx_strlen(b64),
+					      decoded, sizeof(decoded));
+	if (dec_len < 4) {
 		kputs("ssh-addkey: base64 decode failed\n");
 		return;
 	}
@@ -2207,6 +2209,69 @@ static void cmd_ssh_addkey(int argc, char **argv)
 
 	kprintf("ssh-addkey: authorized key added (%u total)\n",
 		new_len / 32);
+}
+
+static void cmd_ssh_keygen(void)
+{
+	/*
+	 * Generate a fresh Ed25519 identity keypair, persist the private key
+	 * as the "ssh-identity" credential, and print the public key in
+	 * OpenSSH authorized_keys format.
+	 *
+	 * SSH wire blob: uint32_be(11) "ssh-ed25519" uint32_be(32) pubkey[32]
+	 * Total: 4 + 11 + 4 + 32 = 51 bytes → 68 base64 chars.
+	 */
+	uint8_t seed[32];
+	uint8_t pub[32];
+	uint8_t priv[64];
+	uint8_t wire[51];
+	char b64[ANX_BASE64_ENC_LEN(51) + 1];
+	uint8_t existing_keys[ANX_AUTHORIZED_KEYS_MAX * 32];
+	uint32_t key_len = 0;
+	uint32_t new_len;
+	size_t b64_len;
+	int ret;
+
+	anx_random_bytes(seed, sizeof(seed));
+	anx_ed25519_keypair(pub, priv, seed);
+
+	/* Build SSH wire encoding */
+	wire[0] = 0; wire[1] = 0; wire[2] = 0; wire[3] = 11;
+	anx_memcpy(wire + 4, "ssh-ed25519", 11);
+	wire[15] = 0; wire[16] = 0; wire[17] = 0; wire[18] = 32;
+	anx_memcpy(wire + 19, pub, 32);
+
+	b64_len = anx_base64_encode(wire, 51, b64, sizeof(b64) - 1);
+	b64[b64_len] = '\0';
+
+	/* Store or replace private key */
+	if (anx_credential_exists("ssh-identity"))
+		ret = anx_credential_rotate("ssh-identity", priv, 64);
+	else
+		ret = anx_credential_create("ssh-identity",
+					    ANX_CRED_PRIVATE_KEY, priv, 64);
+	if (ret != ANX_OK) {
+		kprintf("ssh-keygen: failed to store key (%d)\n", ret);
+		return;
+	}
+
+	/* Self-authorize: append pubkey to ssh-authorized-keys */
+	anx_credential_read("ssh-authorized-keys", existing_keys,
+			    sizeof(existing_keys), &key_len);
+	if (key_len % 32 != 0) key_len = 0;
+	if (key_len + 32 <= (uint32_t)(ANX_AUTHORIZED_KEYS_MAX * 32)) {
+		anx_memcpy(existing_keys + key_len, pub, 32);
+		new_len = key_len + 32;
+		if (anx_credential_exists("ssh-authorized-keys"))
+			anx_credential_rotate("ssh-authorized-keys",
+					      existing_keys, new_len);
+		else
+			anx_credential_create("ssh-authorized-keys",
+					      ANX_CRED_OPAQUE,
+					      existing_keys, new_len);
+	}
+
+	kprintf("ssh-ed25519 %s anunix-local\n", b64);
 }
 
 /* --- Store commands --- */
@@ -2714,6 +2779,8 @@ static void dispatch(int argc, char **argv)
 		kputs("logged out\n");
 	} else if (anx_strcmp(argv[0], "useradd") == 0) {
 		cmd_useradd(argc, argv);
+	} else if (anx_strcmp(argv[0], "ssh-keygen") == 0) {
+		cmd_ssh_keygen();
 	} else if (anx_strcmp(argv[0], "ssh-addkey") == 0) {
 		cmd_ssh_addkey(argc, argv);
 	} else if (anx_strcmp(argv[0], "store") == 0) {

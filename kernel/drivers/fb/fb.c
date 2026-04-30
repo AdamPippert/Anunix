@@ -109,6 +109,113 @@ void anx_fb_clear(uint32_t color)
 	anx_fb_fill_rect(0, 0, fb.width, fb.height, color);
 }
 
+void anx_fb_fill_rounded_rect(uint32_t x, uint32_t y,
+			       uint32_t w, uint32_t h,
+			       uint32_t radius, uint32_t color)
+{
+	uint32_t r, row_y, col_x, dx, dy;
+
+	if (w == 0 || h == 0)
+		return;
+
+	/* Clamp radius so it fits inside the rect */
+	r = radius;
+	if (r > w / 2) r = w / 2;
+	if (r > h / 2) r = h / 2;
+
+	for (row_y = y; row_y < y + h; row_y++) {
+		uint32_t row_off = row_y - y;
+		uint32_t x_start = x;
+		uint32_t x_end   = x + w;
+
+		/* Determine horizontal clipping from rounded corners */
+		if (row_off < r) {
+			/* Top edge — corner quarter-circles */
+			dy = r - row_off;
+			for (col_x = x; col_x < x + r; col_x++) {
+				dx = r - (col_x - x);
+				if (dx * dx + dy * dy > r * r)
+					x_start = col_x + 1;
+				else
+					break;
+			}
+			for (col_x = x + w - 1; col_x >= x + w - r; col_x--) {
+				dx = r - (x + w - 1 - col_x);
+				if (dx * dx + dy * dy > r * r)
+					x_end = col_x;
+				else
+					break;
+			}
+		} else if (row_off >= h - r) {
+			/* Bottom edge — corner quarter-circles */
+			dy = r - (h - 1 - row_off);
+			for (col_x = x; col_x < x + r; col_x++) {
+				dx = r - (col_x - x);
+				if (dx * dx + dy * dy > r * r)
+					x_start = col_x + 1;
+				else
+					break;
+			}
+			for (col_x = x + w - 1; col_x >= x + w - r; col_x--) {
+				dx = r - (x + w - 1 - col_x);
+				if (dx * dx + dy * dy > r * r)
+					x_end = col_x;
+				else
+					break;
+			}
+		}
+
+		if (x_start < x_end) {
+			/* Clip to framebuffer */
+			uint32_t sx = (x_start < fb.width) ? x_start : fb.width;
+			uint32_t ex = (x_end   < fb.width) ? x_end   : fb.width;
+			uint32_t ry = (row_y   < fb.height) ? row_y   : fb.height;
+
+			if (ry < fb.height && sx < ex) {
+				uint32_t *row = anx_fb_row_ptr(ry);
+				uint32_t i;
+				for (i = sx; i < ex; i++)
+					row[i] = color;
+			}
+		}
+	}
+}
+
+void anx_fb_fill_gradient(uint32_t x, uint32_t y,
+			   uint32_t w, uint32_t h,
+			   uint32_t color_start, uint32_t color_end,
+			   bool vertical)
+{
+	uint32_t row_y, col_x, steps, i;
+	uint32_t rs, gs, bs, re, ge, be;
+
+	if (w == 0 || h == 0)
+		return;
+
+	rs = (color_start >> 16) & 0xFF;
+	gs = (color_start >>  8) & 0xFF;
+	bs =  color_start        & 0xFF;
+	re = (color_end   >> 16) & 0xFF;
+	ge = (color_end   >>  8) & 0xFF;
+	be =  color_end          & 0xFF;
+
+	steps = vertical ? h : w;
+	if (steps == 0) steps = 1;
+
+	for (row_y = y; row_y < y + h && row_y < fb.height; row_y++) {
+		for (col_x = x; col_x < x + w && col_x < fb.width; col_x++) {
+			uint32_t *row = anx_fb_row_ptr(row_y);
+			int32_t r2, g2, b2;
+
+			i = vertical ? (row_y - y) : (col_x - x);
+			r2 = (int32_t)rs + ((int32_t)re - (int32_t)rs) * (int32_t)i / (int32_t)steps;
+			g2 = (int32_t)gs + ((int32_t)ge - (int32_t)gs) * (int32_t)i / (int32_t)steps;
+			b2 = (int32_t)bs + ((int32_t)be - (int32_t)bs) * (int32_t)i / (int32_t)steps;
+			row[col_x] = ((uint32_t)r2 << 16) | ((uint32_t)g2 << 8) | (uint32_t)b2;
+		}
+	}
+}
+
 void anx_fb_set_gop_modes(const struct anx_gop_mode *modes,
 			   uint8_t count, uint8_t current_idx)
 {

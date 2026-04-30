@@ -642,14 +642,10 @@ static int
 compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 {
 	struct anx_list_head *pos;
-	anx_oid_t topmost_focus;
-	bool found_focus;
 	uint32_t committed;
 	bool flags;
 	uint64_t t0, t1;
 
-	topmost_focus = ANX_UUID_NIL;
-	found_focus = false;
 	committed = 0;
 	t0 = arch_time_now();
 
@@ -663,7 +659,7 @@ compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 
 		/* P1-001: skip surfaces with no pending damage — zero-render fast path. */
 		if (!s->damage_valid)
-			goto check_focus;
+			continue;
 
 		if (s->renderer_ops && s->renderer_ops->commit) {
 			anx_spin_unlock_irqrestore(&iface_lock, flags);
@@ -673,17 +669,10 @@ compositor_run_cycle(struct anx_compositor_slot *slot, uint32_t *committed_out)
 			s->commit_count++;
 			committed++;
 		}
-
-check_focus:
-		if (!found_focus) {
-			topmost_focus = s->oid;
-			found_focus = true;
-		}
 	}
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
 
 	t1 = arch_time_now();
-	anx_input_focus_set(topmost_focus);
 	slot->repaint_cycles++;
 	slot->committed_surfaces += committed;
 	slot->last_cycle_commits = committed;
