@@ -1227,8 +1227,8 @@ void anx_wm_run(void)
 	kprintf("[wm]   Meta+M         minimize window\n");
 	kprintf("[wm]   Meta+Shift+H   halt system\n");
 
-	/* Open a terminal on the initial workspace */
-	anx_wm_launch_terminal();
+	/* Open agent surface as primary boot interface */
+	anx_wm_agent_open();
 
 	while (g_wm_running) {
 		struct anx_event ev;
@@ -1279,7 +1279,8 @@ void anx_wm_run(void)
 			}
 		}
 
-		/* Flush terminal pixel buffer if a key event marked it dirty */
+		/* Flush pixel buffers if key events marked them dirty */
+		anx_wm_agent_flush_if_dirty();
 		anx_wm_terminal_flush_if_dirty();
 
 		/* Dispatch surface-targeted events to the focused surface handler */

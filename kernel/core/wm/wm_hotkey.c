@@ -127,6 +127,13 @@ bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode)
 		return true;
 	}
 
+	/* Priority 5: agent */
+	s = anx_wm_agent_surface();
+	if (s && s->oid.hi == focused.hi && s->oid.lo == focused.lo) {
+		anx_wm_agent_key_event(key, mods, unicode);
+		return true;
+	}
+
 	return false;
 }
 
