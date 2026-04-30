@@ -347,6 +347,7 @@ struct anx_loop_memory_payload {
 	float    avg_final_energy;
 	float    avg_iters;
 	float    energy_waypoints[ANX_MEMORY_WAYPOINTS];
+	uint32_t _pad;		/* align action_stats to 8-byte boundary (offset 184) */
 	struct anx_loop_action_stats  action_stats[ANX_MEMORY_ACT_COUNT];
 };
 

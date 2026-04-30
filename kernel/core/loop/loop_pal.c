@@ -39,6 +39,7 @@ struct pal_action_ema {
 	float    min_energy;
 	uint32_t sample_count;
 	uint32_t session_count;
+	uint32_t _pad;		/* make sizeof == 24 so array elements stay 8-byte aligned */
 };
 
 struct pal_world_entry {
