@@ -261,20 +261,35 @@ qemu: $(QEMU_KERNEL)
 # QEMU with framebuffer display (serial on stdio + graphical window)
 ifeq ($(ARCH),arm64)
   QFLAGS_FB := -M virt -cpu cortex-a72 -m 512M -serial mon:stdio -device ramfb \
-               -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
-               -device virtio-net-device,netdev=net0 \
                -kernel
 else ifeq ($(ARCH),x86_64)
   QFLAGS_FB := -m 512M -serial mon:stdio -no-reboot -vga std \
-               -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
-               -device virtio-net-pci,netdev=net0 \
                -kernel
 else
   QFLAGS_FB := $(QFLAGS)
 endif
 
+# qemu-fb-net: same as qemu-fb but with SLIRP user networking (requires QEMU built with libslirp).
+# Used on Jekyll and Linux hosts. For local display testing on macOS use qemu-fb.
+ifeq ($(ARCH),arm64)
+  QFLAGS_FB_NET := -M virt -cpu cortex-a72 -m 512M -serial mon:stdio -device ramfb \
+                   -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+                   -device virtio-net-device,netdev=net0 \
+                   -kernel
+else ifeq ($(ARCH),x86_64)
+  QFLAGS_FB_NET := -m 512M -serial mon:stdio -no-reboot -vga std \
+                   -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+                   -device virtio-net-pci,netdev=net0 \
+                   -kernel
+else
+  QFLAGS_FB_NET := $(QFLAGS_FB)
+endif
+
 qemu-fb: $(QEMU_KERNEL)
 	$(QEMU) $(QFLAGS_FB) $(QEMU_KERNEL)
+
+qemu-fb-net: $(QEMU_KERNEL)
+	$(QEMU) $(QFLAGS_FB_NET) $(QEMU_KERNEL)
 
 # Boot the ISO in QEMU via UEFI — identical boot path to bare metal and USB stick.
 # Requires OVMF firmware (edk2-ovmf on Arch, ovmf on Debian/Ubuntu).
