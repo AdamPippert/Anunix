@@ -48,7 +48,9 @@ def netdev_args():
     result = subprocess.run([qemu, "-netdev", "help"],
                             capture_output=True, text=True)
     backends = result.stdout + result.stderr
-    if "user" in backends:
+    # Match "user" as a whole word — avoid false-positive from "vhost-user"
+    import re
+    if re.search(r'\buser\b', backends):
         return ["-netdev", f"user,id=net0,hostfwd=tcp::{HTTP_PORT}-:8080",
                 "-device", "virtio-net-pci,netdev=net0"]
     if "vmnet-shared" in backends:
