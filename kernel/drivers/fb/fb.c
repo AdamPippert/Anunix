@@ -181,6 +181,62 @@ void anx_fb_fill_rounded_rect(uint32_t x, uint32_t y,
 	}
 }
 
+/* 3-stop gradient across a rect.
+ * diagonal=true: blends top-left→bottom-right (135°), stops at 40% and 100%.
+ * diagonal=false: horizontal, stops at 40% and 100%. */
+void anx_fb_fill_gradient3(uint32_t x, uint32_t y,
+			    uint32_t w, uint32_t h,
+			    uint32_t c0, uint32_t c1, uint32_t c2,
+			    bool diagonal)
+{
+	uint32_t px, py;
+	int32_t r0, g0, b0, r1, g1, b1, r2, g2, b2;
+
+	if (!w || !h)
+		return;
+
+	r0 = (int32_t)((c0 >> 16) & 0xFF);
+	g0 = (int32_t)((c0 >>  8) & 0xFF);
+	b0 = (int32_t)( c0        & 0xFF);
+	r1 = (int32_t)((c1 >> 16) & 0xFF);
+	g1 = (int32_t)((c1 >>  8) & 0xFF);
+	b1 = (int32_t)( c1        & 0xFF);
+	r2 = (int32_t)((c2 >> 16) & 0xFF);
+	g2 = (int32_t)((c2 >>  8) & 0xFF);
+	b2 = (int32_t)( c2        & 0xFF);
+
+	for (py = y; py < y + h && py < fb.height; py++) {
+		uint32_t *row = anx_fb_row_ptr(py);
+		for (px = x; px < x + w && px < fb.width; px++) {
+			/* t in [0, 1024] */
+			uint32_t t;
+			int32_t  r, g, b, lt;
+
+			if (diagonal)
+				t = (px - x) * 512 / w + (py - y) * 512 / h;
+			else
+				t = (px - x) * 1024 / w;
+
+			/* Mid-stop at t=410 (≈ 40%) */
+			if (t < 410) {
+				lt = (int32_t)t * 1024 / 410;
+				r = r0 + (r1 - r0) * lt / 1024;
+				g = g0 + (g1 - g0) * lt / 1024;
+				b = b0 + (b1 - b0) * lt / 1024;
+			} else {
+				lt = ((int32_t)t - 410) * 1024 / 614;
+				r = r1 + (r2 - r1) * lt / 1024;
+				g = g1 + (g2 - g1) * lt / 1024;
+				b = b1 + (b2 - b1) * lt / 1024;
+			}
+
+			row[px] = ((uint32_t)r << 16) |
+				  ((uint32_t)g <<  8) |
+				   (uint32_t)b;
+		}
+	}
+}
+
 void anx_fb_fill_gradient(uint32_t x, uint32_t y,
 			   uint32_t w, uint32_t h,
 			   uint32_t color_start, uint32_t color_end,

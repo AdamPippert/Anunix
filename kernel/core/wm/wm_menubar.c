@@ -139,6 +139,88 @@ static void mb_draw_str(uint32_t x, uint32_t y, const char *s,
 				  x, y, s, fg, bg);
 }
 
+/* Scan-line fill for a general triangle given three vertices. */
+static void mb_fill_triangle(int32_t x0, int32_t y0,
+			      int32_t x1, int32_t y1,
+			      int32_t x2, int32_t y2,
+			      uint32_t color)
+{
+	int32_t tmp, row;
+
+	if (!g_menubar_pixels)
+		return;
+
+	/* Sort by ascending Y */
+	if (y0 > y1) { tmp=x0;x0=x1;x1=tmp; tmp=y0;y0=y1;y1=tmp; }
+	if (y0 > y2) { tmp=x0;x0=x2;x2=tmp; tmp=y0;y0=y2;y2=tmp; }
+	if (y1 > y2) { tmp=x1;x1=x2;x2=tmp; tmp=y1;y1=y2;y2=tmp; }
+
+	/* Degenerate: nothing to draw */
+	if (y0 >= y2)
+		return;
+
+	for (row = y0; row <= y2; row++) {
+		int32_t left, right, lx, rx, col, dy;
+
+		if (row < 0 || (uint32_t)row >= mb_height)
+			continue;
+
+		/* Long edge (v0→v2): y0 < y2 guaranteed, no zero-divisor risk */
+		dy = y2 - y0;
+		lx = x0 + (x2 - x0) * (row - y0) / dy;
+
+		/* Short edge: use same local 'dy' for both check and division */
+		if (row <= y1) {
+			dy = y1 - y0;
+			if (dy > 0)
+				rx = x0 + (x1 - x0) * (row - y0) / dy;
+			else
+				rx = x0;
+		} else {
+			dy = y2 - y1;
+			if (dy > 0)
+				rx = x1 + (x2 - x1) * (row - y1) / dy;
+			else
+				rx = x1;
+		}
+
+		left  = (lx < rx) ? lx : rx;
+		right = (lx > rx) ? lx : rx;
+		if (left  < 0)                  left  = 0;
+		if (right >= (int32_t)mb_width) right = (int32_t)mb_width - 1;
+		if (left > right)               continue;
+
+		for (col = left; col <= right; col++)
+			g_menubar_pixels[row * (int32_t)mb_width + col] = color;
+	}
+}
+
+/* Draw the Anunix 'A' logo: outer triangle + inner V-cutout + eye dot. */
+static void mb_draw_logo(uint32_t x, uint32_t cy, uint32_t color, uint32_t bg)
+{
+	int32_t ix  = (int32_t)x;
+	int32_t icy = (int32_t)cy;
+	int32_t h   = 12;  /* total logo height */
+	int32_t hw  = 6;   /* half-width at base */
+
+	/* Outer upward-pointing triangle */
+	mb_fill_triangle(ix + hw, icy - h / 2,          /* apex */
+			 ix,       icy + h / 2,          /* base left */
+			 ix + hw * 2, icy + h / 2,       /* base right */
+			 color);
+
+	/* Inner V-cutout: makes the hollow 'A' interior */
+	mb_fill_triangle(ix + hw,     icy - h / 2 + 4,  /* V apex */
+			 ix + 2,      icy + h / 2,       /* cut left */
+			 ix + hw * 2 - 2, icy + h / 2,  /* cut right */
+			 bg);
+
+	/* Eye dot above the V apex */
+	mb_fill_circle((uint32_t)(ix + hw),
+		       (uint32_t)(icy - h / 2 + 4),
+		       2u, color);
+}
+
 /* ------------------------------------------------------------------ */
 /* Menu bar surface creation                                           */
 /* ------------------------------------------------------------------ */
@@ -210,8 +292,10 @@ void anx_wm_menubar_refresh(void)
 	success = theme->palette.success;
 	err_col = theme->palette.error;
 
-	/* Floating pill: clear full surface to desktop background, then draw
-	 * an inset rounded pill as the actual menubar. */
+	/* Floating pill with 1px teal border.
+	 * 1. Desktop background fill.
+	 * 2. Pill border (1px larger on each side) in muted teal.
+	 * 3. Pill fill (bg color) on top. */
 	{
 		uint32_t pill_margin_x = 6;
 		uint32_t pill_margin_y = 4;
@@ -220,6 +304,9 @@ void anx_wm_menubar_refresh(void)
 
 		mb_fill_rect(0, 0, mb_width, mb_height,
 			     theme->palette.background);
+		mb_fill_rounded_rect(pill_margin_x - 1, pill_margin_y - 1,
+				     pill_w + 2, pill_h + 2, 11,
+				     0x00294F6Bu);	/* teal border */
 		mb_fill_rounded_rect(pill_margin_x, pill_margin_y,
 				     pill_w, pill_h, 10, bg);
 	}
@@ -231,8 +318,11 @@ void anx_wm_menubar_refresh(void)
 		 ? (mb_height - ANX_FONT_HEIGHT) / 2
 		 : 0;
 
-	/* ---- Workspace dots ------------------------------------------ */
-	dot_x = 16;
+	/* ---- Anunix logo (A-triangle) -------------------------------- */
+	mb_draw_logo(14, cy, accent, bg);
+
+	/* ---- Workspace dots (start after logo) ----------------------- */
+	dot_x = 34;
 	for (ws = 1; ws <= ANX_WM_WORKSPACES; ws++) {
 		bool is_active   = (ws == anx_wm_workspace_active());
 		bool is_occupied = anx_wm_workspace_occupied(ws);
@@ -251,7 +341,7 @@ void anx_wm_menubar_refresh(void)
 		if (is_occupied && !is_active)
 			mb_fill_circle(dot_x, cy, dot_r - 2, bg);
 
-		dot_x += 20;
+		dot_x += 18;
 	}
 
 	/* ---- Clock + date (centred) — compute position first ---------- */
@@ -308,36 +398,45 @@ void anx_wm_menubar_refresh(void)
 		}
 	}
 
-	/* ---- Network status dot + short label ------------------------ */
+	/* ---- Network status: 6px glow dot + label -------------------- */
 	{
-		uint32_t net_x = mb_width - 72;
-		uint32_t dot_color;
+		uint32_t net_x = mb_width - 80;
+		uint32_t dot_color, glow_color;
 		uint32_t local_ip = anx_ipv4_local_ip();
 		const char *net_label;
 
 		if (local_ip != 0) {
 			dot_color = success;
+			glow_color = 0x001A5028u; /* dim green glow */
 			net_label = anx_mt7925_state() >= MT7925_STATE_ASSOC
 				    ? "wifi" : "lan";
 		} else if (anx_virtio_net_ready() ||
 			   anx_mt7925_state() >= MT7925_STATE_ASSOC) {
 			dot_color = theme->palette.warning;
+			glow_color = 0x005A3800u; /* dim amber glow */
 			net_label = "link";
 		} else {
 			dot_color = err_col;
+			glow_color = 0x004A1010u; /* dim red glow */
 			net_label = "off";
 		}
 
-		mb_fill_circle(net_x, cy, 4, dot_color);
-		mb_draw_str(net_x + 8, text_y, net_label, dim, bg);
+		/* Outer glow ring then bright dot */
+		mb_fill_circle(net_x, cy, 5u, glow_color);
+		mb_fill_circle(net_x, cy, 3u, dot_color);
+		mb_draw_str(net_x + 10, text_y, net_label, dim, bg);
 	}
 
-	/* ---- Power icon (simple rectangle) ---------------------------- */
+	/* ---- Power icon: proper power-button outline (circle + stem) -- */
 	{
-		uint32_t pw_x = mb_width - 18;
+		uint32_t pw_cx = mb_width - 16;
 
-		mb_fill_rect(pw_x,     cy - 5, 10, 10, dim);
-		mb_fill_rect(pw_x + 3, cy - 9,  4,  6, dim);
+		/* Circle ring */
+		mb_fill_circle(pw_cx, cy, 5u, dim);
+		mb_fill_circle(pw_cx, cy, 3u, bg);
+		/* Stem: two pixels breaking the top of the ring */
+		mb_fill_rect(pw_cx - 1, cy - 7, 3, 4, bg);
+		mb_fill_rect(pw_cx - 1, cy - 7, 3, 3, dim);
 	}
 
 	/* Commit the updated canvas to the framebuffer */
