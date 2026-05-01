@@ -207,54 +207,67 @@ gpu_commit(struct anx_surface *surf)
 		uint32_t dot_ml = dot_cl + dot_d + 5;	/* minimize (yellow) */
 		uint32_t dot_xl = dot_ml + dot_d + 5;	/* maximize (green) */
 
-		/* Titlebar background: horizontal gradient when focused */
+		/* Titlebar background.
+		 * Focused: 135° three-stop diagonal navy-800 → navy-700 → teal-400.
+		 * Unfocused: flat surface with 1px top inset highlight. */
 		if (is_foc) {
-			anx_fb_fill_gradient(tx, ty, surf->width, ANX_WM_DECOR_H,
-					     theme->palette.surface,
-					     theme->palette.accent, false);
+			anx_fb_fill_gradient3(tx, ty, surf->width, ANX_WM_DECOR_H,
+					      theme->palette.surface,
+					      0x001D4470u,
+					      theme->palette.border,
+					      true);
+			/* Inset top-edge highlight */
+			anx_fb_fill_rect(tx, ty, surf->width, 1, 0x002A6080u);
 		} else {
 			anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H,
 					 theme->palette.surface);
+			/* Subtle top bevel on unfocused */
+			anx_fb_fill_rect(tx, ty, surf->width, 1, 0x001D4470u);
 		}
 
 		/* 1px bottom separator */
 		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 1, surf->width, 1,
-				 is_foc ? theme->palette.accent
-					: theme->palette.border);
+				 is_foc ? 0x000A1E30u : theme->palette.surface);
 
-		/* Traffic-light circles */
+		/* Traffic-light circles — base color + top-left highlight sphere */
 		anx_fb_fill_rounded_rect(dot_cl, dot_y, dot_d, dot_d, dot_r,
 					 theme->palette.error);
+		anx_fb_fill_rounded_rect(dot_cl, dot_y, 8, 8, 4, 0x00FF8B7Au);
+
 		anx_fb_fill_rounded_rect(dot_ml, dot_y, dot_d, dot_d, dot_r,
 					 theme->palette.warning);
+		anx_fb_fill_rounded_rect(dot_ml, dot_y, 8, 8, 4, 0x00F0C65Au);
+
 		anx_fb_fill_rounded_rect(dot_xl, dot_y, dot_d, dot_d, dot_r,
 					 theme->palette.success);
+		anx_fb_fill_rounded_rect(dot_xl, dot_y, 8, 8, 4, 0x007FD08Au);
 
 		/* Title: left-aligned after traffic lights */
 		anx_gui_draw_string_scaled(dot_xl + dot_d + 8, fy,
 					   surf->title, tfg,
-					   is_foc ? theme->palette.accent
+					   is_foc ? 0x001D4470u
 						  : theme->palette.surface, 1);
 	}
 
-	/* Draw 2px border around focused window canvas */
+	/* Window border: 1px ring around canvas.
+	 * Focused: teal accent.  Unfocused: dim navy-700. */
 	if (surf->title[0] && surf->width && surf->height) {
 		const struct anx_theme *theme2 = anx_theme_get();
 		anx_oid_t foc2    = anx_input_focus_get();
 		bool      is_foc2 = (foc2.hi == surf->oid.hi &&
 				     foc2.lo == surf->oid.lo);
 		uint32_t  border_col = is_foc2 ? theme2->palette.accent
-					       : theme2->palette.border;
+					       : 0x001D4470u;
 		uint32_t  bx = (uint32_t)surf->x;
 		uint32_t  by = (uint32_t)surf->y;
 
-		/* Left + Right 2px strips */
-		anx_fb_fill_rect(bx, by, 2, surf->height, border_col);
-		anx_fb_fill_rect(bx + surf->width - 2, by,
-				 2, surf->height, border_col);
-		/* Bottom 2px strip (top is covered by titlebar) */
-		anx_fb_fill_rect(bx, by + surf->height - 2,
-				 surf->width, 2, border_col);
+		/* Left + Right 1px strips */
+		anx_fb_fill_rect(bx, by, 1, surf->height, border_col);
+		anx_fb_fill_rect(bx + surf->width - 1, by,
+				 1, surf->height, border_col);
+		/* Bottom 1px strip */
+		anx_fb_fill_rect(bx, by + surf->height - 1,
+				 surf->width, 1, border_col);
 	}
 
 	return ANX_OK;

@@ -61,6 +61,13 @@ void anx_fb_fill_gradient(uint32_t x, uint32_t y,
 			   uint32_t color_start, uint32_t color_end,
 			   bool vertical);
 
+/* Fill a rectangle with a three-stop gradient (stops at 0%, 40%, 100%).
+ * diagonal=true: top-left→bottom-right (135°); false: left→right. */
+void anx_fb_fill_gradient3(uint32_t x, uint32_t y,
+			    uint32_t w, uint32_t h,
+			    uint32_t c0, uint32_t c1, uint32_t c2,
+			    bool diagonal);
+
 /* Scroll the framebuffer up by n pixel rows, fill gap with color */
 void anx_fb_scroll(uint32_t rows, uint32_t fill_color);
 
