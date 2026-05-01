@@ -57,6 +57,7 @@
 #include <anx/memory.h>
 #include <anx/wm.h>
 #include <anx/fb.h>
+#include <anx/bootlog.h>
 
 /* --- Line input with history --- */
 
@@ -2797,7 +2798,10 @@ static void dispatch(int argc, char **argv)
 		cmd_compctl(argc, argv);
 	} else if (anx_strcmp(argv[0], "envctl") == 0) {
 		cmd_envctl(argc, argv);
+	} else if (anx_strcmp(argv[0], "bootlog") == 0) {
+		cmd_bootlog(argc, argv);
 	} else if (anx_strcmp(argv[0], "halt") == 0) {
+		anx_bootlog_shutdown();
 		kputs("halting system\n");
 		arch_halt();
 	} else if (anx_strcmp(argv[0], "perf") == 0) {
@@ -2820,6 +2824,7 @@ static void dispatch(int argc, char **argv)
 			kputs("usage: tz <offset> (e.g., tz -7 for PDT)\n");
 		}
 	} else if (anx_strcmp(argv[0], "reboot") == 0) {
+		anx_bootlog_shutdown();
 		kputs("rebooting...\n");
 #ifdef __x86_64__
 		/* Keyboard controller reset (PS/2 port 0x64) */

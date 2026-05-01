@@ -57,12 +57,13 @@
 #include <anx/installer.h>
 #include <anx/model_client.h>
 #include <anx/tools.h>
-
-#define ANX_VERSION "2026.4.29"
-
+#include <anx/bootlog.h>
 
 void kernel_main(void)
 {
+	/* Boot session ring buffer — must be first, before any kprintf output */
+	anx_bootlog_early_init();
+
 	/* Early hardware init (serial/UART so kprintf works) */
 	arch_early_init();
 
@@ -279,10 +280,12 @@ void kernel_main(void)
 			if (ds_ret == ANX_OK)
 				ds_ret = anx_disk_store_init();
 		}
-		if (ds_ret == ANX_OK)
+		if (ds_ret == ANX_OK) {
 			kprintf("disk: object store mounted\n");
-		else
+			anx_bootlog_disk_init();
+		} else {
 			kprintf("disk: store init failed (%d)\n", ds_ret);
+		}
 	}
 
 	/* Load previously persisted PAL state before hardware priming so that

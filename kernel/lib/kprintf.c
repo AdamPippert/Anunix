@@ -20,6 +20,15 @@ static char *capture_buf;
 static uint32_t capture_size;
 static uint32_t capture_pos;
 
+/* Ring-buffer hook — set by anx_bootlog_early_init(), feeds every character
+ * into the boot-session ring buffer regardless of other capture state. */
+static void (*g_ring_hook)(char c);
+
+void anx_kprintf_set_ring_hook(void (*fn)(char c))
+{
+	g_ring_hook = fn;
+}
+
 void anx_kprintf_capture_start(char *buf, uint32_t buf_size)
 {
 	capture_buf = buf;
@@ -67,6 +76,10 @@ static void putc(char c)
 		capture_buf[capture_pos++] = c;
 		capture_buf[capture_pos] = '\0';
 	}
+
+	/* Tee to boot-session ring buffer (always on if installed) */
+	if (g_ring_hook)
+		g_ring_hook(c);
 }
 
 /* Public single-char output for shell echo */
