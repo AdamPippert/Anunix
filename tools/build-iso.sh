@@ -196,8 +196,7 @@ if [ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]; then
 		hdiutil detach "${EFI_DEV}" > /dev/null 2>&1
 		rmdir "${EFI_MNT}" 2>/dev/null || true
 	else
-		echo "  ERROR: need mtools (Linux) or hdiutil (macOS) for EFI image" >&2
-		exit 1
+		echo "  WARNING: mtools not found -- skipping EFI image (BIOS/ISOLINUX boot still works)"
 	fi
 
 	echo "  efiboot.img: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"

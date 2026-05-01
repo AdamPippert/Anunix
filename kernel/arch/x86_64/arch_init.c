@@ -682,13 +682,15 @@ static void bochs_vbe_write(uint16_t idx, uint16_t val)
 	anx_outw(val, BOCHS_VBE_DATA);
 }
 
-/* Scan PCI bus 0 for the VGA display controller and return its BAR0. */
+/* Scan PCI buses 0-7 for the VGA display controller and return its BAR0.
+ * Multi-bus scan needed for q35 where bochs-display lands on a PCIe root port. */
 static uint32_t pci_vga_bar0(void)
 {
-	uint8_t dev;
+	uint8_t bus, dev;
 
+	for (bus = 0; bus < 8; bus++) {
 	for (dev = 0; dev < 32; dev++) {
-		uint32_t addr = 0x80000000u | ((uint32_t)dev << 11);
+		uint32_t addr = 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)dev << 11);
 		uint32_t vid, class_rev, bar0;
 
 		anx_outl(addr, 0xCF8u);
@@ -717,6 +719,7 @@ static uint32_t pci_vga_bar0(void)
 		bar0 &= ~0xFu;
 		if (bar0)
 			return bar0;
+	}
 	}
 	return 0;
 }
