@@ -106,50 +106,53 @@
 	movw	$0x3F8, %dx; movb $(\byte), %al; outb %al, %dx
 .endm
 
+/*
+ * Hardcoded physical addresses for page tables and stack.
+ * These live at 0x090000–0x096000, below the kernel copy range
+ * (0x100000+). No .bss section is used — that would generate a
+ * PT_LOAD segment which QEMU's multiboot scanner would read first
+ * (filesz=0, magic not found) causing silent fall-through to SeaBIOS.
+ */
+#define BOOT_PML4      0x090000
+#define BOOT_PDPT      0x091000
+#define BOOT_STACK_TOP 0x096000
+
 _start:
 	cli
-	movl	%ebx, %esi		/* save multiboot info */
+	movl	%ebx, %esi		/* save multiboot info pointer */
 
-	/* Stack must be live before FB_DEBUG (uses push/pop) */
-	movl	$(boot_stack_top), %esp
+	movl	$BOOT_STACK_TOP, %esp
 
 	UART_INIT_AND_SEND '1'		/* checkpoint: 32-bit entry reached */
 
-	/* Debug: red bar = wrapper entry */
-	FB_DEBUG 0x00FF0000, 0
+	UART_SEND '2'
 
-	UART_SEND '2'			/* checkpoint: FB_DEBUG survived */
-
-	/* Zero page tables (2 pages = 8 KiB) */
-	movl	$boot_pml4, %edi
+	/* Zero page tables: PML4 + PDPT = 2 × 4 KiB */
+	movl	$BOOT_PML4, %edi
 	xorl	%eax, %eax
 	movl	$(2 * 4096 / 4), %ecx
 	rep	stosl
 
 	/* PML4[0] -> PDPT */
-	movl	$(boot_pdpt + 0x3), boot_pml4
+	movl	$(BOOT_PDPT + 0x3), BOOT_PML4
 
 	/*
 	 * PDPT[0..3] -> 1 GiB identity pages (first 4 GiB).
 	 * 1 GiB pages (PS bit 7) are supported by all AMD64 CPUs.
-	 * 4 GiB covers the framebuffer which PCI maps below 4 GiB.
 	 */
-	movl	$0x83, boot_pdpt + 0		/* 0x00000000 - 0x3FFFFFFF */
-	movl	$0, boot_pdpt + 4
-	movl	$0x40000083, boot_pdpt + 8	/* 0x40000000 - 0x7FFFFFFF */
-	movl	$0, boot_pdpt + 12
-	movl	$0x80000083, boot_pdpt + 16	/* 0x80000000 - 0xBFFFFFFF */
-	movl	$0, boot_pdpt + 20
-	movl	$0xC0000083, boot_pdpt + 24	/* 0xC0000000 - 0xFFFFFFFF */
-	movl	$0, boot_pdpt + 28
+	movl	$0x83,       BOOT_PDPT + 0	/* 0x00000000–0x3FFFFFFF */
+	movl	$0,          BOOT_PDPT + 4
+	movl	$0x40000083, BOOT_PDPT + 8	/* 0x40000000–0x7FFFFFFF */
+	movl	$0,          BOOT_PDPT + 12
+	movl	$0x80000083, BOOT_PDPT + 16	/* 0x80000000–0xBFFFFFFF */
+	movl	$0,          BOOT_PDPT + 20
+	movl	$0xC0000083, BOOT_PDPT + 24	/* 0xC0000000–0xFFFFFFFF */
+	movl	$0,          BOOT_PDPT + 28
 
 	UART_SEND '3'			/* checkpoint: page tables built */
 
-	/* Debug: green bar = page tables built */
-	FB_DEBUG 0x0000FF00, 1
-
 	/* CR3 = PML4 */
-	movl	$boot_pml4, %eax
+	movl	$BOOT_PML4, %eax
 	movl	%eax, %cr3
 
 	/* Enable PAE */
@@ -170,9 +173,6 @@ _start:
 
 	UART_SEND '4'			/* checkpoint: paging enabled */
 
-	/* Debug: blue bar = long mode enabled */
-	FB_DEBUG 0x000000FF, 2
-
 /* Jump to 64-bit mode via GDT */
 	lgdt	boot_gdt_ptr
 	ljmp	$0x08, $trampoline
@@ -189,19 +189,6 @@ boot_gdt_end:
 boot_gdt_ptr:
 	.word	boot_gdt_end - boot_gdt - 1
 	.long	boot_gdt
-
-/* --- Page tables (BSS) --- */
-.section .bss
-.align 4096
-boot_pml4:
-	.space 4096
-boot_pdpt:
-	.space 4096
-
-.align 16
-boot_stack:
-	.space 16384
-boot_stack_top:
 
 /* --- Embedded 64-bit kernel binary --- */
 .section .kernel, "a"
