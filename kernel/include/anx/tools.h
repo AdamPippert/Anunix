@@ -81,4 +81,7 @@ int cmd_mode(int argc, char **argv);
 /* Kickstart provisioning */
 int cmd_kickstart(int argc, char **argv);
 
+/* Boot session log viewer */
+void cmd_bootlog(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */

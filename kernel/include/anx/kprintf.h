@@ -29,4 +29,7 @@ struct anx_capture_state {
 void anx_kprintf_capture_save(struct anx_capture_state *s);
 void anx_kprintf_capture_restore(const struct anx_capture_state *s);
 
+/* Install a per-character hook (e.g., boot-session ring buffer) */
+void anx_kprintf_set_ring_hook(void (*fn)(char c));
+
 #endif /* ANX_KPRINTF_H */
