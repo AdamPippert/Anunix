@@ -79,6 +79,11 @@ enum anx_cell_type {
 	ANX_CELL_ARBITRATION,		/* score aggregation and halting decision */
 	ANX_CELL_LOOP_SUPERVISOR,	/* loop session lifecycle management */
 
+	/* RFC-0023 / RFC-0024 application cells */
+	ANX_CELL_EDITOR,		/* anunixmacs buffer/eLISP cell */
+	ANX_CELL_AUDIO_PLAYER,		/* audio player */
+	ANX_CELL_VIDEO_PLAYER,		/* video player */
+
 	ANX_CELL_TYPE_COUNT,
 };
 

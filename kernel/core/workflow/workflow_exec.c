@@ -29,6 +29,41 @@
 #include <anx/jepa.h>
 #include <anx/jepa_cell.h>
 #include <anx/agent_cell.h>
+#include <anx/anxml.h>
+#include <anx/anunixmacs.h>
+#include <anx/audio.h>
+#include <anx/video.h>
+
+/*
+ * Inline prefix matcher for specialized cell intents.  Returns true and
+ * sets *dispatch_out when the intent should bypass generic cell creation
+ * and route directly to a subsystem-specific dispatcher.
+ */
+typedef int (*anx_specialized_dispatch_fn)(const char *intent,
+					   const anx_oid_t *in_oids,
+					   uint32_t in_count,
+					   anx_oid_t *out);
+
+static anx_specialized_dispatch_fn
+match_specialized(const char *ci)
+{
+	/* JEPA — historical; kept for parity with the previous codepath */
+	if (ci[0]=='j' && ci[1]=='e' && ci[2]=='p' && ci[3]=='a' && ci[4]=='-')
+		return anx_jepa_cell_dispatch;
+	if (ci[0]=='a' && ci[1]=='n' && ci[2]=='x' && ci[3]=='m' &&
+	    ci[4]=='l' && ci[5]=='-')
+		return anx_anxml_cell_dispatch;
+	if (ci[0]=='e' && ci[1]=='d' && ci[2]=='i' && ci[3]=='t' &&
+	    ci[4]=='o' && ci[5]=='r' && ci[6]=='-')
+		return anx_ed_cell_dispatch;
+	if (ci[0]=='a' && ci[1]=='u' && ci[2]=='d' && ci[3]=='i' &&
+	    ci[4]=='o' && ci[5]=='-')
+		return anx_audio_cell_dispatch;
+	if (ci[0]=='v' && ci[1]=='i' && ci[2]=='d' && ci[3]=='e' &&
+	    ci[4]=='o' && ci[5]=='-')
+		return anx_video_cell_dispatch;
+	return NULL;
+}
 
 /* ------------------------------------------------------------------ */
 /* Internal helpers                                                    */
@@ -177,8 +212,9 @@ wf_dispatch_cell_node(struct anx_wf_object *wf, uint32_t slot,
 	case ANX_WF_NODE_CELL_CALL: {
 		const char *ci = node->params.cell_call.intent;
 
-		/* JEPA intents are dispatched directly — no generic cell created */
-		if (ci[0]=='j' && ci[1]=='e' && ci[2]=='p' && ci[3]=='a' && ci[4]=='-') {
+		/* Specialized intents are dispatched directly — no generic cell */
+		anx_specialized_dispatch_fn spec = match_specialized(ci);
+		if (spec) {
 			anx_oid_t in_oids[ANX_WF_MAX_PORTS];
 			anx_oid_t out_oid;
 			uint32_t  p, n_in = 0;
@@ -192,9 +228,8 @@ wf_dispatch_cell_node(struct anx_wf_object *wf, uint32_t slot,
 						wf, node->id, p, slot_by_id, port_oid);
 			}
 
-			ret = anx_jepa_cell_dispatch(ci, in_oids, n_in, &out_oid);
+			ret = spec(ci, in_oids, n_in, &out_oid);
 
-			/* Write the output OID to the first OUT port */
 			for (p = 0; p < node->port_count; p++) {
 				if (node->ports[p].dir == ANX_WF_PORT_OUT) {
 					port_oid[slot][p] = out_oid;

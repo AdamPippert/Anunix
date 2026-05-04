@@ -56,6 +56,7 @@
 #include <anx/jepa.h>
 #include <anx/memory.h>
 #include <anx/wm.h>
+#include <anx/anunixmacs.h>
 #include <anx/fb.h>
 #include <anx/bootlog.h>
 
@@ -482,6 +483,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  date                       Show current date and time\n");
 		kputs("  clear                      Clear terminal output\n");
 		kputs("  edit <ns:path>             Open text editor\n");
+		kputs("  anx [ns:]<path>            Open anunixmacs editor (M-: eval, C-x C-s save, C-x C-c quit)\n");
 		kputs("  help [topic]               This help\n");
 		return;
 	}
@@ -2661,6 +2663,39 @@ static void dispatch(int argc, char **argv)
 		cmd_cat(argc, argv);
 	} else if (anx_strcmp(argv[0], "write") == 0) {
 		cmd_write_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "anx") == 0) {
+		/* anx [ns:]<path>  — launch anunixmacs.  Default ns is
+		 * "posix" so files are visible to external programs. */
+		if (argc < 2) {
+			kprintf("usage: anx [ns:]<path>\n");
+		} else if (!anx_fb_available()) {
+			kprintf("anx: requires framebuffer (GUI mode)\n");
+		} else {
+			const char *arg = argv[1];
+			const char *colon = arg;
+			static char ns_buf[32];
+			static char path_buf[128];
+
+			while (*colon && *colon != ':')
+				colon++;
+
+			if (*colon == ':') {
+				uint32_t nlen = (uint32_t)(colon - arg);
+				if (nlen < sizeof(ns_buf)) {
+					anx_memcpy(ns_buf, arg, nlen);
+					ns_buf[nlen] = '\0';
+				} else {
+					anx_strlcpy(ns_buf, "posix",
+						    sizeof(ns_buf));
+				}
+				anx_strlcpy(path_buf, colon + 1,
+					    sizeof(path_buf));
+			} else {
+				anx_strlcpy(ns_buf, "posix", sizeof(ns_buf));
+				anx_strlcpy(path_buf, arg, sizeof(path_buf));
+			}
+			anx_ed_open_path(ns_buf, path_buf);
+		}
 	} else if (anx_strcmp(argv[0], "edit") == 0) {
 		/* edit [ns:]<path>  — open text editor for a state object */
 		if (argc < 2) {

@@ -268,9 +268,31 @@ int anx_snprintf(char *buf, uint32_t size, const char *fmt, ...)
 			uint32_t v = __builtin_va_arg(ap, unsigned int);
 			pos += fmt_uint64(buf + pos, size - pos, (uint64_t)v);
 			p++;
+		} else if (*p == 'd') {
+			int v = __builtin_va_arg(ap, int);
+			if (v < 0 && pos + 1 < size) {
+				buf[pos++] = '-';
+				pos += fmt_uint64(buf + pos, size - pos,
+						  (uint64_t)(-(int64_t)v));
+			} else {
+				pos += fmt_uint64(buf + pos, size - pos,
+						  (uint64_t)v);
+			}
+			p++;
 		} else if (p[0] == 'l' && p[1] == 'l' && p[2] == 'u') {
 			uint64_t v = __builtin_va_arg(ap, unsigned long long);
 			pos += fmt_uint64(buf + pos, size - pos, v);
+			p += 3;
+		} else if (p[0] == 'l' && p[1] == 'l' && p[2] == 'd') {
+			long long v = __builtin_va_arg(ap, long long);
+			if (v < 0 && pos + 1 < size) {
+				buf[pos++] = '-';
+				pos += fmt_uint64(buf + pos, size - pos,
+						  (uint64_t)(-v));
+			} else {
+				pos += fmt_uint64(buf + pos, size - pos,
+						  (uint64_t)v);
+			}
 			p += 3;
 		} else if (*p == 's') {
 			const char *s = __builtin_va_arg(ap, const char *);

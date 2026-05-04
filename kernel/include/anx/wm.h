@@ -158,6 +158,9 @@ void anx_wm_terminal_edit(const char *ns_name, const char *path);
 /* Flush terminal pixel buffer to framebuffer if dirty (call from main WM loop). */
 void anx_wm_terminal_flush_if_dirty(void);
 
+/* Force a full repaint of the terminal surface (used by anunixmacs). */
+void anx_wm_terminal_redraw(void);
+
 /* ---- Boot-time AI agent surface ---- */
 void anx_wm_agent_open(void);
 void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode);

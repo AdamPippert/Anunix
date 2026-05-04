@@ -37,6 +37,8 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0020](RFC-0020-iterative-belief-action-loop.md) | Iterative Belief-Action Loop — EBM/JEPA/LLM Hybrid Execution Engine | Draft | Adam Pippert | 0002, 0003, 0004, 0005, 0007, 0009, 0013, 0016, 0018, JEPA |
 | [0021](RFC-0021-inference-runtime.md) | Inference Runtime (anxml) | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0013, 0014, 0022 |
 | [0022](RFC-0022-gpu-compute-plane.md) | GPU Compute Plane and AGX Driver | Draft | Adam Pippert | 0002, 0003, 0004, 0005, 0007, 0014, 0021 |
+| [0023](RFC-0023-anunixmacs-editor.md) | anunixmacs — Object-Native Editor with eLISP | Draft | Adam Pippert | 0002, 0003, 0010, 0012, 0018 |
+| [0024](RFC-0024-audio-engine-and-media-apps.md) | Audio Engine and Media Player Apps | Draft | Adam Pippert | 0002, 0003, 0010, 0012, 0018 |
 
 ## Dependency Graph
 
