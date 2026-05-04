@@ -147,6 +147,14 @@ XORRISO_ARGS="-as mkisofs -R -J -V ANUNIX \
 	-boot-load-size 4 \
 	-boot-info-table"
 
+# Embed an MBR boot stub so the ISO is recognized by legacy BIOSes when
+# written to a USB stick.  isohdpfx.bin (432 bytes) is shipped with
+# syslinux and chains into the El Torito boot loader.  Without this
+# the USB has no MBR signature and many BIOSes refuse to list it.
+if [ -f "${SYSLINUX_DIR}/isohdpfx.bin" ]; then
+	XORRISO_ARGS="${XORRISO_ARGS} -isohybrid-mbr ${SYSLINUX_DIR}/isohdpfx.bin"
+fi
+
 if [ -n "${EFI_IMG}" ] && [ -f "${EFI_IMG}" ]; then
 	XORRISO_ARGS="${XORRISO_ARGS} \
 		-eltorito-alt-boot \
