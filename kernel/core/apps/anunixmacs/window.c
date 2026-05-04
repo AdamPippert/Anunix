@@ -698,6 +698,12 @@ void anx_ed_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 {
 	if (!g_ed.active) return;
 
+	/* Ignore standalone modifier key events (Ctrl/Shift/Alt/Meta press
+	 * or release).  The modifier state is already encoded in `mods`;
+	 * these events would otherwise eat prefix-key state mid-chord. */
+	if (key >= ANX_KEY_LCTRL && key <= ANX_KEY_RMETA)
+		return;
+
 	if (g_ed.mode == MODE_MINIBUF) {
 		minibuf_key(key, mods, unicode);
 		anx_ed_request_redraw();
