@@ -123,6 +123,7 @@ if [ ! -f "${SHARE_DIR}/isolinux.bin" ]; then
 		--include="*/bios/com32/lib/libcom32.c32" \
 		--include="*/bios/com32/elflink/ldlinux/ldlinux.c32" \
 		--include="*/bios/com32/libutil/libutil.c32" \
+		--include="*/bios/com32/gpl/libgpl.c32" \
 		2>/dev/null || tar xf "${SYSLINUX_TAR}"
 
 	# Find and copy the needed files
@@ -136,6 +137,8 @@ if [ ! -f "${SHARE_DIR}/isolinux.bin" ]; then
 		xargs -I{} cp {} "${SHARE_DIR}/"
 	find "syslinux-${SYSLINUX_VER}" -name "libutil.c32" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
+	find "syslinux-${SYSLINUX_VER}" -name "libgpl.c32" | head -1 | \
+		xargs -I{} cp {} "${SHARE_DIR}/" 2>/dev/null || true
 
 	rm -rf "syslinux-${SYSLINUX_VER}"
 
