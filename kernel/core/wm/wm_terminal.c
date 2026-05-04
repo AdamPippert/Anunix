@@ -16,6 +16,7 @@
 #include <anx/clipboard.h>
 #include <anx/namespace.h>
 #include <anx/state_object.h>
+#include <anx/anunixmacs.h>
 
 #define WM_CLIPBOARD_CID	((anx_cid_t){.hi = 0, .lo = 0xFFFF0001u})
 
@@ -176,6 +177,14 @@ static void term_render(void)
 
 	if (!g_term.surf || !g_term.pixels)
 		return;
+
+	/* Anunixmacs takeover: it owns the whole surface. */
+	if (anx_ed_active()) {
+		term_fill(0, 0, g_term.w, g_term.h, 0x00181818u);
+		anx_ed_paint(g_term.pixels, g_term.w, g_term.h);
+		g_term.dirty = true;
+		return;
+	}
 
 	/* Background */
 	term_fill(0, 0, g_term.w, g_term.h, bg);
@@ -654,6 +663,12 @@ void anx_wm_terminal_edit(const char *ns_name, const char *path)
 
 void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 {
+	/* Route to anunixmacs when it has the surface */
+	if (anx_ed_active()) {
+		anx_ed_key_event(key, mods, unicode);
+		return;
+	}
+
 	/* Route to text editor when active */
 	if (g_editor.active) {
 		editor_key_event(key, mods, unicode);
@@ -1333,4 +1348,11 @@ void anx_wm_terminal_cut_input(void)
 	anx_clipboard_write(WM_CLIPBOARD_CID, "text/plain",
 			    g_term.input, g_term.input_len);
 	anx_wm_terminal_clear_input();
+}
+
+/* Public: force a full repaint of the terminal surface.  Used by
+ * anunixmacs after a command mutates buffer state. */
+void anx_wm_terminal_redraw(void)
+{
+	term_render();
 }

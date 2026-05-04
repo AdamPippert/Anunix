@@ -772,6 +772,142 @@ static const struct anx_wf_template tmpl_jepa_predict_route = {
 	},
 };
 
+/*
+ * 14. anx:app/audio-player
+ *     TRIGGER → CELL_CALL "audio-play" → OUTPUT
+ *     Plays an audio clip OID through the active sink.
+ */
+static const struct anx_wf_template tmpl_audio_player = {
+	.uri          = "anx:app/audio-player",
+	.display_name = "Audio Player",
+	.description  = "Play an audio clip through the system mixer.",
+	.tags         = { "audio", "play", "sound", "music", "playback" },
+	.tag_count    = 5,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "clip",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "play",
+			.params.cell_call = { .intent = "audio-play" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "out", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "trace",
+			.params.output = { .dest_name = "trace" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
+/*
+ * 15. anx:app/audio-mix
+ *     TRIGGER → CELL_CALL "audio-mix" → OUTPUT
+ *     Mixes a list of clip OIDs into a single sealed audio clip.
+ *     Multiple input clips are passed to the cell as additional input
+ *     ports; this template wires one clip and serves as the seed for
+ *     workflow editors that fan-in additional STATE_REF nodes.
+ */
+static const struct anx_wf_template tmpl_audio_mix = {
+	.uri          = "anx:app/audio-mix",
+	.display_name = "Audio Mix",
+	.description  = "Combine audio clips into a single mixed clip.",
+	.tags         = { "audio", "mix", "combine", "merge", "sum" },
+	.tag_count    = 5,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "clips",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "mix",
+			.params.cell_call = { .intent = "audio-mix" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "out", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "mixed",
+			.params.output = { .dest_name = "mixed_clip" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
+/*
+ * 16. anx:app/video-player
+ *     TRIGGER → CELL_CALL "video-play" → OUTPUT
+ *     Plays a video clip OID.  When wired with a second input (a
+ *     surface OID), the cell binds the surface sink for the run.
+ */
+static const struct anx_wf_template tmpl_video_player = {
+	.uri          = "anx:app/video-player",
+	.display_name = "Video Player",
+	.description  = "Play a video clip, optionally onto a target surface.",
+	.tags         = { "video", "play", "movie", "clip", "surface", "playback" },
+	.tag_count    = 6,
+	.node_count   = 3,
+	.nodes = {
+		{
+			.id = 1, .kind = ANX_WF_NODE_TRIGGER,
+			.label = "clip",
+			.port_count = 1,
+			.ports = {{ .name = "out", .dir = ANX_WF_PORT_OUT }},
+		},
+		{
+			.id = 2, .kind = ANX_WF_NODE_CELL_CALL,
+			.label = "play",
+			.params.cell_call = { .intent = "video-play" },
+			.port_count = 2,
+			.ports = {
+				{ .name = "in",  .dir = ANX_WF_PORT_IN  },
+				{ .name = "out", .dir = ANX_WF_PORT_OUT },
+			},
+		},
+		{
+			.id = 3, .kind = ANX_WF_NODE_OUTPUT,
+			.label = "trace",
+			.params.output = { .dest_name = "trace" },
+			.port_count = 1,
+			.ports = {{ .name = "in", .dir = ANX_WF_PORT_IN }},
+		},
+	},
+	.edge_count = 2,
+	.edges = {
+		{ .from_node = 1, .from_port = 0, .to_node = 2, .to_port = 0 },
+		{ .from_node = 2, .from_port = 1, .to_node = 3, .to_port = 0 },
+	},
+};
+
 /* All built-in templates in order. */
 static const struct anx_wf_template *g_builtins[] = {
 	&tmpl_infer,
@@ -787,6 +923,9 @@ static const struct anx_wf_template *g_builtins[] = {
 	&tmpl_ibal_symbolic,
 	&tmpl_jepa_observe_encode,
 	&tmpl_jepa_predict_route,
+	&tmpl_audio_player,
+	&tmpl_audio_mix,
+	&tmpl_video_player,
 };
 #define BUILTIN_COUNT ((uint32_t)(sizeof(g_builtins) / sizeof(g_builtins[0])))
 

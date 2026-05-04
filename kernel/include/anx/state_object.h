@@ -48,6 +48,10 @@ enum anx_object_type {
 	ANX_OBJ_COUNTEREXAMPLE,	/* rejected hypothesis (negative knowledge) */
 	ANX_OBJ_MEMORY_CONSOLIDATION,	/* RFC-0020 Phase 5: cross-session memory */
 
+	/* RFC-0024 media types */
+	ANX_OBJ_AUDIO_CLIP,		/* PCM audio + format header */
+	ANX_OBJ_VIDEO_CLIP,		/* RGBA frames + format header */
+
 	ANX_OBJ_TYPE_COUNT,
 };
 

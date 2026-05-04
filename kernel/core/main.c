@@ -58,6 +58,8 @@
 #include <anx/model_client.h>
 #include <anx/tools.h>
 #include <anx/bootlog.h>
+#include <anx/audio.h>
+#include <anx/video.h>
 
 void kernel_main(void)
 {
@@ -269,6 +271,15 @@ void kernel_main(void)
 	/* 10. Driver probe — storage, network, accelerators */
 	PERF_BEGIN("drivers_probe");
 	anx_drivers_probe();
+	PERF_END();
+
+	/* 10b. Audio subsystem — initializes the mixer and probes hardware
+	 * audio sinks (HDA on x86_64 / arm64-with-PCIe-HDA, Apple Silicon
+	 * native on M1/M2 once codec drivers land).  Always succeeds: if
+	 * no HW backend binds, the null/capture/wav sinks remain. */
+	PERF_BEGIN("audio_init");
+	anx_audio_init();
+	anx_video_init();
 	PERF_END();
 	if (anx_blk_ready()) {
 		int ds_ret = anx_disk_store_init();

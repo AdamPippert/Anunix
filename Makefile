@@ -391,7 +391,7 @@ clean:
 # Host-native test build — uses system clang without freestanding/cross flags.
 # Excludes kernel/core/main.c (test_main.c provides kernel_main).
 TEST_CC     := clang
-TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include
+TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include -DANX_HOST_TEST=1
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 		  $(filter-out $(CORE_DIR)/agent/%, \
 		  $(filter-out $(CORE_DIR)/tools/wifi.c, $(CORE_C))))
@@ -402,7 +402,7 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
 		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/storage/*' \
-		  ! -path '*/browser/*' \
+		  ! -path '*/browser/*' ! -path '*/audio/*' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
 		  ! -name 'driver_table.c' \
 		  2>/dev/null)
@@ -451,7 +451,13 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_conformance_gate.c \
                tests/test_ibal.c \
                tests/test_ebm.c \
-               tests/test_kickstart.c
+               tests/test_kickstart.c \
+               tests/test_anxml.c \
+               tests/test_audio.c \
+               tests/test_video.c \
+               tests/test_hda.c \
+               tests/test_anunixmacs.c \
+               tests/test_diag_inline.c
 TEST_BIN    := build/test/anunix_test
 
 test:
