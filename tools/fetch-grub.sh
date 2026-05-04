@@ -139,6 +139,10 @@ if [ ! -f "${SHARE_DIR}/isolinux.bin" ]; then
 		xargs -I{} cp {} "${SHARE_DIR}/"
 	find "syslinux-${SYSLINUX_VER}" -name "libgpl.c32" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/" 2>/dev/null || true
+	# isohdpfx.bin — 432-byte MBR boot stub used by xorriso's
+	# -isohybrid-mbr flag.  Required for legacy BIOS USB boot.
+	find "syslinux-${SYSLINUX_VER}" -path '*/bios/mbr/isohdpfx.bin' | head -1 | \
+		xargs -I{} cp {} "${SHARE_DIR}/"
 
 	rm -rf "syslinux-${SYSLINUX_VER}"
 
