@@ -2,11 +2,10 @@
 #
 # build-iso.sh — Assemble a bootable x86_64 hybrid ISO.
 #
-# Creates a BIOS + UEFI bootable ISO using the multiboot kernel
-# wrapper and GRUB. Requires: make iso-deps (GRUB modules + xorriso).
+# BIOS boot: SYSLINUX/ISOLINUX + mboot.c32 (multiboot1 wrapper kernel)
+# UEFI boot: GRUB EFI binary
 #
 # Output: build/anunix-x86_64.iso
-#
 
 set -e
 
@@ -17,239 +16,151 @@ XORRISO="${GRUB_DIR}/bin/xorriso"
 if ! "${XORRISO}" --version >/dev/null 2>&1; then
 	XORRISO="$(which xorriso 2>/dev/null || true)"
 fi
-GRUB_I386="${GRUB_DIR}/lib/grub/i386-pc"
-GRUB_EFI="${GRUB_DIR}/lib/grub/x86_64-efi"
+GRUB_EFI_DIR="${GRUB_DIR}/lib/grub/x86_64-efi"
+SYSLINUX_DIR="${GRUB_DIR}/share"
 
 KERNEL="${PROJECT_DIR}/build/x86_64/anunix.elf"
 KERNEL_MB1="${PROJECT_DIR}/build/x86_64/anunix-qemu.elf"
 GRUB_CFG="${PROJECT_DIR}/config/grub.cfg"
-SYSLINUX_DIR="${GRUB_DIR}/share"
 ISO_DIR="${PROJECT_DIR}/build/iso-staging"
 ISO_OUT="${PROJECT_DIR}/build/anunix-x86_64.iso"
 
 # ---------------------------------------------------------------
 # Checks
 # ---------------------------------------------------------------
-
 if [ -z "${XORRISO}" ] || [ ! -x "${XORRISO}" ]; then
-	echo "ERROR: xorriso not found. Run 'make iso-deps' first or install xorriso." >&2
-	exit 1
+	echo "ERROR: xorriso not found. Run make iso-deps first." >&2; exit 1
 fi
-
-if [ ! -d "${GRUB_I386}" ]; then
-	echo "ERROR: GRUB i386-pc modules not found. Run 'make iso-deps' first." >&2
-	exit 1
+if [ ! -f "${SYSLINUX_DIR}/isolinux.bin" ]; then
+	echo "ERROR: isolinux.bin not found. Run make iso-deps first." >&2; exit 1
 fi
-
-if [ ! -d "${GRUB_EFI}" ]; then
-	echo "ERROR: GRUB x86_64-efi modules not found. Run 'make iso-deps' first." >&2
-	exit 1
-fi
-
 if [ ! -f "${KERNEL}" ]; then
-	echo "ERROR: Kernel not found at ${KERNEL}. Run 'make kernel ARCH=x86_64' first." >&2
-	exit 1
+	echo "ERROR: Kernel not found: ${KERNEL}." >&2; exit 1
 fi
-
 if [ ! -f "${KERNEL_MB1}" ]; then
-	echo "WARNING: Legacy BIOS kernel not found at ${KERNEL_MB1}."
-	echo "  Legacy BIOS boot will not work. UEFI boot is unaffected."
-	echo "  To build it: make ARCH=x86_64 build/x86_64/anunix-qemu.elf"
+	echo "WARNING: ${KERNEL_MB1} not found — BIOS boot needs this."
 fi
 
 echo "=== Building Anunix x86_64 ISO ==="
 echo ""
 
 # ---------------------------------------------------------------
-# Step 1: Create ISO staging directory
+# Step 1: Stage ISO filesystem
 # ---------------------------------------------------------------
 echo ">>> [1/3] Staging ISO filesystem..."
 rm -rf "${ISO_DIR}"
 mkdir -p "${ISO_DIR}/boot"
 mkdir -p "${ISO_DIR}/isolinux"
 mkdir -p "${ISO_DIR}/EFI/BOOT"
+mkdir -p "${ISO_DIR}/boot/grub/x86_64-efi"
 
-# Copy kernels
 cp "${KERNEL}" "${ISO_DIR}/boot/anunix.elf"
-echo "  kernel (UEFI): $(ls -lh "${ISO_DIR}/boot/anunix.elf" | awk '{print $5}')"
+echo "  kernel (ELF64): $(ls -lh "${ISO_DIR}/boot/anunix.elf" | awk {print })"
 
 if [ -f "${KERNEL_MB1}" ]; then
 	cp "${KERNEL_MB1}" "${ISO_DIR}/boot/anunix-mb1.elf"
-	echo "  kernel (BIOS): $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk '{print $5}')"
+	echo "  kernel (MB1):   $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk {print })"
 fi
 
-# Copy EFI stub if built (direct UEFI boot without GRUB)
-EFI_STUB="${PROJECT_DIR}/build/x86_64/BOOTX64.EFI"
-if [ -f "${EFI_STUB}" ]; then
-	# Place as a secondary EFI boot option
-	cp "${EFI_STUB}" "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI"
-	echo "  EFI stub: $(ls -lh "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" | awk '{print $5}')"
+# ISOLINUX files — all must be same syslinux version
+cp "${SYSLINUX_DIR}/isolinux.bin"  "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/ldlinux.c32"   "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/libcom32.c32"  "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/libutil.c32"   "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/mboot.c32"     "${ISO_DIR}/isolinux/"
+# libgpl.c32 provides symbols mboot.c32 depends on (e.g. __vesacon_i915resolution)
+if [ -f "${SYSLINUX_DIR}/libgpl.c32" ]; then
+	cp "${SYSLINUX_DIR}/libgpl.c32" "${ISO_DIR}/isolinux/"
 fi
 
-# Set up ISOLINUX (BIOS CD-ROM bootloader)
-if [ -f "${SYSLINUX_DIR}/isolinux.bin" ]; then
-	cp "${SYSLINUX_DIR}/isolinux.bin" "${ISO_DIR}/isolinux/"
-	cp "${SYSLINUX_DIR}/ldlinux.c32" "${ISO_DIR}/isolinux/" 2>/dev/null || true
-	cp "${SYSLINUX_DIR}/mboot.c32" "${ISO_DIR}/isolinux/" 2>/dev/null || true
-	cp "${SYSLINUX_DIR}/libcom32.c32" "${ISO_DIR}/isolinux/" 2>/dev/null || true
-	cp "${SYSLINUX_DIR}/libutil.c32" "${ISO_DIR}/isolinux/" 2>/dev/null || true
+cat > "${ISO_DIR}/isolinux/isolinux.cfg" << ISOCFG
+DEFAULT anunix
+PROMPT 0
+TIMEOUT 30
 
-	# Create ISOLINUX configuration (BIOS path uses multiboot1 wrapper)
-	cat > "${ISO_DIR}/isolinux/isolinux.cfg" <<-'ISOCFG'
-		SERIAL 0 115200
-		DEFAULT anunix
-		PROMPT 1
-		TIMEOUT 30
+LABEL anunix
+    MENU LABEL Anunix
+    KERNEL mboot.c32
+    APPEND /boot/anunix-mb1.elf
+ISOCFG
 
-		LABEL anunix
-		    MENU LABEL Anunix
-		    KERNEL mboot.c32
-		    APPEND /boot/anunix-mb1.elf
-	ISOCFG
+echo "  ISOLINUX: $(ls "${ISO_DIR}/isolinux/" | tr n  )"
 
-	echo "  ISOLINUX: $(ls "${ISO_DIR}/isolinux/" | tr '\n' ' ')"
-else
-	echo "  ERROR: isolinux.bin not found. Run 'make iso-deps' first."
-	exit 1
-fi
-
-echo ""
-
-# ---------------------------------------------------------------
-# Step 3: Create EFI boot image
-# ---------------------------------------------------------------
-echo ">>> [2/3] Creating EFI boot image..."
-
-# Check for pre-built GRUB EFI binary
-GRUB_EFI_BIN=""
-if [ -f "${GRUB_DIR}/share/BOOTX64.EFI" ]; then
-	GRUB_EFI_BIN="${GRUB_DIR}/share/BOOTX64.EFI"
-elif [ -f "${GRUB_EFI}/monolithic/grubx64.efi" ]; then
-	GRUB_EFI_BIN="${GRUB_EFI}/monolithic/grubx64.efi"
-fi
-
-if [ -n "${GRUB_EFI_BIN}" ]; then
-	cp "${GRUB_EFI_BIN}" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
-else
-	# Try to assemble a minimal GRUB EFI binary from modules
-	# This requires grub-mkimage which we may not have.
-	# Create a placeholder — UEFI boot won't work without it.
-	echo "  WARNING: No GRUB EFI binary found — UEFI boot may not work"
-	echo "  You can manually place BOOTX64.EFI in tools/grub/share/"
-fi
-
-# Copy GRUB config and modules so insmod works at boot time
-mkdir -p "${ISO_DIR}/boot/grub/x86_64-efi"
+# GRUB config + EFI modules
 cp "${GRUB_CFG}" "${ISO_DIR}/boot/grub/grub.cfg"
-cp "${GRUB_EFI}"/*.mod "${ISO_DIR}/boot/grub/x86_64-efi/"
-cp "${GRUB_EFI}"/*.lst "${ISO_DIR}/boot/grub/x86_64-efi/" 2>/dev/null || true
-echo "  grub.cfg: /boot/grub/grub.cfg"
-echo "  modules: $(ls "${ISO_DIR}/boot/grub/x86_64-efi/"*.mod | wc -l | tr -d ' ') modules"
-
-# Create EFI system partition image (raw FAT12, 4 MB)
-EFI_IMG="${ISO_DIR}/EFI/BOOT/efiboot.img"
-
-if [ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]; then
-	# Create a raw FAT12 image for EFI boot
-	# Cross-platform: uses mtools on Linux, hdiutil on macOS
-
-	# 1. Create blank 8 MB raw image
-	dd if=/dev/zero of="${EFI_IMG}" bs=1k count=8192 2>/dev/null
-
-	if command -v mformat >/dev/null 2>&1; then
-		# Linux path: use mtools (mformat + mcopy)
-		mformat -i "${EFI_IMG}" ::
-		mmd -i "${EFI_IMG}" ::/EFI
-		mmd -i "${EFI_IMG}" ::/EFI/BOOT
-		mcopy -i "${EFI_IMG}" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ::/EFI/BOOT/
-		# Copy Anunix EFI stub if present
-		if [ -f "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" ]; then
-			mcopy -i "${EFI_IMG}" "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" ::/EFI/BOOT/
-		fi
-		mmd -i "${EFI_IMG}" ::/boot
-		mmd -i "${EFI_IMG}" ::/boot/grub
-		mcopy -i "${EFI_IMG}" "${GRUB_CFG}" ::/boot/grub/grub.cfg
-	elif command -v hdiutil >/dev/null 2>&1; then
-		# macOS path: use hdiutil + newfs_msdos
-		EFI_MNT="${BUILD_TMP:-/tmp}/efi_mount_$$"
-		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null \
-			| head -1 | awk '{print $1}')
-
-		if [ -z "${EFI_DEV}" ]; then
-			echo "  ERROR: Could not attach EFI image" >&2
-			exit 1
-		fi
-
-		newfs_msdos -F 12 "${EFI_DEV}" > /dev/null 2>&1
-		mkdir -p "${EFI_MNT}"
-		mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
-
-		mkdir -p "${EFI_MNT}/EFI/BOOT"
-		cp "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" "${EFI_MNT}/EFI/BOOT/"
-		if [ -f "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" ]; then
-			cp "${ISO_DIR}/EFI/BOOT/ANUNIX.EFI" "${EFI_MNT}/EFI/BOOT/"
-		fi
-		mkdir -p "${EFI_MNT}/boot/grub"
-		cp "${GRUB_CFG}" "${EFI_MNT}/boot/grub/grub.cfg"
-
-		umount "${EFI_MNT}" 2>/dev/null
-		hdiutil detach "${EFI_DEV}" > /dev/null 2>&1
-		rmdir "${EFI_MNT}" 2>/dev/null || true
-	else
-		echo "  WARNING: mtools not found -- skipping EFI image (BIOS/ISOLINUX boot still works)"
-	fi
-
-	echo "  efiboot.img: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
-else
-	echo "  Skipping EFI boot image (no BOOTX64.EFI available)"
-	echo "  (BIOS boot will still work)"
-fi
-
+cp "${GRUB_EFI_DIR}"/*.mod "${ISO_DIR}/boot/grub/x86_64-efi/"
+cp "${GRUB_EFI_DIR}"/*.lst "${ISO_DIR}/boot/grub/x86_64-efi/" 2>/dev/null || true
 echo ""
 
 # ---------------------------------------------------------------
-# Step 4: Assemble ISO with xorriso
+# Step 2: UEFI boot image
+# ---------------------------------------------------------------
+echo ">>> [2/3] Staging UEFI boot..."
+GRUB_EFI_BIN="${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
+if [ -f "${GRUB_DIR}/share/BOOTX64.EFI" ]; then
+	cp "${GRUB_DIR}/share/BOOTX64.EFI" "${GRUB_EFI_BIN}"
+elif [ -f "${GRUB_EFI_DIR}/monolithic/grubx64.efi" ]; then
+	cp "${GRUB_EFI_DIR}/monolithic/grubx64.efi" "${GRUB_EFI_BIN}"
+fi
+
+EFI_IMG=""
+if [ -f "${GRUB_EFI_BIN}" ]; then
+	EFI_IMG="${ISO_DIR}/boot/grub/efiboot.img"
+	# Size the FAT image to fit BOOTX64.EFI plus FAT overhead (~1MB).
+	EFI_BIN_KB=$(( ($(stat -c %s "${GRUB_EFI_BIN}") + 1023) / 1024 ))
+	EFI_IMG_KB=$(( EFI_BIN_KB + 1024 ))
+	# Round up to next 1MB boundary, minimum 8MB.
+	EFI_IMG_KB=$(( ((EFI_IMG_KB + 1023) / 1024) * 1024 ))
+	if [ "${EFI_IMG_KB}" -lt 8192 ]; then EFI_IMG_KB=8192; fi
+	dd if=/dev/zero of="${EFI_IMG}" bs=1k count="${EFI_IMG_KB}" 2>/dev/null
+	if command -v mformat >/dev/null 2>&1; then
+		mformat -i "${EFI_IMG}" -F ::
+		mmd   -i "${EFI_IMG}" ::/EFI ::/EFI/BOOT
+		mcopy -i "${EFI_IMG}" "${GRUB_EFI_BIN}" ::/EFI/BOOT/BOOTX64.EFI
+		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"
+	elif command -v hdiutil >/dev/null 2>&1; then
+		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null | head -1 | awk {print })
+		newfs_msdos -F 12 "${EFI_DEV}" >/dev/null 2>&1
+		EFI_MNT="/tmp/efi_mnt_$$"; mkdir -p "${EFI_MNT}"
+		mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
+		mkdir -p "${EFI_MNT}/EFI/BOOT"
+		cp "${GRUB_EFI_BIN}" "${EFI_MNT}/EFI/BOOT/BOOTX64.EFI"
+		umount "${EFI_MNT}" 2>/dev/null; hdiutil detach "${EFI_DEV}" >/dev/null 2>&1
+		rmdir "${EFI_MNT}" 2>/dev/null || true
+		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"
+	else
+		echo "  WARNING: no mtools/hdiutil — UEFI boot skipped (BIOS works)"
+		EFI_IMG=""
+	fi
+fi
+echo ""
+
+# ---------------------------------------------------------------
+# Step 3: Assemble hybrid ISO
 # ---------------------------------------------------------------
 echo ">>> [3/3] Creating hybrid ISO..."
 
-XORRISO_ARGS="-as mkisofs -R -J -V ANUNIX"
+XORRISO_ARGS="-as mkisofs -R -J -V ANUNIX \
+	-b isolinux/isolinux.bin \
+	-c isolinux/boot.cat \
+	-no-emul-boot \
+	-boot-load-size 4 \
+	-boot-info-table"
 
-# BIOS El Torito boot via ISOLINUX
-if [ -f "${ISO_DIR}/isolinux/isolinux.bin" ]; then
-	XORRISO_ARGS="${XORRISO_ARGS} \
-		-b isolinux/isolinux.bin \
-		-c isolinux/boot.cat \
-		-no-emul-boot \
-		-boot-load-size 4 \
-		-boot-info-table"
-fi
-
-# UEFI El Torito boot
-if [ -f "${EFI_IMG}" ]; then
+if [ -n "${EFI_IMG}" ] && [ -f "${EFI_IMG}" ]; then
 	XORRISO_ARGS="${XORRISO_ARGS} \
 		-eltorito-alt-boot \
-		-e EFI/BOOT/efiboot.img \
+		-e boot/grub/efiboot.img \
 		-no-emul-boot \
 		-isohybrid-gpt-basdat"
 fi
 
-# Build the ISO
-eval "${XORRISO}" ${XORRISO_ARGS} \
-	-o "${ISO_OUT}" \
-	"${ISO_DIR}" 2>&1 | tail -5
-
+eval "${XORRISO}" ${XORRISO_ARGS} -o "${ISO_OUT}" "${ISO_DIR}" 2>&1 | tail -5
 echo ""
 
 if [ -f "${ISO_OUT}" ]; then
-	ISO_SIZE=$(ls -lh "${ISO_OUT}" | awk '{print $5}')
-	echo "=== ISO created: ${ISO_OUT} (${ISO_SIZE}) ==="
-	echo ""
-	echo "Boot with QEMU:"
-	echo "  qemu-system-x86_64 -m 512M -cdrom ${ISO_OUT} -serial mon:stdio"
-	echo ""
-	echo "Write to USB drive:"
-	echo "  dd if=${ISO_OUT} of=/dev/sdX bs=4M status=progress"
+	SIZE=$(du -sh "${ISO_OUT}" | cut -f1)
+	echo "=== ISO created: ${ISO_OUT} (${SIZE}) ==="
 else
-	echo "ERROR: ISO creation failed" >&2
-	exit 1
+	echo "ERROR: ISO creation failed" >&2; exit 1
 fi
