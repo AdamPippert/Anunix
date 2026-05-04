@@ -126,18 +126,22 @@ if [ ! -f "${SHARE_DIR}/isolinux.bin" ]; then
 		--include="*/bios/com32/gpl/libgpl.c32" \
 		2>/dev/null || tar xf "${SYSLINUX_TAR}"
 
-	# Find and copy the needed files
+	# Find and copy the needed files.  Each lookup pins -path "*/bios/*"
+	# because syslinux 6.03 ships three sibling variants (bios/efi32/efi64)
+	# and they are NOT ABI-compatible.  Mixing variants produces undefined
+	# symbols at boot — e.g. an efi32 libcom32.c32 references
+	# __vesacon_i915resolution which only exists in efi32/libgpl.c32.
 	find "syslinux-${SYSLINUX_VER}" -name "isolinux.bin" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
-	find "syslinux-${SYSLINUX_VER}" -name "mboot.c32" | head -1 | \
+	find "syslinux-${SYSLINUX_VER}" -name "mboot.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
 	find "syslinux-${SYSLINUX_VER}" -name "ldlinux.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
-	find "syslinux-${SYSLINUX_VER}" -name "libcom32.c32" | head -1 | \
+	find "syslinux-${SYSLINUX_VER}" -name "libcom32.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
-	find "syslinux-${SYSLINUX_VER}" -name "libutil.c32" | head -1 | \
+	find "syslinux-${SYSLINUX_VER}" -name "libutil.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
-	find "syslinux-${SYSLINUX_VER}" -name "libgpl.c32" | head -1 | \
+	find "syslinux-${SYSLINUX_VER}" -name "libgpl.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/" 2>/dev/null || true
 	# isohdpfx.bin — 432-byte MBR boot stub used by xorriso's
 	# -isohybrid-mbr flag.  Required for legacy BIOS USB boot.
