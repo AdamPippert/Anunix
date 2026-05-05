@@ -32,6 +32,7 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0015](RFC-0015-kernel-network-data-plane.md) | Kernel Network Data Plane — Zero-Copy, Multi-Queue, Flow Objects | Draft | Adam Pippert | 0004, 0006, 0007 |
 | [0016](RFC-0016-cell-execution-language.md) | Cell Execution Language (CEXL) — Lisp IR for Recursive Cell Orchestration | Draft | Adam Pippert | 0002, 0003, 0009 |
 | [0017](RFC-0017-vm-objects.md) | VM Objects — Dual-Nature Virtual Machine Primitives | Draft | Adam Pippert | 0001, 0002, 0003, 0005, 0007, 0008 |
+| [0018](RFC-0018-expert-composition.md) | Expert Composition and Multi-Model Hosting | Draft | Adam Pippert | 0002, 0003, 0004, 0005, 0006, 0008, 0013 |
 
 ## Dependency Graph
 
@@ -51,4 +52,6 @@ RFC-0008 (Credential Objects)
   └── RFC-0012 (Interface Plane) [also depends on RFC-0002 through RFC-0007]
 RFC-0001, RFC-0002, RFC-0003, RFC-0005, RFC-0007, RFC-0008
   └── RFC-0017 (VM Objects)
+RFC-0002, RFC-0003, RFC-0004, RFC-0005, RFC-0006, RFC-0008, RFC-0013
+  └── RFC-0018 (Expert Composition and Multi-Model Hosting)
 ```
