@@ -26,7 +26,7 @@ GRUB_EFI_DEB="grub-efi-amd64-bin_${GRUB_VER}_amd64.deb"
 DEBIAN_MIRROR="https://deb.debian.org/debian/pool/main/g/grub2"
 
 # SYSLINUX (provides isolinux.bin + mboot.c32 for CD boot)
-SYSLINUX_VER="4.07"
+SYSLINUX_VER="6.03"
 SYSLINUX_TAR="syslinux-${SYSLINUX_VER}.tar.xz"
 SYSLINUX_URL="https://mirrors.edge.kernel.org/pub/linux/utils/boot/syslinux/${SYSLINUX_TAR}"
 
@@ -118,16 +118,28 @@ if [ ! -f "${SHARE_DIR}/isolinux.bin" ]; then
 		curl -L --progress-bar -o "${SYSLINUX_TAR}" "${SYSLINUX_URL}"
 	fi
 
-	# 4.07 tar has no bios/ prefix; extract everything and find what we need
-	tar xf "${SYSLINUX_TAR}" 2>/dev/null
+	tar xf "${SYSLINUX_TAR}" --include="*/bios/core/isolinux.bin" \
+		--include="*/bios/com32/mboot/mboot.c32" \
+		--include="*/bios/com32/lib/libcom32.c32" \
+		--include="*/bios/com32/elflink/ldlinux/ldlinux.c32" \
+		--include="*/bios/com32/libutil/libutil.c32" \
+		--include="*/bios/com32/gpl/libgpl.c32" \
+		2>/dev/null || tar xf "${SYSLINUX_TAR}"
 
-	# Only isolinux.bin and mboot.c32 needed; ldlinux is embedded in 4.x
-	find "syslinux-${SYSLINUX_VER}" -name "isolinux.bin" | head -1 | \
+	# Find and copy the needed files.  Each lookup pins -path "*/bios/*"
+	# because syslinux 6.03 ships three sibling variants (bios/efi32/efi64)
+	# and they are NOT ABI-compatible.  Mixing variants produces undefined
+	# symbols at boot — e.g. an efi32 libcom32.c32 references
+	# __vesacon_i915resolution which only exists in efi32/libgpl.c32.
+	find "syslinux-${SYSLINUX_VER}" -name "isolinux.bin" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
-	find "syslinux-${SYSLINUX_VER}" -name "mboot.c32" | head -1 | \
+	find "syslinux-${SYSLINUX_VER}" -name "mboot.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
-	find "syslinux-${SYSLINUX_VER}" -name "ldlinux.c32" | head -1 | \
-		xargs -I{} cp {} "${SHARE_DIR}/" 2>/dev/null || true
+	find "syslinux-${SYSLINUX_VER}" -name "ldlinux.c32" -path "*/bios/*" | head -1 | \
+		xargs -I{} cp {} "${SHARE_DIR}/"
+	find "syslinux-${SYSLINUX_VER}" -name "libcom32.c32" -path "*/bios/*" | head -1 | \
+		xargs -I{} cp {} "${SHARE_DIR}/"
+	find "syslinux-${SYSLINUX_VER}" -name "libutil.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/"
 	find "syslinux-${SYSLINUX_VER}" -name "libgpl.c32" -path "*/bios/*" | head -1 | \
 		xargs -I{} cp {} "${SHARE_DIR}/" 2>/dev/null || true

@@ -64,7 +64,14 @@ fi
 
 # ISOLINUX files — all must be same syslinux version
 cp "${SYSLINUX_DIR}/isolinux.bin"  "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/ldlinux.c32"   "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/libcom32.c32"  "${ISO_DIR}/isolinux/"
+cp "${SYSLINUX_DIR}/libutil.c32"   "${ISO_DIR}/isolinux/"
 cp "${SYSLINUX_DIR}/mboot.c32"     "${ISO_DIR}/isolinux/"
+# libgpl.c32 provides symbols mboot.c32 depends on (e.g. __vesacon_i915resolution)
+if [ -f "${SYSLINUX_DIR}/libgpl.c32" ]; then
+	cp "${SYSLINUX_DIR}/libgpl.c32" "${ISO_DIR}/isolinux/"
+fi
 
 cat > "${ISO_DIR}/isolinux/isolinux.cfg" << ISOCFG
 DEFAULT anunix
