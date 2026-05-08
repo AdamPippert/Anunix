@@ -1,5 +1,5 @@
 /*
- * anx/anunixmacs.h — Object-Native Editor (RFC-0023).
+ * anx/amacs.h — Object-Native Editor (RFC-0023).
  *
  * Three layers exposed in this header:
  *   - eLISP value model + interpreter entry points (elisp.c)
@@ -7,8 +7,8 @@
  *   - Editor cell dispatch hook (cell.c)
  */
 
-#ifndef ANX_ANUNIXMACS_H
-#define ANX_ANUNIXMACS_H
+#ifndef ANX_AMACS_H
+#define ANX_AMACS_H
 
 #include <anx/types.h>
 
@@ -19,6 +19,9 @@
 #define ANX_ED_BUF_INITIAL	4096
 #define ANX_ED_BUF_MAX		(8 * 1024 * 1024)
 
+struct anx_ed_marker;
+struct anx_ed_interval;
+
 struct anx_ed_buffer {
 	char     *data;
 	uint32_t  size;		/* total allocation */
@@ -27,7 +30,35 @@ struct anx_ed_buffer {
 	uint32_t  point;	/* logical 0-indexed position */
 	anx_oid_t source_oid;	/* optional source OID, zero if synthetic */
 	bool      dirty;
+	struct anx_ed_marker   *markers;	/* intrusive list */
+	struct anx_ed_interval *intervals;	/* sorted, non-overlapping */
 };
+
+/*
+ * A marker is a buffer position that survives edits.  Insert before it
+ * shifts it forward; delete spanning it pulls it back to the deletion
+ * start.  insertion_type=false (default) means an insert exactly at the
+ * marker leaves it in place; true makes it move forward with the insert.
+ *
+ * A marker is "detached" when its buffer has been freed (buf=NULL); a
+ * detached marker reads back as nil from marker-position.
+ */
+struct anx_ed_marker {
+	struct anx_ed_buffer *buf;	/* NULL when detached */
+	uint32_t              pos;
+	bool                  insertion_type;
+	uint32_t              rc;
+	struct anx_ed_marker *next;	/* in buf->markers */
+};
+
+struct anx_ed_marker *anx_ed_marker_new(struct anx_ed_buffer *buf,
+					uint32_t pos);
+void     anx_ed_marker_retain(struct anx_ed_marker *m);
+void     anx_ed_marker_release(struct anx_ed_marker *m);
+void     anx_ed_marker_set(struct anx_ed_marker *m,
+			   struct anx_ed_buffer *buf, uint32_t pos);
+uint32_t anx_ed_marker_position(const struct anx_ed_marker *m);
+bool     anx_ed_marker_attached(const struct anx_ed_marker *m);
 
 int  anx_ed_buf_create(struct anx_ed_buffer **out);
 int  anx_ed_buf_create_from_bytes(const char *bytes, uint32_t len,
@@ -46,6 +77,100 @@ int  anx_ed_buf_replace_all(struct anx_ed_buffer *buf,
 			    uint32_t *count);
 
 /* ------------------------------------------------------------------ */
+/* Text properties (Phase 2.1)                                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A property is a (name, value) string pair attached to a half-open
+ * range [start, end).  Properties move with the text: insert before a
+ * range shifts it forward; delete spanning a range trims or removes it.
+ *
+ * v1 stores values as strings.  Symbol/integer values are not yet
+ * supported — fontification only needs string-named faces.
+ */
+struct anx_ed_textprop {
+	char *name;
+	char *value;
+	struct anx_ed_textprop *next;
+};
+
+struct anx_ed_interval {
+	uint32_t start;
+	uint32_t end;	/* exclusive */
+	struct anx_ed_textprop *props;
+	struct anx_ed_interval *next;
+};
+
+/* Set NAME=VALUE on every position in [start, end).  Splits intervals at
+ * the boundary as needed.  Overwrites any prior value. */
+int  anx_ed_buf_put_property(struct anx_ed_buffer *buf,
+			     uint32_t start, uint32_t end,
+			     const char *name, const char *value);
+
+/* Lookup the property NAME at POS.  Returns the stored value pointer
+ * (owned by the buffer) or NULL. */
+const char *anx_ed_buf_get_property(const struct anx_ed_buffer *buf,
+				    uint32_t pos, const char *name);
+
+/* Remove NAME from every interval intersecting [start, end). */
+int  anx_ed_buf_remove_property(struct anx_ed_buffer *buf,
+				uint32_t start, uint32_t end,
+				const char *name);
+
+/* Drop all property intervals.  Used by fontifiers before re-applying. */
+void anx_ed_buf_clear_properties(struct anx_ed_buffer *buf);
+
+/* ------------------------------------------------------------------ */
+/* Faces (Phase 2.2)                                                   */
+/* ------------------------------------------------------------------ */
+
+#define ANX_ED_MAX_FACES	32
+
+struct anx_ed_face {
+	char     *name;		/* owned; NULL when slot empty */
+	uint32_t  fg;		/* 0x00RRGGBB */
+	uint32_t  bg;		/* 0x00RRGGBB; 0xff000000 = "use default bg" */
+};
+
+#define ANX_ED_FACE_INHERIT_BG	0xff000000u
+
+/* Install built-in faces (default, region, comment, string, keyword,
+ * org-level-1..6, org-todo, org-done, link, etc.).  Idempotent. */
+void anx_ed_face_init_defaults(void);
+
+/* Add or update a face by name.  Returns ANX_OK on success, ANX_ENOMEM
+ * when the registry is full or strdup fails. */
+int  anx_ed_face_define(const char *name, uint32_t fg, uint32_t bg);
+
+/* Lookup a face by name; NULL if not registered. */
+const struct anx_ed_face *anx_ed_face_lookup(const char *name);
+
+/* ------------------------------------------------------------------ */
+/* Keymap (Phase 2.7)                                                  */
+/* ------------------------------------------------------------------ */
+
+/*
+ * v1 keymap is a flat list of single-chord global bindings.  Multi-key
+ * sequences (C-x C-s style) and per-mode keymaps arrive in 2.8.
+ *
+ * Bindings store the function as a symbol name; at dispatch time, the
+ * editor evaluates `(funcall 'NAME)` in the active session.
+ */
+#define ANX_ED_MAX_KEYBINDINGS	64
+#define ANX_ED_KEY_FN_MAX	64
+
+/* Register a binding.  Returns ANX_OK or an error code.  Re-binding the
+ * same (mods, key) overwrites the existing entry. */
+int  anx_ed_keymap_define(uint32_t mods, uint32_t key, const char *fn_name);
+
+/* Lookup; returns the bound function name (owned by the keymap) or NULL. */
+const char *anx_ed_keymap_lookup(uint32_t mods, uint32_t key);
+
+/* Parse a textual key descriptor like "C-c", "M-x", "RET", "<f5>" into
+ * (mods, key).  Returns ANX_OK on success. */
+int  anx_ed_keymap_parse(const char *desc, uint32_t *mods_out, uint32_t *key_out);
+
+/* ------------------------------------------------------------------ */
 /* eLISP value model                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -59,6 +184,7 @@ enum anx_lv_tag {
 	ANX_LV_FN,	/* lambda */
 	ANX_LV_BUILTIN,
 	ANX_LV_BUF,	/* buffer handle (small int into per-cell table) */
+	ANX_LV_MARKER,	/* refcounted pointer to anx_ed_marker */
 };
 
 struct anx_lv;
@@ -77,6 +203,8 @@ struct anx_lv_fn {
 	struct anx_lv     *params;	/* list of symbol */
 	struct anx_lv     *body;	/* list of forms */
 	struct anx_lv_env *closure;
+	bool               macro;	/* true: receive args unevaluated,
+					 * eval the returned form */
 };
 
 struct anx_lv_builtin {
@@ -99,6 +227,7 @@ struct anx_lv {
 		struct anx_lv_fn              fn;
 		const struct anx_lv_builtin  *builtin;
 		uint32_t                      buf_handle;	/* BUF */
+		struct anx_ed_marker         *marker;		/* MARKER */
 	} u;
 };
 
@@ -114,6 +243,10 @@ struct anx_lv_env {
 struct anx_ed_session {
 	struct anx_lv_env *root_env;
 	struct anx_ed_buffer *buffers[ANX_ED_MAX_BUFFERS];
+	/* In-band error signaling — set by (error …), checked at the top of
+	 * every eval, cleared by condition-case.  No setjmp needed. */
+	bool             error_pending;
+	struct anx_lv   *error_data;
 };
 
 int  anx_ed_session_create(struct anx_ed_session **out);
@@ -242,8 +375,8 @@ int  anx_ed_run_hook(const char *hook_name);
  * test setup. */
 int  anx_ed_session_install_extensions(struct anx_ed_session *sess);
 
-/* Load and evaluate ~/.anunixmacs.el from the POSIX namespace if it
+/* Load and evaluate ~/.amacs.el from the POSIX namespace if it
  * exists.  Silently no-ops if the path is missing. */
 int  anx_ed_load_init(void);
 
-#endif /* ANX_ANUNIXMACS_H */
+#endif /* ANX_AMACS_H */

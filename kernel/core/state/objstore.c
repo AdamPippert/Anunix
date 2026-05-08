@@ -13,6 +13,7 @@
 #include <anx/hashtable.h>
 #include <anx/arch.h>
 #include <anx/crypto.h>
+#include <anx/uor.h>
 
 int anx_lifecycle_transition(struct anx_state_object *obj,
 			     enum anx_object_state new_state);
@@ -195,6 +196,16 @@ int anx_so_create(const struct anx_so_create_params *params,
 	anx_lifecycle_transition(obj, ANX_OBJ_ACTIVE);
 	objstore_add(obj);
 
+	/* UOR projection: bind initial topological coordinate now that
+	 * (oid, version, content_hash, type, parents, schema) are fixed.
+	 * Mutations will reproject on seal. */
+	{
+		struct anx_uor_ref ref;
+
+		if (anx_uor_project_object(obj, &ref) == ANX_OK)
+			anx_uor_attach_metadata(obj, &ref);
+	}
+
 	*out = obj;
 	return ANX_OK;
 
@@ -269,7 +280,14 @@ int anx_so_seal(const anx_oid_t *oid)
 
 	int ret = anx_lifecycle_transition(obj, ANX_OBJ_SEALED);
 	if (ret == ANX_OK) {
+		struct anx_uor_ref ref;
+
 		anx_meta_set_bool(obj->system_meta, "sys.sealed", true);
+
+		/* Re-project on seal — content is now immutable, so this
+		 * captures the final topological coordinate. */
+		if (anx_uor_project_object(obj, &ref) == ANX_OK)
+			anx_uor_attach_metadata(obj, &ref);
 
 		struct anx_prov_event ev;
 		anx_memset(&ev, 0, sizeof(ev));

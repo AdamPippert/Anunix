@@ -31,7 +31,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.4.23
+ANX_VERSION := 2026.5.8
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -456,7 +456,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_audio.c \
                tests/test_video.c \
                tests/test_hda.c \
-               tests/test_anunixmacs.c \
+               tests/test_amacs.c \
+               tests/test_uor.c \
                tests/test_diag_inline.c
 TEST_BIN    := build/test/anunix_test
 

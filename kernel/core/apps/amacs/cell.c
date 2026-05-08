@@ -10,7 +10,7 @@
  *           if the form's value is a buffer handle, the buffer's text.
  */
 
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/types.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
@@ -77,7 +77,7 @@ static int do_eval(const anx_oid_t *src, const anx_oid_t *form_oid,
 
 		anx_memset(&cp, 0, sizeof(cp));
 		cp.object_type    = ANX_OBJ_BYTE_DATA;
-		cp.schema_uri     = "anx:schema/anunixmacs/result/v1";
+		cp.schema_uri     = "anx:schema/amacs/result/v1";
 		cp.schema_version = "1";
 		cp.payload        = result_buf;
 		cp.payload_size   = rlen;

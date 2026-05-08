@@ -84,4 +84,7 @@ int cmd_kickstart(int argc, char **argv);
 /* Boot session log viewer */
 void cmd_bootlog(int argc, char **argv);
 
+/* UOR (Universal Object Reference) — RFC-0002 §14 */
+void cmd_uor(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */

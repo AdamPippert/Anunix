@@ -66,7 +66,8 @@ int test_anxml(void);
 int test_audio(void);
 int test_video(void);
 int test_hda(void);
-int test_anunixmacs(void);
+int test_amacs(void);
+int test_uor(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -117,7 +118,8 @@ static struct test_case tests[] = {
 	{ "audio",		test_audio },
 	{ "video",		test_video },
 	{ "hda",		test_hda },
-	{ "anunixmacs",		test_anunixmacs },
+	{ "amacs",		test_amacs },
+	{ "uor",		test_uor },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
