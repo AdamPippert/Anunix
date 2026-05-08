@@ -545,6 +545,47 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable
 		puts8("anxboot: mb2 info build failed\n");
 		return EFI_OUT_OF_RESOURCES;
 	}
+
+	/*
+	 * Build identity-RWX 0..4 GiB page tables. We stash the PML4
+	 * physical address at fixed scratch slot 0x1FF8 so the asm
+	 * trampoline can pick it up without a global variable. (A
+	 * file-scope global causes a stack-spill regression in efi_main
+	 * that blows the UEFI stack guard during the banner puts8.)
+	 *
+	 * Layout: 6 contiguous pages.
+	 *   page 0      PML4
+	 *   page 1      PDPT
+	 *   pages 2..5  PD0..PD3, each 512 entries of 2 MiB pages
+	 */
+	{
+		EFI_PHYSICAL_ADDRESS pt = 0;
+		EFI_STATUS ps = gBS->AllocatePages(AllocateAnyPages,
+						   EfiLoaderData, 6, &pt);
+		puts8("anxboot: pt-alloc: status=");
+		put_hex(ps);
+		puts8(" base=");
+		put_hex(pt);
+		puts8("\n");
+		if (!EFI_ERROR(ps)) {
+			anx_memset((void *)(UINTN)pt, 0, 6 * EFI_PAGE_SIZE);
+			UINT64 *pml4 = (UINT64 *)(UINTN)pt;
+			pml4[0] = (pt + EFI_PAGE_SIZE) | 3;
+			UINT64 *pdpt = (UINT64 *)(UINTN)(pt + EFI_PAGE_SIZE);
+			UINT64 i;
+			for (i = 0; i < 4; i++) {
+				UINT64 pd_phys = pt + (2 + i) * EFI_PAGE_SIZE;
+				pdpt[i] = pd_phys | 3;
+				UINT64 *pd = (UINT64 *)(UINTN)pd_phys;
+				UINT64 j;
+				for (j = 0; j < 512; j++)
+					pd[j] = ((i * 512 + j) * 0x200000ULL) | 3 | 0x80;
+			}
+			*(volatile UINT64 *)(UINTN)0x1FF8 = pt;
+			puts8("anxboot: identity-RWX page tables ready\n");
+		}
+	}
+
 	/* 6. ExitBootServices (re-fetch map if it changed). */
 	{
 		int tries;
