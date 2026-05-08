@@ -47,14 +47,20 @@ if [ ! -f "${KERNEL}" ]; then
 	exit 1
 fi
 
+ANXBOOT_EFI="${PROJECT_DIR}/build/anxboot/anxboot.efi"
 EFI_BIN_SRC=""
-if [ -f "${GRUB_EFI_DIR}/monolithic/grubx64.efi" ]; then
+USE_ANXBOOT=0
+if [ -f "${ANXBOOT_EFI}" ]; then
+	EFI_BIN_SRC="${ANXBOOT_EFI}"
+	USE_ANXBOOT=1
+elif [ -f "${GRUB_EFI_DIR}/monolithic/grubx64.efi" ]; then
 	EFI_BIN_SRC="${GRUB_EFI_DIR}/monolithic/grubx64.efi"
 elif [ -f "${GRUB_DIR}/share/BOOTX64.EFI" ]; then
 	EFI_BIN_SRC="${GRUB_DIR}/share/BOOTX64.EFI"
 else
-	echo "ERROR: no GRUB EFI binary found." >&2
-	echo "  Run: make iso-deps" >&2
+	echo "ERROR: no EFI loader found." >&2
+	echo "  Build anxboot:  make -C boot/anxboot" >&2
+	echo "  Or fetch GRUB:  make iso-deps" >&2
 	exit 1
 fi
 
@@ -91,34 +97,66 @@ truncate -s "${ESP_BYTES}" "${ESP_IMG}"
 # FAT32 requires >=33 MiB; we use 128 MiB so it's safe.
 mformat -i "${ESP_IMG}" -F -v ANXBOOT ::
 
-mmd  -i "${ESP_IMG}" ::/EFI ::/EFI/BOOT ::/boot ::/boot/grub ::/boot/grub/x86_64-efi
+mmd  -i "${ESP_IMG}" ::/EFI ::/EFI/BOOT ::/boot
 mcopy -i "${ESP_IMG}" "${EFI_BIN_SRC}" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "${ESP_IMG}" "${KERNEL}"      ::/boot/anunix.elf
 if [ -f "${KERNEL_MB1}" ]; then
 	mcopy -i "${ESP_IMG}" "${KERNEL_MB1}" ::/boot/anunix-mb1.elf
 fi
 
-# Stage GRUB EFI modules on the ESP. The "monolithic" grubx64.efi we ship
-# still goes looking for modules on disk for things like multiboot2 and
-# normal — copy the whole x86_64-efi tree (~19 MiB) so any insmod resolves.
-mcopy -i "${ESP_IMG}" -b "${GRUB_EFI_DIR}"/*.mod "${GRUB_EFI_DIR}"/*.lst \
-	::/boot/grub/x86_64-efi/ 2>/dev/null
+# anxboot doesn't need grub.cfg or any helper modules — it reads
+# /boot/anunix.elf directly. GRUB-based boot needs both.
+if [ "${USE_ANXBOOT}" -eq 0 ]; then
+	mmd -i "${ESP_IMG}" ::/boot/grub ::/boot/grub/x86_64-efi
+	mcopy -i "${ESP_IMG}" -b "${GRUB_EFI_DIR}"/*.mod "${GRUB_EFI_DIR}"/*.lst \
+		::/boot/grub/x86_64-efi/ 2>/dev/null
+fi
+
+if [ "${USE_ANXBOOT}" -eq 1 ]; then
+	echo "  /EFI/BOOT/BOOTX64.EFI       anxboot 0.1 ($(stat -c %s "${EFI_BIN_SRC}") bytes)"
+	echo "  /boot/anunix.elf            $(stat -c %s "${KERNEL}") bytes"
+	if [ -f "${KERNEL_MB1}" ]; then
+		echo "  /boot/anunix-mb1.elf        $(stat -c %s "${KERNEL_MB1}") bytes"
+	fi
+	echo ">>> [3/4] Splice ESP into disk image at sector ${ESP_START_SEC}..."
+	dd if="${ESP_IMG}" of="${IMG_OUT}" \
+	   bs=512 seek="${ESP_START_SEC}" conv=notrunc status=none
+	rm -f "${ESP_IMG}"
+	echo ">>> [4/4] Verify..."
+	sfdisk -l "${IMG_OUT}" 2>/dev/null | grep -E '^Disk |^Disklabel|^Device' | head -5
+	echo ""
+	SIZE=$(du -sh "${IMG_OUT}" | cut -f1)
+	echo "=== UEFI USB image: ${IMG_OUT} (${SIZE}) ==="
+	echo "    dd if=${IMG_OUT} of=/dev/sdX bs=4M oflag=sync"
+	exit 0
+fi
 
 # Fresh grub.cfg — UEFI path uses multiboot2 directly (no ANUNIX.EFI stub).
 GRUB_CFG_TMP="$(mktemp)"
 cat > "${GRUB_CFG_TMP}" <<'GRUBCFG'
-# Anunix UEFI USB — direct multiboot2 boot.
+# Anunix UEFI USB — direct multiboot1 boot.
+#
+# Framework UEFI (and many other modern UEFIs) expose a very narrow set
+# of GOP video modes — sometimes only the native panel resolution and
+# nothing else. GRUB's multiboot loader calls grub_video_set_mode during
+# the handoff and dies with "no suitable video mode found" when its
+# preferred mode list is empty. Forcing gfxpayload=text tells GRUB to
+# skip that probe and hand control to the kernel in firmware text mode;
+# the kernel re-acquires the framebuffer itself via its own GOP probe.
 set timeout=3
 set default=0
+set gfxpayload=text
+set gfxmode=text
 
-# Plain serial+console terminal — no gfxterm or unicode font, since we
-# don't ship the .pf2 and don't need framebuffer chrome at the GRUB layer.
+# Stay on the firmware text console; do not load gfxterm.
 terminal_input console
 terminal_output console
 
+insmod multiboot
 insmod multiboot2
 
 menuentry "Anunix" {
+    set gfxpayload=text
     echo "Loading kernel via multiboot1 (QEMU wrapper)..."
     multiboot /boot/anunix-mb1.elf
     echo "Booting..."
@@ -126,6 +164,7 @@ menuentry "Anunix" {
 }
 
 menuentry "Anunix (multiboot2)" {
+    set gfxpayload=text
     echo "Loading kernel via multiboot2..."
     multiboot2 /boot/anunix.elf
     echo "Booting..."
@@ -133,7 +172,8 @@ menuentry "Anunix (multiboot2)" {
 }
 
 menuentry "Anunix (install)" {
-    multiboot2 /boot/anunix.elf -- install
+    set gfxpayload=text
+    multiboot /boot/anunix-mb1.elf -- install
     boot
 }
 GRUBCFG
