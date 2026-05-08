@@ -1,9 +1,9 @@
 /*
- * Temporary diagnostic harness — included into test_anunixmacs.c via
+ * Temporary diagnostic harness — included into test_amacs.c via
  * the build, run once at start of test to print actual eval results.
  */
 
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/anxml.h>
 #include <anx/audio.h>
 #include <anx/state_object.h>

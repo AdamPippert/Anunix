@@ -1,5 +1,5 @@
 /*
- * elisp.c — Minimal eLISP interpreter for anunixmacs (RFC-0023).
+ * elisp.c — Minimal eLISP interpreter for amacs (RFC-0023).
  *
  * Lisp-1, lexical scope (chained env), reference-counted values.
  * Special forms: quote if and or cond when unless let let* setq
@@ -12,7 +12,7 @@
  * optimization, multibyte/UTF-8 source.
  */
 
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/types.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -61,6 +61,9 @@ void anx_lv_release(struct anx_lv *v)
 		anx_lv_release(v->u.fn.params);
 		anx_lv_release(v->u.fn.body);
 		env_release(v->u.fn.closure);
+		break;
+	case ANX_LV_MARKER:
+		anx_ed_marker_release(v->u.marker);
 		break;
 	default:
 		break;
@@ -305,6 +308,21 @@ static struct anx_lv *read_atom(struct reader *r)
 	}
 	bool is_int = i < n;
 	int64_t val = 0;
+	/* 0x... hex literal */
+	if (i + 2 <= n && s[i] == '0' && (s[i+1] == 'x' || s[i+1] == 'X')) {
+		uint32_t hi;
+		bool ok = (i + 2 < n);
+		for (hi = i + 2; hi < n && ok; hi++) {
+			char ch = s[hi];
+			val <<= 4;
+			if (ch >= '0' && ch <= '9')      val |= ch - '0';
+			else if (ch >= 'a' && ch <= 'f') val |= 10 + ch - 'a';
+			else if (ch >= 'A' && ch <= 'F') val |= 10 + ch - 'A';
+			else { ok = false; break; }
+		}
+		if (ok) return anx_lv_int(negative ? -val : val);
+		val = 0;
+	}
 	for (; i < n; i++) {
 		if (s[i] < '0' || s[i] > '9') { is_int = false; break; }
 		val = val * 10 + (s[i] - '0');
@@ -424,6 +442,15 @@ static void print_to(struct sb *s, const struct anx_lv *v)
 	case ANX_LV_BUF:
 		anx_snprintf(tmp, sizeof(tmp), "<buffer:%u>",
 			     v->u.buf_handle);
+		sb_puts(s, tmp);
+		break;
+	case ANX_LV_MARKER:
+		if (v->u.marker && v->u.marker->buf) {
+			anx_snprintf(tmp, sizeof(tmp), "<marker:%u>",
+				     (unsigned)v->u.marker->pos);
+		} else {
+			anx_strlcpy(tmp, "<marker:detached>", sizeof(tmp));
+		}
 		sb_puts(s, tmp);
 		break;
 	default:
@@ -1008,6 +1035,266 @@ BUILTIN("current-buffer-name", ed_curbuf_name, 0, 0)
 }
 
 /* ------------------------------------------------------------------ */
+/* Marker primitives                                                   */
+/* ------------------------------------------------------------------ */
+
+static struct anx_lv *lv_marker(struct anx_ed_marker *m)
+{
+	struct anx_lv *v;
+	if (!m) return &g_nil;
+	v = anx_lv_new(ANX_LV_MARKER);
+	if (!v) { anx_ed_marker_release(m); return &g_nil; }
+	v->u.marker = m;
+	return v;
+}
+
+/* (make-marker) — detached marker, position 0. */
+BUILTIN("make-marker", ed_make_marker, 0, 0)
+{
+	UNUSED(a); UNUSED(e); UNUSED(ctx);
+	struct anx_ed_marker *m = anx_ed_marker_new(NULL, 0);
+	return lv_marker(m);
+}
+
+/* (point-marker) — marker at point in the active buffer. */
+BUILTIN("point-marker", ed_point_marker, 0, 0)
+{
+	UNUSED(a); UNUSED(e); UNUSED(ctx);
+	struct anx_ed_buffer *b = anx_ed_active_buffer();
+	if (!b) return &g_nil;
+	return lv_marker(anx_ed_marker_new(b, b->point));
+}
+
+/* (marker-position M) — integer or nil if detached. */
+BUILTIN("marker-position", ed_marker_pos, 1, 1)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *m = a->u.cons.car;
+	if (!m || m->tag != ANX_LV_MARKER) return &g_nil;
+	if (!anx_ed_marker_attached(m->u.marker)) return &g_nil;
+	return anx_lv_int((int64_t)anx_ed_marker_position(m->u.marker));
+}
+
+/* (set-marker M POS) — POS may be an integer or another marker.
+ * Anchors M to the active buffer. */
+BUILTIN("set-marker", ed_set_marker, 2, 2)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *mv = a->u.cons.car;
+	struct anx_lv *pv = a->u.cons.cdr->u.cons.car;
+	struct anx_ed_buffer *b = anx_ed_active_buffer();
+	uint32_t pos;
+	if (!mv || mv->tag != ANX_LV_MARKER) return &g_nil;
+	if (!pv) return &g_nil;
+	if (pv->tag == ANX_LV_INT) {
+		pos = (uint32_t)pv->u.i;
+	} else if (pv->tag == ANX_LV_MARKER) {
+		pos = anx_ed_marker_position(pv->u.marker);
+	} else {
+		return &g_nil;
+	}
+	anx_ed_marker_set(mv->u.marker, b, pos);
+	anx_lv_retain(mv);
+	return mv;
+}
+
+/* (set-marker-insertion-type M FLAG) — FLAG controls whether the marker
+ * advances when an insert happens exactly at its position. */
+BUILTIN("set-marker-insertion-type", ed_set_marker_itype, 2, 2)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *mv = a->u.cons.car;
+	struct anx_lv *fv = a->u.cons.cdr->u.cons.car;
+	if (!mv || mv->tag != ANX_LV_MARKER) return &g_nil;
+	if (!mv->u.marker) return &g_nil;
+	mv->u.marker->insertion_type = (fv && fv != &g_nil);
+	return fv ? fv : &g_nil;
+}
+
+/* (markerp X) — t if X is a marker. */
+BUILTIN("markerp", ed_markerp, 1, 1)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *x = a->u.cons.car;
+	return (x && x->tag == ANX_LV_MARKER) ? &g_t : &g_nil;
+}
+
+/* ------------------------------------------------------------------ */
+/* Text property primitives                                            */
+/* ------------------------------------------------------------------ */
+
+/* Helper: extract a uint32 position from an INT or MARKER. */
+static int lv_to_pos(struct anx_lv *v, uint32_t *out)
+{
+	if (!v) return -1;
+	if (v->tag == ANX_LV_INT) { *out = (uint32_t)v->u.i; return 0; }
+	if (v->tag == ANX_LV_MARKER && anx_ed_marker_attached(v->u.marker)) {
+		*out = anx_ed_marker_position(v->u.marker);
+		return 0;
+	}
+	return -1;
+}
+
+/* (put-text-property START END NAME VALUE) — both NAME and VALUE are
+ * strings or symbols.  Operates on the active editor buffer. */
+BUILTIN("put-text-property", ed_put_textprop, 4, 4)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_ed_buffer *b = anx_ed_active_buffer();
+	struct anx_lv *sv = a->u.cons.car;
+	struct anx_lv *ev = a->u.cons.cdr->u.cons.car;
+	struct anx_lv *nv = a->u.cons.cdr->u.cons.cdr->u.cons.car;
+	struct anx_lv *vv = a->u.cons.cdr->u.cons.cdr->u.cons.cdr->u.cons.car;
+	uint32_t s, en;
+	if (!b) return &g_nil;
+	if (lv_to_pos(sv, &s)  != 0) return &g_nil;
+	if (lv_to_pos(ev, &en) != 0) return &g_nil;
+	if (!nv || (nv->tag != ANX_LV_STR && nv->tag != ANX_LV_SYM))
+		return &g_nil;
+	if (!vv || (vv->tag != ANX_LV_STR && vv->tag != ANX_LV_SYM))
+		return &g_nil;
+	if (anx_ed_buf_put_property(b, s, en, nv->u.s.bytes, vv->u.s.bytes)
+	    != ANX_OK) return &g_nil;
+	return &g_t;
+}
+
+/* (get-text-property POS NAME) — string value, or nil. */
+BUILTIN("get-text-property", ed_get_textprop, 2, 2)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_ed_buffer *b = anx_ed_active_buffer();
+	struct anx_lv *pv = a->u.cons.car;
+	struct anx_lv *nv = a->u.cons.cdr->u.cons.car;
+	uint32_t p;
+	const char *val;
+	if (!b) return &g_nil;
+	if (lv_to_pos(pv, &p) != 0) return &g_nil;
+	if (!nv || (nv->tag != ANX_LV_STR && nv->tag != ANX_LV_SYM))
+		return &g_nil;
+	val = anx_ed_buf_get_property(b, p, nv->u.s.bytes);
+	if (!val) return &g_nil;
+	return anx_lv_str(val, (uint32_t)anx_strlen(val));
+}
+
+/* (remove-text-properties START END NAME) */
+BUILTIN("remove-text-properties", ed_rm_textprop, 3, 3)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_ed_buffer *b = anx_ed_active_buffer();
+	struct anx_lv *sv = a->u.cons.car;
+	struct anx_lv *ev = a->u.cons.cdr->u.cons.car;
+	struct anx_lv *nv = a->u.cons.cdr->u.cons.cdr->u.cons.car;
+	uint32_t s, en;
+	if (!b) return &g_nil;
+	if (lv_to_pos(sv, &s)  != 0) return &g_nil;
+	if (lv_to_pos(ev, &en) != 0) return &g_nil;
+	if (!nv || (nv->tag != ANX_LV_STR && nv->tag != ANX_LV_SYM))
+		return &g_nil;
+	if (anx_ed_buf_remove_property(b, s, en, nv->u.s.bytes) != ANX_OK)
+		return &g_nil;
+	return &g_t;
+}
+
+/* ------------------------------------------------------------------ */
+/* Face primitives                                                     */
+/* ------------------------------------------------------------------ */
+
+/* (defface NAME FG BG) — NAME is a symbol or string; FG and BG are
+ * 0x00RRGGBB integers.  Pass nil for BG to mean "inherit". */
+BUILTIN("defface", ed_defface, 3, 3)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *nv = a->u.cons.car;
+	struct anx_lv *fv = a->u.cons.cdr->u.cons.car;
+	struct anx_lv *bv = a->u.cons.cdr->u.cons.cdr->u.cons.car;
+	uint32_t fg, bg;
+	if (!nv || (nv->tag != ANX_LV_SYM && nv->tag != ANX_LV_STR))
+		return &g_nil;
+	if (!fv || fv->tag != ANX_LV_INT) return &g_nil;
+	fg = (uint32_t)fv->u.i;
+	if (!bv || bv == &g_nil) {
+		bg = ANX_ED_FACE_INHERIT_BG;
+	} else if (bv->tag == ANX_LV_INT) {
+		bg = (uint32_t)bv->u.i;
+	} else {
+		return &g_nil;
+	}
+	return anx_ed_face_define(nv->u.s.bytes, fg, bg) == ANX_OK ?
+	       &g_t : &g_nil;
+}
+
+/* (face-foreground NAME) — int color or nil. */
+BUILTIN("face-foreground", ed_face_fg, 1, 1)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *nv = a->u.cons.car;
+	const struct anx_ed_face *f;
+	if (!nv || (nv->tag != ANX_LV_SYM && nv->tag != ANX_LV_STR))
+		return &g_nil;
+	f = anx_ed_face_lookup(nv->u.s.bytes);
+	return f ? anx_lv_int((int64_t)(uint64_t)f->fg) : &g_nil;
+}
+
+/* ------------------------------------------------------------------ */
+/* Keymap primitives                                                   */
+/* ------------------------------------------------------------------ */
+
+/* (define-key MAP DESC FN) — MAP is currently ignored (only 'global is
+ * supported in v1).  DESC is a string like "C-c", FN is a symbol. */
+BUILTIN("define-key", ed_define_key, 3, 3)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *desc = a->u.cons.cdr->u.cons.car;
+	struct anx_lv *fn   = a->u.cons.cdr->u.cons.cdr->u.cons.car;
+	uint32_t mods, key;
+	if (!desc || desc->tag != ANX_LV_STR) return &g_nil;
+	if (!fn || (fn->tag != ANX_LV_SYM && fn->tag != ANX_LV_STR))
+		return &g_nil;
+	if (anx_ed_keymap_parse(desc->u.s.bytes, &mods, &key) != ANX_OK)
+		return &g_nil;
+	if (anx_ed_keymap_define(mods, key, fn->u.s.bytes) != ANX_OK)
+		return &g_nil;
+	return &g_t;
+}
+
+/* (error MSG) — signal an error.  Sets the session's error flag; every
+ * subsequent eval short-circuits until condition-case clears it. */
+BUILTIN("error", ed_error, 1, 1)
+{
+	UNUSED(e);
+	struct anx_ed_session *sess = (struct anx_ed_session *)ctx;
+	struct anx_lv *msg = a->u.cons.car;
+	if (!sess) return &g_nil;
+	if (sess->error_data) {
+		anx_lv_release(sess->error_data);
+		sess->error_data = NULL;
+	}
+	if (msg) {
+		anx_lv_retain(msg);
+		sess->error_data = msg;
+	}
+	sess->error_pending = true;
+	return &g_nil;
+}
+
+/* (global-set-key DESC FN) — define-key on the global map. */
+BUILTIN("global-set-key", ed_global_set_key, 2, 2)
+{
+	UNUSED(e); UNUSED(ctx);
+	struct anx_lv *desc = a->u.cons.car;
+	struct anx_lv *fn   = a->u.cons.cdr->u.cons.car;
+	uint32_t mods, key;
+	if (!desc || desc->tag != ANX_LV_STR) return &g_nil;
+	if (!fn || (fn->tag != ANX_LV_SYM && fn->tag != ANX_LV_STR))
+		return &g_nil;
+	if (anx_ed_keymap_parse(desc->u.s.bytes, &mods, &key) != ANX_OK)
+		return &g_nil;
+	if (anx_ed_keymap_define(mods, key, fn->u.s.bytes) != ANX_OK)
+		return &g_nil;
+	return &g_t;
+}
+
+/* ------------------------------------------------------------------ */
 /* Hook primitives                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -1089,6 +1376,12 @@ static const struct anx_lv_builtin *const g_builtins[] = {
 	&bd_ed_bol, &bd_ed_eol, &bd_ed_bob, &bd_ed_eob,
 	&bd_ed_save, &bd_ed_find_file, &bd_ed_curbuf_name,
 	&bd_ed_add_hook, &bd_ed_run_hooks,
+	&bd_ed_make_marker, &bd_ed_point_marker, &bd_ed_marker_pos,
+	&bd_ed_set_marker, &bd_ed_set_marker_itype, &bd_ed_markerp,
+	&bd_ed_put_textprop, &bd_ed_get_textprop, &bd_ed_rm_textprop,
+	&bd_ed_defface, &bd_ed_face_fg,
+	&bd_ed_define_key, &bd_ed_global_set_key,
+	&bd_ed_error,
 	NULL,
 };
 
@@ -1112,12 +1405,16 @@ static void install_builtins(struct anx_lv_env *env)
 static struct anx_lv *eval(struct anx_lv *form, struct anx_lv_env *env,
 			   struct anx_ed_session *sess)
 {
+	/* If an error is in flight, every nested eval short-circuits to nil
+	 * until condition-case clears the flag. */
+	if (sess && sess->error_pending) return &g_nil;
 	if (!form || form == &g_nil) return &g_nil;
 	if (form == &g_t)             return &g_t;
 	switch (form->tag) {
 	case ANX_LV_INT:
 	case ANX_LV_STR:
 	case ANX_LV_BUF:
+	case ANX_LV_MARKER:
 	case ANX_LV_BUILTIN:
 	case ANX_LV_FN:
 		anx_lv_retain(form);
@@ -1274,6 +1571,105 @@ static struct anx_lv *eval(struct anx_lv *form, struct anx_lv_env *env,
 			anx_lv_retain(fname);
 			return fname;
 		}
+		/* (defmacro NAME (PARAMS) BODY...) — same shape as defun; the
+		 * resulting function gets args unevaluated and the value it
+		 * returns is then evaluated in the caller's environment. */
+		if (anx_strcmp(name, "defmacro") == 0) {
+			struct anx_lv *fname  = nth(args, 0);
+			struct anx_lv *params = nth(args, 1);
+			struct anx_lv *body   = args && args->tag == ANX_LV_CONS
+				? args->u.cons.cdr : &g_nil;
+			if (body && body->tag == ANX_LV_CONS) body = body->u.cons.cdr;
+			if (!fname || fname->tag != ANX_LV_SYM) return &g_nil;
+			struct anx_lv *fn = anx_lv_new(ANX_LV_FN);
+			if (!fn) return &g_nil;
+			anx_lv_retain(params); anx_lv_retain(body);
+			fn->u.fn.params = params;
+			fn->u.fn.body   = body;
+			fn->u.fn.macro  = true;
+			env_retain(env);
+			fn->u.fn.closure = env;
+			env_set(env, fname, fn);
+			anx_lv_release(fn);
+			anx_lv_retain(fname);
+			return fname;
+		}
+		/* (condition-case VAR PROTECTED-FORM HANDLER-CLAUSE...)
+		 * Each HANDLER-CLAUSE looks like (CONDITION BODY...).  v1
+		 * accepts any condition (we don't yet have a class hierarchy)
+		 * — the first handler runs.  VAR is bound to the error data
+		 * inside the handler. */
+		if (anx_strcmp(name, "condition-case") == 0) {
+			struct anx_lv *var      = nth(args, 0);
+			struct anx_lv *prot     = nth(args, 1);
+			struct anx_lv *handlers = args && args->tag == ANX_LV_CONS
+				? args->u.cons.cdr : &g_nil;
+			if (handlers && handlers->tag == ANX_LV_CONS)
+				handlers = handlers->u.cons.cdr;
+
+			struct anx_lv *result = eval(prot, env, sess);
+			if (!sess || !sess->error_pending) return result;
+
+			anx_lv_release(result);
+			struct anx_lv *err = sess->error_data ?
+				sess->error_data : &g_nil;
+			anx_lv_retain(err);
+			sess->error_pending = false;
+			if (sess->error_data) {
+				anx_lv_release(sess->error_data);
+				sess->error_data = NULL;
+			}
+
+			struct anx_lv_env *new_env = env_new(env);
+			if (var && var->tag == ANX_LV_SYM)
+				env_set(new_env, var, err);
+			anx_lv_release(err);
+
+			struct anx_lv *clause = handlers && handlers->tag == ANX_LV_CONS
+				? handlers->u.cons.car : NULL;
+			struct anx_lv *handler_body = clause &&
+				clause->tag == ANX_LV_CONS ?
+				clause->u.cons.cdr : &g_nil;
+			struct anx_lv *last = &g_nil;
+			anx_lv_retain(last);
+			while (handler_body && handler_body->tag == ANX_LV_CONS) {
+				anx_lv_release(last);
+				last = eval(handler_body->u.cons.car, new_env, sess);
+				handler_body = handler_body->u.cons.cdr;
+			}
+			env_release(new_env);
+			return last;
+		}
+		/* (unwind-protect BODY UNWIND-FORMS...) — UNWIND-FORMS run
+		 * regardless of whether BODY raised an error.  An error from
+		 * BODY is preserved across the unwind. */
+		if (anx_strcmp(name, "unwind-protect") == 0) {
+			struct anx_lv *body_form = nth(args, 0);
+			struct anx_lv *unwinds   = args && args->tag == ANX_LV_CONS
+				? args->u.cons.cdr : &g_nil;
+			struct anx_lv *body_result = eval(body_form, env, sess);
+
+			bool             saved_pending = false;
+			struct anx_lv   *saved_data    = NULL;
+			if (sess) {
+				saved_pending = sess->error_pending;
+				saved_data    = sess->error_data;
+				sess->error_pending = false;
+				sess->error_data    = NULL;
+			}
+			while (unwinds && unwinds->tag == ANX_LV_CONS) {
+				struct anx_lv *r = eval(unwinds->u.cons.car,
+							env, sess);
+				anx_lv_release(r);
+				unwinds = unwinds->u.cons.cdr;
+			}
+			if (sess) {
+				if (sess->error_data) anx_lv_release(sess->error_data);
+				sess->error_pending = saved_pending;
+				sess->error_data    = saved_data;
+			}
+			return body_result;
+		}
 		/* (cond (TEST EXPR...)...) */
 		if (anx_strcmp(name, "cond") == 0) {
 			struct anx_lv *cur = args;
@@ -1363,6 +1759,34 @@ static struct anx_lv *eval(struct anx_lv *form, struct anx_lv_env *env,
 	/* Function application */
 	struct anx_lv *fn = eval(head, env, sess);
 	if (!fn) return &g_nil;
+
+	/* Macro: bind params to UNEVALUATED args, evaluate body, then
+	 * evaluate the form the macro returned in the caller's env. */
+	if (fn->tag == ANX_LV_FN && fn->u.fn.macro) {
+		struct anx_lv_env *call_env = env_new(fn->u.fn.closure);
+		struct anx_lv *p = fn->u.fn.params;
+		struct anx_lv *v = args;
+		while (p && p->tag == ANX_LV_CONS &&
+		       v && v->tag == ANX_LV_CONS) {
+			env_set(call_env, p->u.cons.car, v->u.cons.car);
+			p = p->u.cons.cdr;
+			v = v->u.cons.cdr;
+		}
+		struct anx_lv *body = fn->u.fn.body;
+		struct anx_lv *expansion = &g_nil;
+		anx_lv_retain(expansion);
+		while (body && body->tag == ANX_LV_CONS) {
+			anx_lv_release(expansion);
+			expansion = eval(body->u.cons.car, call_env, sess);
+			body = body->u.cons.cdr;
+		}
+		env_release(call_env);
+		anx_lv_release(fn);
+		struct anx_lv *result = eval(expansion, env, sess);
+		anx_lv_release(expansion);
+		return result;
+	}
+
 	struct anx_lv *evargs = eval_args(args, env, sess);
 	struct anx_lv *result = &g_nil;
 
@@ -1420,6 +1844,7 @@ void anx_ed_session_free(struct anx_ed_session *sess)
 	for (i = 0; i < ANX_ED_MAX_BUFFERS; i++) {
 		if (sess->buffers[i]) anx_ed_buf_free(sess->buffers[i]);
 	}
+	if (sess->error_data) anx_lv_release(sess->error_data);
 	env_release(sess->root_env);
 	anx_free(sess);
 }

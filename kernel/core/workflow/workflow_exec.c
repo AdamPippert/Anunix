@@ -30,7 +30,7 @@
 #include <anx/jepa_cell.h>
 #include <anx/agent_cell.h>
 #include <anx/anxml.h>
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/audio.h>
 #include <anx/video.h>
 

@@ -1,8 +1,8 @@
 /*
- * buffer.c — Gap buffer for anunixmacs (RFC-0023).
+ * buffer.c — Gap buffer for amacs (RFC-0023).
  */
 
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/types.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -79,6 +79,65 @@ static uint32_t log_to_off(const struct anx_ed_buffer *buf, uint32_t pos)
 	return pos + (buf->gap_end - buf->gap_start);
 }
 
+/* Forward decl from textprop.c */
+void anx_ed_textprop_after_insert(struct anx_ed_buffer *buf,
+				  uint32_t pos, uint32_t n);
+void anx_ed_textprop_after_delete(struct anx_ed_buffer *buf,
+				  uint32_t pos, uint32_t n);
+
+/* ------------------------------------------------------------------ */
+/* Marker bookkeeping                                                   */
+/* ------------------------------------------------------------------ */
+
+static void markers_after_insert(struct anx_ed_buffer *buf,
+				 uint32_t pos, uint32_t n)
+{
+	struct anx_ed_marker *m;
+	for (m = buf->markers; m; m = m->next) {
+		if (m->pos > pos) {
+			m->pos += n;
+		} else if (m->pos == pos && m->insertion_type) {
+			m->pos += n;
+		}
+	}
+}
+
+static void markers_after_delete(struct anx_ed_buffer *buf,
+				 uint32_t pos, uint32_t n)
+{
+	struct anx_ed_marker *m;
+	uint32_t end = pos + n;
+	for (m = buf->markers; m; m = m->next) {
+		if (m->pos >= end) {
+			m->pos -= n;
+		} else if (m->pos > pos) {
+			m->pos = pos;
+		}
+	}
+}
+
+static void markers_unlink_one(struct anx_ed_buffer *buf,
+			       struct anx_ed_marker *target)
+{
+	struct anx_ed_marker **pp = &buf->markers;
+	while (*pp) {
+		if (*pp == target) { *pp = target->next; return; }
+		pp = &(*pp)->next;
+	}
+}
+
+static void markers_detach_all(struct anx_ed_buffer *buf)
+{
+	struct anx_ed_marker *m = buf->markers;
+	while (m) {
+		struct anx_ed_marker *next = m->next;
+		m->buf  = NULL;
+		m->next = NULL;
+		m = next;
+	}
+	buf->markers = NULL;
+}
+
 /* ------------------------------------------------------------------ */
 /* Public API                                                           */
 /* ------------------------------------------------------------------ */
@@ -126,6 +185,8 @@ int anx_ed_buf_create_from_bytes(const char *bytes, uint32_t len,
 void anx_ed_buf_free(struct anx_ed_buffer *buf)
 {
 	if (!buf) return;
+	markers_detach_all(buf);
+	anx_ed_buf_clear_properties(buf);
 	if (buf->data) anx_free(buf->data);
 	anx_free(buf);
 }
@@ -148,29 +209,37 @@ int anx_ed_buf_goto(struct anx_ed_buffer *buf, uint32_t pos)
 
 int anx_ed_buf_insert(struct anx_ed_buffer *buf, const char *s, uint32_t n)
 {
+	uint32_t insert_pos;
 	int rc;
 	if (!buf || !s) return ANX_EINVAL;
 	if (n == 0) return ANX_OK;
 	rc = ensure_capacity(buf, n);
 	if (rc != ANX_OK) return rc;
+	insert_pos = buf->point;
 	move_gap_to(buf, buf->point);
 	anx_memcpy(buf->data + buf->gap_start, s, n);
 	buf->gap_start += n;
 	buf->point     += n;
 	buf->dirty     = true;
+	markers_after_insert(buf, insert_pos, n);
+	anx_ed_textprop_after_insert(buf, insert_pos, n);
 	return ANX_OK;
 }
 
 int anx_ed_buf_delete(struct anx_ed_buffer *buf, uint32_t n)
 {
 	uint32_t len;
+	uint32_t delete_pos;
 	if (!buf) return ANX_EINVAL;
 	if (n == 0) return ANX_OK;
 	len = anx_ed_buf_length(buf);
 	if (buf->point + n > len) n = len - buf->point;
+	delete_pos = buf->point;
 	move_gap_to(buf, buf->point);
 	buf->gap_end += n;
 	buf->dirty   = true;
+	markers_after_delete(buf, delete_pos, n);
+	anx_ed_textprop_after_delete(buf, delete_pos, n);
 	return ANX_OK;
 }
 
@@ -222,6 +291,71 @@ int anx_ed_buf_search(const struct anx_ed_buffer *buf, const char *needle,
 		}
 	}
 	return ANX_ENOENT;
+}
+
+/* ------------------------------------------------------------------ */
+/* Markers                                                              */
+/* ------------------------------------------------------------------ */
+
+struct anx_ed_marker *anx_ed_marker_new(struct anx_ed_buffer *buf, uint32_t pos)
+{
+	struct anx_ed_marker *m =
+		(struct anx_ed_marker *)anx_zalloc(sizeof(*m));
+	if (!m) return NULL;
+	m->rc = 1;
+	if (buf) {
+		uint32_t len = anx_ed_buf_length(buf);
+		if (pos > len) pos = len;
+		m->buf  = buf;
+		m->pos  = pos;
+		m->next = buf->markers;
+		buf->markers = m;
+	}
+	return m;
+}
+
+void anx_ed_marker_retain(struct anx_ed_marker *m)
+{
+	if (m) m->rc++;
+}
+
+void anx_ed_marker_release(struct anx_ed_marker *m)
+{
+	if (!m) return;
+	if (--m->rc) return;
+	if (m->buf) markers_unlink_one(m->buf, m);
+	anx_free(m);
+}
+
+void anx_ed_marker_set(struct anx_ed_marker *m,
+		       struct anx_ed_buffer *buf, uint32_t pos)
+{
+	if (!m) return;
+	if (m->buf != buf) {
+		if (m->buf) markers_unlink_one(m->buf, m);
+		m->buf  = buf;
+		m->next = NULL;
+		if (buf) {
+			m->next = buf->markers;
+			buf->markers = m;
+		}
+	}
+	if (buf) {
+		uint32_t len = anx_ed_buf_length(buf);
+		if (pos > len) pos = len;
+	}
+	m->pos = pos;
+}
+
+uint32_t anx_ed_marker_position(const struct anx_ed_marker *m)
+{
+	if (!m || !m->buf) return 0;
+	return m->pos;
+}
+
+bool anx_ed_marker_attached(const struct anx_ed_marker *m)
+{
+	return m && m->buf != NULL;
 }
 
 int anx_ed_buf_replace_all(struct anx_ed_buffer *buf, const char *needle,

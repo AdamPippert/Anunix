@@ -1,9 +1,9 @@
-# RFC-0023: anunixmacs — Object-Native Editor with eLISP
+# RFC-0023: amacs — Object-Native Editor with eLISP
 
 | Field      | Value                                                     |
 |------------|-----------------------------------------------------------|
 | RFC        | 0023                                                      |
-| Title      | anunixmacs — Object-Native Editor with eLISP              |
+| Title      | amacs — Object-Native Editor with eLISP              |
 | Author     | Adam Pippert                                              |
 | Status     | Draft                                                     |
 | Created    | 2026-05-02                                                |
@@ -14,7 +14,7 @@
 
 ## Executive Summary
 
-anunixmacs is the canonical text editor for Anunix. It is not an Emacs port. It is a from-scratch C implementation of the **shape** of Emacs (buffer, point, mark, mode, keymap, eLISP) bound to **State Objects** instead of files. A buffer is a view onto an OID. Saving means sealing a new object version. Every text mutation is a Cell side effect with provenance. eLISP primitives manipulate OIDs, capabilities, and workflow nodes directly — the editor's extension language is a first-class agent of the Anunix kernel.
+amacs is the canonical text editor for Anunix. It is not an Emacs port. It is a from-scratch C implementation of the **shape** of Emacs (buffer, point, mark, mode, keymap, eLISP) bound to **State Objects** instead of files. A buffer is a view onto an OID. Saving means sealing a new object version. Every text mutation is a Cell side effect with provenance. eLISP primitives manipulate OIDs, capabilities, and workflow nodes directly — the editor's extension language is a first-class agent of the Anunix kernel.
 
 Scope of v1 (this RFC):
 
@@ -22,7 +22,7 @@ Scope of v1 (this RFC):
 - A minimal eLISP interpreter (reader, evaluator, printer) — Lisp-1, lexically scoped, no macros, no continuations, reference-counted GC.
 - Built-in primitives covering buffer I/O, point/mark, search, insertion/deletion, and OID/capability operations via the libanx adapter pattern.
 - A specialized cell type `ANX_CELL_EDITOR` dispatched from `workflow_exec` on `editor-*` intents.
-- A workflow template `anx:app/anunixmacs` that opens a buffer for an OID, applies an eLISP transformation, and writes the result.
+- A workflow template `anx:app/amacs` that opens a buffer for an OID, applies an eLISP transformation, and writes the result.
 
 Scope explicitly deferred:
 
@@ -53,18 +53,18 @@ Anunix needs an editor that:
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ User: keys + ~/.anunixmacs.el + M-: minibuffer   │
+│ User: keys + ~/.amacs.el + M-: minibuffer   │
 ├──────────────────────────────────────────────────┤
-│ Editor window (modeline · minibuffer · keymap)   │  [apps/anunixmacs/window.c]
+│ Editor window (modeline · minibuffer · keymap)   │  [apps/amacs/window.c]
 │   takes over the WM terminal surface             │
 ├──────────────────────────────────────────────────┤
-│ eLISP interpreter (reader → eval → printer)      │  [apps/anunixmacs/elisp.c]
+│ eLISP interpreter (reader → eval → printer)      │  [apps/amacs/elisp.c]
 │   special forms + built-ins (incl. editing       │
 │   primitives bound to the active buffer)         │
 ├──────────────────────────────────────────────────┤
-│ Buffer engine (gap buffer over byte data)        │  [apps/anunixmacs/buffer.c]
+│ Buffer engine (gap buffer over byte data)        │  [apps/amacs/buffer.c]
 ├──────────────────────────────────────────────────┤
-│ Editor cell dispatch (workflow CELL_CALL hook)   │  [apps/anunixmacs/cell.c]
+│ Editor cell dispatch (workflow CELL_CALL hook)   │  [apps/amacs/cell.c]
 ├──────────────────────────────────────────────────┤
 │ State Object payload (ANX_OBJ_BYTE_DATA) +       │
 │ namespace bind (default: "posix" — visible to    │
@@ -146,8 +146,8 @@ buffer-search     ;; (buffer-search buf needle) → integer | nil
 buffer-replace    ;; (buffer-replace buf needle replacement) → count
 
 ;; Interactive editor primitives (operate on the *active* editor buffer —
-;; what the user sees in the anunixmacs window).  These are the primitives
-;; users call from ~/.anunixmacs.el and from M-: at the minibuffer.
+;; what the user sees in the amacs window).  These are the primitives
+;; users call from ~/.amacs.el and from M-: at the minibuffer.
 point                          ;; → integer
 point-min point-max
 goto-char                      ;; (goto-char N) → N
@@ -205,7 +205,7 @@ struct anx_ed_buffer {
 ## 5. Workflow Template
 
 ```text
-anx:app/anunixmacs
+anx:app/amacs
 
   TRIGGER ──────► STATE_REF (read source) ─┐
                                            ▼
@@ -221,15 +221,15 @@ anx:app/anunixmacs
                                          OUTPUT
 ```
 
-Tags: `edit, editor, anunixmacs, elisp, transform, buffer`.
+Tags: `edit, editor, amacs, elisp, transform, buffer`.
 
 ---
 
 ## 6. Test Plan (host-native, must pass `make test`)
 
-1. `test_anunixmacs_lisp` — reader/eval roundtrip for primitive forms.
-2. `test_anunixmacs_buffer` — insert/delete/search invariants on the gap buffer.
-3. `test_anunixmacs_cell` — `editor-open` → `editor-eval` → `editor-save` round trip on a temporary OID.
+1. `test_amacs_lisp` — reader/eval roundtrip for primitive forms.
+2. `test_amacs_buffer` — insert/delete/search invariants on the gap buffer.
+3. `test_amacs_cell` — `editor-open` → `editor-eval` → `editor-save` round trip on a temporary OID.
 
 ---
 
@@ -261,12 +261,12 @@ that Org needs.  Phase 3 implements Org mode itself in C.
 |      | `backward-char`, `save-buffer`, `find-file`, …)              |        |
 | 1.13 | Hooks: `add-hook`, `run-hooks`; `find-file-hook` and         | done   |
 |      | `after-save-hook` fired by the editor                        |        |
-| 1.14 | `~/.anunixmacs.el` loaded at editor start (via posix ns)     | done   |
+| 1.14 | `~/.amacs.el` loaded at editor start (via posix ns)     | done   |
 
 Demo path:
 
 ```
-$ anx /tmp/notes.txt          # shell command launches anunixmacs
+$ anx /tmp/notes.txt          # shell command launches amacs
 ... edit text ...
 M-: (insert "hello")          # any eLISP form evaluates against buffer
 C-x C-s                       # save → new SO version, visible to POSIX
@@ -280,23 +280,34 @@ Org mode leans on text properties, overlays, markers, and regex.  Phase 2
 adds these to the buffer engine and exposes them to eLISP.  This is also
 where `defmacro` and `condition-case` go — Org's source uses both.
 
-| # | Deliverable                                                       |
-|---|-------------------------------------------------------------------|
-| 2.1 | Text properties: `(put-text-property START END KEY VAL)`,       |
-|     | `(get-text-property POS KEY)` — interval-tree storage           |
-| 2.2 | Faces: `(defface NAME ATTRS)` and `face` text property;         |
-|     | renderer respects `:foreground`, `:background`, `:bold`,        |
-|     | `:italic`, `:underline`                                         |
-| 2.3 | Markers (positions that survive insert/delete): `(make-marker)`,|
-|     | `(set-marker M POS)`, `(marker-position M)`                     |
-| 2.4 | Regex engine + `re-search-forward` / `re-search-backward`       |
-| 2.5 | `defmacro` and macroexpansion at eval time                      |
-| 2.6 | `condition-case` / `unwind-protect`                             |
-| 2.7 | `define-key` from eLISP; expose the global keymap as a table    |
-| 2.8 | Major-mode plumbing: `define-derived-mode`, mode hooks,         |
-|     | mode-local variables                                            |
-| 2.9 | UTF-8 insert path and rendering through `anx_font_draw_codepoint` |
-| 2.10 | `define-key` over Org keymap so users can rebind `C-c C-t` etc. |
+| # | Deliverable                                                       | Status |
+|---|-------------------------------------------------------------------|--------|
+| 2.1 | Text properties: `(put-text-property START END KEY VAL)`,       | done   |
+|     | `(get-text-property POS KEY)`, `(remove-text-properties …)` —   |        |
+|     | sorted-interval storage with insert/delete shift-and-clip       |        |
+| 2.2 | Faces: `(defface NAME FG BG)` registry + renderer respects      | done   |
+|     | the `face` text property; built-in palette covers org-level-1..6, |      |
+|     | org-todo, org-done, link, tag, table, comment, string, keyword  |        |
+| 2.3 | Markers (positions that survive insert/delete): `(make-marker)`,| done   |
+|     | `(point-marker)`, `(set-marker M POS)`, `(marker-position M)`,  |        |
+|     | `(set-marker-insertion-type M FLAG)`, `(markerp X)`             |        |
+| 2.4 | Regex engine + `re-search-forward` / `re-search-backward`       |        |
+| 2.5 | `defmacro` — macros receive args unevaluated, returned form     | done   |
+|     | is evaluated in the caller's env                                |        |
+| 2.6 | `condition-case` / `unwind-protect` / `(error MSG)` — in-band   | done   |
+|     | error flag in the session, no setjmp; nested evals               |        |
+|     | short-circuit until the handler clears the flag                 |        |
+| 2.7 | `define-key` and `global-set-key` from eLISP; flat global       | done   |
+|     | keymap consulted before built-in chord table.  Multi-key        |        |
+|     | sequences and per-mode keymaps land with 2.8.                   |        |
+| 2.8 | Major-mode plumbing: `define-derived-mode`, mode hooks,         |        |
+|     | mode-local variables, `auto-mode-alist`                         |        |
+| 2.9 | UTF-8 insert path and rendering through `anx_font_draw_codepoint` |      |
+| 2.10 | `define-key` over Org keymap so users can rebind `C-c C-t` etc. |       |
+
+Reader update: integers now accept `0x…` hex literals so colors and bit
+masks can be written directly.  `(defface 'foo 0xff8800 0x000000)` is
+the canonical form.
 
 ### Phase 3 — Org mode in C
 

@@ -56,7 +56,7 @@
 #include <anx/jepa.h>
 #include <anx/memory.h>
 #include <anx/wm.h>
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/fb.h>
 #include <anx/bootlog.h>
 
@@ -483,7 +483,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  date                       Show current date and time\n");
 		kputs("  clear                      Clear terminal output\n");
 		kputs("  edit <ns:path>             Open text editor\n");
-		kputs("  anx [ns:]<path>            Open anunixmacs editor (M-: eval, C-x C-s save, C-x C-c quit)\n");
+		kputs("  anx [ns:]<path>            Open amacs editor (M-: eval, C-x C-s save, C-x C-c quit)\n");
 		kputs("  help [topic]               This help\n");
 		return;
 	}
@@ -2664,7 +2664,7 @@ static void dispatch(int argc, char **argv)
 	} else if (anx_strcmp(argv[0], "write") == 0) {
 		cmd_write_obj(argc, argv);
 	} else if (anx_strcmp(argv[0], "anx") == 0) {
-		/* anx [ns:]<path>  — launch anunixmacs.  Default ns is
+		/* anx [ns:]<path>  — launch amacs.  Default ns is
 		 * "posix" so files are visible to external programs. */
 		if (argc < 2) {
 			kprintf("usage: anx [ns:]<path>\n");
@@ -2904,6 +2904,8 @@ static void dispatch(int argc, char **argv)
 		}
 	} else if (anx_strcmp(argv[0], "meta") == 0) {
 		cmd_meta(argc, argv);
+	} else if (anx_strcmp(argv[0], "uor") == 0) {
+		cmd_uor(argc, argv);
 	} else if (anx_strcmp(argv[0], "tensor") == 0) {
 		cmd_tensor(argc, argv);
 	} else if (anx_strcmp(argv[0], "model") == 0) {

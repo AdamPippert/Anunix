@@ -1653,7 +1653,103 @@ For high-assurance environments, the State Object model supports optional **sign
 
 ---
 
-## 14. Open Questions
+## 14. UOR Projection and Topological Identity
+
+The State Object identifier (`oid`) answers *which object is this?*; the `content_hash` answers *is the payload intact?*. Neither answers *where does this object live in the universal topology of objects?*. The **Universal Object Reference (UOR)** is Anunix's deterministic, content-derived coordinate system for that question.
+
+### 14.1 Design boundary
+
+UOR is a **secondary** identity surface. It does **not** replace the OID, the content hash, the provenance graph, the access policy, or the memory plane's tier model. The OID remains the stable, durable, lifecycle-bearing identifier; UOR is a coordinate that travels with each *version* of an object.
+
+```
+oid           which object is this?
+content_hash  is the payload intact?
+uor_address   where does this object live in the universal topology?
+provenance    how did this object come to exist?
+memory plane  where should it reside now?
+routing plane what should operate on it?
+```
+
+A UOR projection MUST bind to `(oid, version, content_hash)`, not merely to `oid`: mutating an object's content produces a new projection while leaving the OID stable. UOR coordinates MAY be exposed externally for federation, replication, and verification; OIDs and provenance remain authoritative within the local trust domain.
+
+### 14.2 Canonical manifest
+
+A projection is computed from a **canonical manifest** — a deterministic byte serialization of the object's identity-bearing fields. The wire format is documented in `anx/uor.h`; the field set is:
+
+| Field             | Source                              |
+|-------------------|-------------------------------------|
+| magic / version   | `'AUOR'` || `manifest_version`     |
+| `object_type`     | `obj.object_type`                   |
+| `oid`             | `obj.oid` (16 bytes)                |
+| `version`         | `obj.version`                       |
+| `content_hash`    | `obj.content_hash` (32 bytes)       |
+| `parent_oids`     | `obj.parent_oids[]` (bounded)       |
+| `schema_uri`      | `obj.schema_uri`                    |
+| `schema_version`  | `obj.schema_version`                |
+
+Volatile fields (access timestamps, cache tier, current memory hotness, route score) are deliberately excluded so the manifest — and therefore the projection — is stable across reads.
+
+### 14.3 Projection
+
+```text
+uor.address      = SHA-256(canonical_manifest)            // 32 bytes
+uor.boundary_key = (object_type << 56) | BE56(address[1..7])
+uor.region_lo    = boundary_key & ~REGION_MASK
+uor.region_hi    = region_lo | REGION_MASK                 // 16-bit regions
+```
+
+The boundary key packs `object_type` into the high byte so objects of the same type cluster in the disk-store sorted index. Within a type bucket, the next 56 bits are content-derived, giving uniform spread; the low 16 bits define a region of co-located neighbors.
+
+### 14.4 Lifecycle hooks
+
+A projection is computed:
+
+- on `anx_so_create()`, once `(oid, version, content_hash)` are fixed;
+- on `anx_so_seal()`, when content becomes immutable;
+- on background topology rebuild (`anx_uor_rebuild_topology_index`).
+
+Projection is **not** computed on read. The result is attached to the object's `system_meta` under the keys:
+
+```
+uor.address              hex string, 64 chars
+uor.boundary_key         int64 (sortable)
+uor.region.lo            int64
+uor.region.hi            int64
+uor.locality_metric      int64 (reserved)
+uor.manifest_version     int64
+uor.topology_epoch       int64 (bumped on rebuild)
+```
+
+### 14.5 Disk-store integration
+
+`anx_disk_write_obj_bk(oid, type, boundary_key, payload, len)` accepts a caller-supplied `boundary_key`. Wiring the UOR-derived key into this call gives the persistent index a content-derived locality order: a range scan over `[region_lo, region_hi]` walks one region's objects without touching the rest.
+
+Range scans by type are also a primitive consequence: scanning over `[type<<56, type<<56 | (1<<56)-1]` returns every object of that type in deterministic order.
+
+### 14.6 What UOR does NOT do
+
+- It does not recreate missing payloads. A UOR coordinate identifies and verifies; if the payload is gone, only the manifest's identifying fields can be recomputed.
+- It does not replace embeddings or graph edges for semantic similarity.
+- It does not bypass access policy. Range scans and federated lookups by UOR coordinate MUST respect the same policy enforcement as OID-based access.
+
+### 14.7 Topology rebuild
+
+`anx_uor_rebuild_topology_index()` walks the in-memory store, recomputes each object's projection, reattaches metadata, and bumps the global topology epoch. This is non-destructive: payloads, OIDs, and provenance are untouched. After rebuild, region indexes can be reconstructed without payload reads.
+
+### 14.8 Future phases
+
+The minimum viable UOR integration shipped first is the projection + boundary-key path. Subsequent phases extend the surface:
+
+- **Memory plane.** UOR regions inform admission, prefetch, decay, and consolidation decisions (RFC-0004).
+- **Routing.** UOR locality scores feed route ranking; capabilities operate over named region sets (RFC-0005).
+- **Network plane.** `uor://<address>` and `uor://<region>/<address>` become federated lookup surfaces, with policy enforcement before any disclosure (RFC-0006).
+- **Verification.** `verification.uor_certificate` State Objects bind a projection to an external trust anchor.
+
+Each phase is additive: existing OID/content_hash flows continue to work unchanged.
+
+---
+
+## 15. Open Questions
 
 The following design questions remain open and may be resolved in subsequent RFCs or during implementation:
 
@@ -1671,7 +1767,7 @@ The following design questions remain open and may be resolved in subsequent RFC
 
 ---
 
-## 15. Conclusion
+## 16. Conclusion
 
 The State Object Model replaces the POSIX file with a richer primitive — one that carries its own type, metadata, provenance, access policy, and lifecycle rules as intrinsic properties. This shift enables the kernel to be an active participant in managing state, rather than a passive byte shuffler.
 

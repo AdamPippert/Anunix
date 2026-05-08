@@ -151,7 +151,11 @@ int anx_anxml_generate(const struct anx_anxml_request *req,
 	if (max_tokens > ANX_ANXML_OUTPUT_MAX - 1)
 		max_tokens = ANX_ANXML_OUTPUT_MAX - 1;
 
-	/* Per-call boost from prompt; restored at end. */
+	/* Reset the bigram table and re-seed from corpus + prompt every
+	 * call.  Without this reset, prompt boosts accumulate across calls
+	 * and (prompt, seed) is no longer reproducible. */
+	anx_memset(g_bigram, 0, sizeof(g_bigram));
+	seed_corpus();
 	seed_prompt(req->prompt, req->prompt_len);
 
 	/* Seed previous-byte from the tail of the prompt (or space). */

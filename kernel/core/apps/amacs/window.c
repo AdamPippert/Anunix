@@ -1,5 +1,5 @@
 /*
- * window.c — Interactive editor UI for anunixmacs (RFC-0023).
+ * window.c — Interactive editor UI for amacs (RFC-0023).
  *
  * Takes over the terminal surface when active.  wm_terminal.c calls
  * anx_ed_paint() to render and anx_ed_key_event() to deliver keys; the
@@ -9,7 +9,7 @@
  * so external POSIX programs see the new bytes immediately.
  */
 
-#include <anx/anunixmacs.h>
+#include <anx/amacs.h>
 #include <anx/types.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -161,7 +161,7 @@ int anx_ed_load_init(void)
 	anx_oid_t oid;
 	struct anx_state_object *obj;
 	if (!g_ed.active || !g_ed.sess) return ANX_ENOENT;
-	if (anx_ns_resolve("posix", "/.anunixmacs.el", &oid) != ANX_OK)
+	if (anx_ns_resolve("posix", "/.amacs.el", &oid) != ANX_OK)
 		return ANX_ENOENT;
 	obj = anx_objstore_lookup(&oid);
 	if (!obj) return ANX_ENOENT;
@@ -512,7 +512,7 @@ static void render_modeline(uint32_t *px, uint32_t W, uint32_t H,
 	char buf[ANX_ED_PATH_MAX + 64];
 	bool dirty = g_ed.buf && g_ed.buf->dirty;
 	px_fill(px, W, H, 0, y, W, LINE_H, COL_MODE_BG);
-	anx_snprintf(buf, sizeof(buf), " -- %s:%s%s  L%u C%u  (anunixmacs)",
+	anx_snprintf(buf, sizeof(buf), " -- %s:%s%s  L%u C%u  (amacs)",
 		     g_ed.ns, g_ed.path,
 		     dirty ? " [+]" : "",
 		     cur_line + 1, cur_col + 1);
@@ -594,6 +594,20 @@ void anx_ed_paint(uint32_t *px, uint32_t W, uint32_t H)
 				i++;
 				continue;
 			}
+			/* Resolve cell colors via the active face property,
+			 * falling back to the editor default. */
+			uint32_t fg = COL_FG, bg = COL_BG;
+			const char *face_name =
+				anx_ed_buf_get_property(g_ed.buf, i, "face");
+			if (face_name) {
+				const struct anx_ed_face *f =
+					anx_ed_face_lookup(face_name);
+				if (f) {
+					fg = f->fg;
+					if (f->bg != ANX_ED_FACE_INHERIT_BG)
+						bg = f->bg;
+				}
+			}
 			if (i == g_ed.buf->point) {
 				px_fill(px, W, H, col_x, sy + row * LINE_H,
 					FONT_W, FONT_H, COL_CUR_BG);
@@ -603,7 +617,7 @@ void anx_ed_paint(uint32_t *px, uint32_t W, uint32_t H)
 						COL_CUR_FG, COL_CUR_BG);
 			} else if (c >= 0x20 && c < 0x7f) {
 				px_putc(px, W, H, col_x, sy + row * LINE_H,
-					c, COL_FG, COL_BG);
+					c, fg, bg);
 			}
 			col_x += FONT_W;
 			if (col_x + FONT_W > W) {
@@ -724,6 +738,21 @@ void anx_ed_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 	}
 
 	clear_echo();
+
+	/* User-defined global keymap takes precedence over the built-in
+	 * chord table.  Bindings are looked up by (mods, key); the value
+	 * is a symbol name, called via funcall in the active session. */
+	{
+		const char *fn = anx_ed_keymap_lookup(mods, key);
+		if (fn && g_ed.sess) {
+			char form[ANX_ED_KEY_FN_MAX + 16];
+			char out[ANX_ED_MINIBUF_MAX];
+			anx_snprintf(form, sizeof(form), "(funcall '%s)", fn);
+			anx_ed_eval(g_ed.sess, form, false, out, sizeof(out));
+			anx_ed_request_redraw();
+			return;
+		}
+	}
 
 	/* M-: opens minibuffer */
 	if ((mods & ANX_MOD_ALT) && unicode == ':') {
