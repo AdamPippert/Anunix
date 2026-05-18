@@ -20,7 +20,7 @@ BUILD_TMP="${GRUB_DIR}/build-tmp"
 NJOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 # Debian package versions (bookworm/stable)
-GRUB_VER="2.06-13+deb12u1"
+GRUB_VER="2.06-13+deb12u2"
 GRUB_PC_DEB="grub-pc-bin_${GRUB_VER}_amd64.deb"
 GRUB_EFI_DEB="grub-efi-amd64-bin_${GRUB_VER}_amd64.deb"
 DEBIAN_MIRROR="https://deb.debian.org/debian/pool/main/g/grub2"
@@ -56,10 +56,10 @@ echo ">>> [1/4] Downloading GRUB BIOS modules..."
 if [ ! -d "${LIB_DIR}/i386-pc" ]; then
 	cd "${BUILD_TMP}"
 	if [ ! -f "${GRUB_PC_DEB}" ]; then
-		curl -L --progress-bar -o "${GRUB_PC_DEB}" \
+		curl -fL --progress-bar -o "${GRUB_PC_DEB}" \
 			"${DEBIAN_MIRROR}/${GRUB_PC_DEB}" || {
 			echo "  Trying alternative mirror..."
-			curl -L --progress-bar -o "${GRUB_PC_DEB}" \
+			curl -fL --progress-bar -o "${GRUB_PC_DEB}" \
 				"https://ftp.debian.org/debian/pool/main/g/grub2/${GRUB_PC_DEB}"
 		}
 	fi
@@ -86,10 +86,10 @@ echo ">>> [2/4] Downloading GRUB EFI modules..."
 if [ ! -d "${LIB_DIR}/x86_64-efi" ]; then
 	cd "${BUILD_TMP}"
 	if [ ! -f "${GRUB_EFI_DEB}" ]; then
-		curl -L --progress-bar -o "${GRUB_EFI_DEB}" \
+		curl -fL --progress-bar -o "${GRUB_EFI_DEB}" \
 			"${DEBIAN_MIRROR}/${GRUB_EFI_DEB}" || {
 			echo "  Trying alternative mirror..."
-			curl -L --progress-bar -o "${GRUB_EFI_DEB}" \
+			curl -fL --progress-bar -o "${GRUB_EFI_DEB}" \
 				"https://ftp.debian.org/debian/pool/main/g/grub2/${GRUB_EFI_DEB}"
 		}
 	fi
