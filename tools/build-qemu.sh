@@ -81,7 +81,7 @@ export LDFLAGS="-L${PREFIX}/lib"
 echo ">>> [1/6] Setting up Python venv with meson + ninja..."
 if [ ! -x "${VENV_DIR}/bin/meson" ]; then
 	python3 -m venv "${VENV_DIR}"
-	"${VENV_DIR}/bin/pip" install --quiet meson ninja
+	"${VENV_DIR}/bin/pip" install -U --quiet pip meson ninja setuptools wheel
 fi
 echo "  meson: $("${VENV_DIR}/bin/meson" --version)"
 echo "  ninja: $("${VENV_DIR}/bin/ninja" --version)"
@@ -197,10 +197,26 @@ if ! "${PREFIX}/bin/pkg-config" --exists pixman-1 2>/dev/null; then
 	rm -rf "pixman-${PIXMAN_VER}"
 	tar xf "${PIXMAN_TAR}"
 	cd "pixman-${PIXMAN_VER}"
+
+	# Apple clang's integrated assembler rejects the GNU macro syntax
+	# in Pixman's AArch64 NEON .S files (token pasting, .endfunc, etc.).
+	# Disable the optional ARM assembly paths on Darwin/arm64.
+	PIXMAN_SIMD_FLAGS=""
+	case "$(uname -s):$(uname -m)" in
+		Darwin:arm64)
+			for _opt in arm-simd neon a64-neon; do
+				if grep -q "$_opt" meson_options.txt 2>/dev/null; then
+					PIXMAN_SIMD_FLAGS="${PIXMAN_SIMD_FLAGS} -D${_opt}=disabled"
+				fi
+			done
+			;;
+	esac
+
 	"${VENV_DIR}/bin/meson" setup _build \
 		--prefix="${PREFIX}" \
 		--default-library=shared \
 		-Dtests=disabled \
+		${PIXMAN_SIMD_FLAGS} \
 		> /dev/null 2>&1
 	"${VENV_DIR}/bin/ninja" -C _build -j"${NJOBS}" > /dev/null 2>&1
 	"${VENV_DIR}/bin/ninja" -C _build install > /dev/null 2>&1
@@ -247,6 +263,7 @@ fi
 	--disable-usb-redir \
 	--disable-libusb \
 	--disable-capstone \
+	--disable-dbus-display \
 	${HVF_FLAG} \
 	--extra-cflags="-I${PREFIX}/include" \
 	--extra-ldflags="-L${PREFIX}/lib" \
