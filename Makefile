@@ -52,6 +52,7 @@ else
 endif
 
 LOCAL_QEMU := tools/qemu/bin
+QEMU_PORT  ?= 10080
 OVMF_FD    := $(firstword $(wildcard \
     /usr/share/edk2/x64/OVMF.4m.fd \
     /usr/share/OVMF/OVMF.fd \
@@ -66,7 +67,7 @@ ifeq ($(ARCH),arm64)
     QEMU  := qemu-system-aarch64
   endif
   QFLAGS  := -M virt -cpu cortex-a72 -m 512M -nographic -serial mon:stdio \
-             -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+             -netdev user,id=net0,hostfwd=tcp::$(QEMU_PORT)-:$(QEMU_PORT) \
              -device virtio-net-device,netdev=net0 \
              -kernel
 else ifeq ($(ARCH),x86_64)
@@ -77,7 +78,7 @@ else ifeq ($(ARCH),x86_64)
     QEMU  := qemu-system-x86_64
   endif
   QFLAGS  := -m 512M -nographic -no-reboot -serial mon:stdio \
-             -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+             -netdev user,id=net0,hostfwd=tcp::$(QEMU_PORT)-:$(QEMU_PORT) \
              -device virtio-net-pci,netdev=net0 \
              -kernel
 else ifeq ($(ARCH),heteris)
@@ -273,12 +274,12 @@ endif
 # Used on Jekyll and Linux hosts. For local display testing on macOS use qemu-fb.
 ifeq ($(ARCH),arm64)
   QFLAGS_FB_NET := -M virt -cpu cortex-a72 -m 512M -serial mon:stdio -device ramfb \
-                   -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+                   -netdev user,id=net0,hostfwd=tcp::$(QEMU_PORT)-:$(QEMU_PORT) \
                    -device virtio-net-device,netdev=net0 \
                    -kernel
 else ifeq ($(ARCH),x86_64)
   QFLAGS_FB_NET := -m 512M -serial mon:stdio -no-reboot -vga std \
-                   -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+                   -netdev user,id=net0,hostfwd=tcp::$(QEMU_PORT)-:$(QEMU_PORT) \
                    -device virtio-net-pci,netdev=net0 \
                    -kernel
 else
@@ -301,7 +302,7 @@ ifeq ($(ARCH),x86_64)
 	    -cdrom build/anunix-x86_64.iso -boot d \
 	    -device virtio-vga -display vnc=:1 \
 	    -serial mon:stdio \
-	    -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
+	    -netdev user,id=net0,hostfwd=tcp::$(QEMU_PORT)-:$(QEMU_PORT) \
 	    -device virtio-net-pci,netdev=net0
 else
 	@echo "qemu-iso is only supported for ARCH=x86_64" && exit 1
