@@ -437,7 +437,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  pci                        List PCI devices\n");
 		kputs("  perf                       Show boot performance profile\n");
 		kputs("  reboot                     Reboot the system\n");
-		kputs("  halt                       Halt the system\n");
+		kputs("  halt | exit | quit         Halt the system\n");
 		kputs("  version                    Show kernel version\n");
 		kputs("  hwd                        Hardware detection summary\n");
 		kputs("  hw-inventory               Show hardware summary\n");
@@ -2835,7 +2835,9 @@ static void dispatch(int argc, char **argv)
 		cmd_envctl(argc, argv);
 	} else if (anx_strcmp(argv[0], "bootlog") == 0) {
 		cmd_bootlog(argc, argv);
-	} else if (anx_strcmp(argv[0], "halt") == 0) {
+	} else if (anx_strcmp(argv[0], "halt") == 0 ||
+		   anx_strcmp(argv[0], "exit") == 0 ||
+		   anx_strcmp(argv[0], "quit") == 0) {
 		anx_bootlog_shutdown();
 		kputs("halting system\n");
 		arch_halt();
