@@ -81,7 +81,7 @@ export LDFLAGS="-L${PREFIX}/lib"
 echo ">>> [1/6] Setting up Python venv with meson + ninja..."
 if [ ! -x "${VENV_DIR}/bin/meson" ]; then
 	python3 -m venv "${VENV_DIR}"
-	"${VENV_DIR}/bin/pip" install -U --quiet pip meson ninja setuptools wheel
+	"${VENV_DIR}/bin/pip" install -U --quiet pip meson ninja setuptools wheel distlib
 fi
 echo "  meson: $("${VENV_DIR}/bin/meson" --version)"
 echo "  ninja: $("${VENV_DIR}/bin/ninja" --version)"
