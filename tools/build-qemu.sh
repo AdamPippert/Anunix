@@ -264,6 +264,8 @@ fi
 	--disable-libusb \
 	--disable-capstone \
 	--disable-dbus-display \
+	--disable-plugins \
+	--enable-slirp \
 	${HVF_FLAG} \
 	--extra-cflags="-I${PREFIX}/include" \
 	--extra-ldflags="-L${PREFIX}/lib" \
