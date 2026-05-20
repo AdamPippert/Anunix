@@ -1,0 +1,68 @@
+name: Agent Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [main]
+
+jobs:
+  ken-review:
+    runs-on: native
+    timeout-minutes: 10
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get diff
+        id: diff
+        run: |
+          git diff HEAD~1 HEAD --stat > diff-stat.txt
+          git diff HEAD~1 HEAD -- '*.c' '*.h' '*.S' > diff-code.txt || true
+          echo "Changed files:"
+          cat diff-stat.txt
+          LINES=$(wc -l < diff-code.txt)
+          echo "Code diff lines: $LINES"
+          echo "DIFF_LINES=$LINES" >> $GITHUB_OUTPUT
+
+      - name: Ken reviews the diff
+        env:
+          KEN_WEBHOOK: ${{ secrets.KEN_WEBHOOK_URL }}
+        if: env.KEN_WEBHOOK != ''
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          DIFF=$(head -200 diff-code.txt)
+          STAT=$(cat diff-stat.txt)
+          
+          MSG="Ken, please review this pull request for the Anunix OS kernel (C/assembly). 
+
+PR: ${PR_TITLE}
+
+Changed files:
+${STAT}
+
+Code diff (first 200 lines):
+${DIFF}
+
+Please check for:
+1. Safety issues (memory safety, integer overflow, null pointer risks)
+2. Consistency with Anunix's architecture (State Objects, Execution Cells, Memory Planes)
+3. Missing tests for new functionality
+4. Any concerns with the RFC compliance
+
+Keep the review focused and concise. Flag blockers clearly."
+          
+          REVIEW=$(curl -s -X POST "$KEN_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"message\": $(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}")
+          
+          echo "$REVIEW" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('response', d.get('text','(no response)')))" >> $GITHUB_STEP_SUMMARY
+
+      - name: Build check (must compile)
+        run: make kernel ARCH=x86_64 -j$(nproc)
+
+      - name: Test check
+        run: make test 2>&1 | tail -10

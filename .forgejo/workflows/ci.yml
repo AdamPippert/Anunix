@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: native
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check toolchain
+        run: |
+          echo "=== Toolchain ==="
+          clang --version | head -1
+          ld.lld --version | head -1 || llvm-ld --version | head -1 || echo "lld: checking Makefile path"
+          nasm --version | head -1
+          python3 --version
+
+      - name: Build kernel (x86_64)
+        run: make kernel ARCH=x86_64 -j$(nproc)
+
+      - name: Run tests
+        run: |
+          make test 2>&1 | tee test-output.txt
+          # Fail if any test failed
+          if grep -qE "FAIL|FAILED|Error" test-output.txt && ! grep -q "0 failed" test-output.txt; then
+            echo "Tests failed:"
+            grep -E "FAIL|FAILED|Error" test-output.txt
+            exit 1
+          fi
+          # Extract pass count
+          PASS=$(grep -oE "[0-9]+ passed" test-output.txt | head -1 || echo "? passed")
+          echo "Result: $PASS"
+
+      - name: Upload test results
+        if: always()
+        run: |
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          cat test-output.txt | grep -E "passed|failed|PASS|FAIL|ok|error" | head -30 >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Build QEMU image (x86_64)
+        run: make qemu ARCH=x86_64 2>&1 | tail -5
+
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anunix-kernel-x86_64-${{ github.sha }}
+          path: |
+            build/x86_64/anunix.elf
+            build/x86_64/anunix.bin
+          retention-days: 14
