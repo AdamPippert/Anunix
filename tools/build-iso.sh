@@ -55,11 +55,11 @@ mkdir -p "${ISO_DIR}/EFI/BOOT"
 mkdir -p "${ISO_DIR}/boot/grub/x86_64-efi"
 
 cp "${KERNEL}" "${ISO_DIR}/boot/anunix.elf"
-echo "  kernel (ELF64): $(ls -lh "${ISO_DIR}/boot/anunix.elf" | awk {print })"
+echo "  kernel (ELF64): $(ls -lh "${ISO_DIR}/boot/anunix.elf" | awk '{print $5}')"
 
 if [ -f "${KERNEL_MB1}" ]; then
 	cp "${KERNEL_MB1}" "${ISO_DIR}/boot/anunix-mb1.elf"
-	echo "  kernel (MB1):   $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk {print })"
+	echo "  kernel (MB1):   $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk '{print $5}')"
 fi
 
 # ISOLINUX files — all must be same syslinux version
@@ -84,7 +84,7 @@ LABEL anunix
     APPEND /boot/anunix-mb1.elf
 ISOCFG
 
-echo "  ISOLINUX: $(ls "${ISO_DIR}/isolinux/" | tr n  )"
+echo "  ISOLINUX: $(ls "${ISO_DIR}/isolinux/" | tr '\n' ' ')"
 
 # GRUB config + EFI modules
 cp "${GRUB_CFG}" "${ISO_DIR}/boot/grub/grub.cfg"
@@ -107,7 +107,12 @@ EFI_IMG=""
 if [ -f "${GRUB_EFI_BIN}" ]; then
 	EFI_IMG="${ISO_DIR}/boot/grub/efiboot.img"
 	# Size the FAT image to fit BOOTX64.EFI plus FAT overhead (~1MB).
-	EFI_BIN_KB=$(( ($(stat -c %s "${GRUB_EFI_BIN}") + 1023) / 1024 ))
+	if stat -c %s /dev/null >/dev/null 2>&1; then
+		EFI_BIN_SZ=$(stat -c %s "${GRUB_EFI_BIN}")
+	else
+		EFI_BIN_SZ=$(stat -f %z "${GRUB_EFI_BIN}")
+	fi
+	EFI_BIN_KB=$(( (EFI_BIN_SZ + 1023) / 1024 ))
 	EFI_IMG_KB=$(( EFI_BIN_KB + 1024 ))
 	# Round up to next 1MB boundary, minimum 8MB.
 	EFI_IMG_KB=$(( ((EFI_IMG_KB + 1023) / 1024) * 1024 ))
@@ -117,9 +122,9 @@ if [ -f "${GRUB_EFI_BIN}" ]; then
 		mformat -i "${EFI_IMG}" -F ::
 		mmd   -i "${EFI_IMG}" ::/EFI ::/EFI/BOOT
 		mcopy -i "${EFI_IMG}" "${GRUB_EFI_BIN}" ::/EFI/BOOT/BOOTX64.EFI
-		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"
+		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
 	elif command -v hdiutil >/dev/null 2>&1; then
-		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null | head -1 | awk {print })
+		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null | head -1 | awk '{print $1}')
 		newfs_msdos -F 12 "${EFI_DEV}" >/dev/null 2>&1
 		EFI_MNT="/tmp/efi_mnt_$$"; mkdir -p "${EFI_MNT}"
 		mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
@@ -127,7 +132,7 @@ if [ -f "${GRUB_EFI_BIN}" ]; then
 		cp "${GRUB_EFI_BIN}" "${EFI_MNT}/EFI/BOOT/BOOTX64.EFI"
 		umount "${EFI_MNT}" 2>/dev/null; hdiutil detach "${EFI_DEV}" >/dev/null 2>&1
 		rmdir "${EFI_MNT}" 2>/dev/null || true
-		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"
+		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
 	else
 		echo "  WARNING: no mtools/hdiutil — UEFI boot skipped (BIOS works)"
 		EFI_IMG=""
