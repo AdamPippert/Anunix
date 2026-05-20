@@ -167,7 +167,15 @@ echo ">>> [4/5] Building xorriso ${XORRISO_VER}..."
 if [ ! -x "${BIN_DIR}/xorriso" ]; then
 	cd "${BUILD_TMP}"
 	if [ ! -f "${XORRISO_TAR}" ]; then
-		curl -L --progress-bar -o "${XORRISO_TAR}" "${XORRISO_URL}"
+		curl -fL --progress-bar -o "${XORRISO_TAR}" "${XORRISO_URL}" || {
+			echo "  Trying ftpmirror.gnu.org..."
+			curl -fL --progress-bar -o "${XORRISO_TAR}" \
+				"https://ftpmirror.gnu.org/xorriso/${XORRISO_TAR}"
+		} || {
+			echo "  Trying mirrors.kernel.org..."
+			curl -fL --progress-bar -o "${XORRISO_TAR}" \
+				"https://mirrors.kernel.org/gnu/xorriso/${XORRISO_TAR}"
+		}
 	fi
 
 	XORRISO_SRC="xorriso-${XORRISO_VER}"
