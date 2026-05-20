@@ -39,6 +39,8 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0022](RFC-0022-gpu-compute-plane.md) | GPU Compute Plane and AGX Driver | Draft | Adam Pippert | 0002, 0003, 0004, 0005, 0007, 0014, 0021 |
 | [0023](RFC-0023-amacs-editor.md) | amacs — Object-Native Editor with eLISP | Draft | Adam Pippert | 0002, 0003, 0010, 0012, 0018 |
 | [0024](RFC-0024-audio-engine-and-media-apps.md) | Audio Engine and Media Player Apps | Draft | Adam Pippert | 0002, 0003, 0010, 0012, 0018 |
+| [0025](RFC-0025-kit-subsystem.md) | Kit Subsystem — Unified Loadable Subsystems | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0008, 0013, 0018, 0020 |
+| [0026](RFC-0026-persona-objects.md) | Persona Objects — Agent Identity, Custody, and Governance | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0008, 0009, 0013, 0018, 0020, 0025 |
 
 ## Dependency Graph
 
