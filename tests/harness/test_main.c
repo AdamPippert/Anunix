@@ -68,6 +68,7 @@ int test_video(void);
 int test_hda(void);
 int test_amacs(void);
 int test_uor(void);
+int test_icm(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -120,6 +121,7 @@ static struct test_case tests[] = {
 	{ "hda",		test_hda },
 	{ "amacs",		test_amacs },
 	{ "uor",		test_uor },
+	{ "icm",		test_icm },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
