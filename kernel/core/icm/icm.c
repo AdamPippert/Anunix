@@ -1,10 +1,10 @@
 /*
- * icm.c — Information Context Management over State Objects (RFC-0021).
+ * icm.c — Information Context Management over State Objects (RFC-0025).
  *
  * ICM views are reads of facts the kernel already holds: classification lives
  * in anno.icm.* user metadata, identity is the oid, dependencies are the
  * provenance graph. Nothing here introduces a new object type; this file only
- * tags and renders. See RFC-0021 and anx/icm.h.
+ * tags and renders. See RFC-0025 and anx/icm.h.
  */
 
 #include <anx/icm.h>
@@ -84,6 +84,23 @@ int anx_icm_tag(const anx_oid_t *oid, const char *domain, const char *kind,
 	return ANX_OK;
 }
 
+int anx_icm_publish(const anx_oid_t *oid, const char *release_uri)
+{
+	struct anx_state_object *obj;
+
+	if (!oid || !release_uri || release_uri[0] == '\0')
+		return ANX_EINVAL;
+
+	obj = anx_objstore_lookup(oid);
+	if (!obj)
+		return ANX_ENOENT;
+	if (!obj->user_meta)
+		return ANX_EINVAL;
+
+	anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_PUBLISHED, release_uri);
+	return ANX_OK;
+}
+
 static void fill_view(struct anx_state_object *obj, struct anx_icm_view *out)
 {
 	out->oid = obj->oid;
@@ -99,12 +116,15 @@ static void fill_view(struct anx_state_object *obj, struct anx_icm_view *out)
 			 out->status, sizeof(out->status));
 		read_str(obj->user_meta, ANX_ICM_KEY_STACK,
 			 out->stack, sizeof(out->stack));
+		read_str(obj->user_meta, ANX_ICM_KEY_PUBLISHED,
+			 out->published, sizeof(out->published));
 	} else {
 		out->domain[0] = '\0';
 		out->kind[0] = '\0';
 		out->authority[0] = '\0';
 		out->status[0] = '\0';
 		out->stack[0] = '\0';
+		out->published[0] = '\0';
 	}
 }
 
@@ -179,4 +199,41 @@ int anx_icm_count(const char *domain)
 	if (ret != 0)
 		return ret;
 	return n;
+}
+
+/* Context for the published-only view: wraps the caller's visitor and skips
+ * artifacts with no anno.icm.published marker. */
+struct published_ctx {
+	anx_icm_visit_fn cb;
+	void *arg;
+	int stop;
+};
+
+static int published_cb(const struct anx_icm_view *view, void *arg)
+{
+	struct published_ctx *ctx = arg;
+
+	if (view->published[0] == '\0')
+		return 0;	/* not a published release; keep iterating */
+
+	ctx->stop = ctx->cb(view, ctx->arg);
+	return ctx->stop;
+}
+
+int anx_icm_published(anx_icm_visit_fn cb, void *arg)
+{
+	struct published_ctx ctx;
+	int ret;
+
+	if (!cb)
+		return ANX_EINVAL;
+
+	ctx.cb = cb;
+	ctx.arg = arg;
+	ctx.stop = 0;
+
+	ret = anx_icm_catalog(NULL, published_cb, &ctx);
+	if (ret != 0 && ctx.stop == 0)
+		return ret;
+	return ctx.stop;
 }

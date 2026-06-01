@@ -1,5 +1,5 @@
 /*
- * test_icm.c — Tests for ICM over State Objects (RFC-0021).
+ * test_icm.c — Tests for ICM over State Objects (RFC-0025).
  *
  * Verifies that ICM classification round-trips through anno.icm.* metadata,
  * that role is never stored on the artifact, and that the catalog view filters
@@ -83,7 +83,7 @@ int test_icm(void)
 	if (anx_strcmp(view.stack, "TypeScript") != 0)
 		return -8;
 
-	/* Role must NOT be stored on the artifact (RFC-0021 Section 4.2). */
+	/* Role must NOT be stored on the artifact (RFC-0025 Section 4.2). */
 	if (anx_meta_get(anx_objstore_lookup(&a)->user_meta,
 			 "anno.icm.role") != NULL)
 		return -9;
@@ -121,6 +121,51 @@ int test_icm(void)
 		if (anx_icm_tag(&nil, "x", NULL, NULL, NULL, NULL, NULL)
 		    != ANX_ENOENT)
 			return -16;
+	}
+
+	/* Publishing: mark B as a release; it then shows in the published view. */
+	{
+		struct collect pub;
+
+		/* No artifact is published yet. */
+		pub.count = 0;
+		pub.last_domain[0] = '\0';
+		if (anx_icm_published(collect_cb, &pub) != 0)
+			return -17;
+		if (pub.count != 0)
+			return -18;
+
+		/* Mark B as published; the marker round-trips into the view. */
+		ret = anx_icm_publish(&b, "anx:pkg/tool@1.0.0");
+		if (ret != ANX_OK)
+			return -19;
+		if (anx_icm_read_view(&b, &view) != ANX_OK)
+			return -20;
+		if (anx_strcmp(view.published, "anx:pkg/tool@1.0.0") != 0)
+			return -21;
+
+		/* A non-published artifact has an empty marker. */
+		if (anx_icm_read_view(&a, &view) != ANX_OK)
+			return -22;
+		if (view.published[0] != '\0')
+			return -23;
+
+		/* The published view now contains exactly B. */
+		pub.count = 0;
+		if (anx_icm_published(collect_cb, &pub) != 0)
+			return -24;
+		if (pub.count != 1)
+			return -25;
+
+		/* Empty release URI and missing object both fail cleanly. */
+		if (anx_icm_publish(&b, "") != ANX_EINVAL)
+			return -26;
+		{
+			anx_oid_t nil = ANX_UUID_NIL;
+
+			if (anx_icm_publish(&nil, "anx:pkg/x@1") != ANX_ENOENT)
+				return -27;
+		}
 	}
 
 	return 0;
