@@ -1,13 +1,14 @@
-# RFC-0021: ICM over State Objects — Information Context Management as a Native Convention
+# RFC-0027: ICM over State Objects — Information Context Management as a Native Convention
 
 | Field      | Value                                                                  |
 |------------|------------------------------------------------------------------------|
-| RFC        | 0021                                                                   |
+| RFC        | 0027                                                                   |
 | Title      | ICM over State Objects — Information Context Management as a Native Convention |
 | Author     | Adam Pippert                                                           |
-| Status     | Draft                                                                  |
+| Status     | Review                                                                 |
 | Created    | 2026-05-31                                                             |
-| Depends On | RFC-0002, RFC-0003, RFC-0007, RFC-0018                                 |
+| Updated    | 2026-06-01                                                             |
+| Depends On | RFC-0002, RFC-0003, RFC-0007, RFC-0011, RFC-0018                       |
 | Blocks     | —                                                                      |
 
 ---
@@ -32,9 +33,10 @@ A State Object (RFC-0002) *is* a globally-identified artifact with intrinsic
 metadata, an append-only provenance graph, and kernel-enforced access policy. A
 Workflow Object (RFC-0018) *is* a stage graph. This RFC therefore does **not**
 introduce a new object type or kernel primitive. It defines ICM as a thin
-**convention** layered on existing metadata, plus one userland tool, `anx icm`,
-that renders ICM views (catalog, dependency graph, role-scoped context) directly
-from the object store instead of generating and maintaining files.
+**convention** layered on existing metadata, plus the `icm` agent-native utility
+(specified in RFC-0011 §4.10) that renders ICM views (catalog, dependency graph,
+role-scoped context) directly from the object store instead of generating and
+maintaining files.
 
 The contribution is a mapping and a tool, not new kernel surface.
 
@@ -42,10 +44,11 @@ The contribution is a mapping and a tool, not new kernel surface.
 
 ## 1. Status
 
-**Status:** Draft
+**Status:** Review
 **Author:** Adam Pippert
 **Depends on:** RFC-0002 (State Object Model), RFC-0003 (Execution Cell
-Runtime), RFC-0007 (Capability Objects), RFC-0018 (Workflow Objects)
+Runtime), RFC-0007 (Capability Objects), RFC-0011 (Agent-Native Utilities —
+hosts the `icm` tool), RFC-0018 (Workflow Objects)
 **Blocks:** —
 
 ---
@@ -122,12 +125,12 @@ folders — we should expose the layer that already exists.
    objects, RFC-0002 §8.1), so the property is enforced, not merely advised.
 6. **POSIX-overlay parity.** The same conceptual workspace can be expressed on a
    POSIX host with the companion tool `icm-scaffold`
-   (github.com/AdamPippert/repo-scaffold); RFC-0021 is the native counterpart.
+   (github.com/AdamPippert/repo-scaffold); RFC-0027 is the native counterpart.
 
 ### 3.2 Non-Goals
 
 - **A workflow execution engine.** Stage execution is RFC-0018 / RFC-0003;
-  RFC-0021 only annotates and views.
+  RFC-0027 only annotates and views.
 - **A new namespace mechanism.** Uses RFC-0002 §6.2 namespaces as-is.
 - **A visual editor.** Catalog/graph rendering is textual in Phase 1; visual
   surfaces are deferred to the Interface Plane (RFC-0012).
@@ -140,7 +143,7 @@ folders — we should expose the layer that already exists.
 
 RFC-0002 §7.4 establishes that semantic annotations live in `user_meta` under
 reserved-by-convention key prefixes, indexed like any other metadata and never
-kernel-enforced (preserving DG-8, minimal overhead). RFC-0021 reserves the
+kernel-enforced (preserving DG-8, minimal overhead). RFC-0027 reserves the
 `anno.icm.*` sub-namespace.
 
 ### 4.1 Standard Keys
@@ -153,6 +156,14 @@ kernel-enforced (preserving DG-8, minimal overhead). RFC-0021 reserves the
 | `anno.icm.status`    | string | `active` \| `stale` \| `scaffold` \| `empty`.                |
 | `anno.icm.stack`     | string | Primary implementation stack (free text).                    |
 | `anno.icm.entry`     | string | How to run/use the artifact.                                 |
+| `anno.icm.published` | string | Release marker for a published artifact, e.g. `anx:pkg/foo@1.2.0`. Present only on published releases; absent on working artifacts. |
+
+`anno.icm.domain` is a **tag list**, not a namespace placement (§9.1): an
+artifact may carry many domains at once, modeling the n-to-m relation between
+artifacts and the contexts they serve. `anno.icm.published` marks the ICM
+lifecycle state "published things are versioned" — it is set on a *sealed*
+object (RFC-0002 §10.4) and carries the release URI so a release is discoverable
+by query rather than inferred from seal state (§9.3).
 
 These mirror the fields a POSIX `manifest.yml` carries, but here they are
 queryable kernel metadata on the artifact's State Object, not a sidecar file.
@@ -203,27 +214,35 @@ under another — surfaced from the consumers, never duplicated onto the artifac
 
 ---
 
-## 6. The `anx icm` Userland Tool
+## 6. The `icm` Userland Tool
 
-A userland utility under `userland/bin/`, written in C11 per the Anunix language
-policy. Phase 1 is a thin, read-only renderer over the object-store and metadata
-APIs.
+`icm` is an **agent-native utility in the RFC-0011 catalog (§4.10)**, not a
+standalone binary (§9.2). It lives at `userland/icm/icm.c`, is written in C11 per
+the Anunix language policy, and is a thin renderer over the object-store and
+metadata APIs declared in `anx/icm.h`. Phase 1 is read-only except for `tag`
+and `published`, which write `user_meta` only.
 
 ### 6.1 Subcommands (Phase 1)
 
 ```
-anx icm tag <oid> --domain D[,D] --kind K --authority A --status S [--stack ..] [--entry ..]
+icm tag <oid> --domain D[,D] --kind K --authority A --status S [--stack ..] [--entry ..]
         Set the anno.icm.* metadata on an existing State Object.
 
-anx icm catalog [--domain D]
-        Render the catalog view, optionally filtered to one domain.
+icm catalog [--domain D]
+        Render the catalog view, optionally filtered to one domain tag.
 
-anx icm graph [<oid>]
+icm graph [<oid>]
         Render the provenance-derived dependency graph (whole store, or rooted
         at one artifact).
 
-anx icm show <oid>
+icm show <oid>
         Render one artifact's ICM annotations + a one-hop provenance summary.
+
+icm tag <oid> --published <release-uri>
+        Mark a sealed artifact as a published release (anno.icm.published).
+
+icm published
+        List artifacts that carry an anno.icm.published marker.
 ```
 
 ### 6.2 Dependencies on Existing APIs
@@ -241,8 +260,9 @@ exists. This is the point of the RFC — Anunix's substrate already carries ICM.
 
 ### 6.3 Phasing
 
-- **Phase 1 (this RFC):** read-only `catalog` / `graph` / `show` views and the
-  `tag` writer, operating on the object store. Host-testable.
+- **Phase 1 (this RFC):** `catalog` / `graph` / `show` / `published` views and
+  the `tag` writer (including `--published`), operating on the object store.
+  Host-testable.
 - **Phase 2:** role-scoped context from live Workflow Objects (RFC-0018), and
   capability-gated views (RFC-0007).
 - **Phase 3:** Interface Plane (RFC-0012) canvas rendering of the catalog and
@@ -253,21 +273,24 @@ exists. This is the point of the RFC — Anunix's substrate already carries ICM.
 ## 7. Relationship to Other RFCs
 
 - **RFC-0002 (State Objects):** supplies identity, metadata, provenance, and
-  policy. ICM is a reading of these. RFC-0021 reserves the `anno.icm.*` key
+  policy. ICM is a reading of these. RFC-0027 reserves the `anno.icm.*` key
   prefix under §7.4.
 - **RFC-0018 (Workflow Objects):** supplies the stage graph and per-node input
-  declarations from which *role* is read. RFC-0021 does not duplicate workflow
+  declarations from which *role* is read. RFC-0027 does not duplicate workflow
   structure; it annotates and surfaces it.
 - **RFC-0007 (Capabilities):** supplies the per-consumer scope that, with the
   Workflow node, defines local role and enforces `write_policy`.
 - **RFC-0003 (Execution Cells):** stages are cells; "consumed things are
   declared" is the cell input contract.
+- **RFC-0011 (Agent-Native Utilities):** hosts the `icm` tool in its utility
+  catalog (§4.10) and ships it in Wave 2. RFC-0027 supplies the model and the
+  `anx/icm.h` API; RFC-0011 is the tool's userland home.
 
 ---
 
 ## 8. Security Considerations
 
-- `anx icm tag` writes only `user_meta`; it cannot alter identity, provenance,
+- `icm tag` writes only `user_meta`; it cannot alter identity, provenance,
   or access policy (RFC-0002 §4.5.1 forbids application writes to system
   metadata). Mis-tagging is therefore a labeling error, never a policy bypass.
 - Catalog and graph views inherit object access policy: a caller sees only the
@@ -278,12 +301,32 @@ exists. This is the point of the RFC — Anunix's substrate already carries ICM.
 
 ---
 
-## 9. Open Questions
+## 9. Resolved Decisions
 
-1. Should `anno.icm.domain` reuse RFC-0002 namespaces directly (one namespace
-   per domain) instead of a free-form tag list? Namespaces give isolation and
-   bulk policy; tags give multi-membership. Phase 2 decision.
-2. Should `anx icm` be folded into the broader agent-native utility set
-   (RFC-0011) rather than shipped as a standalone binary?
-3. For published/versioned artifacts, is sealing + `oid@version` sufficient, or
-   is an explicit `anno.icm.published` marker also warranted for discovery?
+The questions raised in the first draft are resolved as follows. Where a
+filesystem habit and an ICM principle conflicted, the ICM principle won.
+
+1. **Domains are multi-membership tags, not namespaces.** `anno.icm.domain` is a
+   tag *list* (§4.1), not a single namespace placement. ICM's core rule is that
+   one artifact serves many contexts at once; domains are one expression of that.
+   A namespace forces a 1-to-1 "where does this live" choice, which is exactly
+   the folder-placement constraint ICM exists to escape. Tags model the n-to-m
+   relation between artifacts and domains directly: an artifact can be `web` *and*
+   `product` *and* `ai-agents` simultaneously, with no primary. (RFC-0002 §6.2
+   namespaces remain available for isolation and bulk policy where a hard 1-to-1
+   boundary is genuinely wanted — e.g. an `ephemeral` namespace with a blanket
+   TTL — but they are orthogonal to ICM classification, not its mechanism.)
+2. **The `icm` tool folds into RFC-0011.** It is an agent-native utility — it
+   exists only because the system has first-class provenance and object metadata
+   — so it belongs in the RFC-0011 utility catalog (§4.10) alongside
+   `objls`/`objprov`, not as a standalone binary. This RFC supplies the model
+   and the `anx/icm.h` API; RFC-0011 is its userland home and ships it in Wave 2.
+3. **A published artifact carries an explicit `anno.icm.published` marker.**
+   Sealing + `oid@version` (RFC-0002) is the *mechanism* of immutability, but it
+   is not *discoverable* as a release: a sealed object looks like any other
+   sealed object. ICM distinguishes "published things are versioned" as a
+   first-class lifecycle state, so a published release is tagged
+   `anno.icm.published = <release URI>` (e.g. `anx:pkg/foo@1.2.0`). This makes
+   "show me the published releases" a metadata query (`anx_icm_count` /
+   `icm published`) rather than an inference over seal state, and lets consumers
+   pin to a release marker without resolving raw oids. See §4.1.

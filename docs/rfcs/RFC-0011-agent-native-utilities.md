@@ -18,6 +18,8 @@ This RFC specifies **agent-native utilities**: programs that exist only because 
 
 The RFC also specifies the **`hwd` hardware discovery agent**, which probes hardware at boot and on-demand, generates structured hardware profiles and driver stubs via model engines, and posts results to a central server library (`superrouter`). The `superrouter` server design is included here.
 
+The utility catalog (§4) hosts the **`icm`** tool, whose underlying convention — Information Context Management over State Objects — is defined in **RFC-0027**. RFC-0027 supplies the model; this RFC is its userland home.
+
 ---
 
 ## 1. Status
@@ -345,6 +347,43 @@ decay sweep             # Trigger decay sweep (debug)
 
 ---
 
+### 4.10 `icm` — Information Context Management Views
+
+Renders ICM (Information Context Management) views over the object store: a
+catalog grouped by domain, a provenance-derived dependency graph, and
+role-scoped context. ICM is a convention defined in **RFC-0027**, not a new
+object type — `icm` reads `anno.icm.*` user metadata and the provenance graph
+and presents them. The `icm tag` subcommand writes classification annotations
+(`user_meta` only; it cannot touch identity, provenance, or policy).
+
+**Unique capability**: ICM's rule is *artifact identity is global, role is
+local* — the same object is an input to one stage and a reference to another,
+without duplication. On POSIX this is emulated with folders and hand-maintained
+manifest files that drift; here the catalog and dependency graph are **live
+queries** that cannot go stale, and `write_policy` is kernel-enforced rather
+than honored by convention. Classification uses **multi-membership tags**
+(`anno.icm.domain` is a list), so an artifact can belong to many domains at
+once — an n-to-m relation a single-namespace placement cannot express.
+
+**API**: `anx_icm_tag`, `anx_icm_read_view`, `anx_icm_catalog`, `anx_icm_count`
+(see `anx/icm.h`); reads `anx_objstore_iterate`, `anx_meta_get`, and the
+provenance log.
+
+```
+icm catalog                    # All artifacts, grouped by anno.icm.domain
+icm catalog --domain web       # Only artifacts tagged with the 'web' domain
+icm graph [<oid>]              # Provenance-derived dependency graph (DOT-capable)
+icm show <oid>                # One artifact's ICM annotations + provenance summary
+icm tag <oid> --domain a,b --kind tool --authority own --status active
+icm tag <oid> --published anx:pkg/foo@1.2.0   # Mark a sealed, versioned release
+icm published                 # List artifacts marked as published releases
+```
+
+**Priority**: Medium. Requires the state object store and provenance log
+populated; complements `objls`/`objprov` (§4.3) with the ICM lens.
+
+---
+
 ## 5. Superrouter Server
 
 ### 5.1 Purpose
@@ -539,6 +578,9 @@ userland/
   decay/
     decay.c
     Makefile
+  icm/
+    icm.c               # CLI: catalog, graph, show, tag, published (RFC-0027)
+    Makefile
 
 superrouter/
   server.py
@@ -568,6 +610,7 @@ Dependencies: Wave 1 complete, state object store and engine registry functional
 2. `engctl`
 3. `rstat`
 4. `capctl`
+5. `icm` — ICM catalog/graph/tag views (RFC-0027); builds on `objls`/`objprov`
 
 ### Wave 3 — Agent Memory and Composition
 
