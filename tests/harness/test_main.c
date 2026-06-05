@@ -69,6 +69,7 @@ int test_hda(void);
 int test_amacs(void);
 int test_uor(void);
 int test_icm(void);
+int test_worldgraph(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -122,6 +123,7 @@ static struct test_case tests[] = {
 	{ "amacs",		test_amacs },
 	{ "uor",		test_uor },
 	{ "icm",		test_icm },
+	{ "worldgraph",		test_worldgraph },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

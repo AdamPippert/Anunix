@@ -52,6 +52,16 @@ enum anx_object_type {
 	ANX_OBJ_AUDIO_CLIP,		/* PCM audio + format header */
 	ANX_OBJ_VIDEO_CLIP,		/* RGBA frames + format header */
 
+	/* RFC-0026 clustered world graph runtime */
+	ANX_OBJ_WORLD_NODE,		/* canonical world-graph node */
+	ANX_OBJ_WORLD_EDGE,		/* canonical world-graph edge */
+	ANX_OBJ_WORLD_PATCH,		/* committed patch (audit record) */
+	ANX_OBJ_WORLD_BRANCH,		/* speculative branch marker */
+	ANX_OBJ_MODEL_CLAIM,		/* a model's proposed claim */
+	ANX_OBJ_CONSTRAINT,		/* constraint attached to a node */
+	ANX_OBJ_OBSERVATION,		/* observation snapshot feeding a patch */
+	ANX_OBJ_PREDICTION,		/* prediction attached to a node */
+
 	ANX_OBJ_TYPE_COUNT,
 };
 
