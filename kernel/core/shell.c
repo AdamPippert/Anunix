@@ -391,6 +391,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  store format|mount|stats   Object store management\n");
 		kputs("  disk                       Show block device info\n");
 		kputs("  cells                      List execution cells\n");
+		kputs("  world status|ls|demo       World graph runtime (RFC-0026)\n");
 		return;
 	}
 
@@ -2906,6 +2907,8 @@ static void dispatch(int argc, char **argv)
 		cmd_meta(argc, argv);
 	} else if (anx_strcmp(argv[0], "uor") == 0) {
 		cmd_uor(argc, argv);
+	} else if (anx_strcmp(argv[0], "world") == 0) {
+		cmd_world(argc, argv);
 	} else if (anx_strcmp(argv[0], "tensor") == 0) {
 		cmd_tensor(argc, argv);
 	} else if (anx_strcmp(argv[0], "model") == 0) {

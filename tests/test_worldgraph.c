@@ -38,6 +38,16 @@ static int count_objects(enum anx_object_type type)
 	return c.n;
 }
 
+/* Count providers during iteration. */
+static int count_provider_cb(const struct anx_world_manifest *m,
+			     bool has_validator, void *arg)
+{
+	(void)m;
+	(void)has_validator;
+	(*(int *)arg)++;
+	return 0;
+}
+
 /* A validator that always rejects, to prove the commit gate vetoes. */
 static int veto_validator(const struct anx_world_patch *p,
 			  const struct anx_world_branch *b,
@@ -328,6 +338,91 @@ int test_worldgraph(void)
 			if (anx_world_replicate(&obj_oid, &bogus) != ANX_ENOENT)
 				return -62;
 		}
+	}
+
+	/* --- Read accessors and provider iteration (RFC-0026 tooling) --- */
+	{
+		struct anx_world_node_info ninfo;
+		struct anx_world_edge_info einfo;
+		int seen_providers = 0;
+		uint32_t nn = anx_world_graph_node_count(g);
+
+		/* Node 0 is the first committed node ("ball"). */
+		if (nn < 1)
+			return -63;
+		if (anx_world_graph_get_node(g, 0, &ninfo) != ANX_OK)
+			return -64;
+		if (anx_strcmp(ninfo.domain, "world.physical") != 0)
+			return -65;
+		if (anx_strcmp(ninfo.label, "ball") != 0)
+			return -66;
+		if (anx_uuid_is_nil(&ninfo.id))	/* identity == committed oid */
+			return -67;
+		/* Out-of-range node is ENOENT, not a crash. */
+		if (anx_world_graph_get_node(g, nn + 100, &ninfo) != ANX_ENOENT)
+			return -68;
+
+		/* Edge 0 endpoints are real committed oids. */
+		if (anx_world_graph_edge_count(g) >= 1) {
+			if (anx_world_graph_get_edge(g, 0, &einfo) != ANX_OK)
+				return -69;
+			if (anx_uuid_is_nil(&einfo.from) ||
+			    anx_uuid_is_nil(&einfo.to))
+				return -70;
+		}
+
+		/* Provider iteration visits the registered physics provider. */
+		{
+			int n = anx_world_provider_iterate(
+				count_provider_cb, &seen_providers);
+			if (n != ANX_OK)
+				return -71;
+		}
+		if (seen_providers != (int)anx_world_provider_count())
+			return -72;
+	}
+
+	/* --- Wildcard write authority ("*") --- */
+	{
+		struct anx_world_manifest op;
+		struct anx_world_branch *wb;
+		struct anx_world_patch *wp;
+		struct anx_world_ref wr;
+
+		anx_memset(&op, 0, sizeof(op));
+		anx_strlcpy(op.id, "op", sizeof(op.id));
+		anx_strlcpy(op.domain, "shell", sizeof(op.domain));
+		anx_strlcpy(op.writes, "*", sizeof(op.writes));
+		if (anx_world_provider_register(&op, NULL, NULL) != ANX_OK)
+			return -73;
+
+		wb = anx_world_branch_fork(g);
+		wp = anx_world_patch_create("op");
+		if (!wb || !wp)
+			return -74;
+		/* A slice no narrow provider could write — wildcard allows it. */
+		if (anx_world_patch_add_node(wp, "world.anything", "x", &wr)
+		    != ANX_OK)
+			return -75;
+		if (anx_world_branch_propose(wb, wp) != ANX_OK)
+			return -76;
+		if (anx_world_branch_commit(wb, &rep) != ANX_OK)
+			return -77;
+		if (!rep.accepted)
+			return -78;
+		anx_world_branch_abandon(wb);
+		anx_world_patch_destroy(wp);
+	}
+
+	/* --- Default graph singleton --- */
+	{
+		struct anx_world_graph *d1 = anx_world_default_graph();
+		struct anx_world_graph *d2 = anx_world_default_graph();
+
+		if (!d1 || d1 != d2)	/* same instance every call */
+			return -79;
+		if (d1 == g)		/* distinct from our local graph */
+			return -80;
 	}
 
 	anx_world_graph_destroy(g);

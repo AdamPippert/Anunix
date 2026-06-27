@@ -94,7 +94,9 @@ struct anx_world_patch;
  * which it may write, and whether it may emit action-bearing patches. The
  * commit gate uses this to reason about a model the way the scheduler reasons
  * about a process. `reads`/`writes` are comma-separated slice lists, e.g.
- * "world.physical,world.spatial".
+ * "world.physical,world.spatial". A `writes` list containing the single token
+ * "*" grants write authority over every slice (used by operator/shell
+ * providers); narrow it for real models.
  */
 struct anx_world_manifest {
 	char id[ANX_WORLD_PROVIDER_ID_MAX];
@@ -144,6 +146,50 @@ uint32_t anx_world_graph_edge_count(const struct anx_world_graph *g);
 
 /* Monotonic version; bumped on every committed merge (optimistic concurrency). */
 uint64_t anx_world_graph_version(const struct anx_world_graph *g);
+
+/* Read-only copies of canonical entities, so internals stay private. */
+struct anx_world_node_info {
+	anx_oid_t id;
+	char domain[ANX_WORLD_DOMAIN_MAX];
+	char label[ANX_WORLD_LABEL_MAX];
+	bool conflict;
+	uint32_t prop_count;
+};
+
+struct anx_world_edge_info {
+	anx_oid_t id;
+	anx_oid_t from;
+	anx_oid_t to;
+	char relation[ANX_WORLD_REL_MAX];
+};
+
+/* Copy canonical node/edge `index` into `out`. ANX_OK, or ANX_ENOENT if out of
+ * range. */
+int anx_world_graph_get_node(const struct anx_world_graph *g, uint32_t index,
+			     struct anx_world_node_info *out);
+int anx_world_graph_get_edge(const struct anx_world_graph *g, uint32_t index,
+			     struct anx_world_edge_info *out);
+
+/* Copy one property (key/value) of canonical node `node_index`. ANX_OK or
+ * ANX_ENOENT. Either buffer may be NULL to skip it. */
+int anx_world_graph_get_prop(const struct anx_world_graph *g,
+			     uint32_t node_index, uint32_t prop_index,
+			     char *key, size_t key_len,
+			     char *val, size_t val_len);
+
+/*
+ * Process-wide default world graph, created lazily on first use. Gives shell
+ * tools and the HTTP API a shared graph to inspect across commands within a
+ * boot. Returns NULL only on allocation failure.
+ */
+struct anx_world_graph *anx_world_default_graph(void);
+
+/*
+ * Boot hook: register the built-in "shell.operator" provider and seed the
+ * default graph with a tiny demo so a freshly booted system has something to
+ * inspect. Logs a one-line summary. Idempotent enough for a single boot.
+ */
+void anx_world_boot_seed(void);
 
 /*
  * Fork a speculative branch off the canonical graph. The branch holds a
@@ -244,6 +290,15 @@ const struct anx_world_manifest *anx_world_provider_get(const char *id);
 
 /* Number of registered providers. */
 uint32_t anx_world_provider_count(void);
+
+/*
+ * Visitor over registered providers. `has_validator` is true if the provider
+ * registered a commit-gate validator. Returning non-zero stops iteration and is
+ * propagated as the return value.
+ */
+typedef int (*anx_world_provider_iter_fn)(const struct anx_world_manifest *m,
+					  bool has_validator, void *arg);
+int anx_world_provider_iterate(anx_world_provider_iter_fn cb, void *arg);
 
 /*
  * Run the commit gate on a branch and, if it passes, merge the branch into the
