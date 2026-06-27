@@ -425,6 +425,85 @@ int test_worldgraph(void)
 			return -80;
 	}
 
+	/* --- Constraint validator (RFC-0026 §7 concrete provider) --- */
+	{
+		struct anx_world_branch *cb;
+		struct anx_world_patch *cp;
+		struct anx_world_ref node;
+		uint64_t v_before;
+
+		if (anx_world_constraint_validator_register() != ANX_OK)
+			return -81;
+
+		/* Satisfied: mass=2.0 with mass>0 commits. */
+		cb = anx_world_branch_fork(g);
+		cp = anx_world_patch_create("op");	/* wildcard provider */
+		if (!cb || !cp)
+			return -82;
+		anx_world_patch_add_node(cp, "world.physical", "rock", &node);
+		anx_world_patch_update_property(cp, node, "mass", "2.0");
+		anx_world_patch_attach_constraint(cp, node, "mass>0");
+		if (anx_world_branch_propose(cb, cp) != ANX_OK)
+			return -83;
+		if (anx_world_branch_commit(cb, &rep) != ANX_OK)
+			return -84;
+		if (!rep.accepted)
+			return -85;
+		anx_world_branch_abandon(cb);
+		anx_world_patch_destroy(cp);
+
+		/* Violated: mass=-5 with mass>0 is rejected, graph unchanged. */
+		v_before = anx_world_graph_version(g);
+		cb = anx_world_branch_fork(g);
+		cp = anx_world_patch_create("op");
+		if (!cb || !cp)
+			return -86;
+		anx_world_patch_add_node(cp, "world.physical", "ghost", &node);
+		anx_world_patch_update_property(cp, node, "mass", "-5");
+		anx_world_patch_attach_constraint(cp, node, "mass>0");
+		if (anx_world_branch_propose(cb, cp) != ANX_OK)
+			return -87;
+		if (anx_world_branch_commit(cb, &rep) != ANX_EINVAL)
+			return -88;
+		if (rep.accepted)
+			return -89;
+		if (anx_world_graph_version(g) != v_before)
+			return -90;
+		anx_world_branch_abandon(cb);
+		anx_world_patch_destroy(cp);
+
+		/* Missing property: constraint on an absent key is rejected. */
+		cb = anx_world_branch_fork(g);
+		cp = anx_world_patch_create("op");
+		if (!cb || !cp)
+			return -91;
+		anx_world_patch_add_node(cp, "world.physical", "void", &node);
+		anx_world_patch_attach_constraint(cp, node, "mass>0");
+		if (anx_world_branch_propose(cb, cp) != ANX_OK)
+			return -92;
+		if (anx_world_branch_commit(cb, &rep) != ANX_EINVAL)
+			return -93;
+		anx_world_branch_abandon(cb);
+		anx_world_patch_destroy(cp);
+
+		/* Decimal comparison: temp<=37.5 satisfied by 37.0. */
+		cb = anx_world_branch_fork(g);
+		cp = anx_world_patch_create("op");
+		if (!cb || !cp)
+			return -94;
+		anx_world_patch_add_node(cp, "world.physical", "body", &node);
+		anx_world_patch_update_property(cp, node, "temp", "37.0");
+		anx_world_patch_attach_constraint(cp, node, "temp<=37.5");
+		if (anx_world_branch_propose(cb, cp) != ANX_OK)
+			return -95;
+		if (anx_world_branch_commit(cb, &rep) != ANX_OK)
+			return -96;
+		if (!rep.accepted)
+			return -97;
+		anx_world_branch_abandon(cb);
+		anx_world_patch_destroy(cp);
+	}
+
 	anx_world_graph_destroy(g);
 	return 0;
 }

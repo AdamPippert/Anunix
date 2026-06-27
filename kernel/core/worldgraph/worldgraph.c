@@ -263,6 +263,46 @@ uint32_t anx_world_branch_edge_count(const struct anx_world_branch *b)
 	return b ? b->snap.edge_count : 0;
 }
 
+/* Defined with the patch-proposal machinery below. */
+static int resolve_ref_index(const struct anx_world_graph *g,
+			     const struct anx_world_patch *p,
+			     const struct anx_world_ref *ref);
+
+int anx_world_branch_get_node(const struct anx_world_branch *b, uint32_t index,
+			      struct anx_world_node_info *out)
+{
+	if (!b)
+		return ANX_EINVAL;
+	return anx_world_graph_get_node(&b->snap, index, out);
+}
+
+int anx_world_branch_get_prop(const struct anx_world_branch *b,
+			      uint32_t node_index, uint32_t prop_index,
+			      char *key, size_t key_len,
+			      char *val, size_t val_len)
+{
+	if (!b)
+		return ANX_EINVAL;
+	return anx_world_graph_get_prop(&b->snap, node_index, prop_index,
+					key, key_len, val, val_len);
+}
+
+int anx_world_branch_resolve_ref(const struct anx_world_branch *b,
+				 const struct anx_world_patch *patch,
+				 const struct anx_world_ref *ref,
+				 uint32_t *index)
+{
+	int i;
+
+	if (!b || !patch || !ref || !index)
+		return ANX_EINVAL;
+	i = resolve_ref_index(&b->snap, patch, ref);
+	if (i < 0)
+		return ANX_ENOENT;
+	*index = (uint32_t)i;
+	return ANX_OK;
+}
+
 /* --- Patch construction --- */
 
 struct anx_world_patch *anx_world_patch_create(const char *provider_id)
@@ -287,6 +327,25 @@ void anx_world_patch_destroy(struct anx_world_patch *p)
 uint32_t anx_world_patch_op_count(const struct anx_world_patch *p)
 {
 	return p ? p->op_count : 0;
+}
+
+int anx_world_patch_get_op(const struct anx_world_patch *p, uint32_t index,
+			   struct anx_world_op_info *out)
+{
+	const struct world_op *op;
+
+	if (!p || !out)
+		return ANX_EINVAL;
+	if (index >= p->op_count)
+		return ANX_ENOENT;
+	op = &p->ops[index];
+	out->type = op->type;
+	out->a = op->a;
+	out->b = op->b;
+	anx_strlcpy(out->s1, op->s1, sizeof(out->s1));
+	anx_strlcpy(out->s2, op->s2, sizeof(out->s2));
+	out->conf = op->conf;
+	return ANX_OK;
 }
 
 /* Append a blank op, returning it, or NULL if the patch is full. */

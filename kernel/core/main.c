@@ -140,6 +140,7 @@ void kernel_main(void)
 
 	/* 6a. World Graph Runtime (RFC-0026) — needs objstore + netplane */
 	anx_world_runtime_init();
+	anx_world_constraint_validator_register();
 	anx_world_boot_seed();
 
 	/* 7a. Interface Plane (RFC-0012) — after engine registry */

@@ -205,6 +205,28 @@ void anx_world_branch_abandon(struct anx_world_branch *b);
 uint32_t anx_world_branch_node_count(const struct anx_world_branch *b);
 uint32_t anx_world_branch_edge_count(const struct anx_world_branch *b);
 
+/*
+ * Provider read interface (RFC-0026 §7): read the branch's speculative state,
+ * which already reflects every proposed patch. These let a validator evaluate a
+ * patch against the world it would produce.
+ */
+int anx_world_branch_get_node(const struct anx_world_branch *b, uint32_t index,
+			      struct anx_world_node_info *out);
+int anx_world_branch_get_prop(const struct anx_world_branch *b,
+			      uint32_t node_index, uint32_t prop_index,
+			      char *key, size_t key_len,
+			      char *val, size_t val_len);
+
+/*
+ * Resolve a patch ref (patch-local index or existing oid) to a node index in
+ * the branch snapshot. ANX_OK and *index set, or ANX_ENOENT if it does not
+ * resolve. `patch` must be one proposed onto this branch.
+ */
+int anx_world_branch_resolve_ref(const struct anx_world_branch *b,
+				 const struct anx_world_patch *patch,
+				 const struct anx_world_ref *ref,
+				 uint32_t *index);
+
 /* --- Patch protocol (RFC-0026 Section 4) --- */
 
 /*
@@ -219,6 +241,29 @@ void anx_world_patch_destroy(struct anx_world_patch *p);
 
 /* Number of ops staged in a patch. */
 uint32_t anx_world_patch_op_count(const struct anx_world_patch *p);
+
+/*
+ * Read-only copy of one staged op, so a provider's validator can inspect a
+ * patch without touching internals. String fields carry op-specific text:
+ *   ADD_NODE:          s1=domain, s2=label
+ *   ADD_EDGE:          s1=relation
+ *   UPDATE_PROPERTY:   s1=key,    s2=value
+ *   ATTACH_CONSTRAINT: s2=expr
+ *   ATTACH_PREDICTION: s2=expr,   conf=confidence_milli
+ *   MARK_CONFLICT:     s2=reason
+ */
+struct anx_world_op_info {
+	enum anx_world_op_type type;
+	struct anx_world_ref a;		/* primary node ref */
+	struct anx_world_ref b;		/* edge target */
+	char s1[ANX_WORLD_REL_MAX];
+	char s2[ANX_WORLD_VAL_MAX];
+	int64_t conf;
+};
+
+/* Copy staged op `index` into `out`. ANX_OK, or ANX_ENOENT if out of range. */
+int anx_world_patch_get_op(const struct anx_world_patch *p, uint32_t index,
+			   struct anx_world_op_info *out);
 
 /*
  * Stage an add-node op. On success `*out_ref` is filled with a patch-local
@@ -315,6 +360,20 @@ int anx_world_provider_iterate(anx_world_provider_iter_fn cb, void *arg);
  */
 int anx_world_branch_commit(struct anx_world_branch *b,
 			    struct anx_world_commit_report *report);
+
+/* --- Built-in providers (RFC-0026 Section 7) --- */
+
+/*
+ * Register the constraint validator: a commit-gate provider ("constraint.
+ * validator") that rejects any patch attaching a numeric constraint the
+ * resulting node state violates. Constraint syntax is "<key><op><number>",
+ * with op one of >  <  >=  <=  ==  != and number an integer or decimal
+ * (e.g. "mass>0", "temp<=37.5"). A constraint whose property is absent, or
+ * whose expression does not parse as this mini-language, is reported as a
+ * violation and an accepted no-op respectively. Idempotent. Returns ANX_OK or
+ * a negative error.
+ */
+int anx_world_constraint_validator_register(void);
 
 /* --- Federated replication gate (RFC-0026 Section 7; seeds RFC-0006) --- */
 
