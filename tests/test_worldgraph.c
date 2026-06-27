@@ -12,6 +12,7 @@
 #include <anx/state_object.h>
 #include <anx/worldgraph.h>
 #include <anx/netplane.h>
+#include <anx/crypto.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
 
@@ -502,6 +503,144 @@ int test_worldgraph(void)
 			return -97;
 		anx_world_branch_abandon(cb);
 		anx_world_patch_destroy(cp);
+	}
+
+	/* --- Federated sync: sign -> verify -> trust -> local gate --- */
+	{
+		uint8_t seed[32], pub[32], priv[64];
+		struct anx_net_node *peer = NULL, *bad = NULL;
+		struct anx_world_manifest rm;
+		struct anx_world_envelope env;
+		struct anx_world_patch *fp;
+		struct anx_world_ref fr;
+		uint32_t i;
+		uint64_t v0;
+
+		/* Deterministic keypair for the "remote" node. */
+		for (i = 0; i < 32; i++)
+			seed[i] = (uint8_t)(i + 1);
+		anx_ed25519_keypair(pub, priv, seed);
+
+		/* A trusted LAN peer with a known key. */
+		if (anx_netplane_register_peer("remote-a", ANX_NODE_TEAM_SERVER,
+					       ANX_TRUST_LAN, &peer) != ANX_OK)
+			return -98;
+		if (anx_world_peer_set_key(&peer->nid, pub) != ANX_OK)
+			return -99;
+		if (anx_world_peer_count() < 1)
+			return -100;
+
+		/* The remote author's provider must be authorized locally. */
+		anx_memset(&rm, 0, sizeof(rm));
+		anx_strlcpy(rm.id, "remote.model", sizeof(rm.id));
+		anx_strlcpy(rm.domain, "remote", sizeof(rm.domain));
+		anx_strlcpy(rm.writes, "world.remote", sizeof(rm.writes));
+		if (anx_world_provider_register(&rm, NULL, NULL) != ANX_OK)
+			return -101;
+
+		/* Build, seal, and apply a well-formed remote claim. */
+		fp = anx_world_patch_create("remote.model");
+		if (!fp)
+			return -102;
+		anx_world_patch_add_node(fp, "world.remote", "sensor", &fr);
+		if (anx_world_envelope_seal(fp, priv, &peer->nid, &env)
+		    != ANX_OK)
+			return -103;
+		if (anx_world_envelope_verify(&env, pub) != ANX_OK)
+			return -104;
+		v0 = anx_world_graph_version(g);
+		if (anx_world_federation_apply(g, &env, &rep) != ANX_OK)
+			return -105;
+		if (!rep.accepted)
+			return -106;
+		if (anx_world_graph_version(g) != v0 + 1)
+			return -107;
+		anx_world_patch_destroy(fp);
+
+		/* Tampering invalidates the signature. */
+		{
+			struct anx_world_envelope t = env;
+
+			t.ops[0].s2[0] ^= 0x40;	/* mutate the node label */
+			if (anx_world_envelope_verify(&t, pub) != ANX_EPERM)
+				return -108;
+			if (anx_world_federation_apply(g, &t, &rep) != ANX_EPERM)
+				return -109;
+		}
+
+		/* An untrusted peer is refused even with a valid signature. */
+		{
+			uint8_t bseed[32], bpub[32], bpriv[64];
+			struct anx_world_envelope be;
+			struct anx_world_patch *bp;
+			struct anx_world_ref br;
+
+			for (i = 0; i < 32; i++)
+				bseed[i] = (uint8_t)(0xA0 + i);
+			anx_ed25519_keypair(bpub, bpriv, bseed);
+			if (anx_netplane_register_peer("remote-bad", ANX_NODE_CLOUD,
+						       ANX_TRUST_UNTRUSTED, &bad)
+			    != ANX_OK)
+				return -110;
+			if (anx_world_peer_set_key(&bad->nid, bpub) != ANX_OK)
+				return -111;
+			bp = anx_world_patch_create("remote.model");
+			if (!bp)
+				return -112;
+			anx_world_patch_add_node(bp, "world.remote", "rogue", &br);
+			if (anx_world_envelope_seal(bp, bpriv, &bad->nid, &be)
+			    != ANX_OK)
+				return -113;
+			if (anx_world_federation_apply(g, &be, &rep) != ANX_EPERM)
+				return -114;
+			anx_world_patch_destroy(bp);
+		}
+
+		/* A signer with no registered key is unknown. */
+		{
+			anx_nid_t ghost;
+			struct anx_world_envelope ge;
+			struct anx_world_patch *gp;
+			struct anx_world_ref gr;
+
+			anx_uuid_generate(&ghost);
+			gp = anx_world_patch_create("remote.model");
+			if (!gp)
+				return -115;
+			anx_world_patch_add_node(gp, "world.remote", "x", &gr);
+			if (anx_world_envelope_seal(gp, priv, &ghost, &ge)
+			    != ANX_OK)
+				return -116;
+			if (anx_world_federation_apply(g, &ge, &rep) != ANX_ENOENT)
+				return -117;
+			anx_world_patch_destroy(gp);
+		}
+
+		/* A remote claim earns no gate exemption: a constraint it
+		 * violates is rejected just like a local one. */
+		{
+			struct anx_world_envelope ve;
+			struct anx_world_patch *vp;
+			struct anx_world_ref vr;
+			uint64_t vbefore = anx_world_graph_version(g);
+
+			vp = anx_world_patch_create("op");	/* wildcard auth */
+			if (!vp)
+				return -118;
+			anx_world_patch_add_node(vp, "world.remote", "bad", &vr);
+			anx_world_patch_update_property(vp, vr, "mass", "-1");
+			anx_world_patch_attach_constraint(vp, vr, "mass>0");
+			if (anx_world_envelope_seal(vp, priv, &peer->nid, &ve)
+			    != ANX_OK)
+				return -119;
+			if (anx_world_federation_apply(g, &ve, &rep) != ANX_EINVAL)
+				return -120;
+			if (rep.accepted)
+				return -121;
+			if (anx_world_graph_version(g) != vbefore)
+				return -122;
+			anx_world_patch_destroy(vp);
+		}
 	}
 
 	anx_world_graph_destroy(g);

@@ -159,6 +159,27 @@ The gate decides *whether* a committed object may cross to a peer and leaves the
 audit trail. The byte transfer itself belongs to the network data plane
 (RFC-0006 / RFC-0015); this runtime defines *what* crosses it, not the wire.
 
+### Federated claims (inbound)
+
+A claim arriving from a peer travels as a **signed envelope**: the patch's ops,
+the authoring provider id, the signer's node id, and an Ed25519 signature over
+all of it. The receiver applies it under **local authority** — the envelope is
+advisory, and earns no exemption from any local rule. On arrival, in order:
+
+1. **Known signer** — the signer's public key must be in the federation keyring
+   (`ANX_ENOENT` otherwise).
+2. **Authentic** — the Ed25519 signature must verify (`ANX_EPERM` otherwise).
+3. **Trusted** — the signer's Network Plane trust zone must not be untrusted
+   (`ANX_EPERM` otherwise).
+4. **Gated** — the patch is rebuilt and run through the *local* commit gate:
+   provider write authority plus every registered validator. A remote claim
+   that violates a local constraint is rejected exactly like a local one.
+
+Only if all four pass does the claim merge, with provenance intact. This is the
+trust-and-policy layer; the in-memory envelope models the wire so the logic is
+testable end to end, and the byte-level encoding for a real socket is left to
+RFC-0006 / RFC-0015.
+
 ## Acceptance Criteria
 
 Two Anunix nodes can:

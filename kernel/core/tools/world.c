@@ -18,6 +18,8 @@
 #include <anx/types.h>
 #include <anx/tools.h>
 #include <anx/worldgraph.h>
+#include <anx/netplane.h>
+#include <anx/crypto.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
 #include <anx/kprintf.h>
@@ -364,6 +366,63 @@ out:
 	anx_world_patch_destroy(p);
 }
 
+static void world_peers(void)
+{
+	kprintf("federation peers (keyring): %u\n", anx_world_peer_count());
+}
+
+/*
+ * Simulate a federated claim on a single node: mint a peer identity, seal a
+ * signed claim, and apply it through the local verify -> trust -> commit-gate
+ * path. Then tamper with it to show the signature check refuses it.
+ */
+static void world_federate_demo(struct anx_world_graph *g)
+{
+	uint8_t seed[32], pub[32], priv[64];
+	struct anx_net_node *peer = NULL;
+	struct anx_world_envelope env;
+	struct anx_world_patch *p;
+	struct anx_world_commit_report rep;
+	struct anx_world_ref r;
+	int rc;
+
+	ensure_operator();
+	anx_random_bytes(seed, sizeof(seed));
+	anx_ed25519_keypair(pub, priv, seed);
+
+	if (anx_netplane_register_peer("loopback-peer", ANX_NODE_TEAM_SERVER,
+				       ANX_TRUST_LAN, &peer) != ANX_OK || !peer) {
+		kprintf("federate: could not register peer\n");
+		return;
+	}
+	anx_world_peer_set_key(&peer->nid, pub);
+
+	p = anx_world_patch_create("shell.operator");
+	if (!p) {
+		kprintf("world: out of memory\n");
+		return;
+	}
+	anx_world_patch_add_node(p, "world.remote", "peer-claim", &r);
+	if (anx_world_envelope_seal(p, priv, &peer->nid, &env) != ANX_OK) {
+		kprintf("federate: seal failed\n");
+		anx_world_patch_destroy(p);
+		return;
+	}
+	kprintf("federate: sealed a signed claim from a trusted LAN peer\n");
+	kprintf("federate: signature verify = %s\n",
+		anx_world_envelope_verify(&env, pub) == ANX_OK ? "ok" : "FAIL");
+	rc = anx_world_federation_apply(g, &env, &rep);
+	kprintf("federate: apply through local gate (rc=%d) -> ", rc);
+	print_report(&rep);
+
+	env.ops[0].s2[0] ^= 0x40;	/* corrupt the signed payload */
+	rc = anx_world_federation_apply(g, &env, &rep);
+	kprintf("federate: tampered claim -> rc=%d (%s)\n", rc,
+		rc == ANX_OK ? "ACCEPTED?!" : "rejected, as expected");
+
+	anx_world_patch_destroy(p);
+}
+
 static void usage(void)
 {
 	kputc('\n');
@@ -377,6 +436,8 @@ static void usage(void)
 	kprintf("  set <idx> <key> <value>      set a node property\n");
 	kprintf("  constrain <idx> <expr>       attach a constraint (gate-checked)\n");
 	kprintf("  demo                         run the full commit pipeline\n");
+	kprintf("  peers                        federation keyring size\n");
+	kprintf("  federate-demo                apply a signed peer claim\n");
 }
 
 void cmd_world(int argc, char **argv)
@@ -416,6 +477,10 @@ void cmd_world(int argc, char **argv)
 				argc >= 4 ? argv[3] : NULL);
 	else if (anx_strcmp(argv[1], "demo") == 0)
 		world_demo(g);
+	else if (anx_strcmp(argv[1], "peers") == 0)
+		world_peers();
+	else if (anx_strcmp(argv[1], "federate-demo") == 0)
+		world_federate_demo(g);
 	else
 		kprintf("world: unknown subcommand '%s' (try 'world help')\n",
 			argv[1]);
