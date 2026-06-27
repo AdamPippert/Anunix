@@ -242,6 +242,10 @@ void anx_world_patch_destroy(struct anx_world_patch *p);
 /* Number of ops staged in a patch. */
 uint32_t anx_world_patch_op_count(const struct anx_world_patch *p);
 
+/* Copy a patch's authoring provider id into `out`. ANX_OK or ANX_EINVAL. */
+int anx_world_patch_provider_id(const struct anx_world_patch *p, char *out,
+				size_t len);
+
 /*
  * Read-only copy of one staged op, so a provider's validator can inspect a
  * patch without touching internals. String fields carry op-specific text:
@@ -387,5 +391,61 @@ int anx_world_constraint_validator_register(void);
  * trail.
  */
 int anx_world_replicate(const anx_oid_t *committed, const anx_nid_t *peer);
+
+/* --- Federated sync (RFC-0026 Section 7; over the Network Plane) --- */
+
+#define ANX_WORLD_MAX_PEERS	16
+
+/*
+ * A signed claim envelope: a serialized patch carried between nodes. The model
+ * is local-authority — a remote envelope is advisory and must clear the
+ * receiver's commit gate exactly like a local patch before it changes anything.
+ * The signature covers every field up to (not including) `sig`. The op blob is
+ * carried in the runtime's in-memory op form; a byte-level wire encoding for an
+ * actual socket belongs to RFC-0006 / RFC-0015.
+ */
+struct anx_world_envelope {
+	char provider_id[ANX_WORLD_PROVIDER_ID_MAX];
+	uint32_t op_count;
+	struct anx_world_op_info ops[ANX_WORLD_PATCH_MAX_OPS];
+	anx_nid_t signer;
+	uint8_t sig[64];
+};
+
+/* Register/replace a peer's Ed25519 public key, keyed by node id. ANX_OK,
+ * ANX_EFULL if the keyring is full, or ANX_EINVAL. */
+int anx_world_peer_set_key(const anx_nid_t *nid, const uint8_t pubkey[32]);
+
+/* Look up a peer's public key into `out`. ANX_OK or ANX_ENOENT. */
+int anx_world_peer_get_key(const anx_nid_t *nid, uint8_t out[32]);
+
+/* Number of peers in the federation keyring. */
+uint32_t anx_world_peer_count(void);
+
+/*
+ * Seal a patch into a signed envelope authored by `signer`, signing with its
+ * 64-byte Ed25519 private key. Copies the patch's staged ops into the envelope.
+ * Returns ANX_OK or ANX_EINVAL.
+ */
+int anx_world_envelope_seal(const struct anx_world_patch *p,
+			    const uint8_t priv[64], const anx_nid_t *signer,
+			    struct anx_world_envelope *out);
+
+/* Verify an envelope's signature against `pubkey`. ANX_OK if valid, ANX_EPERM
+ * if not, ANX_EINVAL on bad args. */
+int anx_world_envelope_verify(const struct anx_world_envelope *e,
+			      const uint8_t pubkey[32]);
+
+/*
+ * Apply a remote envelope to a local graph under local authority. In order:
+ * resolve the signer's key (ANX_ENOENT if unknown), verify the signature
+ * (ANX_EPERM on mismatch), refuse untrusted/unknown peers via the Network Plane
+ * trust zone (ANX_EPERM), then rebuild the patch and run it through the local
+ * commit gate (its rejection code on veto). `report` (may be NULL) carries the
+ * gate outcome. Nothing changes unless the gate accepts.
+ */
+int anx_world_federation_apply(struct anx_world_graph *g,
+			       const struct anx_world_envelope *e,
+			       struct anx_world_commit_report *report);
 
 #endif /* ANX_WORLDGRAPH_H */

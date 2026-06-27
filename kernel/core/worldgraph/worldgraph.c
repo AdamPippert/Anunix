@@ -329,6 +329,15 @@ uint32_t anx_world_patch_op_count(const struct anx_world_patch *p)
 	return p ? p->op_count : 0;
 }
 
+int anx_world_patch_provider_id(const struct anx_world_patch *p, char *out,
+				size_t len)
+{
+	if (!p || !out)
+		return ANX_EINVAL;
+	anx_strlcpy(out, p->provider_id, len);
+	return ANX_OK;
+}
+
 int anx_world_patch_get_op(const struct anx_world_patch *p, uint32_t index,
 			   struct anx_world_op_info *out)
 {
