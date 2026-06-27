@@ -18,6 +18,7 @@
 #include <anx/sched.h>
 #include <anx/netplane.h>
 #include <anx/capability.h>
+#include <anx/worldgraph.h>
 #include <anx/engine_lease.h>
 #include <anx/hwprobe.h>
 #include <anx/model_server.h>
@@ -136,6 +137,10 @@ void kernel_main(void)
 	/* 6. Capability Objects (RFC-0007) */
 	anx_cap_store_init();
 	kprintf("capability store initialized\n");
+
+	/* 6a. World Graph Runtime (RFC-0026) — needs objstore + netplane */
+	anx_world_runtime_init();
+	anx_world_boot_seed();
 
 	/* 7a. Interface Plane (RFC-0012) — after engine registry */
 	if (anx_iface_init() == ANX_OK) {

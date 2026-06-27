@@ -20,6 +20,7 @@
 #include <anx/spinlock.h>
 #include <anx/provenance.h>
 #include <anx/netplane.h>
+#include <anx/kprintf.h>
 
 /* --- Internal graph representation --- */
 
@@ -170,6 +171,62 @@ uint32_t anx_world_graph_edge_count(const struct anx_world_graph *g)
 uint64_t anx_world_graph_version(const struct anx_world_graph *g)
 {
 	return g ? g->version : 0;
+}
+
+int anx_world_graph_get_node(const struct anx_world_graph *g, uint32_t index,
+			     struct anx_world_node_info *out)
+{
+	const struct world_node *n;
+
+	if (!g || !out)
+		return ANX_EINVAL;
+	if (index >= g->node_count)
+		return ANX_ENOENT;
+	n = &g->nodes[index];
+	out->id = n->id;
+	anx_strlcpy(out->domain, n->domain, sizeof(out->domain));
+	anx_strlcpy(out->label, n->label, sizeof(out->label));
+	out->conflict = n->conflict;
+	out->prop_count = n->prop_count;
+	return ANX_OK;
+}
+
+int anx_world_graph_get_edge(const struct anx_world_graph *g, uint32_t index,
+			     struct anx_world_edge_info *out)
+{
+	const struct world_edge *e;
+
+	if (!g || !out)
+		return ANX_EINVAL;
+	if (index >= g->edge_count)
+		return ANX_ENOENT;
+	e = &g->edges[index];
+	out->id = e->id;
+	out->from = e->from;
+	out->to = e->to;
+	anx_strlcpy(out->relation, e->relation, sizeof(out->relation));
+	return ANX_OK;
+}
+
+int anx_world_graph_get_prop(const struct anx_world_graph *g,
+			     uint32_t node_index, uint32_t prop_index,
+			     char *key, size_t key_len,
+			     char *val, size_t val_len)
+{
+	const struct world_node *n;
+
+	if (!g)
+		return ANX_EINVAL;
+	if (node_index >= g->node_count)
+		return ANX_ENOENT;
+	n = &g->nodes[node_index];
+	if (prop_index >= n->prop_count)
+		return ANX_ENOENT;
+	if (key)
+		anx_strlcpy(key, n->props[prop_index].key, key_len);
+	if (val)
+		anx_strlcpy(val, n->props[prop_index].val, val_len);
+	return ANX_OK;
 }
 
 struct anx_world_branch *anx_world_branch_fork(struct anx_world_graph *g)
@@ -595,6 +652,36 @@ uint32_t anx_world_provider_count(void)
 	return n;
 }
 
+int anx_world_provider_iterate(anx_world_provider_iter_fn cb, void *arg)
+{
+	uint32_t i;
+	int stop = 0;
+
+	if (!cb)
+		return ANX_EINVAL;
+
+	for (i = 0; i < ANX_WORLD_MAX_PROVIDERS; i++) {
+		struct anx_world_manifest m;
+		bool has_validator;
+
+		/* Snapshot under lock, then call the visitor unlocked so it may
+		 * call back into the registry without deadlocking. */
+		anx_spin_lock(&provider_lock);
+		if (!providers[i].used) {
+			anx_spin_unlock(&provider_lock);
+			continue;
+		}
+		m = providers[i].manifest;
+		has_validator = providers[i].validate != NULL;
+		anx_spin_unlock(&provider_lock);
+
+		stop = cb(&m, has_validator, arg);
+		if (stop)
+			return stop;
+	}
+	return ANX_OK;
+}
+
 /* --- Commit gate --- */
 
 /* Does the provider's manifest grant write authority over `domain`? Either the
@@ -602,6 +689,8 @@ uint32_t anx_world_provider_count(void)
 static bool manifest_may_write(const struct anx_world_manifest *m,
 			       const char *domain)
 {
+	if (list_contains(m->writes, "*"))	/* operator/shell wildcard */
+		return true;
 	if (anx_strcmp(m->domain, domain) == 0)
 		return true;
 	return list_contains(m->writes, domain);
@@ -955,4 +1044,58 @@ int anx_world_replicate(const anx_oid_t *committed, const anx_nid_t *peer)
 
 	anx_objstore_release(obj);
 	return ANX_OK;
+}
+
+/* --- Process-wide default graph and boot seed --- */
+
+static struct anx_world_graph *default_graph;
+
+struct anx_world_graph *anx_world_default_graph(void)
+{
+	if (!default_graph)
+		default_graph = anx_world_graph_create("anx:world/default");
+	return default_graph;
+}
+
+void anx_world_boot_seed(void)
+{
+	struct anx_world_manifest m;
+	struct anx_world_graph *g;
+	struct anx_world_branch *b;
+	struct anx_world_patch *p;
+	struct anx_world_commit_report rep;
+	struct anx_world_ref os, kern;
+
+	/* The built-in operator provider can write any slice. */
+	anx_memset(&m, 0, sizeof(m));
+	anx_strlcpy(m.id, "shell.operator", sizeof(m.id));
+	anx_strlcpy(m.domain, "shell", sizeof(m.domain));
+	anx_strlcpy(m.writes, "*", sizeof(m.writes));
+	anx_world_provider_register(&m, NULL, NULL);
+
+	g = anx_world_default_graph();
+	if (!g) {
+		kprintf("world graph runtime: seed failed (no graph)\n");
+		return;
+	}
+
+	/* Seed a minimal system graph: anunix --hosts--> kernel. */
+	b = anx_world_branch_fork(g);
+	p = anx_world_patch_create("shell.operator");
+	if (!b || !p) {
+		anx_world_branch_abandon(b);
+		anx_world_patch_destroy(p);
+		kprintf("world graph runtime: seed failed (no memory)\n");
+		return;
+	}
+	anx_world_patch_add_node(p, "world.system", "anunix", &os);
+	anx_world_patch_add_node(p, "world.system", "kernel", &kern);
+	anx_world_patch_add_edge(p, os, kern, "hosts");
+	if (anx_world_branch_propose(b, p) == ANX_OK)
+		anx_world_branch_commit(b, &rep);
+	anx_world_branch_abandon(b);
+	anx_world_patch_destroy(p);
+
+	kprintf("world graph runtime: seeded %u nodes, %u edges\n",
+		anx_world_graph_node_count(g), anx_world_graph_edge_count(g));
 }
