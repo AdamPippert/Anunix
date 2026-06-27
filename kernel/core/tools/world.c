@@ -250,6 +250,81 @@ out:
 	anx_world_patch_destroy(p);
 }
 
+/* One-shot patch wrapping a single op on an existing node, by index. */
+static void commit_one(struct anx_world_graph *g, struct anx_world_patch *p)
+{
+	struct anx_world_branch *b = anx_world_branch_fork(g);
+	struct anx_world_commit_report rep;
+
+	if (!b) {
+		kprintf("world: out of memory\n");
+		return;
+	}
+	if (anx_world_branch_propose(b, p) != ANX_OK)
+		kprintf("world: could not stage op\n");
+	else {
+		anx_world_branch_commit(b, &rep);
+		print_report(&rep);
+	}
+	anx_world_branch_abandon(b);
+}
+
+static void world_set(struct anx_world_graph *g, const char *idx_s,
+		      const char *key, const char *val)
+{
+	struct anx_world_node_info info;
+	struct anx_world_patch *p;
+	uint32_t idx;
+
+	if (!idx_s || !key || !val || !parse_u32(idx_s, &idx)) {
+		kprintf("usage: world set <node-index> <key> <value>\n");
+		return;
+	}
+	if (anx_world_graph_get_node(g, idx, &info) != ANX_OK) {
+		kprintf("world: no node at index %u\n", idx);
+		return;
+	}
+	ensure_operator();
+	p = anx_world_patch_create("shell.operator");
+	if (!p) {
+		kprintf("world: out of memory\n");
+		return;
+	}
+	if (anx_world_patch_update_property(p, anx_world_ref_oid(info.id),
+					    key, val) == ANX_OK)
+		commit_one(g, p);
+	anx_world_patch_destroy(p);
+}
+
+static void world_constrain(struct anx_world_graph *g, const char *idx_s,
+			    const char *expr)
+{
+	struct anx_world_node_info info;
+	struct anx_world_patch *p;
+	uint32_t idx;
+
+	if (!idx_s || !expr || !parse_u32(idx_s, &idx)) {
+		kprintf("usage: world constrain <node-index> <expr>\n");
+		kprintf("  e.g. world constrain 2 mass>0\n");
+		return;
+	}
+	if (anx_world_graph_get_node(g, idx, &info) != ANX_OK) {
+		kprintf("world: no node at index %u\n", idx);
+		return;
+	}
+	ensure_operator();
+	p = anx_world_patch_create("shell.operator");
+	if (!p) {
+		kprintf("world: out of memory\n");
+		return;
+	}
+	/* The constraint validator (if registered) evaluates this at commit. */
+	if (anx_world_patch_attach_constraint(p, anx_world_ref_oid(info.id),
+					      expr) == ANX_OK)
+		commit_one(g, p);
+	anx_world_patch_destroy(p);
+}
+
 static void world_demo(struct anx_world_graph *g)
 {
 	struct anx_world_branch *b;
@@ -299,6 +374,8 @@ static void usage(void)
 	kprintf("  providers                    list registered providers\n");
 	kprintf("  add <domain> <label>         commit a new node\n");
 	kprintf("  link <from> <to> <relation>  commit an edge\n");
+	kprintf("  set <idx> <key> <value>      set a node property\n");
+	kprintf("  constrain <idx> <expr>       attach a constraint (gate-checked)\n");
 	kprintf("  demo                         run the full commit pipeline\n");
 }
 
@@ -330,6 +407,13 @@ void cmd_world(int argc, char **argv)
 		world_link(g, argc >= 3 ? argv[2] : NULL,
 			 argc >= 4 ? argv[3] : NULL,
 			 argc >= 5 ? argv[4] : NULL);
+	else if (anx_strcmp(argv[1], "set") == 0)
+		world_set(g, argc >= 3 ? argv[2] : NULL,
+			  argc >= 4 ? argv[3] : NULL,
+			  argc >= 5 ? argv[4] : NULL);
+	else if (anx_strcmp(argv[1], "constrain") == 0)
+		world_constrain(g, argc >= 3 ? argv[2] : NULL,
+				argc >= 4 ? argv[3] : NULL);
 	else if (anx_strcmp(argv[1], "demo") == 0)
 		world_demo(g);
 	else
