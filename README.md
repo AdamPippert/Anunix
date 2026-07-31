@@ -34,7 +34,20 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 
 ## Release: 2026.4.24
 
-### Milestone: Native kernel browser engine
+### Milestone: Native kernel browser engine (superseded — see note)
+
+> **Update:** the in-kernel browser engine described below violated
+> Anunix's own accepted boundary decision
+> ([`docs/plans/graphical-userspace-platform/00-boundary-decision.md`](docs/plans/graphical-userspace-platform/00-boundary-decision.md)),
+> which prohibits an in-kernel or core-userland browser engine. It has
+> since been removed from `kernel/drivers/browser/` and ported unchanged
+> to the external [Anunix-Browser](https://github.com/anunix/Anunix-Browser)
+> project (as `engine/`, building standalone as `libanxengine`). The
+> section below is left as historical record of the 2026.4.24 release;
+> `anx_browser_init(9191)` and the "native engine" path no longer exist
+> in this repo. Use `browser_init`/`browser`/`browser_stop` to connect to
+> an external anxbrowserd instance instead (see the 2026.4.19 milestone
+> below).
 
 Anunix now ships a **complete HTML/CSS/JS browser engine in the kernel** —
 no external process, no Playwright dependency. The engine tokenizes HTML,
@@ -43,7 +56,7 @@ decodes JPEG/PNG/WebP, and renders to a 1280×800 off-screen framebuffer
 streamed over WebSocket at ~30 FPS via the ANX-Browser Protocol on port 9191.
 
 ```
-anx> browser_init               # connect to anxbrowserd peer or use native engine
+anx> browser_init               # connect to anxbrowserd peer
 anx> browser https://example.com
 # live render appears on framebuffer / stream viewer
 ```

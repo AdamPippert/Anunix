@@ -215,17 +215,6 @@ $(BUILD_DIR)/lib/%.o: $(LIB_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# browser/js and browser/fetch use double (NaN-boxing) — drop -mgeneral-regs-only
-CFLAGS_FP := $(filter-out -mgeneral-regs-only,$(CFLAGS))
-
-$(BUILD_DIR)/drivers/browser/js/%.o: $(DRIVER_DIR)/browser/js/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_FP) -c $< -o $@
-
-$(BUILD_DIR)/drivers/browser/fetch/%.o: $(DRIVER_DIR)/browser/fetch/%.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_FP) -c $< -o $@
-
 # Compile C files from drivers/ (recursive)
 $(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.c
 	@mkdir -p $(dir $@)
@@ -402,7 +391,7 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
 		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/storage/*' \
-		  ! -path '*/browser/*' ! -path '*/audio/*' \
+		  ! -path '*/audio/*' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
 		  ! -name 'driver_table.c' \
 		  2>/dev/null)

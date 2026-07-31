@@ -25,6 +25,16 @@
 #define ANX_POSIX_TIME_NS 123456789ULL
 #define ANX_PROFILE_STORE_MAX 8
 
+/*
+ * FIXTURE, NOT A REAL TLS STACK: tls_endpoints[] below is a compile-time
+ * table keyed on exact URL string match, each entry carrying a
+ * pre-recorded response body and a synthetic cert chain. There is no
+ * socket, no real handshake, no network I/O — anx_tls_https_get() just
+ * looks up the URL and validates the fixture chain in-memory. Do not
+ * describe this in docs/release notes as "TLS support" or "HTTPS
+ * fetch" without this caveat; real TLS 1.3 is still roadmap (see
+ * README.md Roadmap, 2026.5).
+ */
 struct anx_tls_endpoint {
 	const char *url;
 	const char *response;
@@ -421,6 +431,15 @@ anx_cid_t anx_posix_fork(void)
 	return proc->cid;
 }
 
+/*
+ * SIMULATED, NOT REAL EXECUTION: this validates the ELF header, program
+ * headers, and entry point via anx_posix_loader_validate() below, but
+ * never maps the binary's segments or transfers control to it. On
+ * success it just hardcodes last_exec_result to a fixed stdout string
+ * and exit_status=42 — none of the target binary's machine code runs.
+ * Do not describe this in docs/release notes as "running userland
+ * binaries" without this caveat; real execution is still roadmap.
+ */
 int anx_posix_exec_in_proc(struct anx_posix_proc *proc, const char *path)
 {
 	anx_oid_t oid;
