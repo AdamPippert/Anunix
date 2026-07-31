@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-anxbproxy.py — HTTP CONNECT proxy for Anunix Browser HTTPS support.
+anxbproxy.py — HTTP CONNECT proxy for HTTPS support in ANX-Browser-Protocol
+fetch clients that don't implement TLS themselves.
 
-The Anunix kernel browser driver does not implement TLS.  HTTPS requests
-are tunnelled through this proxy:
+NOTE: the in-kernel Anunix browser driver this was originally written for
+(kernel/drivers/browser/) has been removed from this repo — see
+docs/plans/graphical-userspace-platform/00-boundary-decision.md, which
+prohibits an in-kernel/core-userland browser engine. The fetch layer
+(including its use of this CONNECT-tunnel proxy) was ported unchanged to
+the external Anunix-Browser project (engine/fetch/https_proxy.c there),
+which is this script's current intended consumer:
 
-  Kernel → TCP CONNECT host:443 → anxbproxy → TLS → remote server
+  Client → TCP CONNECT host:443 → anxbproxy → TLS → remote server
 
 Usage:
     python3 tools/anxbproxy.py [--host 0.0.0.0] [--port 8118]
 
 QEMU user-mode networking forwards guest port to host automatically;
-the kernel reaches the proxy at 10.0.2.2:8118 (QEMU host alias).
+a QEMU-guest client reaches the proxy at 10.0.2.2:8118 (QEMU host alias).
 
 For bare-metal / UTM use, pass --host 0.0.0.0 and configure the guest
 to reach the host machine's IP on port 8118.
