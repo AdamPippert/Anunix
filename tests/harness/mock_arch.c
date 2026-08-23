@@ -28,8 +28,15 @@
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
-/* 8 MiB static heap for test builds */
-#define MOCK_HEAP_SIZE	(8 * 1024 * 1024)
+/*
+ * Static heap for test builds. All test cases run sequentially in one
+ * process with no reclamation between them (each test's _init() resets
+ * hashtable head pointers, not the underlying page allocator), so this
+ * has to comfortably fit the cumulative allocations of the whole,
+ * ever-growing suite, not just one test. Bumped from 8 MiB to 32 MiB
+ * when RFC-0029's four new tests pushed the suite past the old margin.
+ */
+#define MOCK_HEAP_SIZE	(32 * 1024 * 1024)
 static uint8_t mock_heap[MOCK_HEAP_SIZE]
 	__attribute__((aligned(4096)));
 

@@ -32,29 +32,20 @@ int test_resourced_twin_simulate(void)
 		return -3;
 
 	/* Two engines: "fast" has higher quality, "slow" is degraded. */
+	/* anx_engine_register() starts engines in ANX_ENGINE_AVAILABLE
+	 * directly (unlike anx_engine_register_model(), which starts in
+	 * REGISTERED) — no LOADING/READY steps needed here. */
 	if (anx_engine_register("fast", ANX_ENGINE_RETRIEVAL_SERVICE,
 				0, &fast) != ANX_OK)
 		return -4;
 	fast->quality_score = 80;
 	fast->is_local = true;
-	if (anx_engine_transition(fast, ANX_ENGINE_LOADING) != ANX_OK)
-		return -5;
-	if (anx_engine_transition(fast, ANX_ENGINE_READY) != ANX_OK)
-		return -5;
-	if (anx_engine_transition(fast, ANX_ENGINE_AVAILABLE) != ANX_OK)
-		return -5;
 
 	if (anx_engine_register("slow", ANX_ENGINE_RETRIEVAL_SERVICE,
 				0, &slow) != ANX_OK)
 		return -6;
 	slow->quality_score = 80;
 	slow->is_local = true;
-	if (anx_engine_transition(slow, ANX_ENGINE_LOADING) != ANX_OK)
-		return -7;
-	if (anx_engine_transition(slow, ANX_ENGINE_READY) != ANX_OK)
-		return -7;
-	if (anx_engine_transition(slow, ANX_ENGINE_AVAILABLE) != ANX_OK)
-		return -7;
 	if (anx_engine_transition(slow, ANX_ENGINE_DEGRADED) != ANX_OK)
 		return -7;
 
