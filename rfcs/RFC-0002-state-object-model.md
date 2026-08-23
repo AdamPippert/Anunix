@@ -7,6 +7,7 @@
 | Author      | Adam Pippert                   |
 | Status      | Draft                          |
 | Created     | 2026-04-13                     |
+| Updated     | 2026-08-22                     |
 | Requires    | RFC-0001 (Architecture Thesis) |
 | Supersedes  | —                              |
 
@@ -277,6 +278,23 @@ Each `object_type` implies a payload layout, detailed in Section 5. Briefly:
 - **`model_output`:** A result payload, a confidence score, the model identifier, and input references. The kernel understands confidence and can route based on it.
 - **`execution_trace`:** A structured log of cell inputs, outputs, duration, resource usage, and exit status. The kernel uses this for scheduling optimization and debugging.
 
+#### 4.4.3 Staged Mutation
+
+*Added 2026-08-22 as part of the Execution Contracts extension (RFC-0003 Section 21.4).*
+
+Section 4.4.1 states that the payload is mutable until sealed. Mutation has two forms: **direct**, where a write is applied to the live payload and becomes visible to every reader immediately, and **staged**, where a write accumulates against a private shadow copy that is not visible to any reader until it is explicitly resolved.
+
+A staged mutation has exactly one owner: the handle that opened the stage. While a stage is open, `so_write_payload` and `so_replace_payload` on that handle write to the shadow copy; the live payload, `version`, and `content_hash` do not change. Only one stage may be open on an object at a time — a second `so_stage` call on an already-staged object is rejected rather than creating a second shadow, which keeps the concurrency model simple at the cost of serializing concurrent staged writers.
+
+A stage resolves one of two ways:
+
+- **Commit.** The shadow payload becomes the live payload in one step: `version` increments exactly once, `content_hash` is recomputed once, and one `MUTATED` provenance event is appended. No intermediate state is ever observable — a reader sees either the pre-stage payload or the fully-committed one.
+- **Abort.** The shadow copy is discarded. The live payload, `version`, and `content_hash` are exactly as they were before the stage began — the mutation was never visible to any reader. The attempt is still recorded, as a new provenance event type, `STAGE_ABORTED` (Section 4.6.1), so that discarding a mutation does not discard the evidence that it was attempted. This follows the same principle as `SEALED` and `POLICY_CHANGED` events: governance-relevant state transitions are provenance-relevant, whether or not they change the payload.
+
+An object cannot be sealed or deleted while a stage is open. This is a deliberate ordering constraint, not an oversight: it forces every staged mutation to be explicitly committed or aborted before the object's lifecycle can advance, so a pending effect can never be silently dropped by a lifecycle transition racing ahead of it.
+
+Staging is an extension of the existing object model, not a new storage layer — it reuses the payload, version, and provenance mechanisms Section 4 already defines, with one additional per-object pointer to an out-of-line shadow-mutation record that costs nothing when unused (Design Goal DG-8).
+
 ### 4.5 Metadata
 
 The Metadata section carries descriptive information about the object. It is divided into two namespaces with different authority.
@@ -327,7 +345,8 @@ ProvenanceEvent {
                         SEALED,
                         POLICY_CHANGED,
                         ACCESSED,
-                        MIGRATED
+                        MIGRATED,
+                        STAGE_ABORTED    // added 2026-08-22, Section 4.4.3
                     }
     actor_cell:     oid             // the Execution Cell that caused this event
     actor_model:    string?         // if actor was a model: model ID and version

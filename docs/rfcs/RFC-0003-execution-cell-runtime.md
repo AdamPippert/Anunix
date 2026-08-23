@@ -7,7 +7,7 @@
 | Author     | Adam Pippert                               |
 | Status     | Draft                                      |
 | Created    | 2026-04-13                                 |
-| Updated    | 2026-04-13                                 |
+| Updated    | 2026-08-22                                 |
 | Depends On | RFC-0001, RFC-0002                         |
 
 ---
@@ -268,6 +268,7 @@ Remote execution and remote memory access must be treated as regular execution s
 | `validation_policy` | Yes | Validation requirements before commit/promotion |
 | `commit_policy` | Yes | Persistence, side-effect, and memory promotion rules |
 | `execution_policy` | Yes | Security and execution restrictions |
+| `contract` | No | Execution contract: consistency class and effect mode (Section 6.4). Absent means the default, `best_effort` / `direct`. |
 | `runtime` | Yes | Runtime state, resource bindings, and metrics |
 | `parent_cell_ref` | No | Parent cell lineage reference |
 | `child_cell_refs` | Yes | Child cells created during decomposition |
@@ -335,6 +336,34 @@ Remote execution and remote memory access must be treated as regular execution s
   "output_refs": []
 }
 ```
+
+### 6.4 Execution Contract
+
+*Added 2026-08-22.*
+
+The execution contract declares how strongly a cell's outputs must behave under concurrency and failure, and whether the cell's State Object writes go live immediately or through a staged mutation (RFC-0002 Section 4.4.3). It is optional; an absent contract is equivalent to the pre-contract default and does not change any existing cell's behavior.
+
+```json
+"contract": {
+  "consistency": "transactional",
+  "effect_mode": "staged"
+}
+```
+
+**Consistency class** (`consistency`) — one of:
+
+- `best_effort` (default) — no additional isolation or atomicity guarantee beyond what the cell's own logic provides.
+- `semantic` — the committed outcome must satisfy the cell's declared success condition and evidence obligations, even if the reasoning path that produced it is not reproducible.
+- `transactional` — in addition to `semantic`, partially completed or invalid output sequences must never become visible; concurrent cells must not observe each other's uncommitted intermediate state.
+
+**Effect mode** (`effect_mode`) — one of:
+
+- `direct` (default) — State Object writes apply to the live payload immediately, as they always have.
+- `staged` — State Object writes accumulate against a private shadow copy (RFC-0002 Section 4.4.3) and become visible only when the cell explicitly commits them. A cell using `staged` effects is responsible for resolving every stage it opens (commit on success, abort on failure or cancellation) before the object can be sealed or deleted.
+
+A contract is set once, before admission (`ANX_CELL_CREATED`), and is fixed for the life of the run — this lets routing and commit logic downstream rely on it without re-checking for concurrent modification. `consistency` and `effect_mode` are declared independently: a cell can request `transactional` consistency with `direct` effects (the cell enforces atomicity itself), or `best_effort` consistency with `staged` effects (the cell just wants an inspectable pending state, not a strong isolation guarantee). Neither implies the other.
+
+Inference-level determinism — pinning model weights, batch shape, and RNG state so a model produces byte-identical output across runs — is a property of the model-serving runtime (RFC-0021), not of the execution contract. A cell's consistency class governs what its *effects* must satisfy; it does not, by itself, make model inference reproducible.
 
 ---
 
@@ -1014,6 +1043,8 @@ The runtime should conceptually separate commit into:
    - mark commit complete
    - attach trace refs
    - release ephemeral staging state
+
+*Added 2026-08-22:* when a cell's execution contract (Section 6.4) declares `effect_mode: staged`, this three-phase model has a concrete mechanism: **prepare** opens a stage on each output object (`anx_object_stage`, RFC-0002 Section 4.4.3), **apply** performs writes against the resulting shadow copy, and **finalize** resolves every open stage — `anx_object_commit` on success, `anx_object_abort` on failure or cancellation, never left open. Under `effect_mode: direct` (the default), the three phases remain a conceptual grouping only; writes still apply immediately as they always have.
 
 ### 21.2 Durable Output Rules
 
