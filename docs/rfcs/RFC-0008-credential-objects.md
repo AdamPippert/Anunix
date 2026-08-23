@@ -579,3 +579,16 @@ Implement the credential proxy pattern for remote execution. This requires the N
 ### Phase 5 — Rotation and Lifecycle
 
 Implement credential rotation, revocation, expiration, and the full lifecycle state machine.
+
+---
+
+## 18. Relationship to RFC-0028: Protected Operation ABI
+
+Credential Objects gate access to secrets; they say nothing about where
+data derived using those secrets is subsequently permitted to travel.
+RFC-0028 introduces that as a separate concern — information-flow labels
+on State Objects and Sink destinations with a sensitivity ceiling — plus a
+prepare/dispatch/settle protocol for any effect crossing a trust boundary,
+so that a credential-gated operation's outcome, once dispatched, resolves
+to a committed, restored, or explicitly unknown state rather than being
+inferred from a bare timeout.

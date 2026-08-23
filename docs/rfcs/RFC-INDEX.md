@@ -42,6 +42,7 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0025](RFC-0025-icm-over-state-objects.md) | ICM over State Objects — Information Context Management as a Native Convention | Review | Adam Pippert | 0002, 0003, 0007, 0011, 0018 |
 | [0026](RFC-0026-kit-subsystem.md) | Kit Subsystem — Unified Loadable Subsystems | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0008, 0013, 0018, 0020 |
 | [0027](RFC-0027-persona-objects.md) | Persona Objects — Agent Identity, Custody, and Governance | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0008, 0009, 0013, 0018, 0020, 0026 |
+| [0028](RFC-0028-protected-operation-abi.md) | Protected Operation ABI — Information-Flow Labels and the Prepare/Dispatch/Settle Effect Protocol | Draft | Adam Pippert | 0002, 0003, 0007, 0008 |
 
 ## Dependency Graph
 
@@ -66,4 +67,7 @@ RFC-0002, RFC-0003, RFC-0007, RFC-0011, RFC-0018
 RFC-0002, RFC-0003, RFC-0005, RFC-0007, RFC-0008, RFC-0013, RFC-0018, RFC-0020
   └── RFC-0026 (Kit Subsystem)
        └── RFC-0027 (Persona Objects) [also depends on RFC-0009]
+RFC-0002, RFC-0003, RFC-0007, RFC-0008
+  └── RFC-0028 (Protected Operation ABI) — extends capability/credential
+       authority with an independent information-flow gate
 ```

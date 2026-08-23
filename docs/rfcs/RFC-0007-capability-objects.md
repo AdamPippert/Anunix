@@ -2434,3 +2434,16 @@ The Capability Object completes the loop that makes Anunix a self-improving syst
 The design is deliberately conservative about automation. Extraction is suggestive. Installation requires validation. Trust is earned through benchmarks, not assumed from authorship. Supersession preserves history. Dependencies are explicit. Every decision is traceable. The system proposes; the user disposes. This is the right posture for a capability system that must earn trust incrementally rather than demanding it upfront.
 
 Without this layer, the system routes every task from scratch, unable to accumulate operational knowledge about what works. With it, the operating environment develops a growing repertoire of validated, composable, observable execution patterns — and the feedback loop to keep them honest.
+---
+
+## 29. Relationship to RFC-0028: Protected Operation ABI
+
+A Capability Object answers "can this actor invoke this operation" —
+authority over an action. It does not, and should not, answer "may the
+data this operation touches flow to this destination." RFC-0028 adds that
+second question as an independent gate: information-flow labels
+(`enum anx_sensitivity`) on State Objects, and Sinks that declare a
+sensitivity ceiling. A cell holding a validly installed capability can
+still be denied by RFC-0028's `CAN_SEND` check even though `CAN_CALL`
+passes — the two checks never collapse into one, so expanding a cell's
+capability set never implicitly expands what data it may move.
