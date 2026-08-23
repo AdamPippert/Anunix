@@ -15,6 +15,7 @@
 #include <anx/types.h>
 #include <anx/list.h>
 #include <anx/spinlock.h>
+#include <anx/state_object.h>
 
 /* --- Capability lifecycle states (RFC-0007 Section 8) --- */
 
@@ -89,5 +90,44 @@ void anx_cap_record_invocation(struct anx_capability *cap, bool success);
 
 /* Validate a DRAFT capability; transitions to VALIDATED or back to DRAFT */
 int anx_cap_validate(struct anx_capability *cap);
+
+/* --- Sinks (RFC-0028 Protected Operation ABI) --- */
+
+/*
+ * A Sink names a destination protected effects may flow to (a network
+ * peer, an external process, a device — whatever a caller registers
+ * it for) and the ceiling of data sensitivity it is authorized to
+ * receive. This is the CAN_SEND gate; it is independent of whether a
+ * cell CAN_CALL the operation that would use this Sink — a capability
+ * grant to invoke an operation never implicitly authorizes sending
+ * arbitrary sensitive data through it.
+ */
+struct anx_sink {
+	char name[64];
+	enum anx_sensitivity max_sensitivity;
+};
+
+/* One-time registry init. Safe to call multiple times. */
+void anx_sink_registry_init(void);
+
+/*
+ * Register a Sink. Replaces any existing Sink with the same name.
+ * Returns ANX_OK, ANX_EINVAL (bad args), or ANX_ENOMEM (registry full).
+ */
+int anx_sink_register(const char *name, enum anx_sensitivity max_sensitivity,
+		      struct anx_sink **out);
+
+/* Look up a registered Sink by name. Returns NULL if not found. */
+struct anx_sink *anx_sink_lookup(const char *name);
+
+/*
+ * CAN_SEND(object, sink): may object_oid's data flow to this Sink?
+ * Returns ANX_OK if the object's sensitivity is within the Sink's
+ * max_sensitivity, ANX_EPERM if it exceeds it, ANX_EINVAL on bad args.
+ * An unresolvable object_oid is treated as ANX_SENSITIVITY_PUBLIC (see
+ * anx_object_get_sensitivity) rather than failing the check — callers
+ * that need existence verified should resolve the OID first.
+ */
+int anx_sink_check_send(const struct anx_sink *sink, const anx_oid_t *object_oid);
 
 #endif /* ANX_CAPABILITY_H */

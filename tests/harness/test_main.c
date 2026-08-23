@@ -71,6 +71,8 @@ int test_uor(void);
 int test_icm(void);
 int test_state_staged_mutation(void);
 int test_exec_execution_contract(void);
+int test_cap_flow_label(void);
+int test_cap_effect_protocol(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -126,6 +128,8 @@ static struct test_case tests[] = {
 	{ "icm",		test_icm },
 	{ "state_staged_mutation", test_state_staged_mutation },
 	{ "exec_execution_contract", test_exec_execution_contract },
+	{ "cap_flow_label",	test_cap_flow_label },
+	{ "cap_effect_protocol", test_cap_effect_protocol },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
