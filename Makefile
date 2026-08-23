@@ -452,7 +452,11 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_state_staged_mutation.c \
                tests/test_exec_execution_contract.c \
                tests/test_cap_flow_label.c \
-               tests/test_cap_effect_protocol.c
+               tests/test_cap_effect_protocol.c \
+               tests/test_resourced_twin_simulate.c \
+               tests/test_regime_detector.c \
+               tests/test_sched_cognitive_envelope.c \
+               tests/test_cap_measured_null_promotion.c
 TEST_BIN    := build/test/anunix_test
 
 test:

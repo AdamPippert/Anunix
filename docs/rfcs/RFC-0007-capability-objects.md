@@ -2447,3 +2447,17 @@ sensitivity ceiling. A cell holding a validly installed capability can
 still be denied by RFC-0028's `CAN_SEND` check even though `CAN_CALL`
 passes — the two checks never collapse into one, so expanding a cell's
 capability set never implicitly expands what data it may move.
+
+## 30. Relationship to RFC-0029: Resource Twin and Regime-Gated Scheduling Policy
+
+Section 8's promotion lifecycle (`ANX_CAP_VALIDATED` -> `ANX_CAP_INSTALLED`)
+answers "did this capability pass validation." It does not, by itself,
+answer "is this capability's proposed replacement of an installed
+incumbent actually better, or just noise from one lucky run." RFC-0029
+adds that as an independent, mandatory gate for any capability that
+declares a `supersedes_oid`: `anx_cap_install()` now refuses such a
+candidate outright, and `anx_cap_install_gated()` only installs it once
+a measured-null promotion trial shows every paired run beat the
+incumbent by a margin that scales with how many candidates were tried
+this round. A capability with no incumbent to replace is unaffected —
+it installs exactly as before.
