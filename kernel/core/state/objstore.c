@@ -183,6 +183,33 @@ int anx_so_create(const struct anx_so_create_params *params,
 		obj->parent_count = params->parent_count;
 	}
 
+	/*
+	 * Information-flow label. An explicit override wins; otherwise a
+	 * derived object inherits the highest sensitivity among its
+	 * parents rather than silently defaulting to PUBLIC (RFC-0028).
+	 */
+	obj->sensitivity = params->sensitivity;
+	obj->sensitivity_origin = ANX_UUID_NIL;
+	if (params->sensitivity == ANX_SENSITIVITY_PUBLIC && obj->parent_count > 0) {
+		uint32_t i;
+		enum anx_sensitivity max_sens = ANX_SENSITIVITY_PUBLIC;
+		anx_oid_t max_origin = ANX_UUID_NIL;
+
+		for (i = 0; i < obj->parent_count; i++) {
+			struct anx_state_object *parent =
+				anx_objstore_lookup(&obj->parent_oids[i]);
+			if (!parent)
+				continue;
+			if (parent->sensitivity > max_sens) {
+				max_sens = parent->sensitivity;
+				max_origin = parent->oid;
+			}
+			anx_objstore_release(parent);
+		}
+		obj->sensitivity = max_sens;
+		obj->sensitivity_origin = max_origin;
+	}
+
 	/* Lifecycle */
 	obj->state = ANX_OBJ_CREATING;
 	anx_spin_init(&obj->lock);

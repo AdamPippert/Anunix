@@ -136,6 +136,9 @@ void kernel_main(void)
 	anx_cap_store_init();
 	kprintf("capability store initialized\n");
 
+	/* 6b. Sinks (RFC-0028 Protected Operation ABI) */
+	anx_sink_registry_init();
+
 	/* 7a. Interface Plane (RFC-0012) — after engine registry */
 	if (anx_iface_init() == ANX_OK) {
 		anx_renderer_headless_register();

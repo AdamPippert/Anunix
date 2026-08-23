@@ -450,7 +450,9 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_diag_inline.c \
                tests/test_icm.c \
                tests/test_state_staged_mutation.c \
-               tests/test_exec_execution_contract.c
+               tests/test_exec_execution_contract.c \
+               tests/test_cap_flow_label.c \
+               tests/test_cap_effect_protocol.c
 TEST_BIN    := build/test/anunix_test
 
 test:

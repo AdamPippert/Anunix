@@ -66,6 +66,21 @@ enum anx_object_state {
 	ANX_OBJ_TOMBSTONE,
 };
 
+/* --- Information-flow labels (RFC-0028 Protected Operation ABI) --- */
+
+/*
+ * How sensitive an object's payload is, independent of who may invoke
+ * operations on it. A capability grant answers "can this actor act";
+ * sensitivity answers "where may this data go" — two orthogonal gates,
+ * never merged into one check (see RFC-0028).
+ */
+enum anx_sensitivity {
+	ANX_SENSITIVITY_PUBLIC,
+	ANX_SENSITIVITY_INTERNAL,
+	ANX_SENSITIVITY_CONFIDENTIAL,
+	ANX_SENSITIVITY_RESTRICTED,
+};
+
 /* --- Staged mutation (RFC-0003 Execution Contracts extension) --- */
 
 /*
@@ -106,6 +121,16 @@ struct anx_state_object {
 	 */
 	struct anx_staged_mutation *staged;
 
+	/*
+	 * Information-flow label. Defaults to PUBLIC with a nil origin —
+	 * zero-initialized objects need no extra work to classify (RFC-0002
+	 * DG-8). sensitivity_origin is the OID of the object this
+	 * classification was inherited from, if any; nil if the label was
+	 * set explicitly rather than derived from a parent.
+	 */
+	enum anx_sensitivity sensitivity;
+	anx_oid_t sensitivity_origin;
+
 	/* Metadata */
 	struct anx_meta_store *system_meta;
 	struct anx_meta_store *user_meta;
@@ -140,6 +165,18 @@ struct anx_so_create_params {
 	const anx_oid_t *parent_oids;	/* derivation parents */
 	uint32_t parent_count;
 	anx_cid_t creator_cell;
+
+	/*
+	 * Explicit sensitivity override. If left at ANX_SENSITIVITY_PUBLIC
+	 * (the zero value) and parent_oids are given, the object inherits
+	 * the highest sensitivity among its parents instead — a derived
+	 * object never silently defaults to a lower classification than
+	 * what it was built from. Because PUBLIC is also the "no override"
+	 * sentinel, a caller that truly wants PUBLIC despite sensitive
+	 * parents must call anx_object_set_sensitivity() explicitly after
+	 * creation rather than relying on this field.
+	 */
+	enum anx_sensitivity sensitivity;
 };
 
 /* Open modes */
@@ -231,5 +268,22 @@ int anx_object_commit(struct anx_object_handle *handle);
  * Returns ANX_EINVAL if no stage is in progress.
  */
 int anx_object_abort(struct anx_object_handle *handle);
+
+/* --- Information-flow label API --- */
+
+/*
+ * Set an object's sensitivity explicitly, recording origin as nil
+ * (this is a direct declaration, not an inheritance). Returns
+ * ANX_ENOENT if oid does not resolve.
+ */
+int anx_object_set_sensitivity(const anx_oid_t *oid, enum anx_sensitivity level);
+
+/*
+ * Get an object's sensitivity. Returns ANX_SENSITIVITY_PUBLIC (and
+ * logs nothing) if oid does not resolve — callers that need to
+ * distinguish "unknown object" from "public object" should resolve
+ * the OID themselves first via anx_objstore_lookup.
+ */
+enum anx_sensitivity anx_object_get_sensitivity(const anx_oid_t *oid);
 
 #endif /* ANX_STATE_OBJECT_H */
