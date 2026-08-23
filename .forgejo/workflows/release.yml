@@ -39,44 +39,79 @@ jobs:
         run: |
           make iso ARCH=x86_64 2>&1 | tail -10 || echo "ISO build skipped (missing deps)"
 
+      - name: Draft release notes (agent)
+        env:
+          GABRIEL_WEBHOOK: ${{ secrets.GABRIEL_WEBHOOK_URL }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          NOTES_FILE="RELEASE-${VERSION}.md"
+
+          if [ -f "$NOTES_FILE" ]; then
+            echo "Using pre-written $NOTES_FILE"
+            exit 0
+          fi
+
+          PREV_TAG=$(git describe --tags --abbrev=0 "${VERSION}^" 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log --pretty='format:- **%s** (`%h`)' "${PREV_TAG}..${VERSION}")
+          else
+            LOG=$(git log --pretty='format:- **%s** (`%h`)' "${VERSION}")
+          fi
+
+          if [ -n "$GABRIEL_WEBHOOK" ]; then
+            MSG="Gabriel, please write GitHub release notes for Anunix ${VERSION}. Match the style of the existing Anunix release v2026.4.18-1 on GitHub (AdamPippert/Anunix): an H1 title, a short intro paragraph, then '## Highlights' (3-6 bullets), '## New Features' grouped by subsystem with commit hashes in backticks, a '## RFCs' section if any RFC landed, '## Build & Tooling Fixes' if relevant, a '## Statistics' section (commit count, new RFCs, new subsystems), and a '## Known Issues' section (state none if there are none). Base it on this commit log since ${PREV_TAG:-the start of history}:\n\n${LOG}\n\nWrite only the markdown release notes, nothing else. Save your output to ${NOTES_FILE} in the repo root."
+
+            curl -s -X POST "$GABRIEL_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "{\"message\": $(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('response', d.get('text','')))" > "$NOTES_FILE"
+          fi
+
+          # Fall back to a plain commit-log body if no webhook is configured
+          # or the agent produced nothing — a release must always get a body.
+          if [ ! -s "$NOTES_FILE" ]; then
+            { echo "# Anunix ${VERSION}"; echo; echo "$LOG"; } > "$NOTES_FILE"
+          fi
+
       - name: Stage release artifacts
         run: |
           mkdir -p release-artifacts
           VERSION="${{ steps.version.outputs.VERSION }}"
-          
+
           # Kernel ELF
           cp build/x86_64/anunix.elf "release-artifacts/anunix-${VERSION}-x86_64.elf" 2>/dev/null || true
-          
+
           # ISO if it exists
           cp build/anunix-x86_64.iso "release-artifacts/anunix-${VERSION}-x86_64.iso" 2>/dev/null || true
-          
+
           # Release notes
           NOTES="RELEASE-${VERSION}.md"
           if [ -f "$NOTES" ]; then
             cp "$NOTES" "release-artifacts/"
           fi
-          
+
           ls -lh release-artifacts/
 
       - name: Create Forgejo release
+        id: forgejo_release
         env:
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           NOTES_FILE="RELEASE-${VERSION}.md"
-          
+
           # Read release notes if they exist
           if [ -f "$NOTES_FILE" ]; then
             BODY=$(cat "$NOTES_FILE")
           else
             BODY="Anunix ${VERSION}"
           fi
-          
+
           # Create release via API
           RELEASE=$(curl -s -X POST \
             -H "Authorization: token ${FORGEJO_TOKEN}" \
             -H "Content-Type: application/json" \
-            "${FORGEJO_API}/api/v1/repos/anunix/anunix/releases" \
+            "${FORGEJO_API}/api/v1/repos/adam/Anunix/releases" \
             -d "{
               \"tag_name\": \"${VERSION}\",
               \"name\": \"Anunix ${VERSION}\",
@@ -84,18 +119,68 @@ jobs:
               \"draft\": false,
               \"prerelease\": false
             }")
-          
+
           RELEASE_ID=$(echo "$RELEASE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
           echo "Created release ID: $RELEASE_ID"
           echo "RELEASE_ID=$RELEASE_ID" >> $GITHUB_OUTPUT
-          
+
           # Upload artifacts
           for f in release-artifacts/*; do
             fname=$(basename "$f")
             curl -s -X POST \
               -H "Authorization: token ${FORGEJO_TOKEN}" \
               -H "Content-Type: application/octet-stream" \
-              "${FORGEJO_API}/api/v1/repos/anunix/anunix/releases/${RELEASE_ID}/assets?name=${fname}" \
+              "${FORGEJO_API}/api/v1/repos/adam/Anunix/releases/${RELEASE_ID}/assets?name=${fname}" \
+              --data-binary "@$f" | python3 -c "import json,sys; d=json.load(sys.stdin); print('uploaded:', d.get('name','?'))"
+          done
+
+      - name: Promote release to GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_RELEASE_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          NOTES_FILE="RELEASE-${VERSION}.md"
+
+          if [ -z "$GH_TOKEN" ]; then
+            echo "GITHUB_RELEASE_TOKEN not set — skipping GitHub promotion." \
+                 "This is the single canonical release location for every" \
+                 "machine/agent working on this repo, regardless of which" \
+                 "Forgejo checkout cut the release; add the secret to enable it."
+            exit 0
+          fi
+
+          if [ -f "$NOTES_FILE" ]; then
+            BODY=$(cat "$NOTES_FILE")
+          else
+            BODY="Anunix ${VERSION}"
+          fi
+
+          RELEASE=$(curl -s -X POST \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/AdamPippert/Anunix/releases" \
+            -d "{
+              \"tag_name\": \"${VERSION}\",
+              \"name\": \"Anunix ${VERSION}\",
+              \"body\": $(echo "$BODY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+              \"draft\": false,
+              \"prerelease\": false
+            }")
+
+          UPLOAD_URL=$(echo "$RELEASE" | python3 -c "import json,sys; u=json.load(sys.stdin).get('upload_url',''); print(u.split('{')[0])")
+          if [ -z "$UPLOAD_URL" ]; then
+            echo "GitHub release creation failed:"
+            echo "$RELEASE"
+            exit 1
+          fi
+          echo "Created GitHub release: ${VERSION}"
+
+          for f in release-artifacts/*; do
+            fname=$(basename "$f")
+            curl -s -X POST \
+              -H "Authorization: token ${GH_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              "${UPLOAD_URL}?name=${fname}" \
               --data-binary "@$f" | python3 -c "import json,sys; d=json.load(sys.stdin); print('uploaded:', d.get('name','?'))"
           done
 
