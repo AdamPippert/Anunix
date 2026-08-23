@@ -9,11 +9,29 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.4.24-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.5.8-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-30%20passing-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-50%2B%20suites-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/RFCs-26-blueviolet" alt="RFCs">
 </p>
+
+---
+
+## Try It Now
+
+```sh
+git clone https://github.com/AdamPippert/Anunix.git
+cd Anunix
+make toolchain   # one-time: fetches ld.lld + llvm-objcopy
+./run.sh         # builds the kernel if needed and launches in QEMU
+```
+
+`run.sh` accepts `--arch x86_64|arm64`, `--mem 1G`, and `--fb` (framebuffer display).
+For lower-level control, `make qemu` / `make qemu-fb` / `make qemu-fb-net` still work.
+
+**New here?** Read [docs/CONCEPTS.md](docs/CONCEPTS.md) — a 60-second map of
+Anunix's core primitives and how they map to UNIX abstractions you already know.
 
 ---
 
@@ -24,6 +42,7 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | UNIX | Anunix | Why |
 |------|--------|-----|
 | Files | **State Objects** | Content-addressed, versioned, with provenance |
+| Paths | **UOR Coordinates** | Topological identity derived from a canonical manifest (RFC-0002 §14) |
 | Processes | **Execution Cells** | Lifecycle-managed, composable, with resource budgets |
 | `malloc`/`mmap` | **Memory Planes** | Tiered memory with semantic decay and promotion |
 | Pipes | **Routing Plane** | Type-aware routing with pluggable transformation engines |
@@ -31,456 +50,361 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | `chmod`/ACLs | **Capabilities** | Object-level, unforgeable, delegatable |
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
-
-## Release: 2026.4.24
-
-### Milestone: Native kernel browser engine (superseded — see note)
-
-> **Update:** the in-kernel browser engine described below violated
-> Anunix's own accepted boundary decision
-> ([`docs/plans/graphical-userspace-platform/00-boundary-decision.md`](docs/plans/graphical-userspace-platform/00-boundary-decision.md)),
-> which prohibits an in-kernel or core-userland browser engine. It has
-> since been removed from `kernel/drivers/browser/` and ported unchanged
-> to the external [Anunix-Browser](https://github.com/anunix/Anunix-Browser)
-> project (as `engine/`, building standalone as `libanxengine`). The
-> section below is left as historical record of the 2026.4.24 release;
-> `anx_browser_init(9191)` and the "native engine" path no longer exist
-> in this repo. Use `browser_init`/`browser`/`browser_stop` to connect to
-> an external anxbrowserd instance instead (see the 2026.4.19 milestone
-> below).
-
-Anunix now ships a **complete HTML/CSS/JS browser engine in the kernel** —
-no external process, no Playwright dependency. The engine tokenizes HTML,
-builds a DOM, cascades CSS, runs JavaScript (NaN-boxing VM with mark-sweep GC),
-decodes JPEG/PNG/WebP, and renders to a 1280×800 off-screen framebuffer
-streamed over WebSocket at ~30 FPS via the ANX-Browser Protocol on port 9191.
-
-```
-anx> browser_init               # connect to anxbrowserd peer
-anx> browser https://example.com
-# live render appears on framebuffer / stream viewer
-```
-
-**What's new in 2026.4.24**
-
-- **Native browser engine** (`kernel/drivers/browser/`) — HTML/CSS/JS/image pipeline, ~8,000 lines of C
-- **HTTPS via CONNECT proxy** — `tools/anxbproxy.py` terminates TLS on host at `10.0.2.2:8118`
-- **Form submission** — action URL captured in layout pass; Enter/submit-click builds URL + navigates
-- **Full `JSON.stringify`/`JSON.parse`** — handles nested objects, arrays, string escaping, numbers
-- **Session timestamps** — `created_at` from `arch_time_now()` (ns-since-epoch)
-- **System font baseline fix** — ANX Schoolbook 12×24 ascender -7 (was -5), no more clipping
-- **WM + browser coexist** — `anx_wm_init()` and `anx_browser_init(9191)` both called at boot
-
-See [`RELEASE-2026.4.24.md`](RELEASE-2026.4.24.md) for full details.
+| GRUB | **anxboot** | Custom UEFI loader, no second-stage, no GNU EFI, no edk2 |
 
 ---
 
-## Release: 2026.4.19
+## Release: 2026.5.8
 
-### Milestone: QEMU graphical browser rendering
+### Milestone: Topological organization of State Objects
 
-Anunix can now render a live Chromium browser session directly to the framebuffer. The new **Browser Renderer Cell** streams JPEG frames from an [anxbrowserd](https://github.com/anunix/Anunix-Browser) instance running on the QEMU host, decodes them with the built-in JPEG decoder, and blits them to the display at ~30 FPS.
+Every State Object now carries a deterministic, content-derived
+**UOR — Universal Object Reference** — alongside its OID and content hash.
+The projection is a pure function of the canonical manifest
+`(oid, version, content_hash, type, parents, schema)`. The disk store's
+sorted index is keyed on the UOR-derived `boundary_key`, giving
+locality-ordered range scans for free.
 
 ```
-anx> browser_init          # connect to anxbrowserd at 10.0.2.2:9090
-anx> browser https://example.com
-# live render appears on screen
-anx> browser_stop
+anx> uor show default:/weights
+  oid:           obj_018f...
+  content_hash:  sha256:8b9a...
+  boundary_key:  0x4f1c.81d2.a304.0001
+  topology_epoch: 17
 ```
 
-**What's new in 2026.4.19**
+**What's new in 2026.5.8**
 
-- **Browser Renderer Cell** (`kernel/core/exec/browser_cell.c`) — TCP streaming client + JPEG framebuffer blit
-- **GOP mode enumeration** — EFI stub picks highest-res BGRX8888 mode automatically; `gop_list` shows all modes
-- **DPI-aware font scaling** — 1×/2×/3×/4× font scale computed from framebuffer width at boot
-- **PIT frame scheduler** — compositor runs at 30 FPS via PIT IRQ0 callback, not busy-poll
-- **Display diagnostics** — `fb_info`, `gop_list`, `fb_test` shell commands for SSH debugging
-- **QEMU networking** — e1000 NIC + `hostfwd=tcp::8080-:8080` so kernel reaches host anxbrowserd
-- **HTTP API display endpoints** — `GET /api/v1/fb` and `GET /api/v1/display/modes`
-- **PCI bus scan** extended to 8 buses (was 1) for real-hardware AMD FCH USB + GPU discovery
-- **22 tests passing** (up from 17)
+- **UOR subsystem** (`kernel/core/uor/`, `kernel/include/anx/uor.h`) — projection function, boundary-key derivation, topology epoch bumps on rebuild
+- **Topology rebuild** — `anx_uor_rebuild_topology_index()` walks the in-memory store, recomputes every projection, reattaches metadata; non-destructive (payloads, OIDs, provenance untouched)
+- **Disk store locality** — `boundary_key` drives the sorted on-disk index; range scans align with topological neighbourhoods
+- **Editor renamed** — `anunixmacs` → `amacs`. Directory, header, RFC, test name, and the user dotfile (`~/.amacs.el`) all renamed; public `anx_ed_*` API unchanged
+- **anxboot** custom UEFI loader (`boot/anxboot/`) — self-contained PE/COFF binary built with clang + lld-link, no GNU EFI, no edk2, no libc. Loads `/boot/anunix.elf` from the same ESP, fills minimal multiboot2 info, exits boot services, jumps to kernel
+- **RFC-0002 §14** — new section *UOR Projection and Topological Identity* documents the design boundary, manifest schema, projection formula, lifecycle hooks
+- **50 UOR-specific test cases** plus regression coverage of disk-store locality
 
-See [`RELEASE-2026.4.19.md`](RELEASE-2026.4.19.md) for full details.
+See [`RELEASE-2026.5.8.md`](RELEASE-2026.5.8.md) for full details.
 
 ---
 
-## Release: 2026.4.22
+## Earlier releases
 
-### Milestone: Desktop environment, window manager, and AI world model
+### 2026.4.24 — Native in-kernel browser engine (superseded)
 
-Anunix now boots into a full **graphical desktop session** — workspace management, global hotkeys, a menu bar, a visual workflow designer, and an object store browser — all written in C with no dependencies beyond the kernel itself.
+Anunix originally shipped a complete HTML/CSS/JS browser engine in the
+kernel — no external process, no Playwright. It was later found to violate
+Anunix's own boundary decision
+([`docs/plans/graphical-userspace-platform/00-boundary-decision.md`](docs/plans/graphical-userspace-platform/00-boundary-decision.md)),
+which prohibits an in-kernel or core-userland browser engine, and has been
+removed from `kernel/drivers/browser/` and ported unchanged to the external
+[Anunix-Browser](https://github.com/anunix/Anunix-Browser) project (as
+`engine/`, building standalone as `libanxengine`). `anx_browser_init(9191)`
+and the native-engine path no longer exist in this repo; `browser_init`
+connects to an external `anxbrowserd` instance instead (see 2026.4.19
+below). See [`RELEASE-2026.4.24.md`](RELEASE-2026.4.24.md) for the
+historical record of the original release.
 
-**Window manager** (`kernel/core/wm/`)
-- 9 virtual workspaces (Meta+1–9), focus cycling (Meta+Tab), fullscreen toggle (Meta+F)
-- Menu bar with workspace dots, network status, and power icon
-- Omarchy-style hotkeys: Meta+Q close, Meta+Enter shell, Meta+Space search, Meta+W workflow designer, Meta+O object viewer
-- Pointer-driven click-to-focus and workspace dot hit-testing
+### 2026.4.23 — Graphical userspace complete (P1/P2)
 
-**Desktop applications**
-- **Workflow Designer** — keyboard-driven node graph editor: view, edit, and execute workflows; serialize to DSL or ASCII graph
-- **Object Viewer** — live object store browser with type, size, refcount columns; inline delete with refcount guard
+All 10 graphical-userspace tickets closed: multi-window/surface model
+hardening, clipboard + drag-and-drop, UTF-8 text shaping, transfer policy
+hooks, accessibility tree, media pipeline, process isolation, conformance
+gate, and crash diagnostics. 41 tests passing.
+See [`RELEASE-2026.4.23.md`](RELEASE-2026.4.23.md).
 
-**HTTP API extended** — workflow (list/create/run/show/graph), agent dispatch, and JEPA status endpoints; external agents can now drive the full workflow subsystem over REST
+### 2026.4.22 — Desktop environment, window manager, AI world model
 
-**JEPA world model** (`kernel/core/jepa/`) — joint embedding predictive architecture observing scheduler, memory, and routing counters; feeds latent state into route scoring and the RLM policy loop
+Anunix boots into a full graphical desktop — 9 virtual workspaces, focus
+cycling, menu bar, workflow designer, and object store browser, all in C.
+The **JEPA world model** (`kernel/core/jepa/`) observes scheduler, memory,
+and routing counters; the **Iterative Belief-Action Loop** (RFC-0020) feeds
+back into route scoring and the RLM policy loop.
+See [`docs/releases/2026.4.22.md`](docs/releases/2026.4.22.md).
 
-**Iterative Belief-Action Loop** (RFC-0020) — continuous self-improvement loop with energy scoring and world-model rebuild on convergence stall
+### 2026.4.19 — Graphical browser streaming
 
-**30/30 host-native tests passing.**
+Browser Renderer Cell streams JPEG from an external `anxbrowserd` at
+~30 FPS. GOP mode enumeration auto-selects the highest-res BGRX8888 mode,
+DPI-aware font scaling, PIT-driven frame scheduler, `fb_info`/`gop_list`/
+`fb_test` shell commands.
+See [`RELEASE-2026.4.19.md`](RELEASE-2026.4.19.md).
 
-See [`docs/releases/2026.4.22.md`](docs/releases/2026.4.22.md) for full details.
+### 2026.4.18 — Tensor-native kernel + HTTP API + SSH server
+
+Tensors as first-class kernel citizens (RFC-0013): `ANX_OBJ_TENSOR` with
+shape, dtype, and BRIN statistics; softfloat IEEE 754 via integer registers;
+`tensor create|info|stats|fill|slice|diff|quantize|search|matmul|relu|transpose|softmax`.
+**HTTP API** on :8080 and **SSH-2.0 server** on :22 (curve25519 + chacha20-poly1305,
+password or ed25519 pubkey). Full crypto primitives in `kernel/lib/crypto/`.
+See [`RELEASE-2026.4.18-1.md`](RELEASE-2026.4.18-1.md).
+
+### 2026.4.16 — First Claude API call from bare metal
+
+Anunix talks to Claude from a cold boot: own networking stack, kernel-enforced
+secret store, JSON request through a TLS proxy, response displayed — all in
+~25,000 lines of C with no libc and no OS underneath. PCI, virtio-net, full
+IP stack (Eth/ARP/IPv4/ICMP/UDP/TCP), DNS, HTTP/1.1, journaled disk store,
+GPT partitioning, ACPI parsing, multi-key authentication.
+See [`RELEASE-2026.4.16.md`](RELEASE-2026.4.16.md).
 
 ---
 
-## Release: 2026.4.18
+## Subsystems
 
-### Milestone: Tensor-native kernel + HTTP API + SSH server
+### Kernel core (`kernel/core/`)
 
-Anunix now treats **tensors as first-class kernel citizens** (RFC-0013) and speaks both **HTTP and SSH** to the outside world.  Agents and humans can connect to a running instance over the network, create tensors, run operations, inspect state, and script workflows end-to-end.
+| Subsystem | RFC | What it does |
+|-----------|-----|--------------|
+| `state/` | 0002 | State Objects: lifecycle, disk store, provenance, access, transfer, namespace |
+| `uor/` | 0002 §14 | Universal Object Reference — topological coordinates + boundary keys |
+| `exec/` | 0003 | Execution Cells: lifecycle, browser cell, model server, VM cell |
+| `mem/` | 0004 | Memory Planes — tiered memory with semantic decay |
+| `route/` | 0005 | Routing Plane — type-aware transformation, topology affinity scoring |
+| `sched/` | 0005 | Unified scheduler with priority + QoS event queues |
+| `net/` | 0006 | Network Plane — DAG edges, zero-copy data plane |
+| `cap/` | 0007 | Capability Objects with trust lifecycle |
+| `cred` | 0008 | Credential store — opaque payloads, scoped access |
+| `agent/` | 0009 | Agent memory and execution lifecycle |
+| `posix/` | 0010 | POSIX compatibility shim |
+| `iface/` | 0012 | Interface Plane — surfaces, events, accessibility, clipboard, drag-drop, media, shm IPC |
+| `tensor/` | 0013 | Tensor Objects + math engine (matmul, ReLU, quantize, BRIN stats) |
+| `vm/` | 0017 | VM Objects — dual-nature primitives |
+| `workflow/` | 0018 | Workflow Objects — graph-structured execution, bundles, library |
+| `wm/` | 0018 | Window manager: terminal, taskbar, menubar, hotkeys, app menu, switcher, agent surface |
+| `apps/` | 0023 | `amacs` editor (eLISP), `video_player`, `object_viewer`, `workflow_designer`, terminal |
+| `audio/` | 0024 | Audio sink + processing pipeline |
+| `video/` | 0024 | Video player and sink |
+| `anxml/` | 0021 | Inference runtime |
+| `ebm/` | 0020 | Energy-Based Model — world model, constraint, goal, uncertainty |
+| `jepa/` | 0020 | Joint Embedding Predictive Architecture — encoder, predictor, trajectory ring, online learning |
+| `loop/` | 0020 | Iterative Belief-Action Loop — belief, goal inference, LLM proposals, PAL scoring, branch/merge |
+| `rlm/` | 0020 | Reinforcement Learning Manager — batch learning, rollout, PAL integration |
+| `log/` | — | Persistent boot-session logging with retention policy |
+| `update/` | — | System update + versioning |
+| `install/` | — | Installer + provisioning |
+| `pal` | — | Cross-boot persistence via disk object store |
 
-```
-$ ssh -i ~/.ssh/id_ed25519 -p 12222 anunix@jekyll -- tensor stats default:/weights
-  shape: [128, 64], dtype: int8
-  mean:     63.500
-  variance: 1365.250
-  l2_norm:  44216320.000
-  sparsity: 0.062
-  min:      0.000
-  max:      127.000
+### Drivers (`kernel/drivers/`)
 
-$ curl -X POST http://jekyll:18080/api/v1/exec \
-    -d '{"command": "tensor matmul default:/a default:/b default:/c"}'
-{"status": "ok", "output": "matmul -> [4,4] int8 (0 cycles)\n"}
-```
+| Class | Drivers |
+|-------|---------|
+| Storage | `ahci` (SATA), `nvme`, `apple_ans` (Apple NVMe), `virtio_blk`, generic `blk` |
+| Network | `e1000`, `virtio_net`, `wifi/` (MT7925 RZ717), full IP stack (`eth`, `arp`, `ipv4`, `icmp`, `udp`, `tcp`, `dns`, `dhcp`, `ntp`, `http`, `httpd`, `sshd`, `tcp_server`) |
+| Audio | `hda` (Intel HD Audio), `apple_audio` |
+| Accel | `xdna` (AMD Ryzen AI NPU) |
+| Display | `fb`, `fbcon`, `gui`, UEFI GOP |
+| Input | `usb_mouse` (HID boot protocol), PS/2 keyboard |
+| Bus | `pci`, `acpi`, `virtio` |
+| Browser | `browser/` — HTML, CSS, JS VM, layout, paint, JPEG/PNG/WebP, forms, PII filter, WebSocket |
 
-### What's new in 2026.4.18
+### Userland shell (`ansh`)
 
-**Tensors (RFC-0013)** — four phases of tensor + model support
-- `ANX_OBJ_TENSOR` State Object with shape, dtype, and BRIN statistics
-- Softfloat IEEE 754 arithmetic via integer registers (`-mgeneral-regs-only`)
-- `tensor create|info|stats|fill|slice|diff|quantize|search|matmul|relu|transpose|softmax`
-- Model namespace (`models:/<name>/layers/...`) with safetensors import
-- CPU reference math engine, operation dispatch through the Routing Plane
-- SGD optimizer step with provenance, checkpoint/verify
+Built-in commands in `kernel/core/tools/`: `bootlog`, `browser`, `cat`, `cells`, `conformance`, `cp`, `display` (`fb_info`/`gop_list`/`fb_test`), `fetch`, `hwd`, `iface_tools`, `inspect`, `kickstart`, `ls`, `meta`, `model`, `mv`, `netinfo`, `rm`, `search`, `sysinfo`, `tensor`, `theme`, `uor`, `vm`, `wifi`, `workflow`, `write`. Plus `agent` (LLM+shell loop), `ask` (Claude API), `ssh-keygen`, pipe chaining, history persistence, scripting (`if/then/end`, `$?`).
 
-**HTTP API server** on port 8080
-- `GET /api/v1/health` — liveness probe
-- `POST /api/v1/exec` — run any ansh command, returns JSON with captured output
-- Output capture hooks into kprintf for structured responses
-
-**SSH-2.0 server** on port 22
-- curve25519-sha256 key exchange, ssh-ed25519 host key, chacha20-poly1305 transport
-- Password and public-key authentication
-- Interactive shell + `ssh host -- cmd` exec mode
-- Host key persisted in the kernel credential store
-
-**Crypto primitives** in `kernel/lib/crypto/`
-- SHA-256 (streaming), SHA-512, HMAC-SHA-256
-- ChaCha20, Poly1305, AES-256-CTR
-- Curve25519 ECDH, Ed25519 sign/verify
-- CSPRNG with RDRAND detection + TSC fallback
-- RFC 8032 and RFC 7539 test vectors pass; fuzzed against Python reference
-
-**Hardware platform support** (RFC-0014)
-- Intel E1000/E1000e NIC driver — 10 device IDs covering QEMU (8086:100E), VMware (8086:100F), 82574L, I219/I210/I211 real hardware; MMIO-only, 64-entry RX/TX rings; auto-detected as NIC fallback when virtio-net is absent
-- AMD XDNA NPU skeleton — Ryzen AI SoCs (Phoenix 1022:1502, Strix Point 1022:17f0); PSP mailbox firmware load, DMA descriptor rings; registers as `ANX_ENGINE_DEVICE_SERVICE` with `ANX_CAP_TENSOR_NPU`; use `xdna load` after storing firmware in credential store
-- PS/2 mouse driver — IRQ 12 aux port, 3-byte packet assembly, feeds into existing cursor/input system; non-fatal if no mouse present
-
-**Documentation** in `docs/hardware/`
-- `RFC-0014-hardware-platform.md` — hardware support strategy, IRQ architecture, device support matrix
-- `xdna-driver-guide.md` — XDNA internals, PSP mailbox protocol, DMA rings, firmware acquisition
-- `apple-silicon-guide.md` — M1/M2 status, ARM64 specifics, six-phase bare-metal roadmap
-
-**Claude Code skills** in `.claude/skills/`
-- `/anunix-build`, `/anunix-deploy`, `/anunix-exec`, `/anunix-test`
-- Package the build-deploy-test loop into one-shot slash commands
-
-### Earlier milestone: First Claude API call from bare metal (2026.4.16)
-
-Anunix can talk to Claude from a cold boot. The kernel initializes its own networking stack, reads API credentials from a kernel-enforced secret store, builds a JSON request, sends it over TCP through a TLS proxy, parses the response, and displays Claude's answer — all in ~25,000 lines of C running on bare metal with no libc, no OS underneath.
-
-```
-anx> secret set anthropic-api-key sk-ant-api03-...
-anx> model-init anthropic-api-key 10.0.2.2 8080
-anx> ask Hello from Anunix
-
-thinking...
-
-Hello! How can I help you today?
-
-[32 in / 12 out tokens]
-```
-
-### What's in the 2026.4.16 release
-
-**Kernel Subsystems (RFC-0001 through RFC-0008)**
-- State Object Layer, Execution Cell Runtime, Memory Control Plane
-- Routing Plane with staged model hosting, budget profiles, route feedback
-- Network Plane (stub — local node registry)
-- Capability Objects with trust lifecycle
-- Credential Objects (RFC-0008) — kernel-enforced secrets management
-
-**Networking**
-- PCI bus enumeration with device class decode
-- Virtio-net driver (legacy PIO transport)
-- Full IP stack: Ethernet, ARP, IPv4, ICMP, UDP, TCP
-- DNS resolver (A records via UDP)
-- HTTP/1.1 client with auth header injection
-- `ping`, `dns`, `http-get`, `api` shell commands
-
-**Storage**
-- Virtio-blk driver (sector read/write, 3-descriptor chains)
-- Journaled on-disk object store (write-ahead log, OID index)
-- GPT partition table creation (EFI + Anunix data partition)
-
-**Hardware Discovery**
-- ACPI table parsing (RSDP, RSDT/XSDT, MADT for CPU/IOAPIC count)
-- Extended PCI device decode (20+ device class names)
-- `hw-inventory` command with ACPI + PCI + block + network summary
-
-**AI Integration**
-- Claude Messages API client with JSON request/response
-- Credential-gated authentication (x-api-key injection)
-- `ask` command with model override (`ask -m model-id message`)
-- Default model: `claude-sonnet-4-6`
-- JSON parser (recursive descent, tree queries)
-
-**Authentication**
-- Multi-key user accounts (password + SSH public key)
-- SHA-256 password hashing (full software implementation)
-- Per-key scopes: console, credentials, objects, admin
-- Login/logout sessions with scope tracking
-- `useradd`, `login`, `logout` shell commands
-
-**Security**
-- Credential payloads never in traces, provenance, kprintf, or network messages
-- Constant-time hash comparison for authentication
-- Secure zeroing of secrets on revoke/rotate (compiler-safe)
-- Command history scrubs `secret set` and `useradd` values
-- Boot-time credential provisioning via multiboot command line
-
-**Platform**
-- Boots on real UEFI hardware (AMD Ryzen 9 HX 370, 96GB RAM)
-- Bootable ISO (BIOS + UEFI) for USB installation
-- 4GB identity mapping via 1GB pages for framebuffer/MMIO access
-- COM1 detection for headless vs graphical boot
-- Framebuffer console with ANSI color splash
-- Command history with up/down arrow keys (32 entries)
-- 12 passing unit tests
-- CalVer versioning (YYYY.M.D)
-
-### Known Issues
-
-- Subsequent `ask` calls after the first may fail (TCP connection cleanup)
-- TLS requires a host-side proxy (`socat` to api.anthropic.com)
-- No DHCP client yet (network config hardcoded for QEMU user-mode)
-- No persistent storage of user accounts or credentials across reboot
+---
 
 ## Target Platforms
 
 | Platform | Architecture | Status |
 |----------|-------------|--------|
-| QEMU virt (ARM64) | AArch64 | Boots, all subsystems |
-| QEMU (x86_64) | x86_64 | Boots, networking, Claude API |
-| QEMU + OVMF (UEFI) | x86_64 | Boots, networking, Claude API |
-| AMD Ryzen 9 HX 370 | x86_64 | Boots (USB ISO, framebuffer) |
-| Apple Silicon Macs | AArch64 | Planned |
-| Framework Laptop 16 | x86_64 | Planned |
-| Framework Desktop | x86_64 | Planned |
+| QEMU x86_64 (BIOS + UEFI) | x86_64 | All subsystems |
+| QEMU virt | ARM64 | Boots, all subsystems |
+| AMD Ryzen 9 HX 370 (Framework Laptop 16) | x86_64 | Boots, USB ISO, framebuffer, NVMe, e1000, WiFi |
+| Framework Desktop | x86_64 | Brought up via GLI KVM, in active testing |
+| Apple Silicon (M1/M2/M3) | ARM64 | Build only; native boot in progress (AGX driver, RFC-0022) |
+
+---
 
 ## Building
 
 ### Prerequisites
 
-- macOS with Xcode Command Line Tools (`xcode-select --install`)
-- No Homebrew required
+- Linux (Arch, Debian, Fedora) or macOS with Xcode Command Line Tools
+- `make`, `clang`, `git`
+- `qemu-system-x86_64` / `qemu-system-aarch64` for VM testing
 
 ### One-time setup
 
 ```sh
-make toolchain         # Fetch ld.lld + llvm-objcopy
-make qemu-deps         # Build QEMU from source (~5 min)
-make iso-deps          # Fetch GRUB + xorriso for ISO builds
+make toolchain      # Fetch ld.lld + llvm-objcopy into tools/llvm/bin/
+make iso-deps       # (optional) fetch syslinux + xorriso for ISO builds
+make qemu-deps      # (optional) build QEMU from source
 ```
 
-### Build and run
+### Common targets
 
 ```sh
-make kernel            # Build for host architecture
-make kernel ARCH=x86_64 # Build for x86_64
-make qemu              # Boot in QEMU, serial console
-make test              # Run unit tests (12 tests)
-make iso               # Build bootable x86_64 ISO (BIOS + UEFI)
+make kernel                  # Build for host architecture
+make kernel ARCH=x86_64      # Build for x86_64
+make kernel ARCH=arm64       # Build for ARM64
+make qemu                    # Boot in QEMU, serial console
+make qemu-fb                 # Boot with framebuffer
+make qemu-fb-net             # Boot with framebuffer + networking
+make qemu-iso                # Boot the bootable ISO under QEMU/UEFI
+make iso                     # Build bootable USB ISO (UEFI-only, anxboot)
+make efi-stub                # Build anxboot.efi standalone
+make test                    # Run host-native unit tests
+make conformance             # Run conformance gate fixture suite
+make clean
 ```
 
-### Talk to Claude
+### Networking, HTTP, SSH
 
 ```sh
-# Terminal 1: TLS proxy
-socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1 &
-
-# Terminal 2: Boot Anunix with networking
-qemu-system-x86_64 -m 512M -nographic -serial mon:stdio -no-reboot \
-  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-  -kernel build/x86_64/anunix-qemu.elf
-
-# In the Anunix shell:
-anx> secret set anthropic-api-key sk-ant-api03-YOUR-KEY
-anx> model-init anthropic-api-key 10.0.2.2 8080
-anx> ask What is the meaning of life?
-```
-
-### HTTP and SSH access
-
-Boot with port forwarding to get programmatic + shell access from the host:
-
-```sh
-qemu-system-x86_64 -m 512M -nographic -no-reboot -serial mon:stdio \
+qemu-system-x86_64 -m 1G -no-reboot -serial mon:stdio \
   -netdev user,id=n0,hostfwd=tcp::18080-:8080,hostfwd=tcp::12222-:22 \
   -device virtio-net-pci,netdev=n0 \
-  -kernel build/x86_64/anunix-qemu.elf &
+  -kernel build/x86_64/anunix-qemu.elf
 
-# HTTP API:
+# HTTP API
 curl http://localhost:18080/api/v1/health
 curl -X POST http://localhost:18080/api/v1/exec \
   -H 'Content-Type: application/json' \
   -d '{"command": "tensor create default:/w 4,4 int8"}'
 
-# SSH (password "anunix" or pubkey):
+# SSH (password "anunix" or ed25519 pubkey)
 ssh -p 12222 anunix@localhost -- sysinfo
 ssh -i ~/.ssh/id_ed25519 -p 12222 anunix@localhost   # interactive shell
 ```
 
-### Running in QEMU
-
-#### x86_64 on Linux
+### Talking to Claude
 
 ```sh
-make kernel ARCH=x86_64
-qemu-system-x86_64 -m 512M -no-reboot -serial mon:stdio \
-  -netdev user,id=net0,hostfwd=tcp::8080-:8080 \
-  -device virtio-net-pci,netdev=net0 \
-  -kernel build/x86_64/anunix-qemu.elf
+# Terminal 1: TLS proxy on the host
+socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1 &
+
+# Terminal 2: in the Anunix shell
+anx> secret set anthropic-api-key sk-ant-api03-YOUR-KEY
+anx> model-init anthropic-api-key 10.0.2.2 8080
+anx> ask What is the meaning of life?
 ```
 
-#### x86_64 on macOS
-
-The local QEMU build (`tools/qemu/bin/`) does not include `user` networking — use `vmnet-shared` (requires sudo) or install a full QEMU via another method:
-
-```sh
-make kernel ARCH=x86_64
-sudo tools/qemu/bin/qemu-system-x86_64 -m 512M -no-reboot -serial mon:stdio \
-  -netdev vmnet-shared,id=net0 \
-  -device virtio-net-pci,netdev=net0 \
-  -kernel build/x86_64/anunix-qemu.elf
-```
-
-#### Apple Silicon (macOS, arm64)
-
-Uses HVF acceleration for near-native performance. Requires sudo for `vmnet-shared` networking:
-
-```sh
-make kernel ARCH=arm64
-sudo tools/qemu/bin/qemu-system-aarch64 \
-  -M virt,highmem=off -cpu host -accel hvf \
-  -m 512M -device ramfb -display cocoa \
-  -serial mon:stdio \
-  -netdev vmnet-shared,id=net0 \
-  -device virtio-net-device,netdev=net0 \
-  -kernel build/arm64/anunix.elf
-```
-
-Convenience scripts are in `build/`:
-- `build/intel-mac-test-script.sh` — Intel Mac (emulated arm64)
-- `build/apple-silicon-test-script.sh` — Apple Silicon Mac (HVF-accelerated)
+---
 
 ## Project Structure
 
 ```
+boot/anxboot/         Custom UEFI loader (replaces GRUB)
 kernel/
   arch/
-    arm64/            ARM64: PL011 UART, boot, page tables
-    x86_64/           x86_64: COM1 serial, multiboot, IDT, PIC, PIT
+    arm64/            ARM64: PL011 UART, boot, MMU, vector table, FP/SIMD
+    x86_64/           x86_64: COM1 serial, multiboot2, IDT, PIC, PIT, paging
   core/
-    state/            State Object Layer + disk store   (RFC-0002)
-    exec/             Execution Cell Runtime            (RFC-0003)
-    mem/              Memory Control Plane              (RFC-0004)
-    route/            Routing Plane + Model Hosting     (RFC-0005)
-    sched/            Unified Scheduler                 (RFC-0005)
-    net/              Network Plane                     (RFC-0006)
-    cap/              Capability Objects                (RFC-0007)
-    tensor/           Tensor Objects + math engine      (RFC-0013)
-    tools/            ansh command handlers (ls, tensor, model, etc.)
+    state/  uor/      State Objects + UOR topological identity      (RFC-0002)
+    exec/             Execution Cell Runtime                         (RFC-0003)
+    mem/              Memory Control Plane                           (RFC-0004)
+    route/  sched/    Routing Plane + Unified Scheduler              (RFC-0005)
+    net/              Network Plane                                  (RFC-0006)
+    cap/              Capability Objects                             (RFC-0007)
+    posix/            POSIX compatibility shim                       (RFC-0010)
+    iface/            Interface Plane                                (RFC-0012)
+    tensor/           Tensor Objects + math engine                   (RFC-0013)
+    vm/               VM Objects                                     (RFC-0017)
+    workflow/  wm/    Workflow + window manager                      (RFC-0018)
+    apps/             amacs editor, video player, workflow designer  (RFC-0023)
+    audio/  video/    Audio engine + media playback                  (RFC-0024)
+    anxml/            Inference runtime                              (RFC-0021)
+    ebm/  jepa/  loop/  rlm/   IBAL stack — EBM/JEPA/LLM hybrid       (RFC-0020)
+    log/              Persistent boot-session logging
+    update/  install/ System update and installer
+    tools/            ansh command implementations
     agent/            Model API client
-    install/          GPT partitioning
-    credential.c      Credential Store                  (RFC-0008)
-    auth.c            Multi-key Authentication
-    shell.c           Interactive kernel monitor (ansh)
     main.c            Kernel entry point
+    shell.c           Interactive kernel monitor (ansh)
   drivers/
-    fb/               Framebuffer + console
-    pci/              PCI bus enumeration
-    virtio/           Virtio transport, net, blk drivers
-    net/              IP stack (Eth/ARP/IPv4/ICMP/UDP/TCP/DNS/HTTP)
-                        tcp_server.c — server-side TCP (listen/accept)
-                        httpd.c      — HTTP API endpoint
-                        sshd.c       — SSH-2.0 server
-    acpi/             ACPI table parsing
+    storage/          AHCI, NVMe, Apple ANS, virtio-blk
+    net/              IP stack, e1000, sshd, httpd, NTP, WiFi
+    audio/            HDA, Apple Audio
+    accel/            AMD XDNA NPU
+    browser/          Native HTML/CSS/JS/image engine
+    fb/  input/       Framebuffer + USB HID
+    pci/  acpi/  virtio/
   include/anx/        Public kernel headers
-  lib/
-    crypto/           SHA-256/512, ChaCha20, Poly1305, AES, Curve25519, Ed25519
-    (kprintf, alloc, json, font, hashtable, jpeg, etc.)
-tests/                Host-native unit tests (17 suites)
-tools/                Build scripts
+  lib/                kprintf, alloc, json, font, hashtable, jpeg, crypto/
+distd/                Anunix distribution server (formerly superrouter)
+tests/                Host-native unit tests (50+ suites)
+tools/                Build scripts, ISO builder, QEMU helpers, screenshot
+docs/
+  CONCEPTS.md         60-second primer on Anunix primitives
+  rfcs/               Design specifications (26 RFCs)
+  releases/           Per-release notes
+  hardware/           Driver and platform-specific guides
+  plans/              Planning + acceptance matrices
 .claude/skills/       Claude Code slash commands for Anunix workflows
+.forgejo/workflows/   Forgejo CI: build, test, agent review, release
 assets/               Brand assets (logo)
-docs/rfcs/            Design specifications
-config/               GRUB boot configuration
+config/               Build and runtime configuration
 ```
 
-## Companion repos
-
-- `~/Development/Anunix-tools/` — deployment scripts, integration tests, SSH protocol diagnostic
-- `~/Development/Anunix-Browser/` — collaborative web browser daemon with Anunix bridge
+---
 
 ## Design Documents
 
-| RFC | Title | Status |
-|-----|-------|--------|
-| [RFC-0001](docs/rfcs/RFC-0001-architecture-thesis.md) | Architecture Thesis | Draft |
-| [RFC-0002](rfcs/RFC-0002-state-object-model.md) | State Object Model | Draft |
-| [RFC-0003](docs/rfcs/RFC-0003-execution-cell-runtime.md) | Execution Cell Runtime | Draft |
-| [RFC-0004](docs/rfcs/RFC-0004-memory-control-plane.md) | Memory Control Plane | Draft |
-| [RFC-0005](docs/rfcs/RFC-0005-routing-and-scheduler.md) | Routing Plane and Unified Scheduler | Draft |
-| [RFC-0006](docs/rfcs/RFC-0006-network-plane.md) | Network Plane and Federated Execution | Draft |
-| [RFC-0007](docs/rfcs/RFC-0007-capability-objects.md) | Capability Objects | Draft |
-| [RFC-0008](docs/rfcs/RFC-0008-credential-objects.md) | Credential Objects and Secrets Management | Draft |
-| [RFC-0013](docs/rfcs/RFC-0013-tensor-objects.md) | Tensor Objects and Model Representation | Draft (impl complete) |
+Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 26 RFCs in total — selected:
+
+| RFC | Title |
+|-----|-------|
+| [0001](docs/rfcs/RFC-0001-architecture-thesis.md) | Architecture Thesis |
+| [0002](rfcs/RFC-0002-state-object-model.md) | State Object Model (incl. §14 UOR projection) |
+| [0003](docs/rfcs/RFC-0003-execution-cell-runtime.md) | Execution Cell Runtime |
+| [0007](docs/rfcs/RFC-0007-capability-objects.md) | Capability Objects |
+| [0008](docs/rfcs/RFC-0008-credential-objects.md) | Credential Objects |
+| [0013](docs/rfcs/RFC-0013-tensor-objects.md) | Tensor Objects and AnuTorch |
+| [0018](docs/rfcs/RFC-0018-workflow-objects.md) | Workflow Objects |
+| [0020](docs/rfcs/RFC-0020-iterative-belief-action-loop.md) | Iterative Belief-Action Loop (EBM/JEPA/LLM hybrid) |
+| [0021](docs/rfcs/RFC-0021-inference-runtime.md) | Inference Runtime (anxml) |
+| [0022](docs/rfcs/RFC-0022-gpu-compute-plane.md) | GPU Compute Plane and AGX Driver |
+| [0023](docs/rfcs/RFC-0023-amacs-editor.md) | amacs — Object-Native Editor with eLISP |
+| [0024](docs/rfcs/RFC-0024-audio-engine-and-media-apps.md) | Audio Engine and Media Player Apps |
+
+In-flight drafts: **RFC-0025** Kit Subsystem (unified loadable subsystems), **RFC-0026** Persona Objects (agent identity, custody, governance).
+
+---
+
+## Claude Code skills
+
+`.claude/skills/` packages the build-deploy-test loop into slash commands:
+
+- `/anunix-build` — build kernel + run host-native tests on Hyde
+- `/anunix-deploy` — build, scp to Jekyll, write ISO to `/dev/sda`, boot in QEMU on Jekyll
+- `/anunix-exec` — execute ansh commands against a running VM via HTTP API
+- `/anunix-test` — full unit + live integration test suite on Hyde
+- `/anunix-screenshot` — boot Anunix in QEMU with virtual VGA and capture a frame or full boot video
+- `/anx-font` — edit and install the ANX Schoolbook font (BDF + TTF/OTF)
+- `/glkvm`, `/glkvm-hermes` — drive the GL.iNet KVM for the Framework Desktop
+
+---
 
 ## Roadmap
 
-### 2026.4.16 — Agent Memory + Installer
+### Done in 2026.5.8
 
-- **RFC-0009: Agent Memory** — episodic memory with graph metadata, kernel-level embedding for semantic retrieval, access-based decay with relevance scoring, "dream" consolidation during utilization minima
-- **Text-based installer** with kickstart-style JSON provisioning (State Object)
-- **DHCP client** for network-at-install-time
-- **Fix: TCP connection reuse** for sequential `ask` calls
-- **Persistent storage** of credentials and user accounts across reboot
+- UOR topological identity for every State Object, woven into disk-store locality
+- amacs editor rename complete (directory, RFC, dotfile)
+- anxboot custom UEFI loader replaces GRUB (no GNU EFI, no edk2)
+- Identity-RWX page tables for strict-NX UEFI firmware
+- 2026.5.8 release notes published
 
-### 2026.5 — Minimum Viable Agent
+### Up next (target 2026.6.x)
 
-- **Agent cell runtime** — perceive/plan/act/observe loop
-- **Remote memory** — distributed access via raw mounts (flat networks) or trust-zone peers
-- **Graphical installer** (after text installer validation)
-- **In-kernel TLS 1.3** (BearSSL port or minimal subset)
-- Real hardware validation: Framework Laptop 16 → M1 Mac Studio
+- **Kit Subsystem (RFC-0025)** — unified loadable subsystems
+- **Persona Objects (RFC-0026)** — agent identity, custody, and governance, layered on capabilities + credentials
+- **anxml inference runtime (RFC-0021)** — first end-to-end model execution path that does not rely on external proxies
+- **AGX driver port for Apple Silicon (RFC-0022)** — MLX-equivalent runtime on the M-series GPU; target is M1 Mac Studio as an Anunix daily driver
+- **amacs Phase 3+** — eLISP completion, multi-buffer windows, file ops via State Objects
+- **Audio engine deepening** — software mixer, resampler, codecs (RFC-0024)
+- **Forgejo CI workflows** — already in `.forgejo/workflows/`; finalise the agent-review and release pipelines
 
-### Future
+### Looking further out
 
-- Phone-class deployment target
-- Multi-agent coordination with scoped memory
-- AHCI/NVMe storage drivers for real hardware
-- Capability learning from execution traces (RFC-0007 Phase 2)
+- **Multi-agent coordination** with scoped persona-based memory
+- **Network Plane v2 (RFC-0015)** — zero-copy, multi-queue data plane
+- **Real-hardware Apple Silicon boot** (Asahi-style, beyond AGX) — M1/M2 native
+- **Phone-class deployment target**
+- **Capability learning from execution traces** (RFC-0007 Phase 2)
+- **Federated execution** across trust-zone peers (RFC-0006 Phase 2)
+
+---
 
 ## License
 
