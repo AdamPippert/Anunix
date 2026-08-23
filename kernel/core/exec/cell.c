@@ -209,6 +209,20 @@ void anx_cell_clear_topology(struct anx_cell *cell)
 	cell->constraints.topology_bk_hi = 0;
 }
 
+int anx_cell_set_contract(struct anx_cell *cell,
+			  enum anx_consistency_class consistency,
+			  enum anx_effect_mode effect_mode)
+{
+	if (!cell)
+		return ANX_EINVAL;
+	if (cell->status != ANX_CELL_CREATED)
+		return ANX_EBUSY;
+
+	cell->contract.consistency = consistency;
+	cell->contract.effect_mode = effect_mode;
+	return ANX_OK;
+}
+
 int anx_cell_deps_satisfied(const struct anx_cell *cell)
 {
 	uint32_t i;

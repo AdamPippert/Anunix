@@ -187,6 +187,32 @@ struct anx_retry_policy {
 	uint32_t backoff_base_ms;	/* base for exponential backoff */
 };
 
+/*
+ * --- Execution contract (RFC-0003 extension: Execution Contracts) ---
+ *
+ * Declares how strongly this cell's outputs must behave under
+ * concurrency and failure, and whether its State Object writes go
+ * live immediately or through a staged mutation that only becomes
+ * visible on commit. Zero value (BEST_EFFORT / DIRECT) reproduces
+ * pre-contract behavior exactly, so existing cells are unaffected.
+ */
+
+enum anx_consistency_class {
+	ANX_CONSISTENCY_BEST_EFFORT,
+	ANX_CONSISTENCY_SEMANTIC,
+	ANX_CONSISTENCY_TRANSACTIONAL,
+};
+
+enum anx_effect_mode {
+	ANX_EFFECT_DIRECT,
+	ANX_EFFECT_STAGED,
+};
+
+struct anx_execution_contract {
+	enum anx_consistency_class consistency;
+	enum anx_effect_mode effect_mode;
+};
+
 /* --- Input binding (RFC-0003 Section 9) --- */
 
 enum anx_input_mode {
@@ -223,6 +249,7 @@ struct anx_cell {
 	struct anx_commit_policy commit;
 	struct anx_execution_policy execution;
 	struct anx_retry_policy retry;
+	struct anx_execution_contract contract;
 
 	/* Inputs */
 	struct anx_cell_input inputs[ANX_MAX_CELL_INPUTS];
@@ -349,5 +376,18 @@ int anx_cell_set_topology(struct anx_cell *cell,
 
 /* Clear any declared topology intent. */
 void anx_cell_clear_topology(struct anx_cell *cell);
+
+/*
+ * Declare the cell's execution contract. Only valid while the cell is
+ * still ANX_CELL_CREATED — once admitted, the contract is fixed for
+ * the run so routing/commit decisions downstream can rely on it.
+ * Returns:
+ *   ANX_OK      success
+ *   ANX_EINVAL  null cell
+ *   ANX_EBUSY   cell has already left ANX_CELL_CREATED
+ */
+int anx_cell_set_contract(struct anx_cell *cell,
+			  enum anx_consistency_class consistency,
+			  enum anx_effect_mode effect_mode);
 
 #endif /* ANX_CELL_H */

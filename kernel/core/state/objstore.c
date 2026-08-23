@@ -85,7 +85,8 @@ static void objstore_remove(struct anx_state_object *obj)
 	anx_htable_del(&oid_table, &obj->oid_link);
 }
 
-static void compute_content_hash(struct anx_state_object *obj)
+/* Non-static: shared with stage.c, which recomputes the hash on commit. */
+void anx_so_compute_content_hash(struct anx_state_object *obj)
 {
 	if (obj->payload && obj->payload_size > 0)
 		anx_sha256(obj->payload, (uint32_t)obj->payload_size,
@@ -149,7 +150,7 @@ int anx_so_create(const struct anx_so_create_params *params,
 	}
 
 	/* Content hash */
-	compute_content_hash(obj);
+	anx_so_compute_content_hash(obj);
 
 	/* Metadata */
 	obj->system_meta = anx_meta_create();
@@ -278,6 +279,12 @@ int anx_so_seal(const anx_oid_t *oid)
 
 	anx_spin_lock(&obj->lock);
 
+	if (obj->staged) {
+		anx_spin_unlock(&obj->lock);
+		anx_objstore_release(obj);
+		return ANX_EBUSY;
+	}
+
 	int ret = anx_lifecycle_transition(obj, ANX_OBJ_SEALED);
 	if (ret == ANX_OK) {
 		struct anx_uor_ref ref;
@@ -309,6 +316,12 @@ int anx_so_delete(const anx_oid_t *oid, bool force)
 		return ANX_ENOENT;
 
 	anx_spin_lock(&obj->lock);
+
+	if (obj->staged) {
+		anx_spin_unlock(&obj->lock);
+		anx_objstore_release(obj);
+		return ANX_EBUSY;
+	}
 
 	if (obj->retention.deletion_hold && !force) {
 		anx_spin_unlock(&obj->lock);
@@ -355,25 +368,38 @@ int anx_so_write_payload(struct anx_object_handle *handle,
 
 	anx_spin_lock(&obj->lock);
 
+	/* While staged, writes target the shadow copy — the live payload
+	 * (and its version/hash/provenance) stays untouched until commit. */
+	void **target_payload = obj->staged ? &obj->staged->shadow_payload
+					    : &obj->payload;
+	uint64_t *target_size = obj->staged ? &obj->staged->shadow_size
+					    : &obj->payload_size;
+
 	/* Grow payload if needed */
-	if (offset + len > obj->payload_size) {
+	if (offset + len > *target_size) {
 		uint64_t new_size = offset + len;
 		void *new_buf = anx_alloc(new_size);
 		if (!new_buf) {
 			anx_spin_unlock(&obj->lock);
 			return ANX_ENOMEM;
 		}
-		if (obj->payload) {
-			anx_memcpy(new_buf, obj->payload, obj->payload_size);
-			anx_free(obj->payload);
+		if (*target_payload) {
+			anx_memcpy(new_buf, *target_payload, *target_size);
+			anx_free(*target_payload);
 		}
-		obj->payload = new_buf;
-		obj->payload_size = new_size;
+		*target_payload = new_buf;
+		*target_size = new_size;
 	}
 
-	anx_memcpy((uint8_t *)obj->payload + offset, data, len);
+	anx_memcpy((uint8_t *)*target_payload + offset, data, len);
+
+	if (obj->staged) {
+		anx_spin_unlock(&obj->lock);
+		return (int)len;
+	}
+
 	obj->version++;
-	compute_content_hash(obj);
+	anx_so_compute_content_hash(obj);
 
 	/* Record mutation */
 	struct anx_prov_event ev;
@@ -410,12 +436,21 @@ int anx_so_replace_payload(struct anx_object_handle *handle,
 		anx_memcpy(new_buf, data, len);
 	}
 
+	if (obj->staged) {
+		if (obj->staged->shadow_payload)
+			anx_free(obj->staged->shadow_payload);
+		obj->staged->shadow_payload = new_buf;
+		obj->staged->shadow_size = len;
+		anx_spin_unlock(&obj->lock);
+		return ANX_OK;
+	}
+
 	if (obj->payload)
 		anx_free(obj->payload);
 	obj->payload = new_buf;
 	obj->payload_size = len;
 	obj->version++;
-	compute_content_hash(obj);
+	anx_so_compute_content_hash(obj);
 
 	struct anx_prov_event ev;
 	anx_memset(&ev, 0, sizeof(ev));

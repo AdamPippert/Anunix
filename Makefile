@@ -448,7 +448,9 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_amacs.c \
                tests/test_uor.c \
                tests/test_diag_inline.c \
-               tests/test_icm.c
+               tests/test_icm.c \
+               tests/test_state_staged_mutation.c \
+               tests/test_exec_execution_contract.c
 TEST_BIN    := build/test/anunix_test
 
 test:
