@@ -213,6 +213,28 @@ struct anx_execution_contract {
 	enum anx_effect_mode effect_mode;
 };
 
+/*
+ * --- Cognitive envelope (RFC-0029: Resource Twin and Regime-Gated
+ * Scheduling Policy) ---
+ *
+ * How much cognition this cell's work is worth spending before physical
+ * resource placement — attached at admission time, ahead of the
+ * anxml (RFC-0021) dispatch it may eventually reach. Zero value (both
+ * fields 0) means unset: no override, matching anxml's own "0 -> default"
+ * convention for max_tokens, so existing cells are unaffected.
+ *
+ * Wiring this into the live anx_anxml_cell_dispatch() call path is
+ * future work: that dispatch function is reached through a function
+ * pointer from workflow_exec with no cell context threaded through
+ * (intent, in_oids, in_count, out_oid_out only) — see
+ * docs/design/regime-gated-scheduling.md.
+ */
+
+struct anx_cognitive_envelope {
+	uint32_t max_tokens;		/* 0 = unset; mirrors anxml's max_tokens */
+	uint32_t max_reasoning_depth;	/* 0 = unset; reserved for RFC-0020 IBAL loops */
+};
+
 /* --- Input binding (RFC-0003 Section 9) --- */
 
 enum anx_input_mode {
@@ -250,6 +272,7 @@ struct anx_cell {
 	struct anx_execution_policy execution;
 	struct anx_retry_policy retry;
 	struct anx_execution_contract contract;
+	struct anx_cognitive_envelope cognitive;
 
 	/* Inputs */
 	struct anx_cell_input inputs[ANX_MAX_CELL_INPUTS];
@@ -389,5 +412,16 @@ void anx_cell_clear_topology(struct anx_cell *cell);
 int anx_cell_set_contract(struct anx_cell *cell,
 			  enum anx_consistency_class consistency,
 			  enum anx_effect_mode effect_mode);
+
+/*
+ * Declare the cell's cognitive envelope. Only valid while the cell is
+ * still ANX_CELL_CREATED. Returns:
+ *   ANX_OK      success
+ *   ANX_EINVAL  null cell
+ *   ANX_EBUSY   cell has already left ANX_CELL_CREATED
+ */
+int anx_cell_set_cognitive_envelope(struct anx_cell *cell,
+				    uint32_t max_tokens,
+				    uint32_t max_reasoning_depth);
 
 #endif /* ANX_CELL_H */

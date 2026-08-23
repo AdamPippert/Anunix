@@ -223,6 +223,20 @@ int anx_cell_set_contract(struct anx_cell *cell,
 	return ANX_OK;
 }
 
+int anx_cell_set_cognitive_envelope(struct anx_cell *cell,
+				    uint32_t max_tokens,
+				    uint32_t max_reasoning_depth)
+{
+	if (!cell)
+		return ANX_EINVAL;
+	if (cell->status != ANX_CELL_CREATED)
+		return ANX_EBUSY;
+
+	cell->cognitive.max_tokens = max_tokens;
+	cell->cognitive.max_reasoning_depth = max_reasoning_depth;
+	return ANX_OK;
+}
+
 int anx_cell_deps_satisfied(const struct anx_cell *cell)
 {
 	uint32_t i;

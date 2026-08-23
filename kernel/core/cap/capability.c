@@ -139,17 +139,10 @@ int anx_cap_transition(struct anx_capability *cap,
 	return ANX_OK;
 }
 
-int anx_cap_install(struct anx_capability *cap)
+static int do_install(struct anx_capability *cap)
 {
 	struct anx_engine *eng;
 	int ret;
-
-	if (!cap)
-		return ANX_EINVAL;
-
-	/* Must be validated before installation */
-	if (cap->status != ANX_CAP_VALIDATED)
-		return ANX_EPERM;
 
 	/* Register as an engine */
 	ret = anx_engine_register(cap->name,
@@ -169,6 +162,53 @@ int anx_cap_install(struct anx_capability *cap)
 	}
 
 	return ANX_OK;
+}
+
+int anx_cap_install(struct anx_capability *cap)
+{
+	if (!cap)
+		return ANX_EINVAL;
+
+	/* Must be validated before installation */
+	if (cap->status != ANX_CAP_VALIDATED)
+		return ANX_EPERM;
+
+	/*
+	 * A candidate that declares an incumbent to supersede must go
+	 * through anx_cap_install_gated() and clear the measured-null
+	 * promotion gate (RFC-0029) — it never gets to skip straight to
+	 * installed just because it exists.
+	 */
+	if (!anx_uuid_is_nil(&cap->supersedes_oid))
+		return ANX_EPERM;
+
+	return do_install(cap);
+}
+
+int anx_cap_install_gated(struct anx_capability *cap,
+			  const struct anx_promotion_trial *trial,
+			  uint32_t num_candidates_tried)
+{
+	bool promote = false;
+	int ret;
+
+	if (!cap || !trial)
+		return ANX_EINVAL;
+
+	if (cap->status != ANX_CAP_VALIDATED)
+		return ANX_EPERM;
+
+	/* No incumbent to compare against — use anx_cap_install(). */
+	if (anx_uuid_is_nil(&cap->supersedes_oid))
+		return ANX_EINVAL;
+
+	ret = anx_promotion_gate_evaluate(trial, num_candidates_tried, &promote);
+	if (ret != ANX_OK)
+		return ret;
+	if (!promote)
+		return ANX_EPERM;
+
+	return do_install(cap);
 }
 
 int anx_cap_uninstall(struct anx_capability *cap)

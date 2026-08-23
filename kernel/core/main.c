@@ -59,6 +59,8 @@
 #include <anx/bootlog.h>
 #include <anx/audio.h>
 #include <anx/video.h>
+#include <anx/twin.h>
+#include <anx/regime.h>
 
 void kernel_main(void)
 {
@@ -138,6 +140,10 @@ void kernel_main(void)
 
 	/* 6b. Sinks (RFC-0028 Protected Operation ABI) */
 	anx_sink_registry_init();
+
+	/* 6c. Resource Twin + Regime Detector (RFC-0029) */
+	anx_twin_init();
+	anx_regime_init();
 
 	/* 7a. Interface Plane (RFC-0012) — after engine registry */
 	if (anx_iface_init() == ANX_OK) {

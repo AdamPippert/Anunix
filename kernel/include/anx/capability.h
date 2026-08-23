@@ -130,4 +130,60 @@ struct anx_sink *anx_sink_lookup(const char *name);
  */
 int anx_sink_check_send(const struct anx_sink *sink, const anx_oid_t *object_oid);
 
+/* --- Measured-null promotion gate (RFC-0029) --- */
+
+/*
+ * No candidate capability supersedes an installed incumbent just
+ * because it scored better once. It must beat the incumbent's own
+ * repeated-run noise floor on every paired trial, by a margin that
+ * grows with how many candidates were tried this round (a Bonferroni-
+ * style guard against multiple-comparisons false positives).
+ *
+ * This is a worst-case min-margin test, not a formal significance
+ * test (t-test/z-test) — this kernel builds with -mgeneral-regs-only
+ * by default (no FPU in interrupt context; see the Makefile's JEPA_CFLAGS
+ * comment) and floating point is only enabled for a small whitelist of
+ * directories that accept that interrupt-context restriction. A
+ * capability promotion decision has no reason to take on that
+ * restriction, so this gate is deliberately pure-integer. See
+ * docs/design/regime-gated-scheduling.md for the stated limitations.
+ */
+
+#define ANX_PROMOTION_TRIAL_MAX	16
+
+struct anx_promotion_trial {
+	/* Paired measurements: candidate_scores[i] vs incumbent_scores[i],
+	 * same conditions, higher-is-better units (caller's choice of
+	 * metric and scale — e.g. route scores, validation scores). */
+	int32_t incumbent_scores[ANX_PROMOTION_TRIAL_MAX];
+	int32_t candidate_scores[ANX_PROMOTION_TRIAL_MAX];
+	uint32_t n;
+};
+
+/*
+ * Evaluate a promotion trial. *promote_out is set true only if every
+ * paired margin (candidate - incumbent) meets or exceeds
+ * ANX_PROMOTION_MIN_MARGIN_BASE * num_candidates_tried. num_candidates_tried
+ * of 0 is treated as 1 (a single candidate still needs to clear the base
+ * margin). Returns ANX_EINVAL on null args or n outside [1, ANX_PROMOTION_TRIAL_MAX].
+ */
+#define ANX_PROMOTION_MIN_MARGIN_BASE	5
+
+int anx_promotion_gate_evaluate(const struct anx_promotion_trial *trial,
+				uint32_t num_candidates_tried,
+				bool *promote_out);
+
+/*
+ * Install a capability that supersedes an installed incumbent
+ * (cap->supersedes_oid non-nil), gated by a measured-null promotion
+ * trial. Fails with ANX_EPERM if the trial does not clear the gate.
+ * For a fresh install with no incumbent (supersedes_oid nil), use
+ * anx_cap_install() instead — anx_cap_install() itself now rejects
+ * (ANX_EPERM) any candidate that declares a supersedes_oid, forcing
+ * the gated path whenever there is an incumbent to compare against.
+ */
+int anx_cap_install_gated(struct anx_capability *cap,
+			  const struct anx_promotion_trial *trial,
+			  uint32_t num_candidates_tried);
+
 #endif /* ANX_CAPABILITY_H */
