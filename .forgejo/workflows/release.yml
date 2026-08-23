@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '20[0-9][0-9].[0-9]*'
+      - 'v20[0-9][0-9].[0-9]*'
+
+jobs:
+  build-release:
+    runs-on: native
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build kernel (x86_64)
+        run: make kernel ARCH=x86_64 -j$(nproc)
+
+      - name: Run tests (must pass for release)
+        run: |
+          make test 2>&1 | tee test-output.txt
+          PASS=$(grep -oE "[0-9]+ passed" test-output.txt | head -1 || echo "0 passed")
+          FAIL=$(grep -oE "[0-9]+ failed" test-output.txt | head -1 || echo "0 failed")
+          echo "Tests: $PASS, $FAIL"
+          if echo "$FAIL" | grep -qv "^0 "; then
+            echo "Release blocked: tests failed"
+            exit 1
+          fi
+
+      - name: Build ISO
+        run: |
+          make iso ARCH=x86_64 2>&1 | tail -10 || echo "ISO build skipped (missing deps)"
+
+      - name: Stage release artifacts
+        run: |
+          mkdir -p release-artifacts
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          
+          # Kernel ELF
+          cp build/x86_64/anunix.elf "release-artifacts/anunix-${VERSION}-x86_64.elf" 2>/dev/null || true
+          
+          # ISO if it exists
+          cp build/anunix-x86_64.iso "release-artifacts/anunix-${VERSION}-x86_64.iso" 2>/dev/null || true
+          
+          # Release notes
+          NOTES="RELEASE-${VERSION}.md"
+          if [ -f "$NOTES" ]; then
+            cp "$NOTES" "release-artifacts/"
+          fi
+          
+          ls -lh release-artifacts/
+
+      - name: Create Forgejo release
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          NOTES_FILE="RELEASE-${VERSION}.md"
+          
+          # Read release notes if they exist
+          if [ -f "$NOTES_FILE" ]; then
+            BODY=$(cat "$NOTES_FILE")
+          else
+            BODY="Anunix ${VERSION}"
+          fi
+          
+          # Create release via API
+          RELEASE=$(curl -s -X POST \
+            -H "Authorization: token ${FORGEJO_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "${FORGEJO_API}/api/v1/repos/anunix/anunix/releases" \
+            -d "{
+              \"tag_name\": \"${VERSION}\",
+              \"name\": \"Anunix ${VERSION}\",
+              \"body\": $(echo "$BODY" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+              \"draft\": false,
+              \"prerelease\": false
+            }")
+          
+          RELEASE_ID=$(echo "$RELEASE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
+          echo "Created release ID: $RELEASE_ID"
+          echo "RELEASE_ID=$RELEASE_ID" >> $GITHUB_OUTPUT
+          
+          # Upload artifacts
+          for f in release-artifacts/*; do
+            fname=$(basename "$f")
+            curl -s -X POST \
+              -H "Authorization: token ${FORGEJO_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              "${FORGEJO_API}/api/v1/repos/anunix/anunix/releases/${RELEASE_ID}/assets?name=${fname}" \
+              --data-binary "@$f" | python3 -c "import json,sys; d=json.load(sys.stdin); print('uploaded:', d.get('name','?'))"
+          done
+
+  agent-release-notes:
+    runs-on: native
+    needs: build-release
+    if: success()
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Notify Gabriel (blog post)
+        env:
+          GABRIEL_WEBHOOK: ${{ secrets.GABRIEL_WEBHOOK_URL }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          NOTES_FILE="RELEASE-${VERSION}.md"
+          
+          if [ -f "$NOTES_FILE" ] && [ -n "$GABRIEL_WEBHOOK" ]; then
+            NOTES=$(cat "$NOTES_FILE")
+            MSG="Gabriel, please write a blog post for Anunix ${VERSION}. Save it to ~/Development/anunix-blog/content/posts/${VERSION}-release.md with Hugo front matter (title, date today, tags [release, anunix], draft false). Base it on these release notes:\n\n${NOTES}"
+            
+            curl -s -X POST "$GABRIEL_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "{\"message\": $(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print('Gabriel:', d.get('response','...')[:100])"
+          else
+            echo "Skipping Gabriel notification (no webhook or no notes file)"
+          fi

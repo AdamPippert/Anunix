@@ -211,6 +211,85 @@ static int http_parse_status(const char *data, uint32_t len)
 }
 
 /* Find "\r\n\r\n" header/body separator */
+/* Case-insensitive detect of a chunked Transfer-Encoding response header. */
+static bool resp_is_chunked(const char *head, uint32_t head_len)
+{
+	static const char *needle = "transfer-encoding:";
+	uint32_t i, j;
+
+	for (i = 0; i + 18 <= head_len; i++) {
+		for (j = 0; j < 18; j++) {
+			char c = head[i + j];
+			if (c >= 'A' && c <= 'Z')
+				c = (char)(c - 'A' + 'a');
+			if (c != needle[j])
+				break;
+		}
+		if (j == 18) {
+			uint32_t k = i + 18;
+			while (k + 7 <= head_len && head[k] != '\r' && head[k] != '\n') {
+				if ((head[k] | 0x20) == 'c' &&
+				    (head[k+1] | 0x20) == 'h' &&
+				    (head[k+2] | 0x20) == 'u' &&
+				    (head[k+3] | 0x20) == 'n' &&
+				    (head[k+4] | 0x20) == 'k' &&
+				    (head[k+5] | 0x20) == 'e' &&
+				    (head[k+6] | 0x20) == 'd')
+					return true;
+				k++;
+			}
+			return false;
+		}
+	}
+	return false;
+}
+
+/*
+ * Decode HTTP/1.1 chunked transfer-encoding in place. Returns decoded length,
+ * or -1 on malformed input.
+ */
+static int http_dechunk(char *buf, uint32_t len)
+{
+	uint32_t in = 0, out = 0;
+
+	while (in < len) {
+		uint32_t size = 0;
+		bool got_digit = false;
+
+		while (in < len && buf[in] != '\r' && buf[in] != ';') {
+			char c = buf[in++];
+			int d;
+
+			if (c >= '0' && c <= '9')      d = c - '0';
+			else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+			else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+			else return -1;
+			size = (size << 4) | (uint32_t)d;
+			got_digit = true;
+		}
+		if (!got_digit)
+			return -1;
+		while (in < len && buf[in] != '\n')
+			in++;
+		if (in < len)
+			in++;
+
+		if (size == 0)
+			break;
+		if (in + size > len)
+			return -1;
+
+		anx_memmove(buf + out, buf + in, size);
+		out += size;
+		in += size;
+
+		while (in < len && (buf[in] == '\r' || buf[in] == '\n'))
+			in++;
+	}
+	buf[out] = '\0';
+	return (int)out;
+}
+
 static int http_find_body(const char *data, uint32_t len)
 {
 	uint32_t i;
@@ -321,6 +400,15 @@ static int http_request(const char *host, uint16_t port, const char *path,
 			anx_memcpy(resp->body, recv_buf + body_off,
 				   resp->body_len);
 			resp->body[resp->body_len] = '\0';
+
+			/* Anthropic and many servers reply chunked; decode
+			 * it so the body is valid JSON for the caller. */
+			if (resp_is_chunked(recv_buf, (uint32_t)body_off)) {
+				int dec = http_dechunk(resp->body,
+						       resp->body_len);
+				if (dec >= 0)
+					resp->body_len = (uint32_t)dec;
+			}
 		}
 	}
 

@@ -160,26 +160,32 @@ static void mb_fill_triangle(int32_t x0, int32_t y0,
 		return;
 
 	for (row = y0; row <= y2; row++) {
-		int32_t left, right, lx, rx, col, dy;
+		int32_t left, right, lx, rx, col;
+		int64_t dy;
 
 		if (row < 0 || (uint32_t)row >= mb_height)
 			continue;
 
-		/* Long edge (v0→v2): y0 < y2 guaranteed, no zero-divisor risk */
-		dy = y2 - y0;
-		lx = x0 + (x2 - x0) * (row - y0) / dy;
+		/* Interpolate edges in 64-bit: garbage/degenerate coordinates
+		 * during an early repaint could overflow a 32-bit multiply and
+		 * make the idiv quotient exceed INT32, raising #DE. 64-bit math
+		 * and explicit divisor guards make the fill total-function; any
+		 * out-of-range result is clamped by the bounds checks below. */
+		dy = (int64_t)y2 - y0;
+		if (dy <= 0)
+			continue;
+		lx = (int32_t)((int64_t)x0 + (int64_t)(x2 - x0) * (row - y0) / dy);
 
-		/* Short edge: use same local 'dy' for both check and division */
 		if (row <= y1) {
-			dy = y1 - y0;
+			dy = (int64_t)y1 - y0;
 			if (dy > 0)
-				rx = x0 + (x1 - x0) * (row - y0) / dy;
+				rx = (int32_t)((int64_t)x0 + (int64_t)(x1 - x0) * (row - y0) / dy);
 			else
 				rx = x0;
 		} else {
-			dy = y2 - y1;
+			dy = (int64_t)y2 - y1;
 			if (dy > 0)
-				rx = x1 + (x2 - x1) * (row - y1) / dy;
+				rx = (int32_t)((int64_t)x1 + (int64_t)(x2 - x1) * (row - y1) / dy);
 			else
 				rx = x1;
 		}

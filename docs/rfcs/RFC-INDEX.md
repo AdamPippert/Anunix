@@ -40,6 +40,8 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0023](RFC-0023-amacs-editor.md) | amacs — Object-Native Editor with eLISP | Draft | Adam Pippert | 0002, 0003, 0010, 0012, 0018 |
 | [0024](RFC-0024-audio-engine-and-media-apps.md) | Audio Engine and Media Player Apps | Draft | Adam Pippert | 0002, 0003, 0010, 0012, 0018 |
 | [0025](RFC-0025-icm-over-state-objects.md) | ICM over State Objects — Information Context Management as a Native Convention | Review | Adam Pippert | 0002, 0003, 0007, 0011, 0018 |
+| [0026](RFC-0026-kit-subsystem.md) | Kit Subsystem — Unified Loadable Subsystems | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0008, 0013, 0018, 0020 |
+| [0027](RFC-0027-persona-objects.md) | Persona Objects — Agent Identity, Custody, and Governance | Draft | Adam Pippert | 0002, 0003, 0005, 0007, 0008, 0009, 0013, 0018, 0020, 0026 |
 
 ## Dependency Graph
 
@@ -61,4 +63,7 @@ RFC-0001, RFC-0002, RFC-0003, RFC-0005, RFC-0007, RFC-0008
   └── RFC-0017 (VM Objects)
 RFC-0002, RFC-0003, RFC-0007, RFC-0011, RFC-0018
   └── RFC-0025 (ICM over State Objects) — convention; `icm` tool ships in RFC-0011 §4.10
+RFC-0002, RFC-0003, RFC-0005, RFC-0007, RFC-0008, RFC-0013, RFC-0018, RFC-0020
+  └── RFC-0026 (Kit Subsystem)
+       └── RFC-0027 (Persona Objects) [also depends on RFC-0009]
 ```
