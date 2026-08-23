@@ -66,6 +66,21 @@ enum anx_object_state {
 	ANX_OBJ_TOMBSTONE,
 };
 
+/* --- Staged mutation (RFC-0003 Execution Contracts extension) --- */
+
+/*
+ * A pending payload mutation that has not been made visible to
+ * readers. Only one stage may be open on an object at a time —
+ * concurrent staging is rejected with ANX_EBUSY rather than
+ * attempting multi-version concurrency control.
+ */
+struct anx_staged_mutation {
+	void *shadow_payload;
+	uint64_t shadow_size;
+	anx_cid_t staging_cell;
+	uint64_t base_version;
+};
+
 /* --- The State Object --- */
 
 struct anx_state_object {
@@ -82,6 +97,14 @@ struct anx_state_object {
 	/* Payload */
 	void *payload;
 	uint64_t payload_size;
+
+	/*
+	 * Pending mutation, or NULL. A closed handle does not auto-abort
+	 * a pending stage — seal/delete are rejected while staged != NULL
+	 * so a pending effect can only be resolved by explicit commit or
+	 * abort, never silently dropped.
+	 */
+	struct anx_staged_mutation *staged;
 
 	/* Metadata */
 	struct anx_meta_store *system_meta;
@@ -174,5 +197,39 @@ void anx_objstore_release(struct anx_state_object *obj);
 /* Iterate all objects in the store. Callback returns 0 to continue, non-zero to stop. */
 typedef int (*anx_objstore_iter_fn)(struct anx_state_object *obj, void *arg);
 int anx_objstore_iterate(anx_objstore_iter_fn cb, void *arg);
+
+/* --- Staged mutation API --- */
+
+/*
+ * Begin a staged mutation on an open handle (ANX_OPEN_WRITE or
+ * ANX_OPEN_READWRITE). Once staged, anx_so_write_payload and
+ * anx_so_replace_payload on this handle target a private shadow
+ * copy instead of the live payload, until resolved by
+ * anx_object_commit or anx_object_abort.
+ * Returns:
+ *   ANX_OK      success
+ *   ANX_EINVAL  null handle/obj, or handle opened ANX_OPEN_READ
+ *   ANX_EPERM   object is sealed
+ *   ANX_EBUSY   object already has a stage in progress
+ *   ANX_ENOMEM  allocation failure
+ */
+int anx_object_stage(struct anx_object_handle *handle, anx_cid_t staging_cell);
+
+/*
+ * Atomically publish a staged mutation: the shadow payload becomes
+ * the live payload, version increments exactly once, content_hash is
+ * recomputed, and one ANX_PROV_MUTATED provenance event is appended.
+ * Returns ANX_EINVAL if no stage is in progress.
+ */
+int anx_object_commit(struct anx_object_handle *handle);
+
+/*
+ * Discard a staged mutation. Live payload/version/content_hash are
+ * unaffected — the mutation was never visible. The attempt is still
+ * recorded as an ANX_PROV_STAGE_ABORTED provenance event so rollback
+ * does not erase evidence that it happened.
+ * Returns ANX_EINVAL if no stage is in progress.
+ */
+int anx_object_abort(struct anx_object_handle *handle);
 
 #endif /* ANX_STATE_OBJECT_H */

@@ -16,6 +16,7 @@ enum anx_prov_type {
 	ANX_PROV_POLICY_CHANGED,
 	ANX_PROV_ACCESSED,
 	ANX_PROV_MIGRATED,
+	ANX_PROV_STAGE_ABORTED,	/* RFC-0002 extension: staged mutation discarded */
 };
 
 /* A single provenance event */
