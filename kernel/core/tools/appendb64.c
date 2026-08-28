@@ -98,6 +98,19 @@ void cmd_appendb64(int argc, char **argv)
 		anx_objstore_release(obj);
 	}
 
+	{
+		struct anx_state_object *dbg = anx_objstore_lookup(&oid);
+
+		if (dbg) {
+			kprintf("appendb64: dbg state=%d rules=%u sealed=? size=%u\n",
+				(int)dbg->state, (unsigned)dbg->access_policy.rule_count,
+				(unsigned)dbg->payload_size);
+			anx_objstore_release(dbg);
+		} else {
+			kprintf("appendb64: dbg lookup(oid) after resolve/create FAILED\n");
+		}
+	}
+
 	ret = anx_so_open(&oid, ANX_OPEN_WRITE, &handle);
 	if (ret != ANX_OK) {
 		kprintf("appendb64: open failed (%d)\n", ret);
