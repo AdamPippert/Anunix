@@ -491,7 +491,7 @@ anx_cid_t anx_posix_fork(void)
  * how the syscall trap knows which proc's fd table/exit_status to use.
  */
 static int anx_posix_loader_load_and_run(struct anx_posix_proc *proc,
-					  const void *binary, size_t binary_size,
+					  const void *binary,
 					  int *exit_code_out)
 {
 	const struct anx_elf64_ehdr *eh = (const struct anx_elf64_ehdr *)binary;
@@ -552,8 +552,7 @@ int anx_posix_exec_in_proc(struct anx_posix_proc *proc, const char *path)
 	anx_strlcpy(proc->image_path, path, sizeof(proc->image_path));
 
 	anx_memset(&last_exec_result, 0, sizeof(last_exec_result));
-	ret = anx_posix_loader_load_and_run(proc, obj->payload, obj->payload_size,
-					     &exit_code);
+	ret = anx_posix_loader_load_and_run(proc, obj->payload, &exit_code);
 	anx_objstore_release(obj);
 	if (ret != ANX_OK) {
 		proc->faulted = true;
