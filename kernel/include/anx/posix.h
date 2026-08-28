@@ -26,6 +26,16 @@
 #define ANX_SYSCALL_WRITE	2
 #define ANX_SYSCALL_CLOSE	3
 #define ANX_SYSCALL_TIME	4
+#define ANX_SYSCALL_EXIT	5
+
+/*
+ * Real-exec syscall trap convention (x86_64, int 0x80, ring 3 -> ring 0):
+ *   rax = syscall number (ANX_SYSCALL_*)
+ *   rdi = arg0, rsi = arg1, rdx = arg2
+ *   return value in rax
+ * fd 1 and 2 (stdout/stderr) are always open and captured into
+ * anx_posix_exec_last_result() — no open() call needed for them.
+ */
 
 /* --- File open flags --- */
 
@@ -59,8 +69,10 @@ struct anx_posix_proc {
 	struct anx_posix_fd fd_table[ANX_POSIX_FD_MAX];
 };
 
+#define ANX_POSIX_EXEC_STDOUT_MAX	4096
+
 struct anx_posix_exec_result {
-	char stdout_text[64];
+	char stdout_text[ANX_POSIX_EXEC_STDOUT_MAX];
 	size_t stdout_len;
 	int exit_status;
 };
@@ -133,6 +145,9 @@ int anx_posix_loader_validate(const void *binary, size_t binary_size);
 long anx_posix_syscall(struct anx_posix_proc *proc, uint64_t nr,
 		      uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3);
 int anx_posix_exec_last_result(struct anx_posix_exec_result *out);
+
+/* Called from the arch-level syscall trap (int 0x80). Not for direct use. */
+long anx_syscall_trap(uint64_t nr, uint64_t a0, uint64_t a1, uint64_t a2);
 
 /* TLS trust baseline APIs (P0-005) */
 void anx_tls_trust_store_reset(void);
