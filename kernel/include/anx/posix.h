@@ -37,6 +37,19 @@
  * anx_posix_exec_last_result() — no open() call needed for them.
  */
 
+/*
+ * Fixed ELF load window (x86_64). Anunix has no per-process page
+ * tables — the kernel's boot identity map covers the low 1 GiB 1:1
+ * (physical == virtual), and arch_exception_init() marks that whole
+ * range user-accessible. A binary's PT_LOAD segments are copied
+ * straight to their linked p_vaddr, so any binary targeting Anunix
+ * must link with a base address inside [MIN, MAX).
+ */
+#define ANX_USER_LOAD_MIN	0x02000000ULL	/* 32 MiB: past the kernel image */
+#define ANX_USER_LOAD_MAX	0x08000000ULL	/* 128 MiB ceiling */
+#define ANX_USER_STACK_SIZE	0x00100000ULL	/* 1 MiB */
+#define ANX_USER_STACK_TOP	ANX_USER_LOAD_MAX
+
 /* --- File open flags --- */
 
 #define ANX_O_RDONLY	0x0000
