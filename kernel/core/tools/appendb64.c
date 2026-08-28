@@ -80,8 +80,6 @@ void cmd_appendb64(int argc, char **argv)
 			kprintf("appendb64: create failed (%d)\n", ret);
 			return;
 		}
-		kprintf("appendb64: dbg fresh obj state=%d right after create\n",
-			(int)obj->state);
 		oid = obj->oid;
 		offset = 0;
 		ret = anx_ns_bind(ns_name, path, &oid);
@@ -100,27 +98,16 @@ void cmd_appendb64(int argc, char **argv)
 		anx_objstore_release(obj);
 	}
 
-	{
-		struct anx_state_object *dbg = anx_objstore_lookup(&oid);
-
-		if (dbg) {
-			kprintf("appendb64: dbg state=%d rules=%u sealed=? size=%u\n",
-				(int)dbg->state, (unsigned)dbg->access_policy.rule_count,
-				(unsigned)dbg->payload_size);
-			anx_objstore_release(dbg);
-		} else {
-			kprintf("appendb64: dbg lookup(oid) after resolve/create FAILED\n");
-		}
-	}
-
 	ret = anx_so_open(&oid, ANX_OPEN_WRITE, &handle);
 	if (ret != ANX_OK) {
 		kprintf("appendb64: open failed (%d)\n", ret);
 		return;
 	}
+	/* anx_so_write_payload() returns bytes written (>= 0) on success,
+	 * a negative ANX_E* code on failure — not ANX_OK. */
 	ret = anx_so_write_payload(&handle, offset, decoded, decoded_len);
 	anx_so_close(&handle);
-	if (ret != ANX_OK) {
+	if (ret < 0) {
 		kprintf("appendb64: write failed (%d)\n", ret);
 		return;
 	}
