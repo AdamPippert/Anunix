@@ -13,6 +13,8 @@
 void cmd_ls(int argc, char **argv);
 void cmd_cat(int argc, char **argv);
 void cmd_write_obj(int argc, char **argv);
+void cmd_appendb64(int argc, char **argv);
+void cmd_exec(int argc, char **argv);
 /* Load user-created objects from disk journal (call after disk init) */
 void anx_uobj_load(void);
 /* Record/update a user object in the disk journal */

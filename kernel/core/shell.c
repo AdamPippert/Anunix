@@ -2661,6 +2661,10 @@ static void dispatch(int argc, char **argv)
 		cmd_cat(argc, argv);
 	} else if (anx_strcmp(argv[0], "write") == 0) {
 		cmd_write_obj(argc, argv);
+	} else if (anx_strcmp(argv[0], "appendb64") == 0) {
+		cmd_appendb64(argc, argv);
+	} else if (anx_strcmp(argv[0], "exec") == 0) {
+		cmd_exec(argc, argv);
 	} else if (anx_strcmp(argv[0], "anx") == 0) {
 		/* anx [ns:]<path>  — launch amacs.  Default ns is
 		 * "posix" so files are visible to external programs. */
