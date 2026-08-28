@@ -80,6 +80,8 @@ void cmd_appendb64(int argc, char **argv)
 			kprintf("appendb64: create failed (%d)\n", ret);
 			return;
 		}
+		kprintf("appendb64: dbg fresh obj state=%d right after create\n",
+			(int)obj->state);
 		oid = obj->oid;
 		offset = 0;
 		ret = anx_ns_bind(ns_name, path, &oid);
