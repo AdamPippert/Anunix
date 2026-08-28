@@ -147,10 +147,16 @@ static void usermode_paging_init(void)
 	__asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
 	pml4 = (uint64_t *)(cr3 & ~0xFFFULL);
 	pml4_entry = pml4[0];
-	if (!(pml4_entry & 0x1))
+	kprintf("usermode_paging_init: cr3=0x%x pml4[0]=0x%x\n",
+		(uint32_t)cr3, (uint32_t)pml4_entry);
+	if (!(pml4_entry & 0x1)) {
+		kprintf("usermode_paging_init: pml4[0] not present, skipping\n");
 		return;
+	}
 	pdpt = (uint64_t *)(pml4_entry & ~0xFFFULL);
+	kprintf("usermode_paging_init: pdpt[0] before=0x%x\n", (uint32_t)pdpt[0]);
 	pdpt[0] |= (1ULL << 2);	/* U/S bit */
+	kprintf("usermode_paging_init: pdpt[0] after=0x%x\n", (uint32_t)pdpt[0]);
 }
 
 static void gdt_init(void)
