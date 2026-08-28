@@ -1,5 +1,5 @@
 /*
- * usermode.c — arch_exec_load_segment() for x86_64.
+ * exec_load.c — arch_exec_load_segment() for x86_64.
  *
  * The ring-3 entry/exit and syscall trap assembly live in usermode.S;
  * this is the one piece of segment loading that's genuinely
