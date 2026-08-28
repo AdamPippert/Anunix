@@ -132,6 +132,18 @@ void arch_return_to_kernel(int code)
 		;
 }
 
+void arch_exec_load_segment(uint64_t vaddr, const void *src,
+			     uint64_t filesz, uint64_t memsz)
+{
+	/* No-op on host: vaddr is a real-kernel identity-mapped physical
+	 * address, not a valid pointer in the test process's own address
+	 * space — writing to it would segfault the test harness. */
+	(void)vaddr;
+	(void)src;
+	(void)filesz;
+	(void)memsz;
+}
+
 uint64_t arch_timer_ticks(void)
 {
 	return 0;

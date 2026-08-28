@@ -495,12 +495,9 @@ static int anx_posix_loader_load_and_run(struct anx_posix_proc *proc,
 		    seg_end < ph[i].p_vaddr)
 			return ANX_EINVAL;	/* segment escapes the exec window */
 
-		anx_memcpy((void *)(uintptr_t)ph[i].p_vaddr,
-			   (const uint8_t *)binary + ph[i].p_offset,
-			   ph[i].p_filesz);
-		if (ph[i].p_memsz > ph[i].p_filesz)
-			anx_memset((void *)(uintptr_t)(ph[i].p_vaddr + ph[i].p_filesz),
-				   0, ph[i].p_memsz - ph[i].p_filesz);
+		arch_exec_load_segment(ph[i].p_vaddr,
+					(const uint8_t *)binary + ph[i].p_offset,
+					ph[i].p_filesz, ph[i].p_memsz);
 	}
 
 	current_exec_proc = proc;

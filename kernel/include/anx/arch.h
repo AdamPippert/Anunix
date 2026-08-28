@@ -71,4 +71,14 @@ void arch_wmb(void);	/* write barrier */
 uint64_t arch_enter_usermode(uint64_t entry, uint64_t user_rsp);
 void arch_return_to_kernel(int code) __attribute__((noreturn));
 
+/*
+ * Copies filesz bytes from src to vaddr, then zero-fills the remaining
+ * (memsz - filesz) bytes — one ELF PT_LOAD segment. On x86_64 this is a
+ * raw pointer write (vaddr is a physical==virtual identity-mapped
+ * address, only valid inside the real kernel); host test builds no-op
+ * this since there is no such address space to write into.
+ */
+void arch_exec_load_segment(uint64_t vaddr, const void *src,
+			     uint64_t filesz, uint64_t memsz);
+
 #endif /* ANX_ARCH_H */
