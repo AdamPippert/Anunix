@@ -113,6 +113,25 @@ void arch_exception_init(void)
 {
 }
 
+uint64_t arch_enter_usermode(uint64_t entry, uint64_t user_rsp)
+{
+	/* Host test builds can't drop to ring 3 — there is no ring 3 on
+	 * the host process running the test harness. Real ring-3 exec is
+	 * exercised only by booting the actual kernel in QEMU. */
+	(void)entry;
+	(void)user_rsp;
+	return (uint64_t)-1;
+}
+
+void arch_return_to_kernel(int code)
+{
+	/* Never actually reached in host tests — arch_enter_usermode()
+	 * above never transfers control, so no exit syscall can fire. */
+	(void)code;
+	for (;;)
+		;
+}
+
 uint64_t arch_timer_ticks(void)
 {
 	return 0;

@@ -14,6 +14,23 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 #include <anx/crypto.h>
+#include <anx/kprintf.h>
+#include <anx/arch.h>
+
+/*
+ * Fixed load window for real ELF exec (x86_64 QEMU boot path).
+ *
+ * Anunix has no per-process page tables — the kernel's boot identity
+ * map covers the low 1 GiB 1:1 (physical == virtual). A user binary's
+ * PT_LOAD segments are copied straight to their linked p_vaddr inside
+ * this window, which arch_exception_init() marks user-accessible
+ * (see the PDPT[0] U/S comment in exception.c). Binaries built for
+ * Anunix must link with a base address inside [MIN, MAX).
+ */
+#define ANX_USER_LOAD_MIN	0x02000000ULL	/* 32 MiB: past the kernel image */
+#define ANX_USER_LOAD_MAX	0x08000000ULL	/* 128 MiB ceiling */
+#define ANX_USER_STACK_SIZE	0x00100000ULL	/* 1 MiB */
+#define ANX_USER_STACK_TOP	ANX_USER_LOAD_MAX
 
 #define ANX_ELF_MAGIC0 0x7f
 #define ANX_ELF_MAGIC1 'E'
@@ -77,6 +94,7 @@ static struct anx_posix_proc proc_table[ANX_POSIX_PROC_MAX];
 static uint64_t next_vm_descriptor_root;
 static uint64_t next_page_map_id;
 static struct anx_posix_exec_result last_exec_result;
+static struct anx_posix_proc *current_exec_proc;	/* proc running in ring 3, or NULL */
 static char tls_trust_anchors[ANX_TLS_MAX_TRUST_ANCHORS][ANX_TLS_MAX_SUBJECT];
 static size_t tls_trust_anchor_count;
 static struct anx_profile_record profile_store[ANX_PROFILE_STORE_MAX];
@@ -253,6 +271,29 @@ static ssize_t posix_read_proc(struct anx_posix_proc *proc, int fd, void *buf,
 	return ret;
 }
 
+/*
+ * fd 1/2 (stdout/stderr) are always open for a running program — they
+ * are captured into last_exec_result rather than routed through the
+ * fd table, and echoed to the console so QEMU serial output shows
+ * what a real running binary actually printed.
+ */
+static ssize_t anx_posix_capture_stdout(const void *buf, size_t count)
+{
+	const char *p = (const char *)buf;
+	size_t space, n, i;
+
+	space = sizeof(last_exec_result.stdout_text) - last_exec_result.stdout_len;
+	n = count < space ? count : space;
+	if (n > 0) {
+		anx_memcpy(last_exec_result.stdout_text + last_exec_result.stdout_len,
+			   p, n);
+		last_exec_result.stdout_len += n;
+	}
+	for (i = 0; i < count; i++)
+		kputc(p[i]);
+	return (ssize_t)count;
+}
+
 static ssize_t posix_write_proc(struct anx_posix_proc *proc, int fd,
 			       const void *buf, size_t count)
 {
@@ -262,6 +303,17 @@ static ssize_t posix_write_proc(struct anx_posix_proc *proc, int fd,
 
 	if (!proc)
 		return ANX_EINVAL;
+	if (fd == 1 || fd == 2) {
+		/* Bounds-check: only echo pointers inside the exec load
+		 * window — a broken guest binary must not make the kernel
+		 * dereference an arbitrary address (see load-window note
+		 * above; this is not full user/kernel memory isolation). */
+		uintptr_t addr = (uintptr_t)buf;
+
+		if (addr < ANX_USER_LOAD_MIN || addr + count > ANX_USER_STACK_TOP)
+			return ANX_EINVAL;
+		return anx_posix_capture_stdout(buf, count);
+	}
 	if (fd < 0 || fd >= ANX_POSIX_FD_MAX)
 		return ANX_EINVAL;
 	f = &proc->fd_table[fd];
@@ -432,22 +484,57 @@ anx_cid_t anx_posix_fork(void)
 }
 
 /*
- * SIMULATED, NOT REAL EXECUTION: this validates the ELF header, program
- * headers, and entry point via anx_posix_loader_validate() below, but
- * never maps the binary's segments or transfers control to it. On
- * success it just hardcodes last_exec_result to a fixed stdout string
- * and exit_status=42 — none of the target binary's machine code runs.
- * Do not describe this in docs/release notes as "running userland
- * binaries" without this caveat; real execution is still roadmap.
+ * Copies each PT_LOAD segment to its linked p_vaddr inside the fixed
+ * exec window (see ANX_USER_LOAD_MIN/MAX above), zero-fills BSS, then
+ * transfers control for real via arch_enter_usermode(). Only one exec
+ * may be in flight at a time — current_exec_proc guards that and is
+ * how the syscall trap knows which proc's fd table/exit_status to use.
  */
+static int anx_posix_loader_load_and_run(struct anx_posix_proc *proc,
+					  const void *binary, size_t binary_size,
+					  int *exit_code_out)
+{
+	const struct anx_elf64_ehdr *eh = (const struct anx_elf64_ehdr *)binary;
+	const struct anx_elf64_phdr *ph;
+	uint16_t i;
+
+	ph = (const struct anx_elf64_phdr *)((const uint8_t *)binary + eh->e_phoff);
+	for (i = 0; i < eh->e_phnum; i++) {
+		uint64_t seg_end;
+
+		if (ph[i].p_type != ANX_PT_LOAD)
+			continue;
+		seg_end = ph[i].p_vaddr + ph[i].p_memsz;
+		if (ph[i].p_vaddr < ANX_USER_LOAD_MIN ||
+		    seg_end > (ANX_USER_LOAD_MAX - ANX_USER_STACK_SIZE) ||
+		    seg_end < ph[i].p_vaddr)
+			return ANX_EINVAL;	/* segment escapes the exec window */
+
+		anx_memcpy((void *)(uintptr_t)ph[i].p_vaddr,
+			   (const uint8_t *)binary + ph[i].p_offset,
+			   ph[i].p_filesz);
+		if (ph[i].p_memsz > ph[i].p_filesz)
+			anx_memset((void *)(uintptr_t)(ph[i].p_vaddr + ph[i].p_filesz),
+				   0, ph[i].p_memsz - ph[i].p_filesz);
+	}
+
+	current_exec_proc = proc;
+	*exit_code_out = (int)arch_enter_usermode(eh->e_entry,
+						   ANX_USER_STACK_TOP - 16);
+	current_exec_proc = NULL;
+	return ANX_OK;
+}
+
 int anx_posix_exec_in_proc(struct anx_posix_proc *proc, const char *path)
 {
 	anx_oid_t oid;
 	struct anx_state_object *obj;
-	int ret;
+	int ret, exit_code;
 
 	if (!proc || !path)
 		return ANX_EINVAL;
+	if (current_exec_proc)
+		return ANX_EBUSY;	/* no nested/concurrent exec yet */
 	ret = anx_ns_resolve("posix", path, &oid);
 	if (ret != ANX_OK)
 		return ret;
@@ -465,11 +552,16 @@ int anx_posix_exec_in_proc(struct anx_posix_proc *proc, const char *path)
 	anx_strlcpy(proc->image_path, path, sizeof(proc->image_path));
 
 	anx_memset(&last_exec_result, 0, sizeof(last_exec_result));
-	anx_strlcpy(last_exec_result.stdout_text, "anx-userprog: hello\n",
-		    sizeof(last_exec_result.stdout_text));
-	last_exec_result.stdout_len = anx_strlen(last_exec_result.stdout_text);
-	last_exec_result.exit_status = 42;
+	ret = anx_posix_loader_load_and_run(proc, obj->payload, obj->payload_size,
+					     &exit_code);
 	anx_objstore_release(obj);
+	if (ret != ANX_OK) {
+		proc->faulted = true;
+		proc->exit_status = ret;
+		return ret;
+	}
+	proc->exit_status = exit_code;
+	last_exec_result.exit_status = exit_code;
 	return ANX_OK;
 }
 
@@ -544,6 +636,20 @@ long anx_posix_syscall(struct anx_posix_proc *proc, uint64_t nr,
 	default:
 		return ANX_ENOSYS;
 	}
+}
+
+/*
+ * Entered from the arch-level int-0x80 trap stub (isr_stub_syscall in
+ * usermode.S) while the exec'd program is running in ring 3.
+ * ANX_SYSCALL_EXIT does not return — it hands off to
+ * arch_return_to_kernel(), which resumes anx_posix_loader_load_and_run()
+ * as if arch_enter_usermode() had just returned.
+ */
+long anx_syscall_trap(uint64_t nr, uint64_t a0, uint64_t a1, uint64_t a2)
+{
+	if (nr == ANX_SYSCALL_EXIT)
+		arch_return_to_kernel((int)a0);
+	return anx_posix_syscall(current_exec_proc, nr, a0, a1, a2, 0);
 }
 
 int anx_posix_exec_last_result(struct anx_posix_exec_result *out)

@@ -12,6 +12,7 @@
 #include <anx/io.h>
 #include <anx/irq.h>
 #include <anx/kprintf.h>
+#include <anx/string.h>
 
 /* --- IDT --- */
 
@@ -52,13 +53,22 @@ static void idt_set_gate(int n, uint64_t handler)
 
 /* --- GDT --- */
 
+/* Selectors: kernel CS=0x08, kernel DS=0x10, user CS=0x18|3, user DS=0x20|3,
+ * TSS=0x28. Slots 5-6 are filled at runtime by tss_init() with the TSS's
+ * 16-byte system descriptor (base address isn't known until link/load time). */
 static uint64_t gdt[] = {
 	0x0000000000000000ULL,	/* null */
 	0x00AF9A000000FFFFULL,	/* kernel code 64-bit */
 	0x00CF92000000FFFFULL,	/* kernel data */
 	0x00AFFA000000FFFFULL,	/* user code 64-bit */
 	0x00CFF2000000FFFFULL,	/* user data */
+	0x0000000000000000ULL,	/* TSS descriptor low half (set by tss_init) */
+	0x0000000000000000ULL,	/* TSS descriptor high half */
 };
+
+#define GDT_SEL_USER_CODE	0x1BULL	/* index 3, RPL 3 */
+#define GDT_SEL_USER_DATA	0x23ULL	/* index 4, RPL 3 */
+#define GDT_SEL_TSS		0x28ULL	/* index 5 */
 
 struct gdt_ptr {
 	uint16_t limit;
@@ -66,6 +76,82 @@ struct gdt_ptr {
 } __attribute__((packed));
 
 static struct gdt_ptr gdtr;
+
+/* --- TSS (needed so the CPU has a kernel stack to switch to on a ring
+ * 3 -> ring 0 interrupt; without one, any interrupt taken while a user
+ * program is running double-faults) --- */
+
+struct anx_tss64 {
+	uint32_t reserved0;
+	uint64_t rsp0;
+	uint64_t rsp1;
+	uint64_t rsp2;
+	uint64_t reserved1;
+	uint64_t ist[7];
+	uint64_t reserved2;
+	uint16_t reserved3;
+	uint16_t iomap_base;
+} __attribute__((packed));
+
+static struct anx_tss64 tss;
+static uint8_t tss_stack[16384] __attribute__((aligned(16)));
+
+static void tss_init(void)
+{
+	uint64_t base = (uint64_t)&tss;
+	uint64_t limit = sizeof(tss) - 1;
+	uint64_t desc_lo, desc_hi;
+
+	anx_memset(&tss, 0, sizeof(tss));
+	tss.iomap_base = sizeof(tss);
+	tss.rsp0 = (uint64_t)(tss_stack + sizeof(tss_stack));
+
+	/* 16-byte TSS descriptor (Intel SDM 7.2.3): type 0x9 = available
+	 * 64-bit TSS, DPL 0. */
+	desc_lo = (limit & 0xFFFFULL) |
+		  ((base & 0xFFFFFFULL) << 16) |
+		  (0x89ULL << 40) |
+		  (((limit >> 16) & 0xFULL) << 48) |
+		  (((base >> 24) & 0xFFULL) << 56);
+	desc_hi = (base >> 32) & 0xFFFFFFFFULL;
+
+	gdt[5] = desc_lo;
+	gdt[6] = desc_hi;
+
+	__asm__ volatile(
+		"movw %0, %%ax\n\t"
+		"ltr %%ax\n\t"
+		: : "i"((uint16_t)GDT_SEL_TSS) : "ax"
+	);
+}
+
+/*
+ * Mark the first 1 GiB (where the kernel and the exec load window both
+ * live — see ANX_USER_LOAD_MIN/MAX in posix.c) user-accessible.
+ *
+ * Both boot paths (efi_stub.c and qemu_boot.S) build an identical
+ * PML4[0] -> PDPT -> four 1-GiB-page scheme, just at different physical
+ * addresses, so this reads CR3 at runtime instead of hardcoding either
+ * boot path's page-table address. This is intentionally coarse — it
+ * makes the WHOLE low 1 GiB (kernel included) readable/writable from
+ * ring 3, not just the exec window. Anunix has no per-process address
+ * spaces yet, so page-level (not gigabyte-level) protection is future
+ * work; real memory isolation between kernel and user is not enforced
+ * by this milestone.
+ */
+static void usermode_paging_init(void)
+{
+	uint64_t cr3, pml4_entry;
+	uint64_t *pml4, *pdpt;
+
+	__asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+	pml4 = (uint64_t *)(cr3 & ~0xFFFULL);
+	pml4_entry = pml4[0];
+	if (!(pml4_entry & 0x1))
+		return;
+	pdpt = (uint64_t *)(pml4_entry & ~0xFFFULL);
+	pdpt[0] |= (1ULL << 2);	/* U/S bit */
+}
 
 static void gdt_init(void)
 {
@@ -285,6 +371,7 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 
 /* Default handler for vectors not in stub table (from idt.S) */
 extern void isr_stub_default(void);
+extern void isr_stub_syscall(void);
 
 void arch_exception_init(void)
 {
@@ -293,6 +380,12 @@ void arch_exception_init(void)
 	/* Install kernel GDT */
 	gdt_init();
 
+	/* TSS (kernel stack for ring 3 -> ring 0 transitions) and the low
+	 * 1 GiB user-accessible bit — both needed before any ring-3 code
+	 * can run without immediately double-faulting. */
+	tss_init();
+	usermode_paging_init();
+
 	/* Set up IDT entries from stub table (vectors 0-47) */
 	for (i = 0; i < ISR_COUNT; i++)
 		idt_set_gate(i, isr_stub_table[i]);
@@ -300,6 +393,10 @@ void arch_exception_init(void)
 	/* Fill vectors 48-255 with a default handler */
 	for (i = ISR_COUNT; i < IDT_ENTRIES; i++)
 		idt_set_gate(i, (uint64_t)isr_stub_default);
+
+	/* Syscall trap (int 0x80), DPL 3 so ring-3 code may invoke it */
+	idt_set_gate(0x80, (uint64_t)isr_stub_syscall);
+	idt[0x80].type_attr = 0xEE;	/* present, DPL 3, interrupt gate */
 
 	/* Load IDT */
 	idtr.limit = sizeof(idt) - 1;

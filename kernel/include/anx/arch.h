@@ -58,4 +58,17 @@ void arch_mb(void);	/* full memory barrier */
 void arch_rmb(void);	/* read barrier */
 void arch_wmb(void);	/* write barrier */
 
+/*
+ * Ring-3 execution primitives (real, not simulated — see posix.c).
+ *
+ * arch_enter_usermode() drops to ring 3 at `entry` with the given
+ * user stack and does not return via the normal call/ret path — it
+ * "returns" the exit code only when the running program invokes the
+ * exit syscall, which calls arch_return_to_kernel() to resume the
+ * saved kernel context. Exactly one usermode program may be in flight
+ * at a time (no nested exec).
+ */
+uint64_t arch_enter_usermode(uint64_t entry, uint64_t user_rsp);
+void arch_return_to_kernel(int code) __attribute__((noreturn));
+
 #endif /* ANX_ARCH_H */
