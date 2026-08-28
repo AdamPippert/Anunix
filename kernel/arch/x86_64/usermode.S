@@ -28,7 +28,8 @@ isr_stub_syscall:
 	iretq
 
 /*
- * uint64_t arch_enter_usermode(uint64_t entry /*rdi*/, uint64_t user_rsp /*rsi*/)
+ * uint64_t arch_enter_usermode(uint64_t entry, uint64_t user_rsp)
+ * entry arrives in rdi, user_rsp in rsi (SysV C ABI).
  */
 .global arch_enter_usermode
 arch_enter_usermode:
