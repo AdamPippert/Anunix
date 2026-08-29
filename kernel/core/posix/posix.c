@@ -500,9 +500,20 @@ static int anx_posix_loader_load_and_run(struct anx_posix_proc *proc,
 					ph[i].p_filesz, ph[i].p_memsz);
 	}
 
+	/*
+	 * SysV ABI: RSP must be 16-byte aligned immediately before a
+	 * `call`, so a normally-called function sees RSP % 16 == 8 at its
+	 * own entry (the `call` pushes the 8-byte return address). _start
+	 * is reached via iretq, not `call`, but compiler-generated code
+	 * still assumes that entry convention for its own aligned stack
+	 * spills (movaps et al.) — an entry RSP that is 16-aligned instead
+	 * of 8-aligned misaligns every such spill by 8 bytes and raises
+	 * #GP the first time one executes. ANX_USER_STACK_TOP is 16-byte
+	 * aligned, so subtract 8, not 16, to land on RSP % 16 == 8.
+	 */
 	current_exec_proc = proc;
 	*exit_code_out = (int)arch_enter_usermode(eh->e_entry,
-						   ANX_USER_STACK_TOP - 16);
+						   ANX_USER_STACK_TOP - 8);
 	current_exec_proc = NULL;
 	return ANX_OK;
 }
