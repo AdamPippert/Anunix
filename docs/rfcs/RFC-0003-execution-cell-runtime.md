@@ -94,7 +94,7 @@ The system needs a new first-class execution abstraction.
 ### 3.1 Primary Goals
 
 1. **Intent-first execution**
-   - Work must be declared in terms of what is being attempted, not only which binary to run.
+   - A cell must declare its intent, not only which binary to run.
 
 2. **Composable decomposition**
    - Complex tasks must be splittable into sub-cells with explicit lineage.

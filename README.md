@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.5.8-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.8.28--1-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-50%2B%20suites-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/RFCs-26-blueviolet" alt="RFCs">
+  <img src="https://img.shields.io/badge/tests-59%20suites-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/RFCs-29-blueviolet" alt="RFCs">
 </p>
 
 ---
@@ -54,40 +54,58 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 
 ---
 
-## Release: 2026.5.8
+## Release: 2026.8.28-1
 
-### Milestone: Topological organization of State Objects
+### Milestone: Real ELF execution
 
-Every State Object now carries a deterministic, content-derived
-**UOR — Universal Object Reference** — alongside its OID and content hash.
-The projection is a pure function of the canonical manifest
-`(oid, version, content_hash, type, parents, schema)`. The disk store's
-sorted index is keyed on the UOR-derived `boundary_key`, giving
-locality-ordered range scans for free.
+The previous exec path validated an ELF header and returned a hardcoded
+exit status; it never ran the binary's code. `anx_posix_exec_in_proc()`
+now maps a binary's `PT_LOAD` segments into a fixed load window, switches
+the CPU to ring 3, and runs the binary's actual machine code through a
+new `int 0x80` syscall trap.
 
 ```
-anx> uor show default:/weights
-  oid:           obj_018f...
-  content_hash:  sha256:8b9a...
-  boundary_key:  0x4f1c.81d2.a304.0001
-  topology_epoch: 17
+anx> appendb64 /bin/hello AAAA...
+anx> exec /bin/hello
+hello from rust
+exec: exit_status=9, stdout (16 bytes):
 ```
 
-**What's new in 2026.5.8**
+**What's new in 2026.8.28-1**
 
-- **UOR subsystem** (`kernel/core/uor/`, `kernel/include/anx/uor.h`) — projection function, boundary-key derivation, topology epoch bumps on rebuild
-- **Topology rebuild** — `anx_uor_rebuild_topology_index()` walks the in-memory store, recomputes every projection, reattaches metadata; non-destructive (payloads, OIDs, provenance untouched)
-- **Disk store locality** — `boundary_key` drives the sorted on-disk index; range scans align with topological neighbourhoods
-- **Editor renamed** — `anunixmacs` → `amacs`. Directory, header, RFC, test name, and the user dotfile (`~/.amacs.el`) all renamed; public `anx_ed_*` API unchanged
-- **anxboot** custom UEFI loader (`boot/anxboot/`) — self-contained PE/COFF binary built with clang + lld-link, no GNU EFI, no edk2, no libc. Loads `/boot/anunix.elf` from the same ESP, fills minimal multiboot2 info, exits boot services, jumps to kernel
-- **RFC-0002 §14** — new section *UOR Projection and Topological Identity* documents the design boundary, manifest schema, projection formula, lifecycle hooks
-- **50 UOR-specific test cases** plus regression coverage of disk-store locality
+- **Real ring-3 exec** — segment loading (`arch_exec_load_segment()`), a
+  ring-3 transition (`arch_enter_usermode()`), and a syscall trap
+  (`isr_stub_syscall`, `anx_syscall_trap()`) replace the old simulated stub
+- **`ANX_SYSCALL_EXIT`** and a documented syscall ABI v0 (`int 0x80`,
+  registers `rax`/`rdi`/`rsi`/`rdx`)
+- **New shell tools** — `exec <path>` runs a binary and prints its exit
+  status and captured stdout; `appendb64 <path> <chunk>` loads a binary
+  into the `posix` namespace across multiple 256-byte shell lines
+- **A real Rust binary runs** — `no_std`, built with stable `rustc`
+  1.98.0 for `x86_64-unknown-none`, calling Anunix's syscall ABI directly
+- **Real code from `Hologram-Technologies/hologram` runs** —
+  `hologram-types::DTypeId::storage_bytes()` and
+  `hologram-compute::HologramF32MatmulSquare<4>::matmul()`, both fetched
+  from the upstream repository and compiled `no_std` for Anunix, execute
+  and return correct results
+- **59 host-native tests pass** (up from 50)
 
-See [`RELEASE-2026.5.8.md`](RELEASE-2026.5.8.md) for full details.
+See [`RELEASE-2026.8.28-1.md`](RELEASE-2026.8.28-1.md) for full details,
+including the syscall ABI table and the memory-protection limitation of
+this milestone.
 
 ---
 
 ## Earlier releases
+
+### 2026.5.8 — Topological organization of State Objects
+
+Every State Object carries a deterministic, content-derived **UOR —
+Universal Object Reference** alongside its OID and content hash, and a
+new **anxboot** custom UEFI loader replaces GRUB. The disk store's sorted
+index keys on the UOR-derived `boundary_key`, giving locality-ordered
+range scans. The `anunixmacs` editor is renamed to `amacs`. 50 new tests.
+See [`RELEASE-2026.5.8.md`](RELEASE-2026.5.8.md).
 
 ### 2026.4.24 — Native in-kernel browser engine (superseded)
 
@@ -162,10 +180,13 @@ See [`RELEASE-2026.4.16.md`](RELEASE-2026.4.16.md).
 | `route/` | 0005 | Routing Plane — type-aware transformation, topology affinity scoring |
 | `sched/` | 0005 | Unified scheduler with priority + QoS event queues |
 | `net/` | 0006 | Network Plane — DAG edges, zero-copy data plane |
-| `cap/` | 0007 | Capability Objects with trust lifecycle |
+| `cap/` | 0007, 0028, 0029 | Capability Objects, trust lifecycle, information-flow labels, the Prepare/Dispatch/Settle effect protocol, measured-null promotion gate |
 | `cred` | 0008 | Credential store — opaque payloads, scoped access |
 | `agent/` | 0009 | Agent memory and execution lifecycle |
-| `posix/` | 0010 | POSIX compatibility shim |
+| `posix/` | 0010 | POSIX shim: file/process syscalls, real ring-3 ELF exec |
+| `icm/` | 0025 | Information Context Management over State Objects |
+| `twin/` | 0029 | Resource Twin — measured resource state for the scheduler |
+| `regime/` | 0029 | Regime Detector — workload-regime classification for scheduling policy |
 | `iface/` | 0012 | Interface Plane — surfaces, events, accessibility, clipboard, drag-drop, media, shm IPC |
 | `tensor/` | 0013 | Tensor Objects + math engine (matmul, ReLU, quantize, BRIN stats) |
 | `vm/` | 0017 | VM Objects — dual-nature primitives |
@@ -199,7 +220,7 @@ See [`RELEASE-2026.4.16.md`](RELEASE-2026.4.16.md).
 
 ### Userland shell (`ansh`)
 
-Built-in commands in `kernel/core/tools/`: `bootlog`, `browser`, `cat`, `cells`, `conformance`, `cp`, `display` (`fb_info`/`gop_list`/`fb_test`), `fetch`, `hwd`, `iface_tools`, `inspect`, `kickstart`, `ls`, `meta`, `model`, `mv`, `netinfo`, `rm`, `search`, `sysinfo`, `tensor`, `theme`, `uor`, `vm`, `wifi`, `workflow`, `write`. Plus `agent` (LLM+shell loop), `ask` (Claude API), `ssh-keygen`, pipe chaining, history persistence, scripting (`if/then/end`, `$?`).
+Built-in commands in `kernel/core/tools/`: `appendb64`, `bootlog`, `browser`, `cat`, `cells`, `conformance`, `cp`, `display` (`fb_info`/`gop_list`/`fb_test`), `exec`, `fetch`, `hwd`, `iface_tools`, `inspect`, `kickstart`, `ls`, `meta`, `model`, `mv`, `netinfo`, `rm`, `search`, `sysinfo`, `tensor`, `theme`, `uor`, `vm`, `wifi`, `workflow`, `write`. Plus `agent` (LLM+shell loop), `ask` (Claude API), `ssh-keygen`, pipe chaining, history persistence, scripting (`if/then/end`, `$?`).
 
 ---
 
@@ -295,8 +316,10 @@ kernel/
     mem/              Memory Control Plane                           (RFC-0004)
     route/  sched/    Routing Plane + Unified Scheduler              (RFC-0005)
     net/              Network Plane                                  (RFC-0006)
-    cap/              Capability Objects                             (RFC-0007)
-    posix/            POSIX compatibility shim                       (RFC-0010)
+    cap/              Capability Objects, effect protocol, promotion  (RFC-0007, 0028, 0029)
+    posix/            POSIX shim + real ring-3 ELF exec               (RFC-0010)
+    icm/              Information Context Management                 (RFC-0025)
+    twin/  regime/    Resource Twin + Regime Detector                 (RFC-0029)
     iface/            Interface Plane                                (RFC-0012)
     tensor/           Tensor Objects + math engine                   (RFC-0013)
     vm/               VM Objects                                     (RFC-0017)
@@ -322,11 +345,11 @@ kernel/
   include/anx/        Public kernel headers
   lib/                kprintf, alloc, json, font, hashtable, jpeg, crypto/
 distd/                Anunix distribution server (formerly superrouter)
-tests/                Host-native unit tests (50+ suites)
+tests/                Host-native unit tests (59 suites)
 tools/                Build scripts, ISO builder, QEMU helpers, screenshot
 docs/
   CONCEPTS.md         60-second primer on Anunix primitives
-  rfcs/               Design specifications (26 RFCs)
+  rfcs/               Design specifications (29 RFCs)
   releases/           Per-release notes
   hardware/           Driver and platform-specific guides
   plans/              Planning + acceptance matrices
@@ -340,7 +363,7 @@ config/               Build and runtime configuration
 
 ## Design Documents
 
-Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 26 RFCs in total — selected:
+Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 29 RFCs in total — selected:
 
 | RFC | Title |
 |-----|-------|
@@ -356,8 +379,11 @@ Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 26 RFCs in tot
 | [0022](docs/rfcs/RFC-0022-gpu-compute-plane.md) | GPU Compute Plane and AGX Driver |
 | [0023](docs/rfcs/RFC-0023-amacs-editor.md) | amacs — Object-Native Editor with eLISP |
 | [0024](docs/rfcs/RFC-0024-audio-engine-and-media-apps.md) | Audio Engine and Media Player Apps |
+| [0025](docs/rfcs/RFC-0025-icm-over-state-objects.md) | ICM over State Objects |
+| [0028](docs/rfcs/RFC-0028-protected-operation-abi.md) | Protected Operation ABI (information-flow labels, effect protocol) |
+| [0029](docs/rfcs/RFC-0029-resource-twin-regime-gated-scheduling.md) | Resource Twin and Regime-Gated Scheduling Policy |
 
-In-flight drafts: **RFC-0025** Kit Subsystem (unified loadable subsystems), **RFC-0026** Persona Objects (agent identity, custody, governance).
+In-flight drafts: **RFC-0026** Kit Subsystem (unified loadable subsystems), **RFC-0027** Persona Objects (agent identity, custody, governance).
 
 ---
 
@@ -377,18 +403,24 @@ In-flight drafts: **RFC-0025** Kit Subsystem (unified loadable subsystems), **RF
 
 ## Roadmap
 
-### Done in 2026.5.8
+### Done in 2026.8.28-1
 
-- UOR topological identity for every State Object, woven into disk-store locality
-- amacs editor rename complete (directory, RFC, dotfile)
-- anxboot custom UEFI loader replaces GRUB (no GNU EFI, no edk2)
-- Identity-RWX page tables for strict-NX UEFI firmware
-- 2026.5.8 release notes published
+- Real ring-3 ELF execution: segment loading, a syscall trap, and `ANX_SYSCALL_EXIT`
+- A real Rust `no_std` binary, and real `Hologram-Technologies/hologram` code, both run on Anunix
+- The `exec` and `appendb64` shell tools
+- 59 host-native tests passing, up from 50
+- Since 2026.5.8: information-flow labels, the effect protocol, and capability
+  promotion (RFC-0028); the Resource Twin and Regime Detector (RFC-0029);
+  ICM over State Objects (RFC-0025)
 
-### Up next (target 2026.6.x)
+### Up next (target 2026.9.x)
 
-- **Kit Subsystem (RFC-0025)** — unified loadable subsystems
-- **Persona Objects (RFC-0026)** — agent identity, custody, and governance, layered on capabilities + credentials
+- **A larger `no_std` Hologram surface** — `hologram-ops`, `hologram-graph`, and
+  the LUT-dispatch path, compiled for Anunix and run for real
+- **Per-process page tables** — closes the coarse-grained memory-protection
+  limitation in [`RELEASE-2026.8.28-1.md`](RELEASE-2026.8.28-1.md)
+- **Kit Subsystem (RFC-0026)** — unified loadable subsystems
+- **Persona Objects (RFC-0027)** — agent identity, custody, and governance, layered on capabilities + credentials
 - **anxml inference runtime (RFC-0021)** — first end-to-end model execution path that does not rely on external proxies
 - **AGX driver port for Apple Silicon (RFC-0022)** — MLX-equivalent runtime on the M-series GPU; target is M1 Mac Studio as an Anunix daily driver
 - **amacs Phase 3+** — eLISP completion, multi-buffer windows, file ops via State Objects

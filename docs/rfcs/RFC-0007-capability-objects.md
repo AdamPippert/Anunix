@@ -178,7 +178,7 @@ When a new version of a capability replaces an old one, the replacement must be 
 
 ### 5.4 Capabilities Are State Objects
 
-A Capability Object inherits all properties of State Objects as defined in RFC-0002: globally unique identity, content-addressable hashing, immutable provenance, policy governance, lifecycle management, and metadata. This is not a design convenience — it is a requirement. Capabilities must be addressable by OID, traceable through provenance chains, subject to access policy, governed by retention rules, and manageable through the same kernel interfaces as every other piece of state in the system. The decision to make capabilities a kernel-level type rather than a metadata convention follows directly from RFC-0002 Section 5.7: the kernel must understand what a capability is in order to enforce its contracts, manage its lifecycle, and integrate it into routing decisions.
+A Capability Object inherits all properties of State Objects as defined in RFC-0002: globally unique identity, content-addressable hashing, immutable provenance, policy governance, lifecycle management, and metadata. This is not a design convenience — it is a requirement. Capabilities must be addressable by OID, traceable through provenance chains, subject to access policy, governed by retention rules, and manageable through the same kernel interfaces as every other piece of state in the system. The decision to make capabilities a kernel-level type rather than a metadata convention follows directly from RFC-0002 Section 5.7: the kernel must understand what a capability is to enforce its contracts, manage its lifecycle, and integrate it into routing decisions.
 
 ### 5.5 Routing Integration Must Be Clean
 

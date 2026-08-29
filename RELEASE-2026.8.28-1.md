@@ -157,10 +157,35 @@ elements. `F32` uses 4 bytes per element. `I4` packs 2 elements per
 byte. `E8CB` packs 8 elements per byte. Exit status `0` confirms all
 three matched before the binary exited.
 
-This validates only `hologram-types`, the dtype and shape vocabulary
-crate. The Hologram CLI, compiler, and tensor-execution crates depend
-on `std`, `tokio`, `wasmtime`, and `wgpu`, none of which build for
-Anunix's freestanding target. Running them is `Planned:` work; see
+## Verified: real Hologram tensor compute
+
+`hologram-compute::prism_axes::HologramF32MatmulSquare<4>`, reached
+through the `prism_tensor::tensor::TensorAxis` trait every external
+caller uses, multiplies a `4 × 4` identity matrix by a second matrix
+`B`. The kernel is a hand-written for-loop, not the LUT-dispatch path;
+see Forward-looking. The identity product equals `B`, so a correct
+kernel returns `B` unchanged. The shell command `exec /bin/holomm`,
+run against a QEMU boot of `anunix-qemu.elf` on 2026-08-28, printed:
+
+```
+hologram-compute::HologramF32MatmulSquare<4>::matmul on Anunix:
+0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+exec: exit_status=0
+```
+
+Exit status `0` confirms all 16 output elements matched `B` within a
+`0.0001` tolerance, checked in the test binary before it called
+`ANX_SYSCALL_EXIT`. `hologram-compute` needs `alloc`; the test binary
+supplies a 4096-byte bump allocator as `#[global_allocator]`, since
+Anunix has no heap allocator syscall for a ring-3 binary to call.
+
+## Scope of the Hologram verification
+
+Two crates verified: `hologram-types` (dtype and shape vocabulary) and
+`hologram-compute` (one CPU matmul kernel). The Hologram CLI, compiler,
+LUT-dispatch path, and full tensor-execution engine depend on `std`,
+`tokio`, `wasmtime`, and `wgpu`, none of which build for Anunix's
+freestanding target. Running them is `Planned:` work; see
 Forward-looking.
 
 ## Tests
