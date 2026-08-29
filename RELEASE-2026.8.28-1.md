@@ -1,4 +1,4 @@
-# Anunix 2026.8.28 Release Notes
+# Anunix 2026.8.28-1 Release Notes
 
 Milestone: **Real ELF execution.** The previous `anx_posix_exec_in_proc()`
 simulated running a binary and never ran its code. The new exec path
