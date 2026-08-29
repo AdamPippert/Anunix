@@ -28,10 +28,10 @@ exec path, verified in QEMU on `hyde`.
   `E8CB` dtypes and exits `0` on a correct result.
 - **A real Hologram matmul kernel runs.** `hologram-compute::HologramF32MatmulSquare<4>`
   multiplies a real `4 × 4` matrix and returns the correct product.
-- **The Hologram compiler and runtime executor run.**
-  `hologram_compiler::compile_from_source()` and `hologram_exec::InferenceSession`
-  compile and execute a real graph on Anunix, the same round trip
-  `hologram-exec`'s own test suite exercises upstream.
+- **The Hologram compiler and runtime executor run, with a correct
+  numeric result.** `hologram_compiler::compile_from_source()` compiles
+  a real ReLU graph; `hologram_exec::InferenceSession` runs it against
+  16 `f32` inputs and returns the mathematically correct output.
 - **A second real Anunix bug fixed.** The ring-3 stack Anunix handed to
   a binary was 16-byte aligned; the SysV ABI needs 8-byte alignment at
   entry. Any binary using an aligned SSE instruction raised a `#GP`
@@ -193,28 +193,42 @@ Anunix has no heap allocator syscall for a ring-3 binary to call.
 
 `hologram_compiler::compile_from_source()` and `hologram_exec::InferenceSession`
 compile a native-DSL Hologram program and run it, the same round trip
-`hologram-exec`'s own `session.rs` test exercises upstream. These
-crates pull in `blake3` and `hashbrown`, and both emit SSE
+`hologram-exec`'s own `session.rs` test exercises upstream. The source
+declares a real shape (Hologram's native DSL takes a `:16` token for a
+16-element tensor) and a ReLU op over 16 `f32` inputs running from `-8`
+to `7`:
+
+```
+input x :16
+op relu x :16 as=y
+output y
+```
+
+These crates pull in `blake3` and `hashbrown`, and both emit SSE
 instructions. The stock `x86_64-unknown-none` softfloat target cannot
 codegen those instructions correctly, so this demo needed a custom
 hardfloat Rust target (nightly `rustc` plus `-Z build-std`) and exposed
 a second real Anunix bug — see "Ring-3 stack alignment" below. The
-shell command `exec /bin/holo4`, run against a QEMU boot of
+shell command `exec /bin/holo5`, run against a QEMU boot of
 `anunix-qemu.elf` on 2026-08-28, printed:
 
 ```
 hologram-compiler: compile+load+execute a real graph on Anunix
-compiled: archive_bytes=418
+compiled: archive_bytes=572
 loaded: kernels=1 inputs=1 outputs=1
 executed: output_buffers=1
-output_bytes=0
+output_bytes=64
+0 0 0 0 0 0 0 0 0 1 2 3 4 5 6 7
+exec: exit_status=0
 ```
 
-The compiler parsed the source and built a 418-byte archive. The
-executor loaded and ran it, reporting the correct kernel, input, and
-output counts throughout. The `0`-byte output reflects a demo program
-too minimal to declare a concrete tensor shape, not a fault in
-Hologram's execution engine. A shaped program is `Planned:` work.
+The compiler parsed the source and built a 572-byte archive. The
+executor loaded it and ran the compiled ReLU kernel against the 16
+input values. `relu(x) = max(x, 0)` zeroes the nine inputs `-8` through
+`0` and passes `1` through `7` unchanged — exactly what the printed
+output shows. The test binary checked every element against that
+expected value before calling `ANX_SYSCALL_EXIT`; exit status `0`
+confirms all 16 matched.
 
 ## Ring-3 stack alignment (second Anunix bug found)
 
@@ -274,9 +288,6 @@ signatures.
 
 - **Per-process page tables and per-page protection**, to close the
   coarse-grained window described above.
-- **A shaped Hologram program**, with an explicit tensor shape and
-  dtype in the source. The output would then carry real numeric
-  values to check, not a `0`-byte degenerate buffer.
 - **The LUT-dispatch path** (`hologram_compute::cpu::lut::unary_lut()`),
   Hologram's compute-once mechanism, through a real `Workspace` impl.
 - **A disk- or virtio-backed binary transfer path.** This release's
