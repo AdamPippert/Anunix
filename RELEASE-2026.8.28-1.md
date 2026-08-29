@@ -251,11 +251,25 @@ which never emits SSE. This release fixes it in
 
 Three crates verified: `hologram-types` (dtype and shape vocabulary),
 `hologram-compute` (one CPU matmul kernel), and the compile-and-execute
-round trip through `hologram-compiler` and `hologram-exec`. The
-Hologram CLI, the LUT-dispatch path, and the GPU/wgpu backends depend
-on `std`, `tokio`, `wasmtime`, or `wgpu`, none of which build for
-Anunix's freestanding target. Running them is `Planned:` work; see
-Forward-looking.
+round trip through `hologram-compiler` and `hologram-exec`.
+
+The `hologram` CLI is out of scope for a different reason than the
+LUT-dispatch path above. It is not merely `std`-gated; it is a
+declared host-only binary. `hologram-cli/Cargo.toml` states this
+directly:
+
+```
+# The CLI is a host binary: it opts the otherwise-`no_std` library crates
+# back into `std` and selects the CPU backend.
+```
+
+Its dependencies on `wasmtime` (`hologram-runtime`, feature
+`engine-wasmtime`), `tokio`, and native storage and networking
+(`hologram-store`, `hologram-net`) are unconditional, not
+feature-gated. Hologram's own maintainers drew this `no_std`/`std` boundary. Running
+the CLI on Anunix needs a full `std` port, not a smaller step past
+this release's work. See "Closed: the LUT-dispatch path" above and
+Forward-looking below.
 
 ## Tests
 
