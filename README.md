@@ -88,10 +88,10 @@ exec: exit_status=9, stdout (16 bytes):
   `hologram-compute::HologramF32MatmulSquare<4>::matmul()`, both fetched
   from the upstream repository and compiled `no_std` for Anunix, execute
   and return correct results
-- **The Hologram compiler and runtime executor run** — `hologram_compiler::compile_from_source()`
-  and `hologram_exec::InferenceSession` compile and execute a real graph
-  on Anunix, exposing a second real Anunix bug (ring-3 stack alignment)
-  along the way
+- **The Hologram compiler and runtime executor run, with a correct
+  numeric result** — a real ReLU graph compiles and runs against 16
+  `f32` inputs and returns the mathematically correct output, exposing
+  a second real Anunix bug (ring-3 stack alignment) along the way
 - **59 host-native tests pass** (up from 50)
 
 See [`RELEASE-2026.8.28-1.md`](RELEASE-2026.8.28-1.md) for full details,

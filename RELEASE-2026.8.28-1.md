@@ -284,12 +284,35 @@ None. `ANX_SYSCALL_OPEN`, `ANX_SYSCALL_READ`, `ANX_SYSCALL_WRITE`,
 `anx_posix_exec()` and `anx_posix_exec_in_proc()` keep their existing
 signatures.
 
+## Closed: the LUT-dispatch path is not reachable under no_std
+
+`hologram_compute::cpu::lut` is Hologram's compute-once mechanism: it
+memoizes a 16-bit activation as a `[u16; 65536]` lookup table instead
+of computing it per element. `hologram-compute`'s own source gates it
+behind `#[cfg(feature = "std")]`, with `mathf` as the `not(feature =
+"std")` alternative:
+
+```rust
+/// LUT-accelerated low-precision activations (PM_7 Q0/Q1). Needs `OnceLock`
+/// (std) for the process-lifetime table cache; under no_std the activations
+/// are computed directly (a compile-time choice, not a runtime fallback).
+#[cfg(feature = "std")]
+pub mod lut;
+#[cfg(not(feature = "std"))]
+pub mod mathf;
+```
+
+`std::sync::OnceLock` needs OS-backed atomics and thread parking, which
+a freestanding `no_std` target does not provide. Hologram's authors
+made this choice deliberately; it is not a gap in this exec path.
+Reaching the LUT path on Anunix would need a real `std` port: threads,
+thread-local storage, and atomic synchronization primitives. This
+release's segment-loading and syscall work does not reach that far.
+
 ## Forward-looking
 
 - **Per-process page tables and per-page protection**, to close the
   coarse-grained window described above.
-- **The LUT-dispatch path** (`hologram_compute::cpu::lut::unary_lut()`),
-  Hologram's compute-once mechanism, through a real `Workspace` impl.
 - **A disk- or virtio-backed binary transfer path.** This release's
   510 KB compiler-and-executor binary took 3397 `appendb64` requests
   and about five minutes to load. That does not scale past a few
