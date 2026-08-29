@@ -26,6 +26,16 @@ exec path, verified in QEMU on `hyde`.
   fetched from `github.com/Hologram-Technologies/hologram` and built
   `no_std` for Anunix, computes storage sizes for the `F32`, `I4`, and
   `E8CB` dtypes and exits `0` on a correct result.
+- **A real Hologram matmul kernel runs.** `hologram-compute::HologramF32MatmulSquare<4>`
+  multiplies a real `4 × 4` matrix and returns the correct product.
+- **The Hologram compiler and runtime executor run.**
+  `hologram_compiler::compile_from_source()` and `hologram_exec::InferenceSession`
+  compile and execute a real graph on Anunix, the same round trip
+  `hologram-exec`'s own test suite exercises upstream.
+- **A second real Anunix bug fixed.** The ring-3 stack Anunix handed to
+  a binary was 16-byte aligned; the SysV ABI needs 8-byte alignment at
+  entry. Any binary using an aligned SSE instruction raised a `#GP`
+  until this release's fix.
 
 ## What changed
 
@@ -179,13 +189,58 @@ Exit status `0` confirms all 16 output elements matched `B` within a
 supplies a 4096-byte bump allocator as `#[global_allocator]`, since
 Anunix has no heap allocator syscall for a ring-3 binary to call.
 
+## Verified: the Hologram compiler and runtime executor
+
+`hologram_compiler::compile_from_source()` and `hologram_exec::InferenceSession`
+compile a native-DSL Hologram program and run it, the same round trip
+`hologram-exec`'s own `session.rs` test exercises upstream. These
+crates pull in `blake3` and `hashbrown`, and both emit SSE
+instructions. The stock `x86_64-unknown-none` softfloat target cannot
+codegen those instructions correctly, so this demo needed a custom
+hardfloat Rust target (nightly `rustc` plus `-Z build-std`) and exposed
+a second real Anunix bug — see "Ring-3 stack alignment" below. The
+shell command `exec /bin/holo4`, run against a QEMU boot of
+`anunix-qemu.elf` on 2026-08-28, printed:
+
+```
+hologram-compiler: compile+load+execute a real graph on Anunix
+compiled: archive_bytes=418
+loaded: kernels=1 inputs=1 outputs=1
+executed: output_buffers=1
+output_bytes=0
+```
+
+The compiler parsed the source and built a 418-byte archive. The
+executor loaded and ran it, reporting the correct kernel, input, and
+output counts throughout. The `0`-byte output reflects a demo program
+too minimal to declare a concrete tensor shape, not a fault in
+Hologram's execution engine. A shaped program is `Planned:` work.
+
+## Ring-3 stack alignment (second Anunix bug found)
+
+The SysV ABI requires `RSP % 16 == 0` immediately before a `call`. A
+normally-called function sees `RSP % 16 == 8` at its own entry, since
+the `call` instruction pushes an 8-byte return address. `_start` is
+reached through `iretq`, not `call`, but compiler-generated code still
+assumes that entry convention for aligned SSE spills (`movaps`).
+
+`anx_posix_loader_load_and_run()` passed a 16-byte-aligned stack top to
+`arch_enter_usermode()`, not an 8-byte-aligned one. The first `movaps`
+in any binary that used SSE raised a `#GP`; the error code `0` is the
+alignment-fault signature. Earlier test binaries in this release never
+hit this, since they targeted the stock softfloat `x86_64-unknown-none`,
+which never emits SSE. This release fixes it in
+`kernel/core/posix/posix.c` by subtracting `8`, not `16`, from
+`ANX_USER_STACK_TOP`.
+
 ## Scope of the Hologram verification
 
-Two crates verified: `hologram-types` (dtype and shape vocabulary) and
-`hologram-compute` (one CPU matmul kernel). The Hologram CLI, compiler,
-LUT-dispatch path, and full tensor-execution engine depend on `std`,
-`tokio`, `wasmtime`, and `wgpu`, none of which build for Anunix's
-freestanding target. Running them is `Planned:` work; see
+Three crates verified: `hologram-types` (dtype and shape vocabulary),
+`hologram-compute` (one CPU matmul kernel), and the compile-and-execute
+round trip through `hologram-compiler` and `hologram-exec`. The
+Hologram CLI, the LUT-dispatch path, and the GPU/wgpu backends depend
+on `std`, `tokio`, `wasmtime`, or `wgpu`, none of which build for
+Anunix's freestanding target. Running them is `Planned:` work; see
 Forward-looking.
 
 ## Tests
@@ -219,10 +274,12 @@ signatures.
 
 - **Per-process page tables and per-page protection**, to close the
   coarse-grained window described above.
-- **A larger `no_std` Hologram surface**: `hologram-ops`,
-  `hologram-graph`, and `hologram-compute` (`default-features = false`,
-  `features = ["cpu"]`) compile a real tensor graph and dispatch a real
-  operation, not only read dtype constants.
-- **A disk- or virtio-backed binary transfer path**, to replace
-  `appendb64`'s repeated 256-byte shell lines for binaries larger than
-  a few kilobytes.
+- **A shaped Hologram program**, with an explicit tensor shape and
+  dtype in the source. The output would then carry real numeric
+  values to check, not a `0`-byte degenerate buffer.
+- **The LUT-dispatch path** (`hologram_compute::cpu::lut::unary_lut()`),
+  Hologram's compute-once mechanism, through a real `Workspace` impl.
+- **A disk- or virtio-backed binary transfer path.** This release's
+  510 KB compiler-and-executor binary took 3397 `appendb64` requests
+  and about five minutes to load. That does not scale past a few
+  hundred kilobytes.
