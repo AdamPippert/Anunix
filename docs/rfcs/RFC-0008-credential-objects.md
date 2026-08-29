@@ -262,7 +262,7 @@ struct anx_credential_binding {
 
 ### 7.2 Rotation Semantics
 
-Credential rotation is a name-level operation: a new Credential Object is created with the same name, and the namespace mapping is updated atomically. The old credential transitions to ROTATED. Cells with active bindings to the name seamlessly read the new credential on their next access — no policy changes, no cell restarts.
+Credential rotation is a name-level operation: a new Credential Object is created with the same name, and the namespace mapping is updated atomically. The old credential transitions to ROTATED. Cells with active bindings to the name read the new credential on their next access — no policy changes, no cell restarts.
 
 ---
 

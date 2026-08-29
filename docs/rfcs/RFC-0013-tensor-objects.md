@@ -42,7 +42,7 @@ This is not a storage efficiency problem — it is a semantic gap. The operating
 
 ### 2.2 Self-Editing Requires Governance
 
-The SEAL paper (2506.10943) demonstrates that models can learn to modify their own weights — performing targeted edits to internal representations to encode new knowledge or correct errors. This is powerful but dangerous. An uncontrolled self-edit could degrade model quality, introduce biases, or corrupt critical capabilities.
+The SEAL paper (2506.10943) demonstrates that models can learn to modify their own weights — performing targeted edits to internal representations to encode new knowledge or correct errors. This capability is dangerous without safeguards. An uncontrolled self-edit could degrade model quality, introduce biases, or corrupt critical capabilities.
 
 In a classical OS, there is no mechanism to govern weight modifications. A process can overwrite a model file freely. There is no access control at the tensor level, no audit trail of which weights changed, no automatic rollback if metrics degrade, and no way to restrict which layers a fine-tuning job can touch.
 

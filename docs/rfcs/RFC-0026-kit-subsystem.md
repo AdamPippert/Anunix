@@ -105,7 +105,7 @@ A kit **provides** named capabilities (string tags like `jepa-world`, `browser-e
 
 ### 4.5 Prereq
 
-A **Prereq** is a structured declaration in a kit manifest of something external the kit needs in order to function. The kit subsystem evaluates prereqs at enable time and on demand via health probes; failure transitions the kit to `PREREQ_FAILED` and emits a remediation event.
+A **Prereq** is a structured declaration in a kit manifest of something external the kit needs to function. The kit subsystem evaluates prereqs at enable time and on demand via health probes; failure transitions the kit to `PREREQ_FAILED` and emits a remediation event.
 
 ---
 

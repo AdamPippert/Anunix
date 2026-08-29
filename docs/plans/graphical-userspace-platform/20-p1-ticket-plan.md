@@ -1,7 +1,7 @@
 # P1 Ticket Plan — graphical userspace parity and usability expansion
 
 Status: advisory only (planning), no implementation in this phase.
-Goal: build on P0 substrate to provide robust graphical userspace contracts for all applications and workflows.
+Goal: build on P0 substrate to provide graphical userspace contracts for all applications and workflows.
 
 Boundary guardrail (mandatory):
 - This plan is constrained by `00-boundary-decision.md`.
@@ -30,7 +30,7 @@ Definition of done
 ## Ticket P1-002: Multi-window/surface model hardening
 
 Objective
-- Add first-class support for multiple externally-managed application surfaces with robust z-order/focus semantics.
+- Add first-class support for multiple externally-managed application surfaces with defined z-order/focus semantics.
 
 Scope
 - Parent/child surface semantics validation.
@@ -75,7 +75,7 @@ Objective
 Scope
 - Unicode codepoint handling path.
 - Font fallback mechanism.
-- Basic bidi/shaping integration strategy (v1 scope can leverage existing shaper integration plan in userspace).
+- Basic bidi/shaping integration strategy (v1 scope can use the existing shaper integration plan in userspace).
 
 Deterministic tests
 1) Unit: UTF-8 decode validity and rejection vectors.
