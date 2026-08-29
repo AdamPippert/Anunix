@@ -88,6 +88,10 @@ exec: exit_status=9, stdout (16 bytes):
   `hologram-compute::HologramF32MatmulSquare<4>::matmul()`, both fetched
   from the upstream repository and compiled `no_std` for Anunix, execute
   and return correct results
+- **The Hologram compiler and runtime executor run** — `hologram_compiler::compile_from_source()`
+  and `hologram_exec::InferenceSession` compile and execute a real graph
+  on Anunix, exposing a second real Anunix bug (ring-3 stack alignment)
+  along the way
 - **59 host-native tests pass** (up from 50)
 
 See [`RELEASE-2026.8.28-1.md`](RELEASE-2026.8.28-1.md) for full details,
@@ -406,7 +410,9 @@ In-flight drafts: **RFC-0026** Kit Subsystem (unified loadable subsystems), **RF
 ### Done in 2026.8.28-1
 
 - Real ring-3 ELF execution: segment loading, a syscall trap, and `ANX_SYSCALL_EXIT`
-- A real Rust `no_std` binary, and real `Hologram-Technologies/hologram` code, both run on Anunix
+- A real Rust `no_std` binary, and real `Hologram-Technologies/hologram` code
+  (dtype logic, a matmul kernel, and the compiler-and-executor round trip), run on Anunix
+- Two real Anunix bugs found and fixed: a PML4/PDPT page-fault and a ring-3 stack-alignment `#GP`
 - The `exec` and `appendb64` shell tools
 - 59 host-native tests passing, up from 50
 - Since 2026.5.8: information-flow labels, the effect protocol, and capability
