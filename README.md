@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.8.28--1-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.8.30-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
   <img src="https://img.shields.io/badge/tests-59%20suites-brightgreen" alt="Tests">
@@ -54,53 +54,54 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 
 ---
 
-## Release: 2026.8.28-1
+## Release: 2026.8.30
 
-### Milestone: Real ELF execution
+### Milestone: Prism support
 
-The previous exec path validated an ELF header and returned a hardcoded
-exit status; it never ran the binary's code. `anx_posix_exec_in_proc()`
-now maps a binary's `PT_LOAD` segments into a fixed load window, switches
-the CPU to ring 3, and runs the binary's actual machine code through a
-new `int 0x80` syscall trap.
+Real code from `UOR-Foundation/prism` — the standard-library layer
+`Hologram-Technologies/hologram` builds on — now runs on Anunix
+independently of Hologram. Getting a correct result surfaced a third
+real Anunix bug: the syscall trap did not preserve `rcx` and
+`r8`-`r11` across its call into C, corrupting a ring-3 program's own
+register state on every syscall.
 
 ```
-anx> appendb64 /bin/hello AAAA...
-anx> exec /bin/hello
-hello from rust
-exec: exit_status=9, stdout (16 bytes):
+anx> exec /bin/prism5
+prism_tensor::CpuI8MatmulSquare<4> on Anunix (real UOR-Foundation/prism code):
+0 -1 -2 -3 1 0 -1 -2 2 1 0 -1 3 2 1 0
+exec: exit_status=0
 ```
 
-**What's new in 2026.8.28-1**
+**What's new in 2026.8.30**
 
-- **Real ring-3 exec** — segment loading (`arch_exec_load_segment()`), a
-  ring-3 transition (`arch_enter_usermode()`), and a syscall trap
-  (`isr_stub_syscall`, `anx_syscall_trap()`) replace the old simulated stub
-- **`ANX_SYSCALL_EXIT`** and a documented syscall ABI v0 (`int 0x80`,
-  registers `rax`/`rdi`/`rsi`/`rdx`)
-- **New shell tools** — `exec <path>` runs a binary and prints its exit
-  status and captured stdout; `appendb64 <path> <chunk>` loads a binary
-  into the `posix` namespace across multiple 256-byte shell lines
-- **A real Rust binary runs** — `no_std`, built with stable `rustc`
-  1.98.0 for `x86_64-unknown-none`, calling Anunix's syscall ABI directly
-- **Real code from `Hologram-Technologies/hologram` runs** —
-  `hologram-types::DTypeId::storage_bytes()` and
-  `hologram-compute::HologramF32MatmulSquare<4>::matmul()`, both fetched
-  from the upstream repository and compiled `no_std` for Anunix, execute
-  and return correct results
-- **The Hologram compiler and runtime executor run, with a correct
-  numeric result** — a real ReLU graph compiles and runs against 16
-  `f32` inputs and returns the mathematically correct output, exposing
-  a second real Anunix bug (ring-3 stack alignment) along the way
-- **59 host-native tests pass** (up from 50)
+- **Real Prism code runs, independently of Hologram** —
+  `uor-prism-tensor::CpuI8MatmulSquare<4>` computes a signed `4 × 4`
+  integer matrix product and returns the exact expected result
+- **A third real Anunix bug fixed** — `isr_stub_syscall` now saves and
+  restores `rcx` and `r8`-`r11` around its call into `anx_syscall_trap`,
+  so a syscall no longer silently overwrites a ring-3 program's own
+  values in those registers
+- **The syscall ABI doc states what it always should have** —
+  `kernel/include/anx/posix.h` now documents that every register except
+  `rax`, `rdi`, `rsi`, and `rdx` survives a syscall unchanged
+- **59 host-native tests still pass**
 
-See [`RELEASE-2026.8.28-1.md`](RELEASE-2026.8.28-1.md) for full details,
-including the syscall ABI table and the memory-protection limitation of
-this milestone.
+See [`RELEASE-2026.8.30.md`](RELEASE-2026.8.30.md) for the full
+register-corruption story and its relationship to the Hologram work
+below.
 
 ---
 
 ## Earlier releases
+
+### 2026.8.28-1 — Real ELF execution
+
+Anunix executes a foreign binary in ring 3 for real: segment loading,
+a syscall trap, and `ANX_SYSCALL_EXIT` replace the old simulated exec
+stub. A real Rust `no_std` binary and real `Hologram-Technologies/hologram`
+code (dtype logic, a matmul kernel, and the compiler-and-executor round
+trip) all run on Anunix, surfacing a real stack-alignment bug along the
+way. 59 tests, up from 50. See [`RELEASE-2026.8.28-1.md`](RELEASE-2026.8.28-1.md).
 
 ### 2026.5.8 — Topological organization of State Objects
 
@@ -407,12 +408,15 @@ In-flight drafts: **RFC-0026** Kit Subsystem (unified loadable subsystems), **RF
 
 ## Roadmap
 
-### Done in 2026.8.28-1
+### Done in 2026.8.30
 
-- Real ring-3 ELF execution: segment loading, a syscall trap, and `ANX_SYSCALL_EXIT`
-- A real Rust `no_std` binary, and real `Hologram-Technologies/hologram` code
-  (dtype logic, a matmul kernel, and the compiler-and-executor round trip), run on Anunix
-- Two real Anunix bugs found and fixed: a PML4/PDPT page-fault and a ring-3 stack-alignment `#GP`
+- Real code from `UOR-Foundation/prism` runs on Anunix, independently of Hologram
+- A third real Anunix bug found and fixed: unpreserved `rcx`/`r8`-`r11` across the syscall trap
+- Real ring-3 ELF execution (2026.8.28-1): segment loading, a syscall trap, `ANX_SYSCALL_EXIT`
+- Real `Hologram-Technologies/hologram` code (dtype logic, a matmul kernel, and the
+  compiler-and-executor round trip) runs on Anunix
+- Two more real Anunix bugs found and fixed in 2026.8.28-1: a PML4/PDPT page-fault
+  and a ring-3 stack-alignment `#GP`
 - The `exec` and `appendb64` shell tools
 - 59 host-native tests passing, up from 50
 - Since 2026.5.8: information-flow labels, the effect protocol, and capability
