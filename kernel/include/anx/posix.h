@@ -33,6 +33,9 @@
  *   rax = syscall number (ANX_SYSCALL_*)
  *   rdi = arg0, rsi = arg1, rdx = arg2
  *   return value in rax
+ * All other registers, including rcx and r8-r11, keep their values
+ * across the trap — isr_stub_syscall (usermode.S) saves and restores
+ * them around the call into C.
  * fd 1 and 2 (stdout/stderr) are always open and captured into
  * anx_posix_exec_last_result() — no open() call needed for them.
  */
