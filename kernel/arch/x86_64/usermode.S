@@ -11,19 +11,38 @@
 
 /*
  * isr_stub_syscall — entered via `int $0x80` from ring 3.
- * Convention: rax = syscall nr, rdi = a0, rsi = a1, rdx = a2.
- * anx_syscall_trap(nr, a0, a1, a2) uses the normal SysV C ABI, so
- * shuffle registers into rdi,rsi,rdx,rcx (in reverse order, so we
- * never clobber a source register before it's copied out).
+ * Convention: rax = syscall nr, rdi = a0, rsi = a1, rdx = a2;
+ * result in rax. rcx, r8, r9, r10, r11 are NOT part of the documented
+ * convention and must survive the trap unchanged — a caller has no
+ * reason to expect a syscall to touch them. anx_syscall_trap(nr, a0,
+ * a1, a2) uses the normal SysV C ABI, though, which treats rcx and
+ * r8-r11 as caller-saved and free to clobber; without explicitly
+ * saving them here, whatever the callee (or code it calls) leaves in
+ * those registers leaks back into the ring-3 program when it resumes.
+ * That corrupted a real ring-3 binary's loop counter and digit
+ * buffer under `-O` when the compiler happened to keep live state in
+ * r10/r11 across a syscall.
  */
 .global isr_stub_syscall
 isr_stub_syscall:
-	subq	$8, %rsp		/* the int-gate frame leaves rsp%16==8; realign for `call` */
+	subq	$8, %rsp		/* the int-gate frame leaves rsp%16==8; realign for the pushes below */
+	pushq	%rcx
+	pushq	%r8
+	pushq	%r9
+	pushq	%r10
+	pushq	%r11
+	subq	$8, %rsp		/* 5 pushes leave rsp%16==8; realign for `call` */
 	movq	%rdx, %rcx
 	movq	%rsi, %rdx
 	movq	%rdi, %rsi
 	movq	%rax, %rdi
 	call	anx_syscall_trap
+	addq	$8, %rsp
+	popq	%r11			/* rax (the return value) is untouched by these */
+	popq	%r10
+	popq	%r9
+	popq	%r8
+	popq	%rcx
 	addq	$8, %rsp
 	iretq
 
