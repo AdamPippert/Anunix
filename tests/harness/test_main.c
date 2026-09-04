@@ -77,6 +77,7 @@ int test_resourced_twin_simulate(void);
 int test_regime_detector(void);
 int test_sched_cognitive_envelope(void);
 int test_cap_measured_null_promotion(void);
+int test_md_raid(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -138,6 +139,7 @@ static struct test_case tests[] = {
 	{ "regime_detector",	test_regime_detector },
 	{ "sched_cognitive_envelope", test_sched_cognitive_envelope },
 	{ "cap_measured_null_promotion", test_cap_measured_null_promotion },
+	{ "md_raid",                    test_md_raid },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

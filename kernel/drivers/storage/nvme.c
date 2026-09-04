@@ -4,7 +4,10 @@
  * Enumerates PCI devices with class=0x01, subclass=0x08, prog_if=0x02.
  * For each controller found, attempts to initialize admin queues, identify
  * the controller and namespace 1, create one I/O queue pair, and register
- * the device as the system block device via anx_blk_register().
+ * namespace 1 as a block device via anx_blk_dev_register().
+ *
+ * Every controller gets its own instance, so a machine with two NVMe
+ * drives exposes nvme0 and nvme1 and the RAID layer can stripe over both.
  *
  * Polled only — no MSI/MSI-X, no interrupt handler.
  * Requires 512-byte LBA sectors (LBADS=9); rejects other sector sizes.
@@ -55,6 +58,14 @@
 /* Queue sizes */
 #define NVME_AQ_SIZE		32	/* admin queue depth */
 #define NVME_IOQ_SIZE		64	/* I/O queue depth */
+
+/*
+ * Completion poll budget, in loop iterations. The loop reads memory the
+ * controller writes by DMA, so an iteration is cheap. The budget has to
+ * cover a command that reaches the physical medium, not just the cache:
+ * a bulk copy such as a RAID 1 rebuild misses on every sector.
+ */
+#define NVME_POLL_ITERS		20000000u
 
 /* NVMe admin command opcodes */
 #define NVME_ADM_DELETE_SQ	0x00
@@ -110,8 +121,11 @@ struct nvme_queue {
 	volatile uint32_t *cq_db;	/* CQ doorbell register */
 };
 
-/* Per-controller state — static singleton (first controller found) */
-static struct {
+/* Maximum NVMe controllers bound in one boot */
+#define NVME_MAX_CTRL		8
+
+/* Per-controller state — one instance per bound controller */
+struct nvme_ctrl {
 	volatile uint8_t *bar;		/* MMIO base */
 	uint32_t dstrd;			/* doorbell stride (encoded) */
 	struct nvme_queue adm;		/* admin queue pair */
@@ -119,41 +133,46 @@ static struct {
 	uint64_t ns_sectors;		/* NSZE from identify namespace */
 	uint16_t next_cid;		/* rolling command ID */
 	bool ready;
-} nvme;
+};
+
+static struct nvme_ctrl nvme_ctrls[NVME_MAX_CTRL];
+static uint32_t nvme_ctrl_count;
+static bool nvme_probed;
 
 /* --- MMIO accessors -------------------------------------------------- */
 
-static uint32_t nvme_read32(uint32_t off)
+static uint32_t nvme_read32(struct nvme_ctrl *c, uint32_t off)
 {
-	volatile uint32_t *p = (volatile uint32_t *)(nvme.bar + off);
+	volatile uint32_t *p = (volatile uint32_t *)(c->bar + off);
 	return *p;
 }
 
-static void nvme_write32(uint32_t off, uint32_t val)
+static void nvme_write32(struct nvme_ctrl *c, uint32_t off, uint32_t val)
 {
-	volatile uint32_t *p = (volatile uint32_t *)(nvme.bar + off);
+	volatile uint32_t *p = (volatile uint32_t *)(c->bar + off);
 	*p = val;
 }
 
-static uint64_t nvme_read64(uint32_t off)
+static uint64_t nvme_read64(struct nvme_ctrl *c, uint32_t off)
 {
-	volatile uint64_t *p = (volatile uint64_t *)(nvme.bar + off);
+	volatile uint64_t *p = (volatile uint64_t *)(c->bar + off);
 	return *p;
 }
 
-static void nvme_write64(uint32_t off, uint64_t val)
+static void nvme_write64(struct nvme_ctrl *c, uint32_t off, uint64_t val)
 {
-	volatile uint64_t *p = (volatile uint64_t *)(nvme.bar + off);
+	volatile uint64_t *p = (volatile uint64_t *)(c->bar + off);
 	*p = val;
 }
 
 /* Return doorbell address for queue qid, type t (0=SQ, 1=CQ) */
-static volatile uint32_t *nvme_doorbell(uint32_t qid, uint32_t t)
+static volatile uint32_t *nvme_doorbell(struct nvme_ctrl *c, uint32_t qid,
+					uint32_t t)
 {
-	uint32_t stride = 4u << nvme.dstrd;
+	uint32_t stride = 4u << c->dstrd;
 	uint32_t off = 0x1000 + (2 * qid + t) * stride;
 
-	return (volatile uint32_t *)(nvme.bar + off);
+	return (volatile uint32_t *)(c->bar + off);
 }
 
 /* --- Busy-wait helpers ----------------------------------------------- */
@@ -162,12 +181,12 @@ static volatile uint32_t *nvme_doorbell(uint32_t qid, uint32_t t)
  * Spin until CSTS.RDY == want or iterations exhausted.
  * Returns 0 on success, -1 on timeout.
  */
-static int nvme_wait_rdy(uint32_t want, uint32_t iters)
+static int nvme_wait_rdy(struct nvme_ctrl *c, uint32_t want, uint32_t iters)
 {
 	uint32_t i;
 
 	for (i = 0; i < iters; i++) {
-		uint32_t csts = nvme_read32(NVME_REG_CSTS);
+		uint32_t csts = nvme_read32(c, NVME_REG_CSTS);
 
 		if (csts & NVME_CSTS_CFS)
 			return -1;	/* fatal status */
@@ -189,9 +208,10 @@ static int nvme_wait_rdy(uint32_t want, uint32_t iters)
  * Submit an SQE to the queue and ring the doorbell.
  * Returns the CID assigned to this command.
  */
-static uint16_t nvme_submit(struct nvme_queue *q, struct nvme_sqe *sqe)
+static uint16_t nvme_submit(struct nvme_ctrl *c, struct nvme_queue *q,
+			    struct nvme_sqe *sqe)
 {
-	uint16_t cid = ++nvme.next_cid;
+	uint16_t cid = ++c->next_cid;
 
 	/* Encode opcode (already in cdw0[7:0]) and CID */
 	sqe->cdw0 = (sqe->cdw0 & 0xFFFFu) | ((uint32_t)cid << 16);
@@ -203,25 +223,30 @@ static uint16_t nvme_submit(struct nvme_queue *q, struct nvme_sqe *sqe)
 }
 
 /*
- * Poll the CQ until a CQE with matching CID and expected phase appears.
+ * Poll the CQ until the next completion appears, then consume it.
  * Returns 0 on success (SC=0), negative on error.
  * Rings the CQ doorbell after consuming the entry.
+ *
+ * The driver keeps one command outstanding, so the entry at cq_head is
+ * always the completion for cid. A different CID there means the queue
+ * lost sync with the controller, which a previous timeout can cause. The
+ * entry is consumed either way: leaving it in place would stall every
+ * later command on this queue behind a completion nobody claims.
  */
 static int nvme_poll(struct nvme_queue *q, uint16_t cid)
 {
-	uint32_t iters = 500000;
+	uint32_t iters = NVME_POLL_ITERS;
 
 	while (iters--) {
 		volatile struct nvme_cqe *cqe = &q->cq[q->cq_head];
 		uint16_t status = cqe->status;
+		uint16_t got;
 
 		/* Phase bit is in bit 0 of the status word */
 		if ((status & 1u) != q->phase)
 			continue;	/* not yet valid */
 
-		/* Only consume entries for our CID */
-		if (cqe->cid != cid)
-			continue;
+		got = cqe->cid;
 
 		/* Advance CQ head and flip phase on wrap */
 		q->cq_head = (q->cq_head + 1) % q->depth;
@@ -231,8 +256,8 @@ static int nvme_poll(struct nvme_queue *q, uint16_t cid)
 		/* Ring CQ doorbell */
 		*q->cq_db = q->cq_head;
 
-		/* Update SQ head from CQE (tells us how many are consumed) */
-		/* (not strictly needed for single-outstanding polling) */
+		if (got != cid)
+			return ANX_EIO;
 
 		/* Check status: bits [8:1] = SC, [11:9] = SCT */
 		if ((status >> 1) & 0x7FF)
@@ -243,9 +268,10 @@ static int nvme_poll(struct nvme_queue *q, uint16_t cid)
 }
 
 /* Send a single command and wait for completion */
-static int nvme_exec(struct nvme_queue *q, struct nvme_sqe *sqe)
+static int nvme_exec(struct nvme_ctrl *c, struct nvme_queue *q,
+		     struct nvme_sqe *sqe)
 {
-	uint16_t cid = nvme_submit(q, sqe);
+	uint16_t cid = nvme_submit(c, q, sqe);
 
 	return nvme_poll(q, cid);
 }
@@ -253,7 +279,8 @@ static int nvme_exec(struct nvme_queue *q, struct nvme_sqe *sqe)
 /* --- Admin commands -------------------------------------------------- */
 
 /* Identify: CNS=1 → controller, CNS=0 → namespace */
-static int nvme_identify(uint32_t nsid, uint32_t cns, void *buf)
+static int nvme_identify(struct nvme_ctrl *c, uint32_t nsid, uint32_t cns,
+			 void *buf)
 {
 	struct nvme_sqe sqe;
 
@@ -262,42 +289,43 @@ static int nvme_identify(uint32_t nsid, uint32_t cns, void *buf)
 	sqe.nsid  = nsid;
 	sqe.prp1  = (uint64_t)(uintptr_t)buf;
 	sqe.cdw10 = cns;
-	return nvme_exec(&nvme.adm, &sqe);
+	return nvme_exec(c, &c->adm, &sqe);
 }
 
 /* Create I/O Completion Queue (QID=1, size=NVME_IOQ_SIZE, contiguous) */
-static int nvme_create_iocq(void)
+static int nvme_create_iocq(struct nvme_ctrl *c)
 {
 	struct nvme_sqe sqe;
 
 	anx_memset(&sqe, 0, sizeof(sqe));
 	sqe.cdw0  = NVME_ADM_CREATE_CQ;
-	sqe.prp1  = (uint64_t)(uintptr_t)nvme.ioq.cq;
+	sqe.prp1  = (uint64_t)(uintptr_t)c->ioq.cq;
 	/* CDW10: QSIZE[31:16] (0-based) | QID[15:0] */
 	sqe.cdw10 = ((uint32_t)(NVME_IOQ_SIZE - 1) << 16) | 1u;
 	/* CDW11: IEN=0 (no interrupt), PC=1 (physically contiguous) */
 	sqe.cdw11 = 1u;
-	return nvme_exec(&nvme.adm, &sqe);
+	return nvme_exec(c, &c->adm, &sqe);
 }
 
 /* Create I/O Submission Queue (QID=1, CQID=1, size=NVME_IOQ_SIZE) */
-static int nvme_create_iosq(void)
+static int nvme_create_iosq(struct nvme_ctrl *c)
 {
 	struct nvme_sqe sqe;
 
 	anx_memset(&sqe, 0, sizeof(sqe));
 	sqe.cdw0  = NVME_ADM_CREATE_SQ;
-	sqe.prp1  = (uint64_t)(uintptr_t)nvme.ioq.sq;
+	sqe.prp1  = (uint64_t)(uintptr_t)c->ioq.sq;
 	/* CDW10: QSIZE[31:16] (0-based) | QID[15:0] */
 	sqe.cdw10 = ((uint32_t)(NVME_IOQ_SIZE - 1) << 16) | 1u;
 	/* CDW11: CQID[31:16] | QPRIO[2:1]=0 (urgent) | PC=1 */
 	sqe.cdw11 = (1u << 16) | 1u;
-	return nvme_exec(&nvme.adm, &sqe);
+	return nvme_exec(c, &c->adm, &sqe);
 }
 
 /* --- I/O commands ---------------------------------------------------- */
 
-static int nvme_io(uint32_t opc, uint64_t lba, uint32_t count, void *buf)
+static int nvme_io(struct nvme_ctrl *c, uint32_t opc, uint64_t lba,
+		   uint32_t count, void *buf)
 {
 	struct nvme_sqe sqe;
 
@@ -313,18 +341,20 @@ static int nvme_io(uint32_t opc, uint64_t lba, uint32_t count, void *buf)
 	sqe.cdw10 = (uint32_t)(lba & 0xFFFFFFFFu);
 	sqe.cdw11 = (uint32_t)(lba >> 32);
 	sqe.cdw12 = (count - 1) & 0xFFFF;	/* NLB field (0-based) */
-	return nvme_exec(&nvme.ioq, &sqe);
+	return nvme_exec(c, &c->ioq, &sqe);
 }
 
 /* --- Block ops callbacks --------------------------------------------- */
 
-static int nvme_blk_read(uint64_t lba, uint32_t count, void *buf)
+static int nvme_blk_read(struct anx_blk_dev *dev, uint64_t lba,
+			 uint32_t count, void *buf)
 {
+	struct nvme_ctrl *c = dev->priv;
 	uint32_t i;
 
 	/* Issue one sector at a time to stay within the single-PRP limit */
 	for (i = 0; i < count; i++) {
-		int ret = nvme_io(NVME_IO_READ, lba + i, 1,
+		int ret = nvme_io(c, NVME_IO_READ, lba + i, 1,
 				  (uint8_t *)buf + (uint64_t)i * 512);
 		if (ret != ANX_OK)
 			return ret;
@@ -332,12 +362,14 @@ static int nvme_blk_read(uint64_t lba, uint32_t count, void *buf)
 	return ANX_OK;
 }
 
-static int nvme_blk_write(uint64_t lba, uint32_t count, const void *buf)
+static int nvme_blk_write(struct anx_blk_dev *dev, uint64_t lba,
+			  uint32_t count, const void *buf)
 {
+	struct nvme_ctrl *c = dev->priv;
 	uint32_t i;
 
 	for (i = 0; i < count; i++) {
-		int ret = nvme_io(NVME_IO_WRITE, lba + i, 1,
+		int ret = nvme_io(c, NVME_IO_WRITE, lba + i, 1,
 				  (uint8_t *)(uintptr_t)buf + (uint64_t)i * 512);
 		if (ret != ANX_OK)
 			return ret;
@@ -345,9 +377,11 @@ static int nvme_blk_write(uint64_t lba, uint32_t count, const void *buf)
 	return ANX_OK;
 }
 
-static uint64_t nvme_blk_capacity(void)
+static uint64_t nvme_blk_capacity(struct anx_blk_dev *dev)
 {
-	return nvme.ns_sectors;
+	struct nvme_ctrl *c = dev->priv;
+
+	return c->ns_sectors;
 }
 
 static const struct anx_blk_ops nvme_ops = {
@@ -359,25 +393,27 @@ static const struct anx_blk_ops nvme_ops = {
 
 /* --- Controller init ------------------------------------------------- */
 
-static int nvme_init_ctrl(struct anx_pci_device *pci)
+static int nvme_init_ctrl(struct nvme_ctrl *nvme, struct anx_pci_device *pci)
 {
 	uint64_t bar0;
 	uint64_t cap;
 	uint32_t to_iters;
 	uint8_t *aq_mem;
+	uint8_t *aq_cq_mem;
 	uint8_t *ioq_mem;
+	uint8_t *ioq_cq_mem;
 	uint8_t *id_buf;
 	int ret;
 
 	/* Decode BAR0 (64-bit) — clear type/prefetch bits [3:0] */
 	bar0 = ((uint64_t)pci->bar[0] & ~0xFULL) |
 	       ((uint64_t)pci->bar[1] << 32);
-	nvme.bar = (volatile uint8_t *)(uintptr_t)bar0;
+	nvme->bar = (volatile uint8_t *)(uintptr_t)bar0;
 
 	anx_pci_enable_bus_master(pci);
 
-	cap = nvme_read64(NVME_REG_CAP);
-	nvme.dstrd = (uint32_t)NVME_CAP_DSTRD(cap);
+	cap = nvme_read64(nvme, NVME_REG_CAP);
+	nvme->dstrd = (uint32_t)NVME_CAP_DSTRD(cap);
 
 	/* TO is in 500ms units; use 1000 * TO iterations of ~0.5ms */
 	to_iters = (NVME_CAP_TO(cap) + 1) * 1000;
@@ -385,38 +421,48 @@ static int nvme_init_ctrl(struct anx_pci_device *pci)
 		to_iters = 2000;	/* minimum 1s */
 
 	/* 1. Disable controller */
-	nvme_write32(NVME_REG_CC, 0);
-	ret = nvme_wait_rdy(0, to_iters);
+	nvme_write32(nvme, NVME_REG_CC, 0);
+	ret = nvme_wait_rdy(nvme, 0, to_iters);
 	if (ret != 0) {
 		kprintf("nvme: timeout waiting for disable\n");
 		return ANX_ETIMEDOUT;
 	}
 
-	/* 2. Allocate admin queue memory (two pages: SQ + CQ) */
+	/*
+	 * 2. Allocate admin queue memory. The controller requires every
+	 * queue base to be aligned to the memory page size in CC.MPS, so
+	 * the submission and completion queues get a page each rather than
+	 * sharing one.
+	 */
 	aq_mem = (uint8_t *)(uintptr_t)anx_page_alloc(0);
 	if (!aq_mem)
 		return ANX_ENOMEM;
-	anx_memset(aq_mem, 0, 4096);
+	anx_memset(aq_mem, 0, ANX_PAGE_SIZE);
 
-	nvme.adm.sq    = (struct nvme_sqe *)aq_mem;
-	nvme.adm.cq    = (struct nvme_cqe *)(aq_mem + NVME_AQ_SIZE * sizeof(struct nvme_sqe));
-	nvme.adm.depth = NVME_AQ_SIZE;
-	nvme.adm.sq_tail = 0;
-	nvme.adm.cq_head = 0;
-	nvme.adm.phase   = 1;	/* initial expected phase = 1 */
-	nvme.adm.sq_db   = nvme_doorbell(0, 0);
-	nvme.adm.cq_db   = nvme_doorbell(0, 1);
+	aq_cq_mem = (uint8_t *)(uintptr_t)anx_page_alloc(0);
+	if (!aq_cq_mem)
+		return ANX_ENOMEM;
+	anx_memset(aq_cq_mem, 0, ANX_PAGE_SIZE);
+
+	nvme->adm.sq    = (struct nvme_sqe *)aq_mem;
+	nvme->adm.cq    = (struct nvme_cqe *)aq_cq_mem;
+	nvme->adm.depth = NVME_AQ_SIZE;
+	nvme->adm.sq_tail = 0;
+	nvme->adm.cq_head = 0;
+	nvme->adm.phase   = 1;	/* initial expected phase = 1 */
+	nvme->adm.sq_db   = nvme_doorbell(nvme, 0, 0);
+	nvme->adm.cq_db   = nvme_doorbell(nvme, 0, 1);
 
 	/* 3. Program AQA, ASQ, ACQ */
 	/* AQA: ACQS[27:16] and ASQS[11:0], both 0-based */
-	nvme_write32(NVME_REG_AQA,
+	nvme_write32(nvme, NVME_REG_AQA,
 		((uint32_t)(NVME_AQ_SIZE - 1) << 16) |
 		(uint32_t)(NVME_AQ_SIZE - 1));
-	nvme_write64(NVME_REG_ASQ, (uint64_t)(uintptr_t)nvme.adm.sq);
-	nvme_write64(NVME_REG_ACQ, (uint64_t)(uintptr_t)nvme.adm.cq);
+	nvme_write64(nvme, NVME_REG_ASQ, (uint64_t)(uintptr_t)nvme->adm.sq);
+	nvme_write64(nvme, NVME_REG_ACQ, (uint64_t)(uintptr_t)nvme->adm.cq);
 
 	/* 4. Enable controller */
-	nvme_write32(NVME_REG_CC,
+	nvme_write32(nvme, NVME_REG_CC,
 		NVME_CC_EN |
 		NVME_CC_CSS_NVM |
 		NVME_CC_MPS_4K |
@@ -424,7 +470,7 @@ static int nvme_init_ctrl(struct anx_pci_device *pci)
 		NVME_CC_IOSQES_64 |
 		NVME_CC_IOCQES_16);
 
-	ret = nvme_wait_rdy(1, to_iters);
+	ret = nvme_wait_rdy(nvme, 1, to_iters);
 	if (ret != 0) {
 		kprintf("nvme: timeout waiting for ready\n");
 		return ANX_ETIMEDOUT;
@@ -436,7 +482,7 @@ static int nvme_init_ctrl(struct anx_pci_device *pci)
 		return ANX_ENOMEM;
 	anx_memset(id_buf, 0, 4096);
 
-	ret = nvme_identify(0, NVME_IDENTIFY_CTRL, id_buf);
+	ret = nvme_identify(nvme, 0, NVME_IDENTIFY_CTRL, id_buf);
 	if (ret != ANX_OK) {
 		kprintf("nvme: identify controller failed\n");
 		return ret;
@@ -444,7 +490,7 @@ static int nvme_init_ctrl(struct anx_pci_device *pci)
 
 	/* 6. Identify namespace 1 */
 	anx_memset(id_buf, 0, 4096);
-	ret = nvme_identify(1, NVME_IDENTIFY_NSID, id_buf);
+	ret = nvme_identify(nvme, 1, NVME_IDENTIFY_NSID, id_buf);
 	if (ret != ANX_OK) {
 		kprintf("nvme: identify namespace failed\n");
 		return ret;
@@ -474,40 +520,46 @@ static int nvme_init_ctrl(struct anx_pci_device *pci)
 				(uint32_t)lbads);
 			return ANX_ENOTSUP;
 		}
-		nvme.ns_sectors = nsze;
+		nvme->ns_sectors = nsze;
 		kprintf("nvme: %llu sectors (%llu MiB)\n",
 			(unsigned long long)nsze,
 			(unsigned long long)(nsze / 2048));
 	}
 
-	/* 7. Allocate I/O queue memory */
+	/* 7. Allocate I/O queue memory — again one page per queue. The
+	 * submission queue alone is 64 entries x 64 bytes, a full page. */
 	ioq_mem = (uint8_t *)(uintptr_t)anx_page_alloc(0);
 	if (!ioq_mem)
 		return ANX_ENOMEM;
-	anx_memset(ioq_mem, 0, 4096);
+	anx_memset(ioq_mem, 0, ANX_PAGE_SIZE);
 
-	nvme.ioq.sq    = (struct nvme_sqe *)ioq_mem;
-	nvme.ioq.cq    = (struct nvme_cqe *)(ioq_mem + NVME_IOQ_SIZE * sizeof(struct nvme_sqe));
-	nvme.ioq.depth = NVME_IOQ_SIZE;
-	nvme.ioq.sq_tail = 0;
-	nvme.ioq.cq_head = 0;
-	nvme.ioq.phase   = 1;
-	nvme.ioq.sq_db   = nvme_doorbell(1, 0);
-	nvme.ioq.cq_db   = nvme_doorbell(1, 1);
+	ioq_cq_mem = (uint8_t *)(uintptr_t)anx_page_alloc(0);
+	if (!ioq_cq_mem)
+		return ANX_ENOMEM;
+	anx_memset(ioq_cq_mem, 0, ANX_PAGE_SIZE);
+
+	nvme->ioq.sq    = (struct nvme_sqe *)ioq_mem;
+	nvme->ioq.cq    = (struct nvme_cqe *)ioq_cq_mem;
+	nvme->ioq.depth = NVME_IOQ_SIZE;
+	nvme->ioq.sq_tail = 0;
+	nvme->ioq.cq_head = 0;
+	nvme->ioq.phase   = 1;
+	nvme->ioq.sq_db   = nvme_doorbell(nvme, 1, 0);
+	nvme->ioq.cq_db   = nvme_doorbell(nvme, 1, 1);
 
 	/* 8. Create I/O CQ and SQ */
-	ret = nvme_create_iocq();
+	ret = nvme_create_iocq(nvme);
 	if (ret != ANX_OK) {
 		kprintf("nvme: create I/O CQ failed\n");
 		return ret;
 	}
-	ret = nvme_create_iosq();
+	ret = nvme_create_iosq(nvme);
 	if (ret != ANX_OK) {
 		kprintf("nvme: create I/O SQ failed\n");
 		return ret;
 	}
 
-	nvme.ready = true;
+	nvme->ready = true;
 	return ANX_OK;
 }
 
@@ -516,25 +568,45 @@ int anx_nvme_init(void)
 	struct anx_list_head *devlist;
 	struct anx_list_head *pos;
 
+	/* driver_table calls init once per matching PCI function; the whole
+	 * bus is walked on the first call, so later calls are no-ops. */
+	if (nvme_probed)
+		return nvme_ctrl_count > 0 ? ANX_OK : ANX_ENOENT;
+	nvme_probed = true;
+
 	devlist = anx_pci_device_list();
 	ANX_LIST_FOR_EACH(pos, devlist) {
 		struct anx_pci_device *pci =
 			ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
+		struct nvme_ctrl *c;
 
 		if (pci->class_code != NVME_PCI_CLASS ||
 		    pci->subclass   != NVME_PCI_SUBCLASS ||
 		    pci->prog_if    != NVME_PCI_PROGIF)
 			continue;
 
+		if (nvme_ctrl_count >= NVME_MAX_CTRL) {
+			kprintf("nvme: controller limit (%u) reached\n",
+				(uint32_t)NVME_MAX_CTRL);
+			break;
+		}
+
 		kprintf("nvme: found controller %04x:%04x at %02x:%02x.%x\n",
 			(uint32_t)pci->vendor_id, (uint32_t)pci->device_id,
 			(uint32_t)pci->bus, (uint32_t)pci->slot,
 			(uint32_t)pci->func);
 
-		if (nvme_init_ctrl(pci) == ANX_OK) {
-			anx_blk_register(&nvme_ops);
-			return ANX_OK;
+		c = &nvme_ctrls[nvme_ctrl_count];
+		anx_memset(c, 0, sizeof(*c));
+
+		if (nvme_init_ctrl(c, pci) != ANX_OK)
+			continue;
+
+		if (!anx_blk_dev_register(&nvme_ops, c, "nvme")) {
+			c->ready = false;
+			continue;
 		}
+		nvme_ctrl_count++;
 	}
-	return ANX_ENOENT;
+	return nvme_ctrl_count > 0 ? ANX_OK : ANX_ENOENT;
 }

@@ -10,12 +10,19 @@
 #define ANX_MOCK_BLK_H
 
 #include <anx/types.h>
+#include <anx/blk.h>
 
-/* Enable the RAM-backed mock block device with the given capacity.
- * Clamped to an internal pool size. Call once per test. */
+/* Drop any existing mock devices, then register one with the given
+ * capacity and make it the active block device. Clamped to an internal
+ * pool size. Call once per test. */
 void test_mock_blk_init(uint64_t sectors);
 
-/* Disable the mock block device (anx_blk_ready() returns false). */
+/* Register one more RAM-backed device and return it. The first one
+ * registered becomes active; later ones are free for a RAID array.
+ * Returns NULL once the harness runs out of pools. */
+struct anx_blk_dev *test_mock_blk_add(uint64_t sectors);
+
+/* Drop every mock device (anx_blk_ready() returns false). */
 void test_mock_blk_teardown(void);
 
 #endif /* ANX_MOCK_BLK_H */

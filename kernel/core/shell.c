@@ -31,6 +31,7 @@
 #include <anx/credential.h>
 #include <anx/virtio_blk.h>
 #include <anx/blk.h>
+#include <anx/md.h>
 #include <anx/objstore_disk.h>
 #include <anx/auth.h>
 #include <anx/model_client.h>
@@ -387,7 +388,10 @@ static void cmd_help(int argc, char **argv)
 		kputs("  state create|show|seal|delete  State object lifecycle\n");
 		kputs("  meta show|set|get <path>   Object metadata editor\n");
 		kputs("  store format|mount|stats   Object store management\n");
-		kputs("  disk                       Show block device info\n");
+		kputs("  disk                       List block devices\n");
+		kputs("  raid list|devs|detail      Software RAID status\n");
+		kputs("  raid create <0|1> <chunkKiB|-> <dev>...  Build an array\n");
+		kputs("  raid add|fail|resync|stop|zero  RAID administration\n");
 		kputs("  cells                      List execution cells\n");
 		return;
 	}
@@ -2312,18 +2316,339 @@ static void cmd_store(int argc, char **argv)
 
 /* --- Disk commands --- */
 
-static void cmd_disk(void)
+/* One line per registered block device, marking the active one. */
+static void print_blk_devs(void)
 {
-	uint64_t cap;
-	uint32_t mb;
+	uint32_t i;
+	uint32_t n = anx_blk_dev_count();
 
-	if (!anx_blk_ready()) {
+	if (n == 0) {
 		kputs("no block device detected\n");
 		return;
 	}
-	cap = anx_blk_capacity();
-	mb = (uint32_t)(cap * 512 / (1024 * 1024));
-	kprintf("virtio-blk: %u MiB (%u sectors)\n", mb, (uint32_t)cap);
+
+	kputs("NAME      DRIVER      SIZE  ROLE\n");
+	for (i = 0; i < n; i++) {
+		struct anx_blk_dev *dev = anx_blk_dev_at(i);
+		const char *role;
+
+		if (!dev)
+			continue;
+		if (dev->flags & ANX_BLK_F_ARRAY)
+			role = "array";
+		else if (anx_blk_dev_is_member(dev))
+			role = "raid member";
+		else
+			role = "free";
+
+		kprintf("%-8s  %-8s  %5u MiB  %s%s\n",
+			dev->name,
+			dev->ops->name ? dev->ops->name : "?",
+			(uint32_t)(anx_blk_dev_capacity(dev) / 2048),
+			role,
+			dev == anx_blk_active() ? "  (active)" : "");
+	}
+}
+
+static void cmd_disk(void)
+{
+	print_blk_devs();
+}
+
+/* --- RAID commands --- */
+
+static void raid_print_array(const struct anx_md_array *a, bool detail)
+{
+	uint32_t state = anx_md_state(a);
+	uint32_t i;
+
+	kprintf("%-6s  %-6s  %u members  %u MiB  %s\n",
+		a->name, anx_md_level_name(a->level), a->member_count,
+		(uint32_t)(a->array_sectors / 2048),
+		anx_md_state_name(state));
+
+	if (!detail)
+		return;
+
+	if (a->level == ANX_MD_LEVEL_RAID0)
+		kprintf("  chunk: %u KiB\n", a->chunk_sectors / 2);
+	kprintf("  metadata: %s\n", a->tail_meta ? "tail" : "head");
+	kprintf("  per-member data: %u MiB\n",
+		(uint32_t)(a->member_sectors / 2048));
+	kprintf("  events: %u\n", (uint32_t)a->events);
+	if (state == ANX_MD_ARRAY_REBUILDING)
+		kprintf("  rebuilt: %u/%u MiB\n",
+			(uint32_t)(a->resync_offset / 2048),
+			(uint32_t)(a->member_sectors / 2048));
+
+	for (i = 0; i < a->member_count; i++) {
+		const struct anx_md_member *m = &a->members[i];
+
+		kprintf("  [%u] %-8s %s\n", i,
+			m->dev ? m->dev->name : "-",
+			anx_md_member_state_name(m->state));
+	}
+}
+
+static void cmd_raid_create(int argc, char **argv)
+{
+	struct anx_blk_dev *members[ANX_MD_MAX_MEMBERS];
+	struct anx_md_array *a = NULL;
+	uint32_t chunk_sectors;
+	uint32_t count = 0;
+	bool tail = false;
+	bool force = false;
+	bool takes_active = false;
+	int level;
+	int i;
+	int ret;
+
+	/* raid create <level> <chunkKiB|-> <dev>... [tail] [force] */
+	if (argc < 5) {
+		kputs("usage: raid create <0|1> <chunkKiB|-> <dev> <dev> "
+		      "[dev...] [tail] [force]\n");
+		kputs("  tail   put metadata at the end of each member\n");
+		kputs("  force  allow a member that holds the mounted store\n");
+		return;
+	}
+
+	level = anx_md_parse_level(argv[2]);
+	if (level < 0) {
+		kputs("raid: level must be 0 or 1\n");
+		return;
+	}
+
+	if (anx_strcmp(argv[3], "-") == 0) {
+		chunk_sectors = 0;
+	} else {
+		uint32_t kib = anx_strtoul(argv[3], NULL, 10);
+
+		if (kib < 4 || kib > 4096 || (kib & (kib - 1)) != 0) {
+			kputs("raid: chunk must be a power of two, 4-4096 KiB\n");
+			return;
+		}
+		chunk_sectors = kib * 2;
+	}
+
+	for (i = 4; i < argc; i++) {
+		struct anx_blk_dev *dev;
+
+		if (anx_strcmp(argv[i], "tail") == 0) {
+			tail = true;
+			continue;
+		}
+		if (anx_strcmp(argv[i], "force") == 0) {
+			force = true;
+			continue;
+		}
+		if (count >= ANX_MD_MAX_MEMBERS) {
+			kprintf("raid: at most %u members\n",
+				(uint32_t)ANX_MD_MAX_MEMBERS);
+			return;
+		}
+		dev = anx_blk_dev_find(argv[i]);
+		if (!dev) {
+			kprintf("raid: no such device: %s\n", argv[i]);
+			return;
+		}
+		if (dev == anx_blk_active())
+			takes_active = true;
+		members[count++] = dev;
+	}
+
+	if (takes_active && !force) {
+		kputs("raid: a listed device holds the mounted object store.\n");
+		kputs("      Add \"force\" to take it anyway; the store then "
+		      "needs \"store format\".\n");
+		return;
+	}
+
+	kputs("raid: this erases all data on the listed devices\n");
+
+	/* The array replaces whichever member currently answers the
+	 * whole-system API. */
+	if (takes_active)
+		anx_blk_set_active(NULL);
+
+	ret = anx_md_create(NULL, (uint32_t)level, chunk_sectors,
+			    members, count, tail, &a);
+	if (ret != ANX_OK) {
+		kprintf("raid: create failed (%d)\n", ret);
+		if (takes_active)
+			anx_blk_set_active(anx_blk_dev_at(0));
+		return;
+	}
+	raid_print_array(a, true);
+	if (takes_active)
+		kputs("raid: run \"store format\" to rebuild the object "
+		      "store on the array\n");
+}
+
+static void cmd_raid(int argc, char **argv)
+{
+	const char *sub = (argc >= 2) ? argv[1] : "list";
+	uint32_t i;
+
+	if (anx_strcmp(sub, "list") == 0) {
+		uint32_t n = anx_md_count();
+
+		if (n == 0) {
+			kputs("no arrays\n");
+		} else {
+			for (i = 0; i < n; i++)
+				raid_print_array(anx_md_at(i), false);
+		}
+		return;
+	}
+
+	if (anx_strcmp(sub, "devs") == 0) {
+		print_blk_devs();
+		return;
+	}
+
+	if (anx_strcmp(sub, "create") == 0) {
+		cmd_raid_create(argc, argv);
+		return;
+	}
+
+	if (anx_strcmp(sub, "detail") == 0) {
+		struct anx_md_array *a;
+
+		if (argc < 3) {
+			kputs("usage: raid detail <name>\n");
+			return;
+		}
+		a = anx_md_find(argv[2]);
+		if (!a) {
+			kprintf("raid: no such array: %s\n", argv[2]);
+			return;
+		}
+		raid_print_array(a, true);
+		return;
+	}
+
+	if (anx_strcmp(sub, "stop") == 0) {
+		struct anx_md_array *a;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: raid stop <name>\n");
+			return;
+		}
+		a = anx_md_find(argv[2]);
+		if (!a) {
+			kprintf("raid: no such array: %s\n", argv[2]);
+			return;
+		}
+		ret = anx_md_stop(a);
+		if (ret == ANX_EBUSY)
+			kputs("raid: array is the active block device\n");
+		else if (ret != ANX_OK)
+			kprintf("raid: stop failed (%d)\n", ret);
+		return;
+	}
+
+	if (anx_strcmp(sub, "assemble") == 0) {
+		int started = anx_md_assemble();
+
+		kprintf("raid: %d array(s) started\n", started);
+		return;
+	}
+
+	if (anx_strcmp(sub, "fail") == 0) {
+		struct anx_md_array *a;
+		int ret;
+
+		if (argc < 4) {
+			kputs("usage: raid fail <name> <member-index>\n");
+			return;
+		}
+		a = anx_md_find(argv[2]);
+		if (!a) {
+			kprintf("raid: no such array: %s\n", argv[2]);
+			return;
+		}
+		ret = anx_md_fail(a, anx_strtoul(argv[3], NULL, 10));
+		if (ret != ANX_OK)
+			kprintf("raid: fail failed (%d)\n", ret);
+		else
+			raid_print_array(a, true);
+		return;
+	}
+
+	if (anx_strcmp(sub, "add") == 0) {
+		struct anx_md_array *a;
+		struct anx_blk_dev *dev;
+		int ret;
+
+		if (argc < 4) {
+			kputs("usage: raid add <name> <dev>\n");
+			return;
+		}
+		a = anx_md_find(argv[2]);
+		if (!a) {
+			kprintf("raid: no such array: %s\n", argv[2]);
+			return;
+		}
+		dev = anx_blk_dev_find(argv[3]);
+		if (!dev) {
+			kprintf("raid: no such device: %s\n", argv[3]);
+			return;
+		}
+		ret = anx_md_add(a, dev);
+		if (ret != ANX_OK)
+			kprintf("raid: add failed (%d)\n", ret);
+		return;
+	}
+
+	if (anx_strcmp(sub, "resync") == 0) {
+		struct anx_md_array *a;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: raid resync <name>\n");
+			return;
+		}
+		a = anx_md_find(argv[2]);
+		if (!a) {
+			kprintf("raid: no such array: %s\n", argv[2]);
+			return;
+		}
+		ret = anx_md_resync(a);
+		if (ret == ANX_ENOENT)
+			kputs("raid: nothing to rebuild\n");
+		else if (ret != ANX_OK)
+			kprintf("raid: resync failed (%d)\n", ret);
+		else
+			raid_print_array(a, true);
+		return;
+	}
+
+	if (anx_strcmp(sub, "zero") == 0) {
+		struct anx_blk_dev *dev;
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: raid zero <dev>\n");
+			return;
+		}
+		dev = anx_blk_dev_find(argv[2]);
+		if (!dev) {
+			kprintf("raid: no such device: %s\n", argv[2]);
+			return;
+		}
+		ret = anx_md_zero_super(dev);
+		if (ret == ANX_ENOENT)
+			kputs("raid: no array superblock on that device\n");
+		else if (ret == ANX_EBUSY)
+			kputs("raid: device belongs to a running array\n");
+		else if (ret != ANX_OK)
+			kprintf("raid: zero failed (%d)\n", ret);
+		return;
+	}
+
+	kputs("usage: raid <list|devs|detail|create|stop|assemble|"
+	      "fail|add|resync|zero>\n");
 }
 
 /* --- PCI commands --- */
@@ -2825,6 +3150,8 @@ static void dispatch(int argc, char **argv)
 		cmd_store(argc, argv);
 	} else if (anx_strcmp(argv[0], "disk") == 0) {
 		cmd_disk();
+	} else if (anx_strcmp(argv[0], "raid") == 0) {
+		cmd_raid(argc, argv);
 	} else if (anx_strcmp(argv[0], "pci") == 0) {
 		cmd_pci(argc, argv);
 	} else if (anx_strcmp(argv[0], "surfctl") == 0) {
