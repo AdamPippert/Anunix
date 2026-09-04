@@ -103,21 +103,45 @@ elif [ -f "${GRUB_EFI_DIR}/monolithic/grubx64.efi" ]; then
 	cp "${GRUB_EFI_DIR}/monolithic/grubx64.efi" "${GRUB_EFI_BIN}"
 fi
 
+# GRUB's config chainloads /EFI/BOOT/ANUNIX.EFI, so the anxboot stub has to
+# be on the ESP beside GRUB itself. Without it GRUB loads, offers its menu,
+# and every entry fails with "file `/EFI/BOOT/ANUNIX.EFI' not found".
+ANX_EFI_SRC="${PROJECT_DIR}/build/x86_64/BOOTX64.EFI"
+ANX_EFI_BIN=""
+if [ -f "${ANX_EFI_SRC}" ]; then
+	ANX_EFI_BIN="${ISO_DIR}/EFI/BOOT/ANUNIX.EFI"
+	cp "${ANX_EFI_SRC}" "${ANX_EFI_BIN}"
+else
+	echo "  WARNING: ${ANX_EFI_SRC} missing — UEFI entries will not boot" >&2
+fi
+
 EFI_IMG=""
 if [ -f "${GRUB_EFI_BIN}" ]; then
 	EFI_IMG="${ISO_DIR}/boot/grub/efiboot.img"
-	# Size the FAT image to fit BOOTX64.EFI plus FAT overhead (~1MB).
+	# Size the FAT image to fit both EFI binaries plus FAT overhead (~1MB).
 	EFI_BIN_KB=$(( ($(stat -c %s "${GRUB_EFI_BIN}") + 1023) / 1024 ))
+	if [ -n "${ANX_EFI_BIN}" ]; then
+		EFI_BIN_KB=$(( EFI_BIN_KB + 			($(stat -c %s "${ANX_EFI_BIN}") + 1023) / 1024 ))
+	fi
 	EFI_IMG_KB=$(( EFI_BIN_KB + 1024 ))
 	# Round up to next 1MB boundary, minimum 8MB.
 	EFI_IMG_KB=$(( ((EFI_IMG_KB + 1023) / 1024) * 1024 ))
 	if [ "${EFI_IMG_KB}" -lt 8192 ]; then EFI_IMG_KB=8192; fi
 	dd if=/dev/zero of="${EFI_IMG}" bs=1k count="${EFI_IMG_KB}" 2>/dev/null
 	if command -v mformat >/dev/null 2>&1; then
-		mformat -i "${EFI_IMG}" -F ::
+		# No -F: that forces FAT32, and FAT32 needs at least 65525
+		# clusters. An 8MB ESP has far fewer, so -F produced an
+		# out-of-spec filesystem that mtools wrote happily and EDK2
+		# refused to mount -- the ISO offered no UEFI boot option.
+		# Letting mformat size the FAT gives FAT12/FAT16 here.
+		mformat -i "${EFI_IMG}" ::
 		mmd   -i "${EFI_IMG}" ::/EFI ::/EFI/BOOT
 		mcopy -i "${EFI_IMG}" "${GRUB_EFI_BIN}" ::/EFI/BOOT/BOOTX64.EFI
-		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"
+		if [ -n "${ANX_EFI_BIN}" ]; then
+			mcopy -i "${EFI_IMG}" "${ANX_EFI_BIN}" \
+				::/EFI/BOOT/ANUNIX.EFI
+		fi
+		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
 	elif command -v hdiutil >/dev/null 2>&1; then
 		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null | head -1 | awk {print })
 		newfs_msdos -F 12 "${EFI_DEV}" >/dev/null 2>&1
@@ -125,6 +149,8 @@ if [ -f "${GRUB_EFI_BIN}" ]; then
 		mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
 		mkdir -p "${EFI_MNT}/EFI/BOOT"
 		cp "${GRUB_EFI_BIN}" "${EFI_MNT}/EFI/BOOT/BOOTX64.EFI"
+		[ -n "${ANX_EFI_BIN}" ] && \
+			cp "${ANX_EFI_BIN}" "${EFI_MNT}/EFI/BOOT/ANUNIX.EFI"
 		umount "${EFI_MNT}" 2>/dev/null; hdiutil detach "${EFI_DEV}" >/dev/null 2>&1
 		rmdir "${EFI_MNT}" 2>/dev/null || true
 		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"

@@ -87,6 +87,6 @@ typedef uint64_t anx_time_t;
 #define ANX_ENOTSUP	-15   /* operation not supported */
 
 /* Kernel version string — YYYY.M.D */
-#define ANX_VERSION	"2026.5.8"
+#define ANX_VERSION	"2026.9.4"
 
 #endif /* ANX_TYPES_H */
