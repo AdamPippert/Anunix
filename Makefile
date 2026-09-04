@@ -114,6 +114,7 @@ CFLAGS  := -target $(TARGET) \
            -ffreestanding -fno-builtin -nostdlib -nostdinc \
            -Wall -Wextra -Werror -std=c11 \
            -mgeneral-regs-only \
+           $(if $(filter arm64,$(ARCH)),-mstrict-align) \
            -I kernel/include \
            -O2 -g
 
