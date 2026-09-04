@@ -19,6 +19,7 @@
 #include <anx/netplane.h>
 #include <anx/capability.h>
 #include <anx/worldgraph.h>
+#include <anx/config.h>
 #include <anx/engine_lease.h>
 #include <anx/hwprobe.h>
 #include <anx/model_server.h>
@@ -142,6 +143,13 @@ void kernel_main(void)
 	anx_world_runtime_init();
 	anx_world_constraint_validator_register();
 	anx_world_boot_seed();
+
+	/* 6b. RLM Configuration (RFC-0027) — governed config.* world slice */
+	anx_config_init();
+	anx_config_declare("system", "log_level", ANX_CFG_ENUM,
+			   "debug,info,warn,error");
+	anx_config_set("system", "log_level", "info");
+	kprintf("configuration runtime initialized\n");
 
 	/* 7a. Interface Plane (RFC-0012) — after engine registry */
 	if (anx_iface_init() == ANX_OK) {
