@@ -12,8 +12,8 @@
   <img src="https://img.shields.io/badge/version-2026.8.30-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-59%20suites-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/RFCs-29-blueviolet" alt="RFCs">
+  <img src="https://img.shields.io/badge/tests-60%20suites-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/RFCs-30-blueviolet" alt="RFCs">
 </p>
 
 ---
@@ -51,6 +51,7 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 | Model servers | **Model Hosting** | Kernel control plane for model lifecycle, leasing, and routing |
 | `.env` files | **Credential Objects** | Kernel-enforced secrets with opaque payloads and scoped access |
 | GRUB | **anxboot** | Custom UEFI loader, no second-stage, no GNU EFI, no edk2 |
+| `mdadm` | **Software RAID** | Kernel-assembled striped and mirrored arrays under the object store |
 
 ---
 
@@ -264,6 +265,7 @@ make kernel                  # Build for host architecture
 make kernel ARCH=x86_64      # Build for x86_64
 make kernel ARCH=arm64       # Build for ARM64
 make qemu                    # Boot in QEMU, serial console
+make qemu-raid               # Boot with three NVMe drives for software RAID
 make qemu-fb                 # Boot with framebuffer
 make qemu-fb-net             # Boot with framebuffer + networking
 make qemu-iso                # Boot the bootable ISO under QEMU/UEFI
@@ -333,6 +335,7 @@ kernel/
     audio/  video/    Audio engine + media playback                  (RFC-0024)
     anxml/            Inference runtime                              (RFC-0021)
     ebm/  jepa/  loop/  rlm/   IBAL stack — EBM/JEPA/LLM hybrid       (RFC-0020)
+    md/               Software RAID — striping and mirroring           (RFC-0030)
     log/              Persistent boot-session logging
     update/  install/ System update and installer
     tools/            ansh command implementations
@@ -340,7 +343,7 @@ kernel/
     main.c            Kernel entry point
     shell.c           Interactive kernel monitor (ansh)
   drivers/
-    storage/          AHCI, NVMe, Apple ANS, virtio-blk
+    storage/          Block device registry, AHCI, NVMe, Apple ANS, virtio-blk
     net/              IP stack, e1000, sshd, httpd, NTP, WiFi
     audio/            HDA, Apple Audio
     accel/            AMD XDNA NPU
@@ -350,11 +353,11 @@ kernel/
   include/anx/        Public kernel headers
   lib/                kprintf, alloc, json, font, hashtable, jpeg, crypto/
 distd/                Anunix distribution server (formerly superrouter)
-tests/                Host-native unit tests (59 suites)
+tests/                Host-native unit tests (60 suites)
 tools/                Build scripts, ISO builder, QEMU helpers, screenshot
 docs/
   CONCEPTS.md         60-second primer on Anunix primitives
-  rfcs/               Design specifications (29 RFCs)
+  rfcs/               Design specifications (30 RFCs)
   releases/           Per-release notes
   hardware/           Driver and platform-specific guides
   plans/              Planning + acceptance matrices
@@ -368,7 +371,7 @@ config/               Build and runtime configuration
 
 ## Design Documents
 
-Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 29 RFCs in total — selected:
+Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 30 RFCs in total — selected:
 
 | RFC | Title |
 |-----|-------|
@@ -387,6 +390,7 @@ Full index at [`docs/rfcs/RFC-INDEX.md`](docs/rfcs/RFC-INDEX.md). 29 RFCs in tot
 | [0025](docs/rfcs/RFC-0025-icm-over-state-objects.md) | ICM over State Objects |
 | [0028](docs/rfcs/RFC-0028-protected-operation-abi.md) | Protected Operation ABI (information-flow labels, effect protocol) |
 | [0029](docs/rfcs/RFC-0029-resource-twin-regime-gated-scheduling.md) | Resource Twin and Regime-Gated Scheduling Policy |
+| [0030](docs/rfcs/RFC-0030-software-raid.md) | Software RAID — Striped and Mirrored Block Devices |
 
 In-flight drafts: **RFC-0026** Kit Subsystem (unified loadable subsystems), **RFC-0027** Persona Objects (agent identity, custody, governance).
 
