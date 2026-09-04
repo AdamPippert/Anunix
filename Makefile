@@ -5,6 +5,7 @@
 #   make kernel ARCH=arm64
 #   make kernel ARCH=x86_64
 #   make qemu              Boot kernel in QEMU (headless, serial console)
+#   make qemu-raid         Boot with three NVMe drives for software RAID
 #   make qemu-iso          Boot ISO in QEMU via UEFI — same path as bare metal/USB
 #   make qemu-deps         Build QEMU and dependencies from source
 #   make clean             Remove all build artifacts
@@ -152,7 +153,7 @@ KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
-.PHONY: kernel qemu qemu-fb qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
+.PHONY: kernel qemu qemu-fb qemu-raid qemu-raid-clean qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -273,6 +274,36 @@ else ifeq ($(ARCH),x86_64)
 else
   QFLAGS_FB_NET := $(QFLAGS_FB)
 endif
+
+# Two emulated NVMe drives, for exercising software RAID in QEMU.
+RAID_IMG_DIR  := build/raid
+RAID_IMG_SIZE := 256M
+RAID_IMGS     := $(RAID_IMG_DIR)/nvme0.img $(RAID_IMG_DIR)/nvme1.img \
+                 $(RAID_IMG_DIR)/nvme2.img
+QEMU_RAID_DEVS := \
+    -drive file=$(RAID_IMG_DIR)/nvme0.img,if=none,id=nvm0,format=raw \
+    -device nvme,serial=anxraid0,drive=nvm0 \
+    -drive file=$(RAID_IMG_DIR)/nvme1.img,if=none,id=nvm1,format=raw \
+    -device nvme,serial=anxraid1,drive=nvm1 \
+    -drive file=$(RAID_IMG_DIR)/nvme2.img,if=none,id=nvm2,format=raw \
+    -device nvme,serial=anxraid2,drive=nvm2
+
+$(RAID_IMG_DIR)/%.img:
+	@mkdir -p $(RAID_IMG_DIR)
+	@qemu-img create -f raw $@ $(RAID_IMG_SIZE) >/dev/null 2>&1 || \
+	 truncate -s $(RAID_IMG_SIZE) $@
+
+# Boot with three NVMe drives attached. Build an array from the shell with
+#   raid create 0 64 nvme0 nvme1 force      (striped, then: store format)
+#   raid create 1 -  nvme0 nvme1 force      (mirrored)
+# then reboot to watch it assemble itself. The third drive is the spare
+# for "raid fail" / "raid add" / "raid resync".
+qemu-raid: $(QEMU_KERNEL) $(RAID_IMGS)
+	$(QEMU) $(QEMU_RAID_DEVS) $(QFLAGS) $(QEMU_KERNEL)
+
+# Discard the RAID scratch images so the next qemu-raid starts clean.
+qemu-raid-clean:
+	rm -rf $(RAID_IMG_DIR)
 
 qemu-fb: $(QEMU_KERNEL)
 	$(QEMU) $(QFLAGS_FB) $(QEMU_KERNEL)
@@ -395,6 +426,9 @@ DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
 		  ! -name 'driver_table.c' \
 		  2>/dev/null)
+# The block registry is pure dispatch with no hardware access, and the
+# mock devices in the test harness register through it.
+DRIVER_C_ALL += $(DRIVER_DIR)/storage/blk.c
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/harness/mock_wifi.c \
@@ -456,7 +490,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_resourced_twin_simulate.c \
                tests/test_regime_detector.c \
                tests/test_sched_cognitive_envelope.c \
-               tests/test_cap_measured_null_promotion.c
+               tests/test_cap_measured_null_promotion.c \
+               tests/test_md_raid.c
 TEST_BIN    := build/test/anunix_test
 
 test:

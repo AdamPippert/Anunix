@@ -48,7 +48,8 @@ struct anx_driver {
 /* Probe all registered drivers against discovered hardware.
  * On x86_64: scans PCI list for ANX_BUS_PCI drivers.
  * On arm64:  scans PCI list + calls platform drivers if arch supports DT.
- * Storage class: stops after first successful registration (anx_blk_ready()).
+ * Storage class: binds every drive found; each driver enumerates its own
+ * bus on the first call and is a no-op afterwards.
  * Net class: calls all matches. */
 void anx_drivers_probe(void);
 

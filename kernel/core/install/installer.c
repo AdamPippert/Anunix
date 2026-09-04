@@ -9,7 +9,7 @@
  *   1. Display welcome banner
  *   2. Load provisioning config (JSON or interactive)
  *   3. Detect hardware (ACPI + PCI)
- *   4. Select target disk
+ *   4. Select target disk, building a RAID array first if one is asked for
  *   5. Partition disk (GPT: EFI + Anunix data)
  *   6. Format Anunix object store
  *   7. Create user account
@@ -24,6 +24,7 @@
 #include <anx/gpt.h>
 #include <anx/objstore_disk.h>
 #include <anx/virtio_blk.h>
+#include <anx/md.h>
 #include <anx/auth.h>
 #include <anx/credential.h>
 #include <anx/acpi.h>
@@ -155,11 +156,34 @@ static void show_hardware(void)
 	}
 
 	if (anx_blk_ready()) {
-		kprintf("  Disk:    %u MiB (virtio-blk)\n",
-			(uint32_t)(anx_blk_capacity() * 512 /
-				   (1024 * 1024)));
+		uint32_t i;
+
+		for (i = 0; i < anx_blk_dev_count(); i++) {
+			struct anx_blk_dev *dev = anx_blk_dev_at(i);
+
+			if (!dev)
+				continue;
+			kprintf("  Disk:    %-8s %u MiB (%s)%s\n",
+				dev->name,
+				(uint32_t)(anx_blk_dev_capacity(dev) / 2048),
+				dev->ops->name ? dev->ops->name : "?",
+				dev == anx_blk_active() ? " [target]" : "");
+		}
 	} else {
 		kprintf("  Disk:    not detected\n");
+	}
+
+	if (anx_md_count() > 0) {
+		uint32_t i;
+
+		for (i = 0; i < anx_md_count(); i++) {
+			const struct anx_md_array *a = anx_md_at(i);
+
+			kprintf("  Array:   %-8s %s, %u members, %s\n",
+				a->name, anx_md_level_name(a->level),
+				a->member_count,
+				anx_md_state_name(anx_md_state(a)));
+		}
 	}
 
 	{
@@ -171,6 +195,94 @@ static void show_hardware(void)
 			count++;
 		kprintf("  PCI:     %u devices\n", count);
 	}
+}
+
+/* --- RAID provisioning --- */
+
+/*
+ * Build the array described by the "install.raid" object:
+ *
+ *   "raid": {
+ *     "level":    "raid0",              // or "raid1", "0", "1"
+ *     "chunk_kib": 64,                  // raid0 only, power of two
+ *     "metadata": "head",               // or "tail" for a mirrored ESP
+ *     "members":  ["nvme0", "nvme1"]
+ *   }
+ *
+ * Every listed member is erased. On success the new array is the active
+ * block device.
+ */
+static int build_raid(struct anx_json_value *raid_val)
+{
+	struct anx_blk_dev *members[ANX_MD_MAX_MEMBERS];
+	struct anx_md_array *a = NULL;
+	struct anx_json_value *members_val;
+	uint32_t chunk_sectors = 0;
+	uint32_t count;
+	uint32_t i;
+	bool tail = false;
+	int level;
+	int ret;
+
+	level = anx_md_parse_level(anx_json_string(
+			anx_json_get(raid_val, "level")));
+	if (level < 0) {
+		fail("raid level must be raid0 or raid1", ANX_EINVAL);
+		return ANX_EINVAL;
+	}
+
+	if (level == ANX_MD_LEVEL_RAID0) {
+		int64_t kib = anx_json_number(anx_json_get(raid_val,
+							   "chunk_kib"));
+
+		if (kib > 0)
+			chunk_sectors = (uint32_t)kib * 2;
+	}
+
+	{
+		const char *meta = anx_json_string(anx_json_get(raid_val,
+								"metadata"));
+
+		if (meta && anx_strcmp(meta, "tail") == 0)
+			tail = true;
+	}
+
+	members_val = anx_json_get(raid_val, "members");
+	count = anx_json_array_len(members_val);
+	if (count < 2 || count > ANX_MD_MAX_MEMBERS) {
+		fail("raid needs 2 to 8 members", ANX_EINVAL);
+		return ANX_EINVAL;
+	}
+
+	for (i = 0; i < count; i++) {
+		const char *name = anx_json_string(
+			anx_json_array_get(members_val, i));
+
+		members[i] = name ? anx_blk_dev_find(name) : NULL;
+		if (!members[i]) {
+			kprintf("  [FAIL] no such block device: %s\n",
+				name ? name : "(null)");
+			return ANX_ENODEV;
+		}
+	}
+
+	/* The array takes over from whichever member currently answers the
+	 * whole-system API. */
+	anx_blk_set_active(NULL);
+
+	status("creating array...");
+	ret = anx_md_create(NULL, (uint32_t)level, chunk_sectors,
+			    members, count, tail, &a);
+	if (ret != ANX_OK) {
+		anx_blk_set_active(anx_blk_dev_at(0));
+		return ret;
+	}
+
+	anx_blk_set_active(a->bdev);
+	kprintf("  [OK] %s: %s over %u members, %u MiB\n",
+		a->name, anx_md_level_name(a->level), a->member_count,
+		(uint32_t)(a->array_sectors / 2048));
+	return ANX_OK;
 }
 
 /* --- Provisioned install (from JSON) --- */
@@ -211,9 +323,27 @@ int anx_installer_run(const char *provision_json, uint32_t json_len)
 		return ANX_ENOENT;
 	}
 
+	/* Build a RAID array when the config asks for one. The array becomes
+	 * the active block device, so the partitioning and format steps below
+	 * land on the array rather than on one member. */
+	install_val = anx_json_get(&root, "install");
+	if (install_val) {
+		struct anx_json_value *raid_val;
+
+		raid_val = anx_json_get(install_val, "raid");
+		if (raid_val) {
+			banner("Software RAID");
+			ret = build_raid(raid_val);
+			if (ret != ANX_OK) {
+				fail("RAID setup failed", ret);
+				anx_json_free(&root);
+				return ret;
+			}
+		}
+	}
+
 	/* Partition disk */
 	banner("Disk Partitioning");
-	install_val = anx_json_get(&root, "install");
 	{
 		const char *label = hostname;
 

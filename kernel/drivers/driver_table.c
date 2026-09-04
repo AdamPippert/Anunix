@@ -10,6 +10,10 @@
  *
  * Platform drivers (ANX_BUS_PLATFORM) are only probed on arm64 via the
  * device tree. On x86_64 they are silently skipped.
+ *
+ * Storage drivers bind every drive they find, not just the first. Each
+ * driver walks its whole bus on the first init() call and returns early
+ * on later calls, so probing stays one pass over the hardware.
  */
 
 #include <anx/types.h>
@@ -107,10 +111,10 @@ void anx_drivers_probe(void)
 				if (!pci_matches(drv, dev))
 					continue;
 
-				/* Storage: stop once we have a block device */
-				if (drv->drv_class == ANX_DRVCLS_STORAGE &&
-				    anx_blk_ready())
-					continue;
+				/* Storage drivers enumerate their whole bus on
+				 * the first call and register one block device
+				 * per drive, so every controller is bound and
+				 * the RAID layer can see them all. */
 
 				/* Enable DMA before calling init (idempotent) */
 				anx_pci_enable_bus_master(dev);
@@ -126,11 +130,6 @@ void anx_drivers_probe(void)
 		} else if (drv->bus == ANX_BUS_PLATFORM) {
 #ifdef __aarch64__
 			if (!anx_dt_has_compatible(drv->compatible))
-				continue;
-
-			/* Storage: stop once we have a block device */
-			if (drv->drv_class == ANX_DRVCLS_STORAGE &&
-			    anx_blk_ready())
 				continue;
 
 			r = drv->init();

@@ -306,78 +306,122 @@ int anx_tcp_recv(struct anx_tcp_conn *c, void *b, uint32_t l, uint32_t t)
 { (void)c; (void)b; (void)l; (void)t; return ANX_EIO; }
 int anx_tcp_close(struct anx_tcp_conn *c) { (void)c; return ANX_OK; }
 /*
- * Mock virtio-blk: RAM-backed when test_mock_blk_init() is called,
- * otherwise reports not-ready so unrelated tests see no device.
- *
- * The RAM buffer is sized for disk_store unit tests, which need the
- * superblock + journal + index + a small data region.
+ * Mock block devices: RAM-backed, registered through the real block
+ * registry in kernel/drivers/storage/blk.c. test_mock_blk_init() gives
+ * a test one device; test_mock_blk_add() gives it more, which is what
+ * the RAID tests stripe and mirror over.
  */
 #include <anx/mock_blk.h>
+#include <anx/blk.h>
 
-static uint8_t *mock_blk_mem;
-static uint64_t mock_blk_sectors;
+#define MOCK_BLK_MAX_DEVS	4
+#define MOCK_BLK_MAX_SECTORS	8192		/* 4 MiB per device */
+
+struct mock_blk {
+	uint8_t *mem;
+	uint64_t sectors;
+};
+
+static struct mock_blk mock_blks[MOCK_BLK_MAX_DEVS];
+static struct anx_blk_dev *mock_devs[MOCK_BLK_MAX_DEVS];
+static uint32_t mock_blk_count;
+
+static int mock_blk_read(struct anx_blk_dev *dev, uint64_t s, uint32_t c,
+			 void *b)
+{
+	struct mock_blk *m = dev->priv;
+	uint32_t i;
+	uint8_t *dst = b;
+	const uint8_t *src;
+
+	if (!m->mem || s + c > m->sectors)
+		return ANX_EIO;
+	src = m->mem + s * 512;
+	for (i = 0; i < c * 512; i++)
+		dst[i] = src[i];
+	return ANX_OK;
+}
+
+static int mock_blk_write(struct anx_blk_dev *dev, uint64_t s, uint32_t c,
+			  const void *b)
+{
+	struct mock_blk *m = dev->priv;
+	uint32_t i;
+	uint8_t *dst;
+	const uint8_t *src = b;
+
+	if (!m->mem || s + c > m->sectors)
+		return ANX_EIO;
+	dst = m->mem + s * 512;
+	for (i = 0; i < c * 512; i++)
+		dst[i] = src[i];
+	return ANX_OK;
+}
+
+static uint64_t mock_blk_capacity(struct anx_blk_dev *dev)
+{
+	struct mock_blk *m = dev->priv;
+
+	return m->sectors;
+}
+
+static const struct anx_blk_ops mock_blk_ops = {
+	.read     = mock_blk_read,
+	.write    = mock_blk_write,
+	.capacity = mock_blk_capacity,
+	.name     = "mock",
+};
+
+struct anx_blk_dev *test_mock_blk_add(uint64_t sectors)
+{
+	static uint8_t mock_blk_pool[MOCK_BLK_MAX_DEVS]
+				    [512 * MOCK_BLK_MAX_SECTORS];
+	struct mock_blk *m;
+	uint32_t slot = mock_blk_count;
+	uint64_t i;
+
+	if (slot >= MOCK_BLK_MAX_DEVS)
+		return NULL;
+	if (sectors == 0 || sectors > MOCK_BLK_MAX_SECTORS)
+		sectors = MOCK_BLK_MAX_SECTORS;
+
+	m = &mock_blks[slot];
+	m->mem     = mock_blk_pool[slot];
+	m->sectors = sectors;
+	for (i = 0; i < sectors * 512; i++)
+		m->mem[i] = 0;
+
+	mock_devs[slot] = anx_blk_dev_register(&mock_blk_ops, m, "mock");
+	if (!mock_devs[slot]) {
+		m->mem = NULL;
+		return NULL;
+	}
+	mock_blk_count++;
+	return mock_devs[slot];
+}
 
 void test_mock_blk_init(uint64_t sectors)
 {
-	static uint8_t mock_blk_pool[512 * 2048]; /* 1 MiB default */
-
-	if (sectors == 0 || sectors > 2048)
-		sectors = 2048;
-	mock_blk_mem = mock_blk_pool;
-	mock_blk_sectors = sectors;
-	/* zero the backing store so mount sees a fresh disk */
-	{
-		uint64_t i;
-
-		for (i = 0; i < sectors * 512; i++)
-			mock_blk_mem[i] = 0;
-	}
+	test_mock_blk_teardown();
+	test_mock_blk_add(sectors);
 }
 
 void test_mock_blk_teardown(void)
 {
-	mock_blk_mem = NULL;
-	mock_blk_sectors = 0;
+	uint32_t i;
+
+	for (i = 0; i < mock_blk_count; i++) {
+		anx_blk_dev_release(mock_devs[i]);
+		anx_blk_dev_unregister(mock_devs[i]);
+		mock_devs[i] = NULL;
+		mock_blks[i].mem = NULL;
+		mock_blks[i].sectors = 0;
+	}
+	mock_blk_count = 0;
+	anx_blk_set_active(NULL);
 }
 
 int anx_virtio_blk_init(void) { return ANX_ENOENT; }
-
-int anx_blk_read(uint64_t s, uint32_t c, void *b)
-{
-	if (!mock_blk_mem)
-		return ANX_EIO;
-	if (s + c > mock_blk_sectors)
-		return ANX_EIO;
-	{
-		uint32_t i;
-		uint8_t *dst = b;
-		const uint8_t *src = mock_blk_mem + s * 512;
-
-		for (i = 0; i < c * 512; i++)
-			dst[i] = src[i];
-	}
-	return ANX_OK;
-}
-
-int anx_blk_write(uint64_t s, uint32_t c, const void *b)
-{
-	if (!mock_blk_mem)
-		return ANX_EIO;
-	if (s + c > mock_blk_sectors)
-		return ANX_EIO;
-	{
-		uint32_t i;
-		uint8_t *dst = mock_blk_mem + s * 512;
-		const uint8_t *src = b;
-
-		for (i = 0; i < c * 512; i++)
-			dst[i] = src[i];
-	}
-	return ANX_OK;
-}
-
-uint64_t anx_blk_capacity(void) { return mock_blk_sectors; }
-bool anx_blk_ready(void) { return mock_blk_mem != NULL; }
 
 int anx_http_get(const char *h, uint16_t p, const char *pa, struct anx_http_response *r)
 { (void)h; (void)p; (void)pa; r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }

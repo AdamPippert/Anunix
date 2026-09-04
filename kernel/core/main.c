@@ -30,6 +30,7 @@
 #include <anx/credential.h>
 #include <anx/auth.h>
 #include <anx/blk.h>
+#include <anx/md.h>
 #include <anx/objstore_disk.h>
 #include <anx/driver_table.h>
 #include <anx/mt7925.h>
@@ -289,6 +290,14 @@ void kernel_main(void)
 	anx_audio_init();
 	anx_video_init();
 	PERF_END();
+
+	/* 10c. Software RAID — assemble arrays from member superblocks.
+	 * An assembled array takes over as the active block device, so the
+	 * object store below mounts from the array, not from one member. */
+	PERF_BEGIN("md_init");
+	anx_md_init();
+	PERF_END();
+
 	if (anx_blk_ready()) {
 		int ds_ret = anx_disk_store_init();
 

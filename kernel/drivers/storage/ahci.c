@@ -2,9 +2,10 @@
  * ahci.c — Minimal polled AHCI driver.
  *
  * Supports PCI class=0x01, subclass=0x06, prog_if=0x01 (AHCI 1.0).
- * Locates the first port with SSTS.DET=3 and SSTS.IPM=1, issues ATA
- * IDENTIFY DEVICE to read capacity, then exposes the drive via
- * anx_blk_register().
+ * For every port with SSTS.DET=3 and SSTS.IPM=1, issues ATA IDENTIFY
+ * DEVICE to read capacity, then exposes the drive as its own block
+ * device via anx_blk_dev_register(). Two SATA drives on one HBA become
+ * ahci0 and ahci1, which the RAID layer can mirror or stripe.
  *
  * All DMA buffers are allocated via anx_page_alloc(). Polled only.
  * 512-byte sectors only. LBA48 for READ/WRITE DMA EXT.
@@ -131,41 +132,48 @@ struct ahci_cmd_table {
 	struct ahci_prdt prdt[1];	/* one entry sufficient for ≤4MB */
 };
 
-/* Per-controller state — static singleton */
-static struct {
-	volatile uint8_t *bar;		/* BAR5 MMIO base */
-	uint32_t port;			/* active port index */
+/* Maximum attached drives bound in one boot, across all HBAs */
+#define AHCI_MAX_PORTS		8
+
+/* Per-port state — one instance per attached drive */
+struct ahci_port {
+	volatile uint8_t *bar;		/* BAR5 MMIO base of the owning HBA */
+	uint32_t port;			/* port index within the HBA */
 	volatile uint8_t *preg;		/* port register base */
 	struct ahci_cmd_hdr *clb;	/* command list (32 headers) */
 	uint8_t *fb;			/* FIS receive buffer */
 	struct ahci_cmd_table *ct;	/* command table for slot 0 */
 	uint64_t capacity;		/* sectors from IDENTIFY */
 	bool ready;
-} ahci;
+};
+
+static struct ahci_port ahci_ports[AHCI_MAX_PORTS];
+static uint32_t ahci_port_count;
+static bool ahci_probed;
 
 /* --- MMIO helpers ---------------------------------------------------- */
 
-static uint32_t hba_read(uint32_t off)
+static uint32_t hba_read(volatile uint8_t *bar, uint32_t off)
 {
-	volatile uint32_t *p = (volatile uint32_t *)(ahci.bar + off);
+	volatile uint32_t *p = (volatile uint32_t *)(bar + off);
 	return *p;
 }
 
-static void hba_write(uint32_t off, uint32_t val)
+static void hba_write(volatile uint8_t *bar, uint32_t off, uint32_t val)
 {
-	volatile uint32_t *p = (volatile uint32_t *)(ahci.bar + off);
+	volatile uint32_t *p = (volatile uint32_t *)(bar + off);
 	*p = val;
 }
 
-static uint32_t port_read(uint32_t off)
+static uint32_t port_read(struct ahci_port *ap, uint32_t off)
 {
-	volatile uint32_t *p = (volatile uint32_t *)(ahci.preg + off);
+	volatile uint32_t *p = (volatile uint32_t *)(ap->preg + off);
 	return *p;
 }
 
-static void port_write(uint32_t off, uint32_t val)
+static void port_write(struct ahci_port *ap, uint32_t off, uint32_t val)
 {
-	volatile uint32_t *p = (volatile uint32_t *)(ahci.preg + off);
+	volatile uint32_t *p = (volatile uint32_t *)(ap->preg + off);
 	*p = val;
 }
 
@@ -178,13 +186,13 @@ static void ahci_spin(uint32_t n)
 }
 
 /* Wait until (port_read(off) & mask) == want, or timeout */
-static int ahci_port_wait(uint32_t off, uint32_t mask, uint32_t want,
-			   uint32_t iters)
+static int ahci_port_wait(struct ahci_port *ap, uint32_t off, uint32_t mask,
+			   uint32_t want, uint32_t iters)
 {
 	uint32_t i;
 
 	for (i = 0; i < iters; i++) {
-		if ((port_read(off) & mask) == want)
+		if ((port_read(ap, off) & mask) == want)
 			return ANX_OK;
 		ahci_spin(10000);
 	}
@@ -193,30 +201,30 @@ static int ahci_port_wait(uint32_t off, uint32_t mask, uint32_t want,
 
 /* --- Port start/stop ------------------------------------------------- */
 
-static int ahci_port_stop(void)
+static int ahci_port_stop(struct ahci_port *ap)
 {
 	uint32_t cmd;
 	int ret;
 
-	cmd = port_read(AHCI_PORT_CMD);
+	cmd = port_read(ap, AHCI_PORT_CMD);
 	cmd &= ~(AHCI_CMD_ST | AHCI_CMD_FRE);
-	port_write(AHCI_PORT_CMD, cmd);
+	port_write(ap, AHCI_PORT_CMD, cmd);
 
 	/* Wait for CR and FR to clear */
-	ret = ahci_port_wait(AHCI_PORT_CMD,
+	ret = ahci_port_wait(ap, AHCI_PORT_CMD,
 			     AHCI_CMD_CR | AHCI_CMD_FR, 0, 2000);
 	if (ret != ANX_OK)
 		kprintf("ahci: port stop timeout\n");
 	return ret;
 }
 
-static void ahci_port_start(void)
+static void ahci_port_start(struct ahci_port *ap)
 {
 	uint32_t cmd;
 
-	cmd = port_read(AHCI_PORT_CMD);
+	cmd = port_read(ap, AHCI_PORT_CMD);
 	cmd |= AHCI_CMD_FRE | AHCI_CMD_ST;
-	port_write(AHCI_PORT_CMD, cmd);
+	port_write(ap, AHCI_PORT_CMD, cmd);
 }
 
 /* --- Command issue --------------------------------------------------- */
@@ -229,8 +237,8 @@ static void ahci_port_start(void)
  * buf — data buffer (physical = virtual)
  * write — true for writes
  */
-static int ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
-		      void *buf, bool write)
+static int ahci_issue(struct ahci_port *ap, uint8_t cmd, uint64_t lba,
+		      uint16_t count, void *buf, bool write)
 {
 	struct ahci_fis_h2d *fis;
 	struct ahci_cmd_hdr *hdr;
@@ -238,7 +246,7 @@ static int ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
 	int ret;
 
 	/* Wait until port is idle */
-	ret = ahci_port_wait(AHCI_PORT_TFD,
+	ret = ahci_port_wait(ap, AHCI_PORT_TFD,
 			     AHCI_TFD_BSY | AHCI_TFD_DRQ, 0, 1000);
 	if (ret != ANX_OK) {
 		kprintf("ahci: port busy before command\n");
@@ -246,14 +254,14 @@ static int ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
 	}
 
 	/* Clear any pending errors */
-	port_write(AHCI_PORT_SERR, 0xFFFFFFFFu);
-	port_write(AHCI_PORT_IS,   0xFFFFFFFFu);
+	port_write(ap, AHCI_PORT_SERR, 0xFFFFFFFFu);
+	port_write(ap, AHCI_PORT_IS,   0xFFFFFFFFu);
 
 	/* Build command table: zero first */
-	anx_memset(ahci.ct, 0, sizeof(*ahci.ct));
+	anx_memset(ap->ct, 0, sizeof(*ap->ct));
 
 	/* H2D FIS */
-	fis = (struct ahci_fis_h2d *)ahci.ct->cfis;
+	fis = (struct ahci_fis_h2d *)ap->ct->cfis;
 	fis->fis_type = FIS_TYPE_H2D;
 	fis->flags    = 0x80;		/* C=1: command register update */
 	fis->command  = cmd;
@@ -277,25 +285,25 @@ static int ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
 
 	/* PRDT: one entry */
 	byte_count = (cmd == ATA_CMD_IDENTIFY) ? 512u : (uint32_t)count * 512u;
-	ahci.ct->prdt[0].dba      = (uint32_t)(uintptr_t)buf;
-	ahci.ct->prdt[0].dbau     = 0;
-	ahci.ct->prdt[0].reserved = 0;
-	ahci.ct->prdt[0].dbc      = byte_count - 1;	/* bit31=0: no IRQ */
+	ap->ct->prdt[0].dba      = (uint32_t)(uintptr_t)buf;
+	ap->ct->prdt[0].dbau     = 0;
+	ap->ct->prdt[0].reserved = 0;
+	ap->ct->prdt[0].dbc      = byte_count - 1;	/* bit31=0: no IRQ */
 
 	/* Command list header[0] */
-	hdr = &ahci.clb[0];
+	hdr = &ap->clb[0];
 	anx_memset(hdr, 0, sizeof(*hdr));
 	/* CFL = 5 (H2D FIS is 5 DWORDs), W bit for writes */
 	hdr->flags = (uint16_t)(5u | (write ? (1u << 6) : 0u));
 	hdr->prdtl = 1;
-	hdr->ctba  = (uint32_t)(uintptr_t)ahci.ct;
+	hdr->ctba  = (uint32_t)(uintptr_t)ap->ct;
 	hdr->ctbau = 0;
 
 	/* Issue slot 0 */
-	port_write(AHCI_PORT_CI, 1u);
+	port_write(ap, AHCI_PORT_CI, 1u);
 
 	/* Poll until slot 0 clears */
-	ret = ahci_port_wait(AHCI_PORT_CI, 1u, 0, 100000);
+	ret = ahci_port_wait(ap, AHCI_PORT_CI, 1u, 0, 100000);
 	if (ret != ANX_OK) {
 		kprintf("ahci: command timeout (cmd=0x%02x)\n",
 			(uint32_t)cmd);
@@ -303,7 +311,7 @@ static int ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
 	}
 
 	/* Check error */
-	if (port_read(AHCI_PORT_TFD) & AHCI_TFD_ERR) {
+	if (port_read(ap, AHCI_PORT_TFD) & AHCI_TFD_ERR) {
 		kprintf("ahci: TFD error after cmd 0x%02x\n",
 			(uint32_t)cmd);
 		return ANX_EIO;
@@ -313,13 +321,15 @@ static int ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
 
 /* --- Block ops callbacks --------------------------------------------- */
 
-static int ahci_blk_read(uint64_t lba, uint32_t count, void *buf)
+static int ahci_blk_read(struct anx_blk_dev *dev, uint64_t lba,
+			 uint32_t count, void *buf)
 {
+	struct ahci_port *ap = dev->priv;
 	uint32_t i;
 
 	/* One sector at a time to keep within single-PRDT-entry limit */
 	for (i = 0; i < count; i++) {
-		int ret = ahci_issue(ATA_CMD_READ_DMA_EXT,
+		int ret = ahci_issue(ap, ATA_CMD_READ_DMA_EXT,
 				     lba + i, 1,
 				     (uint8_t *)buf + (uint64_t)i * 512,
 				     false);
@@ -329,12 +339,14 @@ static int ahci_blk_read(uint64_t lba, uint32_t count, void *buf)
 	return ANX_OK;
 }
 
-static int ahci_blk_write(uint64_t lba, uint32_t count, const void *buf)
+static int ahci_blk_write(struct anx_blk_dev *dev, uint64_t lba,
+			  uint32_t count, const void *buf)
 {
+	struct ahci_port *ap = dev->priv;
 	uint32_t i;
 
 	for (i = 0; i < count; i++) {
-		int ret = ahci_issue(ATA_CMD_WRITE_DMA_EXT,
+		int ret = ahci_issue(ap, ATA_CMD_WRITE_DMA_EXT,
 				     lba + i, 1,
 				     (uint8_t *)(uintptr_t)buf + (uint64_t)i * 512,
 				     true);
@@ -344,9 +356,11 @@ static int ahci_blk_write(uint64_t lba, uint32_t count, const void *buf)
 	return ANX_OK;
 }
 
-static uint64_t ahci_blk_capacity(void)
+static uint64_t ahci_blk_capacity(struct anx_blk_dev *dev)
 {
-	return ahci.capacity;
+	struct ahci_port *ap = dev->priv;
+
+	return ap->capacity;
 }
 
 static const struct anx_blk_ops ahci_ops = {
@@ -358,7 +372,8 @@ static const struct anx_blk_ops ahci_ops = {
 
 /* --- Controller init ------------------------------------------------- */
 
-static int ahci_init_port(uint32_t port_idx)
+static int ahci_init_port(struct ahci_port *ap, volatile uint8_t *bar,
+			  uint32_t port_idx)
 {
 	uint8_t *clb_page;
 	uint8_t *fb_page;
@@ -366,11 +381,12 @@ static int ahci_init_port(uint32_t port_idx)
 	uint8_t identify_buf[512];
 	int ret;
 
-	ahci.port = port_idx;
-	ahci.preg = ahci.bar + 0x100 + port_idx * 0x80;
+	ap->bar  = bar;
+	ap->port = port_idx;
+	ap->preg = bar + 0x100 + port_idx * 0x80;
 
 	/* a. Stop port */
-	ret = ahci_port_stop();
+	ret = ahci_port_stop(ap);
 	if (ret != ANX_OK)
 		return ret;
 
@@ -379,40 +395,40 @@ static int ahci_init_port(uint32_t port_idx)
 	if (!clb_page)
 		return ANX_ENOMEM;
 	anx_memset(clb_page, 0, 4096);
-	ahci.clb = (struct ahci_cmd_hdr *)clb_page;
+	ap->clb = (struct ahci_cmd_hdr *)clb_page;
 
 	/* c. Allocate FIS receive buffer (256B, full page) */
 	fb_page = (uint8_t *)(uintptr_t)anx_page_alloc(0);
 	if (!fb_page)
 		return ANX_ENOMEM;
 	anx_memset(fb_page, 0, 4096);
-	ahci.fb = fb_page;
+	ap->fb = fb_page;
 
 	/* d. Allocate command table (128B aligned — page is fine) */
 	ct_page = (uint8_t *)(uintptr_t)anx_page_alloc(0);
 	if (!ct_page)
 		return ANX_ENOMEM;
 	anx_memset(ct_page, 0, 4096);
-	ahci.ct = (struct ahci_cmd_table *)ct_page;
+	ap->ct = (struct ahci_cmd_table *)ct_page;
 
 	/* Write CLB and FB to port registers */
-	port_write(AHCI_PORT_CLB,  (uint32_t)(uintptr_t)ahci.clb);
-	port_write(AHCI_PORT_CLBU, 0);
-	port_write(AHCI_PORT_FB,   (uint32_t)(uintptr_t)ahci.fb);
-	port_write(AHCI_PORT_FBU,  0);
+	port_write(ap, AHCI_PORT_CLB,  (uint32_t)(uintptr_t)ap->clb);
+	port_write(ap, AHCI_PORT_CLBU, 0);
+	port_write(ap, AHCI_PORT_FB,   (uint32_t)(uintptr_t)ap->fb);
+	port_write(ap, AHCI_PORT_FBU,  0);
 
 	/* e. Clear SERR */
-	port_write(AHCI_PORT_SERR, 0xFFFFFFFFu);
+	port_write(ap, AHCI_PORT_SERR, 0xFFFFFFFFu);
 
 	/* f. Start port */
-	ahci_port_start();
+	ahci_port_start(ap);
 
 	/* Short settle wait */
 	ahci_spin(50000);
 
 	/* g. Send IDENTIFY to get capacity */
 	anx_memset(identify_buf, 0, sizeof(identify_buf));
-	ret = ahci_issue(ATA_CMD_IDENTIFY, 0, 0, identify_buf, false);
+	ret = ahci_issue(ap, ATA_CMD_IDENTIFY, 0, 0, identify_buf, false);
 	if (ret != ANX_OK) {
 		kprintf("ahci: IDENTIFY failed on port %u\n", port_idx);
 		return ret;
@@ -430,14 +446,14 @@ static int ahci_init_port(uint32_t port_idx)
 			  ((uint64_t)words[101] << 16) |
 			  ((uint64_t)words[102] << 32) |
 			  ((uint64_t)words[103] << 48);
-		ahci.capacity = sectors;
+		ap->capacity = sectors;
 		kprintf("ahci: port %u: %llu sectors (%llu MiB)\n",
 			port_idx,
 			(unsigned long long)sectors,
 			(unsigned long long)(sectors / 2048));
 	}
 
-	ahci.ready = true;
+	ap->ready = true;
 	return ANX_OK;
 }
 
@@ -446,10 +462,17 @@ int anx_ahci_init(void)
 	struct anx_list_head *devlist;
 	struct anx_list_head *pos;
 
+	/* driver_table calls init once per matching PCI function; the whole
+	 * bus is walked on the first call, so later calls are no-ops. */
+	if (ahci_probed)
+		return ahci_port_count > 0 ? ANX_OK : ANX_ENOENT;
+	ahci_probed = true;
+
 	devlist = anx_pci_device_list();
 	ANX_LIST_FOR_EACH(pos, devlist) {
 		struct anx_pci_device *pci =
 			ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
+		volatile uint8_t *bar;
 		uint32_t bar5;
 		uint32_t pi;
 		uint32_t port_idx;
@@ -469,25 +492,32 @@ int anx_ahci_init(void)
 		if (!bar5)
 			continue;
 
-		ahci.bar = (volatile uint8_t *)(uintptr_t)bar5;
+		bar = (volatile uint8_t *)(uintptr_t)bar5;
 		anx_pci_enable_bus_master(pci);
 
 		/* Enable AHCI mode, disable interrupts */
-		hba_write(AHCI_HBA_GHC,
-			  AHCI_GHC_AE | (hba_read(AHCI_HBA_GHC) & ~AHCI_GHC_IE));
+		hba_write(bar, AHCI_HBA_GHC,
+			  AHCI_GHC_AE |
+			  (hba_read(bar, AHCI_HBA_GHC) & ~AHCI_GHC_IE));
 
-		pi = hba_read(AHCI_HBA_PI);
+		pi = hba_read(bar, AHCI_HBA_PI);
 
 		for (port_idx = 0; port_idx < 32; port_idx++) {
+			struct ahci_port *ap;
 			uint32_t ssts;
 
 			if (!(pi & (1u << port_idx)))
 				continue;
 
-			/* Set port register base for the SSTS check */
+			if (ahci_port_count >= AHCI_MAX_PORTS) {
+				kprintf("ahci: port limit (%u) reached\n",
+					(uint32_t)AHCI_MAX_PORTS);
+				break;
+			}
+
 			{
 				volatile uint8_t *preg =
-					ahci.bar + 0x100 + port_idx * 0x80;
+					bar + 0x100 + port_idx * 0x80;
 				volatile uint32_t *p =
 					(volatile uint32_t *)(preg +
 						AHCI_PORT_SSTS);
@@ -499,11 +529,18 @@ int anx_ahci_init(void)
 			if ((ssts & AHCI_SSTS_IPM_MASK) != AHCI_SSTS_IPM_ACTIVE)
 				continue;
 
-			if (ahci_init_port(port_idx) == ANX_OK) {
-				anx_blk_register(&ahci_ops);
-				return ANX_OK;
+			ap = &ahci_ports[ahci_port_count];
+			anx_memset(ap, 0, sizeof(*ap));
+
+			if (ahci_init_port(ap, bar, port_idx) != ANX_OK)
+				continue;
+
+			if (!anx_blk_dev_register(&ahci_ops, ap, "ahci")) {
+				ap->ready = false;
+				continue;
 			}
+			ahci_port_count++;
 		}
 	}
-	return ANX_ENOENT;
+	return ahci_port_count > 0 ? ANX_OK : ANX_ENOENT;
 }
