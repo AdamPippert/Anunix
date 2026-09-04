@@ -110,35 +110,6 @@ void anx_world_runtime_init(void)
 	anx_spin_unlock(&provider_lock);
 }
 
-/* True if comma-separated list `list` contains the token `want`. An empty want
- * matches nothing here (authority must be explicit). Leading spaces tolerated. */
-static bool list_contains(const char *list, const char *want)
-{
-	size_t wlen = anx_strlen(want);
-	const char *p = list;
-
-	if (wlen == 0 || !list)
-		return false;
-
-	while (*p) {
-		const char *start = p;
-		size_t seg;
-
-		while (*p && *p != ',')
-			p++;
-		seg = (size_t)(p - start);
-		if (seg > 0 && *start == ' ') {
-			start++;
-			seg--;
-		}
-		if (seg == wlen && anx_strncmp(start, want, wlen) == 0)
-			return true;
-		if (*p == ',')
-			p++;
-	}
-	return false;
-}
-
 /* --- Graph & branches --- */
 
 struct anx_world_graph *anx_world_graph_create(const char *name)
@@ -754,14 +725,49 @@ int anx_world_provider_iterate(anx_world_provider_iter_fn cb, void *arg)
 
 /* Does the provider's manifest grant write authority over `domain`? Either the
  * manifest's home domain matches, or the domain appears in its writes list. */
+/* True if a writes-list token grants authority over `domain`: an exact match,
+ * the bare "*" (any slice), or a "prefix.*" wildcard (e.g. "config.*" grants
+ * "config.system"). */
+static bool writes_grants(const char *writes, const char *domain)
+{
+	const char *p = writes;
+
+	if (!writes)
+		return false;
+	while (*p) {
+		const char *start = p;
+		size_t seg;
+
+		while (*p && *p != ',')
+			p++;
+		seg = (size_t)(p - start);
+		if (seg > 0 && *start == ' ') {	/* trim one leading space */
+			start++;
+			seg--;
+		}
+		if (seg == 1 && start[0] == '*')
+			return true;
+		if (seg >= 2 && start[seg - 1] == '*' && start[seg - 2] == '.') {
+			size_t plen = seg - 1;	/* include the dot */
+
+			if (anx_strncmp(start, domain, plen) == 0)
+				return true;
+		} else if (seg == anx_strlen(domain) &&
+			   anx_strncmp(start, domain, seg) == 0) {
+			return true;
+		}
+		if (*p == ',')
+			p++;
+	}
+	return false;
+}
+
 static bool manifest_may_write(const struct anx_world_manifest *m,
 			       const char *domain)
 {
-	if (list_contains(m->writes, "*"))	/* operator/shell wildcard */
-		return true;
 	if (anx_strcmp(m->domain, domain) == 0)
 		return true;
-	return list_contains(m->writes, domain);
+	return writes_grants(m->writes, domain);
 }
 
 /* Authority check: every patch's provider must be registered and hold write

@@ -392,6 +392,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  disk                       Show block device info\n");
 		kputs("  cells                      List execution cells\n");
 		kputs("  world status|ls|demo       World graph runtime (RFC-0026)\n");
+		kputs("  config get|set|list|propose  RLM configuration (RFC-0027)\n");
 		return;
 	}
 
@@ -2909,6 +2910,8 @@ static void dispatch(int argc, char **argv)
 		cmd_uor(argc, argv);
 	} else if (anx_strcmp(argv[0], "world") == 0) {
 		cmd_world(argc, argv);
+	} else if (anx_strcmp(argv[0], "config") == 0) {
+		cmd_config(argc, argv);
 	} else if (anx_strcmp(argv[0], "tensor") == 0) {
 		cmd_tensor(argc, argv);
 	} else if (anx_strcmp(argv[0], "model") == 0) {

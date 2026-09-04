@@ -90,4 +90,7 @@ void cmd_uor(int argc, char **argv);
 /* World graph runtime — RFC-0026 */
 void cmd_world(int argc, char **argv);
 
+/* RLM-driven configuration — RFC-0027 */
+void cmd_config(int argc, char **argv);
+
 #endif /* ANX_TOOLS_H */

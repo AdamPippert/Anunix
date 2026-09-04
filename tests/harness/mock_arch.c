@@ -28,8 +28,9 @@
 
 static uint64_t mock_time = 1000000000ULL;	/* 1 second in ns */
 
-/* 8 MiB static heap for test builds */
-#define MOCK_HEAP_SIZE	(8 * 1024 * 1024)
+/* Static heap for test builds. Tests share one heap for the whole process and
+ * most never free, so this grows with the suite; 32 MiB leaves ample headroom. */
+#define MOCK_HEAP_SIZE	(32 * 1024 * 1024)
 static uint8_t mock_heap[MOCK_HEAP_SIZE]
 	__attribute__((aligned(4096)));
 
