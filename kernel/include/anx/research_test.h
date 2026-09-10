@@ -4,6 +4,7 @@
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 /* Exercise external-call authorization without resetting live stores. */
 int anx_research_day001(void);
+int anx_research_day002(void);
 #endif
 
 #ifdef ANX_RESEARCH_TEST

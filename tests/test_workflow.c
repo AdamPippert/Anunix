@@ -18,6 +18,7 @@
 #include <anx/jepa_cell.h>
 #include <anx/workflow_library.h>
 #include <anx/tensor_ops.h>
+#include <anx/research_test.h>
 
 int test_workflow(void)
 {
@@ -251,5 +252,5 @@ int test_workflow(void)
 		}
 	}
 
-	return 0;
+	return anx_research_day002();
 }
