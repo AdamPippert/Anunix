@@ -789,9 +789,9 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 		wf->last_status = ANX_OK;
 		kprintf("wf: '%s' completed\n", wf->name);
 
-		/* Seal trace and feed to JEPA training pipeline. */
-		if (jepa_obs_ok &&
-		    anx_wf_trace_seal(wf_oid, &trace_oid) == ANX_OK &&
+		/* Persist the trace even when JEPA observations are unavailable. */
+		if (anx_wf_trace_seal(wf_oid, &trace_oid) == ANX_OK &&
+		    jepa_obs_ok &&
 		    anx_jepa_observe(&obs_after) == ANX_OK &&
 		    anx_jepa_observe_store(&obs_after, &obs_after_oid) == ANX_OK) {
 			anx_jepa_ingest_wf_trace(&trace_oid,
