@@ -41,7 +41,18 @@ int anx_research_day006(void)
 	}
 	parent->execution.allow_recursive_cells = true;
 	parent->execution.allow_side_effects = true;
+	parent->constraints.max_child_cells = 0;
+	if (anx_cell_derive_child(parent, ANX_CELL_TASK_EXTERNAL_CALL, &intent, &child) != ANX_ENOMEM || child) {
+		rc = -616;
+		goto out;
+	}
 	parent->constraints.max_child_cells = 1;
+	parent->constraints.max_recursion_depth = 0;
+	if (anx_cell_derive_child(parent, ANX_CELL_TASK_EXTERNAL_CALL, &intent, &child) != ANX_EPERM || child) {
+		rc = -617;
+		goto out;
+	}
+	parent->constraints.max_recursion_depth = 4;
 	parent->constraints.max_latency_ms = 10000;
 	parent->constraints.max_cost_usd_cents = 10;
 	anx_cell_set_cognitive_envelope(parent, 64, 2);
@@ -89,6 +100,29 @@ int anx_research_day006(void)
 			goto out;
 		}
 	}
+	/* Revocation must cross an intermediate scope without running the tool. */
+	parent->execution.allow_network = true;
+	rc = anx_cell_derive_child(parent, ANX_CELL_TASK_EXECUTION, &intent, &child);
+	if (rc != ANX_OK)
+		goto out;
+	rc = anx_cell_derive_child(child, ANX_CELL_TASK_EXTERNAL_CALL, &intent, &extra);
+	if (rc != ANX_OK)
+		goto out;
+	extra->ext_call = &call;
+	parent->execution.allow_network = false;
+	if (anx_cell_run(extra) != ANX_EPERM || state.calls != 0) {
+		rc = -618;
+		goto out;
+	}
+	rc = anx_cell_destroy(extra);
+	if (rc != ANX_OK)
+		goto out;
+	extra = NULL;
+	rc = anx_cell_destroy(child);
+	if (rc != ANX_OK)
+		goto out;
+	child = NULL;
+
 	/* A failing handler also leaves the parent slot reusable after cleanup. */
 	for (i = 0; i < 2; i++) {
 		rc = anx_cell_derive_child(parent, ANX_CELL_TASK_EXTERNAL_CALL, &intent, &child);

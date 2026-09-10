@@ -109,11 +109,32 @@ int anx_cell_destroy(struct anx_cell *cell)
 		return ANX_EINVAL;
 
 	anx_spin_lock(&cell->lock);
-	if (cell->refcount > 1) {
+	if (cell->refcount > 1 || cell->child_count != 0) {
 		anx_spin_unlock(&cell->lock);
 		return ANX_EBUSY;
 	}
 	anx_spin_unlock(&cell->lock);
+
+	/* A child owns its slot until destruction, including after failure. */
+	if (!anx_uuid_is_nil(&cell->parent_cid)) {
+		struct anx_cell *parent = anx_cell_store_lookup(&cell->parent_cid);
+		if (parent) {
+			uint32_t i;
+			anx_spin_lock(&parent->lock);
+			for (i = 0; i < parent->child_count; i++) {
+				if (anx_uuid_compare(&parent->child_cids[i], &cell->cid) != 0)
+					continue;
+				parent->child_count--;
+				for (; i < parent->child_count; i++)
+					parent->child_cids[i] = parent->child_cids[i + 1];
+				anx_memset(&parent->child_cids[parent->child_count], 0,
+					   sizeof(parent->child_cids[0]));
+				break;
+			}
+			anx_spin_unlock(&parent->lock);
+			anx_cell_store_release(parent);
+		}
+	}
 
 	anx_htable_del(&cell_table, &cell->store_link);
 	anx_free(cell);
