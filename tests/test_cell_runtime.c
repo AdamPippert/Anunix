@@ -7,6 +7,7 @@
 #include <anx/state_object.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 int test_cell_runtime(void)
 {
@@ -189,5 +190,5 @@ int test_cell_runtime(void)
 		anx_cell_destroy(p);
 	}
 
-	return 0;
+	return anx_research_day006();
 }
