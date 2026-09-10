@@ -252,5 +252,8 @@ int test_workflow(void)
 		}
 	}
 
-	return anx_research_day002();
+	ret = anx_research_day002();
+	if (ret != ANX_OK)
+		return ret;
+	return anx_research_day005();
 }
