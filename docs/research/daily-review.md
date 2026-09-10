@@ -41,7 +41,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Reject malformed workflow artifacts before registration; exercise a valid packaged workflow in the guest.
 
-Status: Validated on Jekyll. Tested commit: `48673fa`. Source message: `e2f56565-6637-4d84-acee-920ffaf5e9d8`.
+Status: Merged at `10f5213` after Jekyll validation. Tested commit: `48673fa`. Source message: `e2f56565-6637-4d84-acee-920ffaf5e9d8`.
 
 ## Day 003 — 2026-06-28
 
@@ -49,13 +49,13 @@ Status: Validated on Jekyll. Tested commit: `48673fa`. Source message: `e2f56565
 
 Learning: Govern the scarce resources of an agent task, including tools, tokens, memory, and permissions.
 
-Anunix comparison: Cells expose constraints. Budget checks and engine leases exist separately from the synchronous cell pipeline.
+Anunix comparison: Baseline `10f5213` reserves engine memory but ignores model-request deadlines and output limits. Day 3 enforces request admission and forwards cell limits.
 
 Evidence: [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
 Planned acceptance: Exercise admission and release under bounded resources; reject work that exceeds its declared budget.
 
-Status: Queued. Source message: `0a562c41-3184-421b-83a1-5f44f5af80c9`.
+Status: Validated on Jekyll. Tested commit: `ae7c64a`. Source message: `0a562c41-3184-421b-83a1-5f44f5af80c9`.
 
 ## Day 004 — 2026-06-29
 
