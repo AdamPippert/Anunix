@@ -9,7 +9,7 @@ static void retire_test_cap(struct anx_capability *cap)
 {
 	if (!cap)
 		return;
-	if (cap->status == ANX_CAP_INSTALLED)
+	if (cap->status == ANX_CAP_INSTALLED || cap->status == ANX_CAP_SUSPENDED)
 		anx_cap_uninstall(cap);
 	anx_cap_transition(cap, ANX_CAP_RETIRED);
 }
@@ -78,6 +78,13 @@ int anx_research_day004(void)
 		goto out;
 	}
 	candidate->supersedes_oid = incumbent->cap_oid;
+	if (anx_cap_transition(incumbent, ANX_CAP_SUSPENDED) != ANX_OK ||
+	    anx_cap_install_gated(candidate, &trial, 1) != ANX_EPERM ||
+	    candidate->status != ANX_CAP_VALIDATED ||
+	    anx_cap_transition(incumbent, ANX_CAP_INSTALLED) != ANX_OK) {
+		rc = -409;
+		goto out;
+	}
 	if (anx_cap_install_gated(candidate, &trial, 1) != ANX_OK ||
 	    candidate->status != ANX_CAP_INSTALLED ||
 	    !anx_engine_lookup(&candidate->installed_engine_id)) {

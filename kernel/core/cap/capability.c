@@ -189,6 +189,7 @@ int anx_cap_install_gated(struct anx_capability *cap,
 			  const struct anx_promotion_trial *trial,
 			  uint32_t num_candidates_tried)
 {
+	struct anx_capability *incumbent;
 	bool promote = false;
 	int ret;
 
@@ -201,6 +202,13 @@ int anx_cap_install_gated(struct anx_capability *cap,
 	/* No incumbent to compare against — use anx_cap_install(). */
 	if (anx_uuid_is_nil(&cap->supersedes_oid))
 		return ANX_EINVAL;
+	incumbent = anx_cap_lookup(&cap->supersedes_oid);
+	if (!incumbent)
+		return ANX_ENOENT;
+	if (incumbent->status != ANX_CAP_INSTALLED ||
+	    anx_uuid_is_nil(&incumbent->installed_engine_id) ||
+	    !anx_engine_lookup(&incumbent->installed_engine_id))
+		return ANX_EPERM;
 
 	ret = anx_promotion_gate_evaluate(trial, num_candidates_tried, &promote);
 	if (ret != ANX_OK)

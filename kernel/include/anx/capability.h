@@ -165,7 +165,8 @@ struct anx_promotion_trial {
  * paired margin (candidate - incumbent) meets or exceeds
  * ANX_PROMOTION_MIN_MARGIN_BASE * num_candidates_tried. num_candidates_tried
  * of 0 is treated as 1 (a single candidate still needs to clear the base
- * margin). Returns ANX_EINVAL on null args or n outside [1, ANX_PROMOTION_TRIAL_MAX].
+ * margin). A non-null output is cleared even when validation fails.
+ * Returns ANX_EINVAL on null args or n outside [1, ANX_PROMOTION_TRIAL_MAX].
  */
 #define ANX_PROMOTION_MIN_MARGIN_BASE	5
 
@@ -176,7 +177,9 @@ int anx_promotion_gate_evaluate(const struct anx_promotion_trial *trial,
 /*
  * Install a capability that supersedes an installed incumbent
  * (cap->supersedes_oid non-nil), gated by a measured-null promotion
- * trial. Fails with ANX_EPERM if the trial does not clear the gate.
+ * trial. The incumbent must exist and retain a registered engine.
+ * Fails with ANX_ENOENT for an unknown incumbent, or ANX_EPERM for an
+ * inactive incumbent or a trial that does not clear the gate.
  * For a fresh install with no incumbent (supersedes_oid nil), use
  * anx_cap_install() instead — anx_cap_install() itself now rejects
  * (ANX_EPERM) any candidate that declares a supersedes_oid, forcing
