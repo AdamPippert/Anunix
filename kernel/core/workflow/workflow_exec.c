@@ -33,6 +33,7 @@
 #include <anx/amacs.h>
 #include <anx/audio.h>
 #include <anx/video.h>
+#include <anx/promotion_evidence.h>
 
 /*
  * Inline prefix matcher for specialized cell intents.  Returns true and
@@ -491,6 +492,17 @@ wf_dispatch_node(struct anx_wf_object *wf, uint32_t slot,
 
 	case ANX_WF_NODE_OUTPUT:
 		ret = wf_dispatch_output(wf, slot, slot_by_id, port_oid);
+		break;
+
+	case ANX_WF_NODE_CAP_PROMOTION:
+		if (!wf->policy.allow_capability_install) {
+			ret = ANX_EPERM;
+		} else {
+			anx_oid_t evidence_oid = wf_get_input_oid(wf, node->id, 0,
+							      slot_by_id, port_oid);
+			ret = anx_cap_install_evidence(&evidence_oid, &entry->trace_oid);
+			port_oid[slot][1] = entry->trace_oid;
+		}
 		break;
 
 	case ANX_WF_NODE_HUMAN_REVIEW:

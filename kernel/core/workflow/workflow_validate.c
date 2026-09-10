@@ -74,6 +74,10 @@ int anx_wf_template_validate(const struct anx_wf_template *tmpl)
 			    port->type_tag > 3)
 				return ANX_EINVAL;
 		}
+		if (node->kind == ANX_WF_NODE_CAP_PROMOTION &&
+		    (node->port_count != 2 || node->ports[0].dir != ANX_WF_PORT_IN ||
+		     node->ports[1].dir != ANX_WF_PORT_OUT))
+			return ANX_EINVAL;
 	}
 	for (i = 0; i < tmpl->edge_count; i++) {
 		const struct anx_wf_edge *edge = &tmpl->edges[i];
