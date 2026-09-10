@@ -15,6 +15,10 @@ int anx_research_day002(void)
 	struct anx_wf_edge edge;
 	struct anx_wf_bundle_hdr hdr;
 	struct anx_wf_object *wf;
+	struct anx_object_handle trace;
+	struct anx_wf_trace_entry entries[2];
+	const char *uris[ANX_WF_LIB_MAX];
+	uint32_t registered, after;
 	anx_oid_t oid = {0};
 	uint32_t size, i, offset = sizeof(hdr) + 128 + 64 + 256;
 	bool created = false;
@@ -22,6 +26,14 @@ int anx_research_day002(void)
 
 	if (!tmpl || !buf)
 		goto out;
+	rc = anx_wf_lib_list(uris, ANX_WF_LIB_MAX, &registered);
+	if (rc != ANX_OK)
+		goto out;
+	for (i = 0; i < registered; i++) {
+		rc = anx_wf_bundle_pack(anx_wf_lib_lookup(uris[i]), buf, sizeof(*tmpl), &size);
+		if (rc != ANX_OK)
+			goto out;
+	}
 	anx_strlcpy(tmpl->uri, uri, sizeof(tmpl->uri));
 	anx_strlcpy(tmpl->display_name, "Research import", sizeof(tmpl->display_name));
 	tmpl->node_count = 2;
@@ -79,6 +91,10 @@ int anx_research_day002(void)
 			goto out;
 		}
 	}
+	if (anx_wf_lib_list(uris, ANX_WF_LIB_MAX, &after) != ANX_OK || after != registered) {
+		rc = -218;
+		goto out;
+	}
 
 	/* Reject invalid producer counts before computing sizes or copying. */
 	tmpl->tag_count = ANX_WF_LIB_TAGS + 1;
@@ -87,19 +103,37 @@ int anx_research_day002(void)
 		goto out;
 	}
 	tmpl->tag_count = 0;
+	tmpl->node_count = 0xffffffffU;
+	if (anx_wf_bundle_pack(tmpl, buf, sizeof(*tmpl), &size) != ANX_EINVAL) {
+		rc = -219;
+		goto out;
+	}
+	tmpl->node_count = 2;
+	tmpl->edge_count = 0xffffffffU;
+	if (anx_wf_bundle_pack(tmpl, buf, sizeof(*tmpl), &size) != ANX_EINVAL) {
+		rc = -220;
+		goto out;
+	}
+	tmpl->edge_count = 1;
 	if (anx_wf_bundle_pack(tmpl, buf, sizeof(*tmpl), &size) != ANX_OK) {
 		rc = -215;
 		goto out;
 	}
+	if (anx_wf_bundle_register(buf, size - 1) != ANX_EINVAL ||
+	    anx_wf_bundle_register(buf, size + 1) != ANX_EINVAL) {
+		rc = -221;
+		goto out;
+	}
 	/* Registration owns a copy. Repeat runs reuse that immutable template. */
-	rc = anx_wf_bundle_register(buf, size);
+	anx_memmove(buf + 1, buf, size);
+	rc = anx_wf_bundle_register(buf + 1, size);
 	if (rc != ANX_OK && rc != ANX_EEXIST)
 		goto out;
-	if (anx_wf_bundle_register(buf, size) != ANX_EEXIST) {
+	if (anx_wf_bundle_register(buf + 1, size) != ANX_EEXIST) {
 		rc = -216;
 		goto out;
 	}
-	anx_memset(buf, 0xff, size);
+	anx_memset(buf, 0xff, size + 1);
 	rc = anx_wf_lib_instantiate(uri, "research-day-002", &oid);
 	if (rc != ANX_OK)
 		goto out;
@@ -108,9 +142,18 @@ int anx_research_day002(void)
 	rc = -217;
 	if (!wf || wf->node_count != 2 || wf->edge_count != 1 ||
 	    anx_wf_run(&oid, NULL) != ANX_OK ||
-	    wf->run_state != ANX_WF_RUN_COMPLETED || wf->trace_entry_count != 2)
+	    wf->run_state != ANX_WF_RUN_COMPLETED)
 		goto out;
-	rc = ANX_OK;
+	rc = anx_so_open(&wf->trace_oid, ANX_OPEN_READ, &trace);
+	if (rc != ANX_OK)
+		goto out;
+	rc = -222;
+	if (trace.obj->payload_size == sizeof(entries) &&
+	    anx_so_read_payload(&trace, 0, entries, sizeof(entries)) == (int)sizeof(entries) &&
+	    entries[0].node_id == 1 && entries[1].node_id == 2 &&
+	    entries[0].result == ANX_OK && entries[1].result == ANX_OK)
+		rc = ANX_OK;
+	anx_so_close(&trace);
 out:
 	if (created)
 		anx_wf_destroy(&oid);

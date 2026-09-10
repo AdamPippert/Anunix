@@ -64,7 +64,10 @@ struct anx_wf_match {
 /* Register built-in templates.  Called once by kernel init. */
 int anx_wf_lib_init(void);
 
-/* Register a custom template (must remain valid for subsystem lifetime). */
+/* Check bounds, strings, ports, canonical IDs, and acyclic graph structure. */
+int anx_wf_template_validate(const struct anx_wf_template *tmpl);
+
+/* Register a validated template; the caller keeps it immutable for library life. */
 int anx_wf_lib_register(const struct anx_wf_template *tmpl);
 
 /* Look up a template by exact URI. Returns NULL if not found. */

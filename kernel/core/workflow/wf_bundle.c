@@ -17,7 +17,7 @@ int
 anx_wf_bundle_pack(const struct anx_wf_template *tmpl,
 		   void *buf, uint32_t buf_size, uint32_t *size_out)
 {
-	struct anx_wf_bundle_hdr	*hdr;
+	struct anx_wf_bundle_hdr	hdr;
 	uint8_t				*p;
 	uint32_t			needed;
 	uint32_t			tags_sz;
@@ -25,6 +25,8 @@ anx_wf_bundle_pack(const struct anx_wf_template *tmpl,
 	uint32_t			edges_sz;
 
 	if (!tmpl || !buf || !size_out)
+		return ANX_EINVAL;
+	if (anx_wf_template_validate(tmpl) != ANX_OK)
 		return ANX_EINVAL;
 
 	tags_sz  = (uint32_t)tmpl->tag_count * ANX_WF_LIB_TAG_MAX;
@@ -39,13 +41,13 @@ anx_wf_bundle_pack(const struct anx_wf_template *tmpl,
 
 	p = (uint8_t *)buf;
 
-	hdr             = (struct anx_wf_bundle_hdr *)p;
-	hdr->magic      = ANX_WF_BUNDLE_MAGIC;
-	hdr->version    = ANX_WF_BUNDLE_VERSION;
-	hdr->node_count = (uint16_t)tmpl->node_count;
-	hdr->edge_count = (uint16_t)tmpl->edge_count;
-	hdr->tag_count  = (uint16_t)tmpl->tag_count;
-	hdr->total_size = needed;
+	hdr.magic      = ANX_WF_BUNDLE_MAGIC;
+	hdr.version    = ANX_WF_BUNDLE_VERSION;
+	hdr.node_count = (uint16_t)tmpl->node_count;
+	hdr.edge_count = (uint16_t)tmpl->edge_count;
+	hdr.tag_count  = (uint16_t)tmpl->tag_count;
+	hdr.total_size = needed;
+	anx_memcpy(p, &hdr, sizeof(hdr));
 	p += sizeof(struct anx_wf_bundle_hdr);
 
 	anx_memcpy(p, tmpl->uri,          128); p += 128;
@@ -70,18 +72,20 @@ anx_wf_bundle_pack(const struct anx_wf_template *tmpl,
 int
 anx_wf_bundle_register(const void *buf, uint32_t size)
 {
-	const struct anx_wf_bundle_hdr	*hdr;
+	struct anx_wf_bundle_hdr		header;
+	const struct anx_wf_bundle_hdr	*hdr = &header;
 	const uint8_t			*p;
 	struct anx_wf_template		*tmpl;
 	uint32_t			tags_sz;
 	uint32_t			nodes_sz;
 	uint32_t			edges_sz;
 	uint32_t			needed;
+	int				rc;
 
 	if (!buf || size < sizeof(struct anx_wf_bundle_hdr))
 		return ANX_EINVAL;
 
-	hdr = (const struct anx_wf_bundle_hdr *)buf;
+	anx_memcpy(&header, buf, sizeof(header));
 
 	if (hdr->magic != ANX_WF_BUNDLE_MAGIC) {
 		kprintf("wf_bundle: bad magic 0x%x\n", hdr->magic);
@@ -105,7 +109,7 @@ anx_wf_bundle_register(const void *buf, uint32_t size)
 		 + STR_BLOCK_SIZE
 		 + tags_sz + nodes_sz + edges_sz;
 
-	if (size < needed || hdr->total_size != needed) {
+	if (size != needed || hdr->total_size != needed) {
 		kprintf("wf_bundle: size mismatch (got %u, need %u)\n", size, needed);
 		return ANX_EINVAL;
 	}
@@ -138,5 +142,8 @@ anx_wf_bundle_register(const void *buf, uint32_t size)
 	}
 	tmpl->edge_count = hdr->edge_count;
 
-	return anx_wf_lib_register(tmpl);
+	rc = anx_wf_lib_register(tmpl);
+	if (rc != ANX_OK)
+		anx_free(tmpl);
+	return rc;
 }
