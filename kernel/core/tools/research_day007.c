@@ -34,7 +34,7 @@ int anx_research_day007(void)
 	struct anx_cell_intent intent = {0};
 	struct anx_external_call call = {0};
 	struct anx_cell_trace *trace = NULL;
-	struct anx_state_object *obj = NULL;
+	struct anx_object_handle handle = {0};
 	struct accounting_state state = {0};
 	anx_oid_t saved;
 	anx_cid_t cid;
@@ -84,8 +84,8 @@ int anx_research_day007(void)
 			rc = -702;
 			goto out;
 		}
-		obj = anx_objstore_lookup(&saved);
-		if (!obj || anx_so_read_payload(obj, trace, sizeof(*trace), 0) != (int)sizeof(*trace) ||
+		if (anx_so_open(&saved, ANX_OPEN_READ, &handle) != ANX_OK ||
+		    anx_so_read_payload(&handle, 0, trace, sizeof(*trace)) != (int)sizeof(*trace) ||
 		    anx_uuid_compare(&trace->cell_ref, &cid) != 0 || !trace->finalized) {
 			rc = -703;
 			goto out;
@@ -98,13 +98,12 @@ int anx_research_day007(void)
 			rc = -704;
 			goto out;
 		}
-		anx_objstore_release(obj);
-		obj = NULL;
+		anx_so_close(&handle);
 	}
 	rc = ANX_OK;
 out:
-	if (obj)
-		anx_objstore_release(obj);
+	if (handle.obj)
+		anx_so_close(&handle);
 	if (child)
 		anx_cell_destroy(child);
 	if (parent)
