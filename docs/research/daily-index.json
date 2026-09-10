@@ -1,0 +1,1167 @@
+{
+  "source_thread": "6a3eabf4-cb88-83ea-942e-a601dd12b392",
+  "baseline": "543ada0",
+  "calendar_confirmed": true,
+  "days": [
+    {
+      "day": 1,
+      "date": "2026-06-26",
+      "message_id": "38205a54-ff49-4d7e-90a3-354c4d155e1c",
+      "title": "AI-First OS Concepts: Current Research Map",
+      "learning": "Keep model proposals behind deterministic enforcement of identity, authority, resources, and effects.",
+      "code": [
+        "kernel/core/exec/runtime.c",
+        "kernel/core/cap/capability.c",
+        "kernel/core/mem/memplane.c"
+      ],
+      "comparison": "Cells, capabilities, and memory tiers exist. The external-call runtime bypasses its declared side-effect restriction.",
+      "acceptance": "Deny an unauthorized external handler before invocation; preserve authorized execution and an audit trace.",
+      "status": "validation_in_progress",
+      "branch": "codex/ai-os-day-001"
+    },
+    {
+      "day": 2,
+      "date": "2026-06-27",
+      "message_id": "e2f56565-6637-4d84-acee-920ffaf5e9d8",
+      "title": "AI-First OS Research Brief",
+      "learning": "Convert repeated successful workflows into reusable, validated artifacts with explicit promotion and rollback.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/workflow/wf_bundle.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "Workflow execution and binary bundles exist. Bundle registration is a separate boundary from capability validation.",
+      "acceptance": "Reject malformed workflow artifacts before registration; exercise a valid packaged workflow in the guest.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 3,
+      "date": "2026-06-28",
+      "message_id": "0a562c41-3184-421b-83a1-5f44f5af80c9",
+      "title": "AI-First OS Exploration: Control Planes, Kernels, and Scheduling",
+      "learning": "Govern the scarce resources of an agent task, including tools, tokens, memory, and permissions.",
+      "code": [
+        "kernel/core/route/budget.c",
+        "kernel/core/route/lease.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Cells expose constraints. Budget checks and engine leases exist separately from the synchronous cell pipeline.",
+      "acceptance": "Exercise admission and release under bounded resources; reject work that exceeds its declared budget.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 4,
+      "date": "2026-06-29",
+      "message_id": "1275902e-2f68-4578-9a29-56937f0cdd6e",
+      "title": "AI-First OS Research Update: Agentic Control Planes + AI-Tuned Scheduling",
+      "learning": "Profile workloads before generating policies, then compare candidates against a fixed incumbent.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/regime/regime.c",
+        "kernel/core/cap/promotion.c"
+      ],
+      "comparison": "The Resource Twin snapshots routing state. The promotion gate uses integer margins; it does not establish general statistical confidence.",
+      "acceptance": "Reject a candidate indistinguishable from the incumbent and preserve the incumbent after rejection.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 5,
+      "date": "2026-06-30",
+      "message_id": "cfc2060b-2b88-4876-a57d-ff393f2e5f9a",
+      "title": "AI-First OS Exploration: Agent-Native Scheduling and Tunable Kernels",
+      "learning": "Package observation, benchmarking, policy promotion, and rollback as auditable workflows.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/cap/capability.c",
+        "kernel/core/state/provenance.c"
+      ],
+      "comparison": "Workflows and provenance exist. Their presence does not prove a complete autonomous optimization loop.",
+      "acceptance": "Execute an optimization workflow with explicit evidence and retain the prior policy after a failed gate.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 6,
+      "date": "2026-07-01",
+      "message_id": "eb3a9f70-77e4-4830-a53d-3ad1d8b603a2",
+      "title": "AI-First OS Update: Agent libOS + Tool-Call-Aware Resource Control",
+      "learning": "Give tool calls their own resource scope within an agent lifecycle.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/route/lease.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "Execution Cells provide identifiers and parent links. Engine leases provide resource ownership.",
+      "acceptance": "Check that a child tool call cannot exceed its parent scope and releases resources on failure.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 7,
+      "date": "2026-07-02",
+      "message_id": "7689695c-608c-474b-b3d2-bc21f885aae4",
+      "title": "AI-First OS Exploration: Agent libOS + Tool-Call Scheduling",
+      "learning": "Schedule and account for the tool invocation, where short resource spikes occur.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/route/lease.c",
+        "kernel/core/route/budget.c"
+      ],
+      "comparison": "Cell constraints and lease accounting provide native starting points for the Linux-oriented research.",
+      "acceptance": "Measure resource acquisition and release around one tool invocation, including its failure path.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 8,
+      "date": "2026-07-03",
+      "message_id": "7ae8ff25-29ce-435f-8a3c-f20a4e699dcc",
+      "title": "AI-First OS Exploration: Agent Runtime Meets Kernel Resource Control",
+      "learning": "Separate agent identity, task branches, tool calls, and transport primitives.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/exec/runtime.c",
+        "kernel/core/cap/effect.c"
+      ],
+      "comparison": "Cells express task types and lineage. The external registry dispatches transport handlers.",
+      "acceptance": "Exercise a child call through the runtime while preserving lineage and enforcing delegated authority.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 9,
+      "date": "2026-07-04",
+      "message_id": "71a4dede-4ed0-409a-b882-c241fa4c4867",
+      "title": "AI-First OS Update: Policy Enforcement Becomes the Control Plane",
+      "learning": "Enforce policy beneath model-visible tools, where an action actually reaches the system.",
+      "code": [
+        "kernel/core/state/access.c",
+        "kernel/core/cap/effect.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "State access checks and the effect protocol exist. Enforcement must also cover real dispatch paths.",
+      "acceptance": "Attempt a prohibited operation through the ordinary dispatch path and establish that no effect occurs.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 10,
+      "date": "2026-07-05",
+      "message_id": "ec9c71c0-8871-450a-944e-a28f73b3e2dd",
+      "title": "AI-First OS Update: Enforcement, Not Autonomy, Is Becoming the Core",
+      "learning": "Admission, cancellation, and reaping belong to the runtime, alongside resource scheduling.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/sched/scheduler.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "Cells have lifecycle transitions and cancellation. The scheduler maintains separate queues.",
+      "acceptance": "Cancel queued work and establish that no runnable entry or resource owner survives cancellation.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 11,
+      "date": "2026-07-06",
+      "message_id": "e231e283-bef2-43f6-8daa-b98afc7755e8",
+      "title": "AI-First OS Update: The Stack Is Converging Around Enforcement",
+      "learning": "Treat memory as a governed resource alongside agent execution and tool admission.",
+      "code": [
+        "kernel/core/mem/memplane.c",
+        "kernel/include/anx/memory.h",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Anunix has memory tiers and cell constraints. These mechanisms need tests together under pressure.",
+      "acceptance": "Reject excessive admission while preserving an existing cell's usable memory.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 12,
+      "date": "2026-07-07",
+      "message_id": "afc05449-e490-4a36-8b73-13994999e7b0",
+      "title": "AI-First OS Update: The Control Plane Is Becoming Concrete",
+      "learning": "Make lifecycle and resource enforcement observable through one typed execution boundary.",
+      "code": [
+        "kernel/core/exec/runtime.c",
+        "kernel/core/state/provenance.c",
+        "kernel/core/route/budget.c"
+      ],
+      "comparison": "The runtime records execution traces. Resource controls exist in other native modules.",
+      "acceptance": "Produce a denial trace that identifies the failed gate and records no successful external effect.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 13,
+      "date": "2026-07-08",
+      "message_id": "5048a664-da01-470d-a8f3-841629df80a5",
+      "title": "AI-First OS Update: Kernel Tunability + Policy-as-Code",
+      "learning": "Represent tunable policy as a typed artifact with bounded revision authority.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/cap/capability.c",
+        "kernel/core/cap/promotion.c"
+      ],
+      "comparison": "Routing weight policies and capability promotion exist. Linux kernel-constant tuning does not directly apply.",
+      "acceptance": "Reject invalid policy parameters and retain the prior policy without partial activation.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 14,
+      "date": "2026-07-09",
+      "message_id": "d2eef052-ef2c-4ac2-9fd2-5230b7b5aa2e",
+      "title": "AI-First OS Update: Observability Is Becoming the Missing Plane",
+      "learning": "Connect agent intent to the system effects and resource changes it caused.",
+      "code": [
+        "kernel/core/exec/runtime.c",
+        "kernel/core/state/provenance.c",
+        "kernel/core/cap/effect.c"
+      ],
+      "comparison": "Cell traces and provenance exist. Transport outcomes need causal linkage to their requesting cell.",
+      "acceptance": "Trace an allowed effect and a denied effect back to separate requesting cells.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 15,
+      "date": "2026-07-10",
+      "message_id": "5437e7e4-38ad-4556-98c7-08606daa9991",
+      "title": "AI-First OS Update: Scheduling Moves Above the Request Boundary",
+      "learning": "Place sessions using continuity and locality, while different control loops run at appropriate timescales.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/lease.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Routing and model-server resources exist. A session is not yet a complete placement contract.",
+      "acceptance": "Preserve an eligible session's engine affinity while rejecting an unavailable engine.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 16,
+      "date": "2026-07-11",
+      "message_id": "e5d6a0c6-bee9-48f7-bff4-00780959b7fb",
+      "title": "AI-First OS Update: Tool Calls and Inference Gangs Become Kernel Objects",
+      "learning": "Mediate tool calls as governed operations and change inference resources only at safe boundaries.",
+      "code": [
+        "kernel/core/cap/effect.c",
+        "kernel/core/route/lease.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Anunix has an effect protocol and engine leases. Inference gang scheduling needs runtime integration.",
+      "acceptance": "Reject a resource or authority change that would cross an active operation's safe boundary.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 17,
+      "date": "2026-07-12",
+      "message_id": "3d6016a3-1b0f-4d3e-9bc6-bca4af973f93",
+      "title": "AI-First OS Update: Context Becomes a Protected, Schedulable Resource",
+      "learning": "Protect model-visible context by trust, version, scope, and residency.",
+      "code": [
+        "kernel/core/icm/icm.c",
+        "kernel/core/state/access.c",
+        "kernel/core/mem/memplane.c"
+      ],
+      "comparison": "ICM catalogs object metadata. Its authority annotation does not itself enforce model-context privilege.",
+      "acceptance": "Reject unauthorized context projection and prevent lower-trust input from increasing its role or scope.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 18,
+      "date": "2026-07-13",
+      "message_id": "0f7ae5cd-ece1-4b5f-917c-cdcd0ae3339e",
+      "title": "AI-First OS Update: Add a Slow Kernel-Configuration Loop",
+      "learning": "Separate build configuration, runtime policy, and scheduler dispatch into distinct optimization loops.",
+      "code": [
+        "kernel/core/sched/scheduler.c",
+        "kernel/core/twin/twin.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "Anunix builds a native kernel through Make. Linux Kconfig search is not an Anunix mechanism.",
+      "acceptance": "Bind a tested configuration profile to its image and reject an incompatible profile.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 19,
+      "date": "2026-07-14",
+      "message_id": "c20ed7d5-7da3-4ba6-ba26-549efe59e0c5",
+      "title": "AI-First OS Update: Separate the Immutable Authority Kernel from the Self-Evolving Capability Plane",
+      "learning": "Allow capabilities to evolve while keeping their authority ceiling under independent control.",
+      "code": [
+        "kernel/core/cap/capability.c",
+        "kernel/core/credential.c",
+        "kernel/core/cap/promotion.c"
+      ],
+      "comparison": "Capabilities have a trust lifecycle and credentials hold authority. The promotion gate provides a separate performance check.",
+      "acceptance": "Reject capability expansion without corresponding authority while accepting a validated replacement within scope.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 20,
+      "date": "2026-07-15",
+      "message_id": "d2928218-8709-4a8b-8251-f76e37b0577c",
+      "title": "AI-First OS Update: Semantic Memory Metadata Is Becoming a Scheduling ABI",
+      "learning": "Export semantic retention hints while the memory subsystem owns physical placement.",
+      "code": [
+        "kernel/core/mem/memplane.c",
+        "kernel/core/anxml/anxml.c",
+        "kernel/include/anx/memory.h"
+      ],
+      "comparison": "Memory tiers and decay exist. Semantic prompt regions are not automatically physical KV-cache regions.",
+      "acceptance": "Exercise bounded retention hints and preserve protected state during eviction.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 21,
+      "date": "2026-07-16",
+      "message_id": "4d0e3645-bcdc-41c0-bb55-a3e4cd28e04e",
+      "title": "AI-First OS Update: Semantic Control Loops Are Moving from Theory to Working Systems",
+      "learning": "Use typed actions in slower control loops; retain deterministic resource ownership.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/regime/regime.c",
+        "kernel/core/route/lease.c"
+      ],
+      "comparison": "The Twin and regime detector support observation and gating. A general typed actuation loop remains separate.",
+      "acceptance": "Reject an out-of-range action and restore the prior policy after a failed trial.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 22,
+      "date": "2026-07-17",
+      "message_id": "e3b5929c-297d-4584-a409-2ba221be3fa4",
+      "title": "AI-First OS Update: Identity Becomes a Signed Lifecycle Boundary",
+      "learning": "Keep persistent agent identity separate from model, process, and host identity.",
+      "code": [
+        "kernel/core/credential.c",
+        "kernel/core/cap/capability.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Credentials and cell identities exist. Persona Objects remain a design document rather than a complete lifecycle service.",
+      "acceptance": "Require an authorized identity transition before widening the persistent mandate.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 23,
+      "date": "2026-07-18",
+      "message_id": "18e4cfa8-3933-472b-900e-800cd425e87a",
+      "title": "AI-First OS Update: The GUI Becomes a Semantic I/O Subsystem",
+      "learning": "Expose graphical controls as typed objects with state and verifiable actions.",
+      "code": [
+        "kernel/include/anx/interface_plane.h",
+        "kernel/core/state/access.c"
+      ],
+      "comparison": "The interface plane and accessibility structures exist. Raw coordinates do not establish semantic action validity.",
+      "acceptance": "Reject an action on a stale or unauthorized control and validate an allowed action's resulting state.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 24,
+      "date": "2026-07-19",
+      "message_id": "38396083-009d-4719-87bb-27720ab59c9d",
+      "title": "AI-First OS Update: “Pause” Must Be an Effect Fence",
+      "learning": "A pause must fence effects across the relevant execution scope.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/cap/effect.c",
+        "kernel/core/workflow/workflow_exec.c"
+      ],
+      "comparison": "Cells and workflows can wait or cancel. The effect protocol has its own independent phase transitions.",
+      "acceptance": "Pause one branch and establish that sibling effects cannot cross the same scope's fence.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 25,
+      "date": "2026-07-20",
+      "message_id": "b3e419a3-edae-45ea-9b87-b3975f94202c",
+      "title": "AI-First OS Update: Tool Catalogs Become a Virtual I/O Namespace",
+      "learning": "Expose a bounded tool namespace through capability handles instead of loading every schema into context.",
+      "code": [
+        "kernel/core/cap/capability.c",
+        "kernel/core/icm/icm.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "The capability registry and object catalog exist. Discovery and invocation need a common authority boundary.",
+      "acceptance": "Reject invocation through a revoked handle and bound the visible catalog to authorized entries.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 26,
+      "date": "2026-07-21",
+      "message_id": "8f38db3a-f37c-44db-be06-1612a846def1",
+      "title": "AI-First OS Update: Schedule Continuity, Not Isolated Requests",
+      "learning": "Schedule continuation state using dependencies, residency, and expected reuse.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/lease.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "The Twin captures engines and queue depths. It does not capture the complete continuation or KV state.",
+      "acceptance": "Prefer usable resident state without selecting an engine that violates admission constraints.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 27,
+      "date": "2026-07-22",
+      "message_id": "f78a94e9-de8d-40bb-ab51-35b163f06800",
+      "title": "AI-First OS Update: Skills Become Schedulable Behavioral Packages",
+      "learning": "Treat skills as versioned behavioral packages with dependencies, permissions, and evaluations.",
+      "code": [
+        "kernel/core/workflow/wf_bundle.c",
+        "kernel/core/cap/capability.c",
+        "kernel/core/icm/icm.c"
+      ],
+      "comparison": "Workflow bundles and capabilities provide packaging components. A skill manifest alone supplies no enforcement.",
+      "acceptance": "Reject a behavioral package with unsatisfied dependencies or a wider permission request.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 28,
+      "date": "2026-07-23",
+      "message_id": "42b27027-d6d6-4591-9e36-ad4a065f6657",
+      "title": "AI-First OS Update: Agent Trajectories Become Security and Scheduling Objects",
+      "learning": "Authorize trajectories using accumulated lineage and effects, rather than isolated calls alone.",
+      "code": [
+        "kernel/core/state/provenance.c",
+        "kernel/core/cap/effect.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Provenance records relationships and effects have phases. Cross-call trajectory policy needs explicit state.",
+      "acceptance": "Deny a prohibited sequence even when its individual operations are separately available.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 29,
+      "date": "2026-07-24",
+      "message_id": "1786af0d-1948-4d58-aada-fa836093fddc",
+      "title": "AI-First OS Update: Causal Control and DAG-Aware Caching",
+      "learning": "Preserve workflow intermediates according to causal importance and reconstruction cost.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/state/provenance.c",
+        "kernel/core/mem/memplane.c"
+      ],
+      "comparison": "Workflow graphs and object provenance exist. Memory placement does not by itself establish graph-aware eviction.",
+      "acceptance": "Retain an intermediate needed by runnable descendants and reclaim one with no live consumer.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 30,
+      "date": "2026-07-25",
+      "message_id": "de9ffcd8-6113-4a35-8372-3cba1927e61e",
+      "title": "AI-First OS Update: Target Knowledge Becomes an Optimization Artifact",
+      "learning": "Make target knowledge and task state explicit, versioned inputs to optimization.",
+      "code": [
+        "kernel/core/icm/icm.c",
+        "kernel/core/state/provenance.c",
+        "kernel/core/twin/twin.c"
+      ],
+      "comparison": "ICM annotations and provenance can describe artifacts. The Twin models only a bounded part of execution.",
+      "acceptance": "Reject an optimization artifact whose target description no longer matches the tested environment.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 31,
+      "date": "2026-07-26",
+      "message_id": "2b5bed64-2acb-4d7b-a1a7-0ef932383afd",
+      "title": "AI-First OS Update: The Harness Becomes the Optimization Kernel",
+      "learning": "Trust the evaluation harness to establish correctness and measurement, independently of the generating agent.",
+      "code": [
+        "kernel/core/cap/promotion.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "Anunix has conformance and promotion gates. Candidate-controlled evidence must not become self-authorization.",
+      "acceptance": "Reject missing or mismatched evidence and accept only an independently checked candidate.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 32,
+      "date": "2026-07-27",
+      "message_id": "52886424-fea8-48fb-adb3-5793d7b23eb6",
+      "title": "AI-First OS Update: Execution Scope and Loop Governance Become OS Primitives",
+      "learning": "Grant bounded execution leases and enlarge them only through an explicit decision.",
+      "code": [
+        "kernel/core/route/budget.c",
+        "kernel/core/route/lease.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Cells expose recursion limits and budgets. Constraints need enforcement on every expansion path.",
+      "acceptance": "Reject excessive recursion or child creation without allocating an extra child.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 33,
+      "date": "2026-07-28",
+      "message_id": "9497f51e-3371-473c-a157-70c6a0b61e6e",
+      "title": "AI-First OS Update: Typed Kernel Policy and Explicit Revision Authority",
+      "learning": "Compile policy and its boundary contracts together; distinguish parameter changes from authority changes.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/cap/capability.c",
+        "kernel/core/credential.c"
+      ],
+      "comparison": "Typed routing policies and capability lifecycle states exist. Revision classes need explicit enforcement.",
+      "acceptance": "Permit a bounded parameter change while rejecting a change to the policy's authority ceiling.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 34,
+      "date": "2026-07-29",
+      "message_id": "0b7c44cc-1651-400d-828e-5eab296603de",
+      "title": "AI-First OS Update: Separate Speculative Execution from Verified Authority",
+      "learning": "Speculate about resource preparation while withholding authority for durable effects.",
+      "code": [
+        "kernel/core/state/stage.c",
+        "kernel/core/cap/effect.c",
+        "kernel/core/vm/vm_object.c"
+      ],
+      "comparison": "Staged object writes and VM Objects exist. Speculative preparation must not grant effect authority.",
+      "acceptance": "Abort speculative state without changing the committed object or dispatching an external effect.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 35,
+      "date": "2026-07-30",
+      "message_id": "6ee3d16a-44f6-4657-ae00-480794c4c9a6",
+      "title": "AI-First OS Update: Semantic Data Movement and Proof-Carrying Scheduling",
+      "learning": "Describe data movement semantically and validate the implementation's scheduling invariants.",
+      "code": [
+        "kernel/core/state/xfer.c",
+        "kernel/core/sched/scheduler.c",
+        "kernel/core/state/provenance.c"
+      ],
+      "comparison": "State transfer and scheduler queues exist. Cross-device movement graphs need explicit lowering and checks.",
+      "acceptance": "Preserve transfer permissions and data identity while rejecting an invalid destination.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 36,
+      "date": "2026-07-31",
+      "message_id": "7037ad65-bc52-48dc-a3c7-faa6f20e6f40",
+      "title": "AI-First OS Update: Federated Scheduling and Admission Contracts",
+      "learning": "Delegate bounded scheduling authority to domains and distinguish reservation from readiness.",
+      "code": [
+        "kernel/core/route/lease.c",
+        "kernel/core/sched/scheduler.c",
+        "kernel/core/twin/twin.c"
+      ],
+      "comparison": "Engine leases and readiness classes exist. Nested scheduler ownership is not implied by flat queues.",
+      "acceptance": "Reject a child reservation beyond its parent grant and reclaim capacity after revocation.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 37,
+      "date": "2026-08-01",
+      "message_id": "8ee2a2ac-3033-40ce-9edf-df54b335bf33",
+      "title": "AI-First OS Update: The Agent Graph Becomes a Schedulable Resource",
+      "learning": "Treat the agent graph as versioned execution state with bounded structural changes.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/include/anx/cell.h",
+        "kernel/core/state/provenance.c"
+      ],
+      "comparison": "Workflow graphs and cell dependencies exist. Runtime graph changes need their own validity gate.",
+      "acceptance": "Reject a cycle or invalid graph revision while preserving the runnable original graph.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 38,
+      "date": "2026-08-02",
+      "message_id": "d31e2d3b-65f3-4bf9-8af5-ce71dc356965",
+      "title": "AI-First OS Update: The Agent Runtime Needs a JIT",
+      "learning": "Compile repeated trajectories into deterministic or hybrid workflows and demote them when conditions change.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/workflow/wf_bundle.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "Workflow packages and capability promotion support reusable execution. Automatic trajectory compilation is a separate feature.",
+      "acceptance": "Run a validated artifact and reject reuse after its declared preconditions become false.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 39,
+      "date": "2026-08-03",
+      "message_id": "583e07ee-0781-4425-81ed-0a3a942cebd5",
+      "title": "AI-First OS Update: Continuation State Becomes the New Process Image",
+      "learning": "Represent a continuation across semantic history, tokens, model state, tools, and device placement.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/anxml/anxml.c",
+        "kernel/include/anx/memory.h"
+      ],
+      "comparison": "Workflow continuations preserve workflow progress. They do not alone preserve every model or tool representation.",
+      "acceptance": "Resume a workflow from saved progress without repeating a completed effect.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 40,
+      "date": "2026-08-04",
+      "message_id": "e7cc63e2-9a8d-424f-9050-637fa34a1080",
+      "title": "AI-First OS Update: Compile Intent into Control Policy",
+      "learning": "Compile natural-language intent into typed objectives and constraints before searching policy candidates.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/budget.c",
+        "kernel/core/cap/promotion.c"
+      ],
+      "comparison": "The Twin accepts routing weights and budgets expose constraints. A natural-language policy compiler is outside these primitives.",
+      "acceptance": "Reject an infeasible typed objective before candidate execution or promotion.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 41,
+      "date": "2026-08-05",
+      "message_id": "5eb9115d-a4bb-4478-b033-ef28b0a7dc95",
+      "title": "AI-First OS Update: Observation Coherence and Semantic I/O Scheduling",
+      "learning": "Schedule observations by validity, provenance, cost, and supersession.",
+      "code": [
+        "kernel/core/icm/icm.c",
+        "kernel/core/state/provenance.c",
+        "kernel/include/anx/interface_plane.h"
+      ],
+      "comparison": "Objects and interface events carry structure. Catalog metadata alone does not establish observation coherence.",
+      "acceptance": "Reject an observation superseded by a newer state transition.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 42,
+      "date": "2026-08-06",
+      "message_id": "401f482f-a77c-4c64-949e-0fe1fd3af2b7",
+      "title": "AI-First OS Update: Schedule Agent Roles and Phase Transitions",
+      "learning": "Schedule agent roles and workflow phases instead of treating an entire campaign as one request.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/include/anx/cell.h",
+        "kernel/core/route/lease.c"
+      ],
+      "comparison": "Workflows have node kinds and continuations. Role changes need resource and authority accounting.",
+      "acceptance": "Release a finished phase's lease before starting a phase with different resource needs.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 43,
+      "date": "2026-08-07",
+      "message_id": "f6d60d8a-4387-4496-96d4-d12bd2211617",
+      "title": "AI-First OS Update: Semantic Transactions + Workload Compilation",
+      "learning": "Preserve a workflow's semantic environment across suspension and compile repeated work where valid.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/state/stage.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Object staging and workflow suspension exist. Prompts, models, tools, and policies need a consistent version boundary.",
+      "acceptance": "Reject resume against changed semantic dependencies and preserve the original continuation.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 44,
+      "date": "2026-08-08",
+      "message_id": "ad4ddc59-952c-4cfe-b496-8bb3ea56f9db",
+      "title": "AI-First OS Update: Treat Kernel Tuning as Profile Synthesis, Not Runtime Autonomy",
+      "learning": "Synthesize kernel profiles offline and select validated profiles deterministically at runtime.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/regime/regime.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "The Twin and regime detector cover routing policy experiments. They do not tune Linux build configuration.",
+      "acceptance": "Reject a profile outside its validated operating envelope and use the incumbent.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 45,
+      "date": "2026-08-09",
+      "message_id": "e5c38077-c49b-485a-9a11-b8747064f5a4",
+      "title": "AI-First OS Update: Speculation Becomes a First-Class OS Primitive",
+      "learning": "Prepare predicted futures cheaply and commit only after deterministic validation.",
+      "code": [
+        "kernel/core/state/stage.c",
+        "kernel/core/twin/twin.c",
+        "kernel/core/cap/effect.c"
+      ],
+      "comparison": "Object staging and hypothetical routing are separate mechanisms. Their composition must preserve authority.",
+      "acceptance": "Discard an incorrect prediction without changing committed state or invoking a handler.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 46,
+      "date": "2026-08-10",
+      "message_id": "e0ca45f5-7a92-4443-8448-b8cd685e712d",
+      "title": "AI-First OS Update: The AI Scheduler Is Becoming a Policy Compiler",
+      "learning": "Use AI as a policy compiler while a deterministic controller builds, measures, and accepts candidates.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/cap/promotion.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "Routing simulation and measured promotion already exist. The complete build-and-measure loop needs artifact evidence.",
+      "acceptance": "Bind a candidate to its tested image and reject a candidate with absent validation.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 47,
+      "date": "2026-08-11",
+      "message_id": "25eede96-54b8-4ce0-9fe8-0ff73d6fab3d",
+      "title": "AI-First OS Update: Push the Policy Foundry Below the Kernel",
+      "learning": "Apply bounded search to hardware policy while respecting physical capacity.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/lease.c"
+      ],
+      "comparison": "Anunix models engine resources. Hardware prefetch-policy synthesis needs an appropriate simulator or hardware backend.",
+      "acceptance": "Reject a policy exceeding its declared storage or resource budget before adoption.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 48,
+      "date": "2026-08-12",
+      "message_id": "a17f5f52-26fe-4618-8c6e-1438b85cd28e",
+      "title": "AI-First OS Update: Make the Agent Working Set Semantic",
+      "learning": "Manage the semantic working set by readiness, utility, reconstruction cost, provenance, and dependencies.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/mem/memplane.c",
+        "kernel/core/state/provenance.c"
+      ],
+      "comparison": "Readiness, memory tiers, and provenance exist in separate modules.",
+      "acceptance": "Preserve useful state with live dependencies and reject reuse after its provenance becomes invalid.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 49,
+      "date": "2026-08-13",
+      "message_id": "64e753a4-3d01-4979-b642-b5fd448d0c86",
+      "title": "AI-First OS Update: Separate Advice from Ownership",
+      "learning": "Let AI supply advice while deterministic subsystems retain ownership of placement, eviction, and commit.",
+      "code": [
+        "kernel/core/mem/memplane.c",
+        "kernel/core/route/lease.c",
+        "kernel/core/state/stage.c"
+      ],
+      "comparison": "Memory and lease managers own native state. Staged writes separate pending data from publication.",
+      "acceptance": "Establish that an advisory hint cannot override a hard memory or authority constraint.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 50,
+      "date": "2026-08-14",
+      "message_id": "880a7069-0965-4314-9d09-048664fc8ba6",
+      "title": "AI-First OS Update: Virtualize Semantic Liveness, Not Just Memory",
+      "learning": "Separate logical liveness from physical allocation so dead state does not pin an entire allocation.",
+      "code": [
+        "kernel/core/anxml/anxml.c",
+        "kernel/core/mem/memplane.c"
+      ],
+      "comparison": "The inference and memory layers provide starting points. Fine-grained KV liveness is not implied by object retention.",
+      "acceptance": "Reclaim dead logical state without invalidating a surviving reference.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 51,
+      "date": "2026-08-15",
+      "message_id": "99f0ff6a-48dd-4690-8156-018b950d3c27",
+      "title": "AI-First OS Update: Decouple the Scaling Unit from the Agent",
+      "learning": "Use different units for identity, isolation, scaling, scheduling, and failure.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/anxml/anxml.c",
+        "kernel/core/route/lease.c"
+      ],
+      "comparison": "Cells, model execution, and engine leases are distinct. Operator-level scaling needs explicit resource boundaries.",
+      "acceptance": "Resize a resource allocation without changing the logical task identity.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 52,
+      "date": "2026-08-16",
+      "message_id": "aba76f45-4f15-42d7-a43b-d5f1d488eb4a",
+      "title": "AI-First OS Update: Capacity Should Be Leased Just in Time",
+      "learning": "Separate resource entitlement from current ownership and allocate physical capacity near use.",
+      "code": [
+        "kernel/core/route/lease.c",
+        "kernel/core/route/budget.c",
+        "kernel/core/twin/twin.c"
+      ],
+      "comparison": "Anunix already exposes leases and budget profiles. Just-in-time activation needs lifecycle integration.",
+      "acceptance": "Release idle capacity while preserving entitlement; revalidate capacity before reacquisition.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 53,
+      "date": "2026-08-17",
+      "message_id": "c32c6f5c-3fd5-4876-84a4-47e7958510a4",
+      "title": "AI-First OS Update: Determinism Should Be a Schedulable Resource",
+      "learning": "Declare consistency requirements explicitly and stage effects when stronger guarantees need them.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/state/stage.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "Execution contracts and staged object mutations exist. The cell runtime still contains validation and commit stubs.",
+      "acceptance": "Exercise staged visibility, conflict handling, and abort; reject unsupported transactional claims.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 54,
+      "date": "2026-08-18",
+      "message_id": "5cba8a41-798c-4f31-b00b-12653231ce94",
+      "title": "AI-First OS Update: Model Updates Need Transaction Semantics",
+      "learning": "Publish model adaptations atomically and key caches by the served model version.",
+      "code": [
+        "kernel/core/anxml/anxml.c",
+        "kernel/core/state/stage.c"
+      ],
+      "comparison": "Anxml and object staging exist. JEPA training is distinct from transactional publication of serving adapters.",
+      "acceptance": "Keep an old model version usable until a validated candidate and its cache identity publish together.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 55,
+      "date": "2026-08-19",
+      "message_id": "86cfdecb-bae0-4623-9998-6f19c1f1247a",
+      "title": "AI-First OS Update: The Runtime Boundary Is Becoming an Authority Kernel",
+      "learning": "Check operation authority, information flow, resource admission, and outcome evidence independently.",
+      "code": [
+        "kernel/core/cap/effect.c",
+        "kernel/core/state/access.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "The protected-operation protocol and sensitivity checks exist. Actual boundary dispatch must use them.",
+      "acceptance": "Deny disallowed egress despite call authority; retain an unknown outcome without blind retry.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 56,
+      "date": "2026-08-20",
+      "message_id": "ddc17c69-af7e-4297-921f-6146b196222e",
+      "title": "AI-First OS Update: Build a Resource Digital Twin Before a Learned Scheduler",
+      "learning": "Use a bounded resource model to compare near-term scheduling choices before changing the live system.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/lease.c"
+      ],
+      "comparison": "The Twin snapshots engines and queue depths. It simulates weighted routing, not complete execution or restoration.",
+      "acceptance": "Compare frozen simulation with live routing and reject infeasible restoration demand.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 57,
+      "date": "2026-08-21",
+      "message_id": "e83e8807-e735-4161-b007-45ecbc8e3ed1",
+      "title": "AI-First OS Update: AI Should Be the Regime-Change Controller, Not the Default Scheduler",
+      "learning": "Invoke adaptation when deterministic telemetry detects a departure from the validated regime.",
+      "code": [
+        "kernel/core/regime/regime.c",
+        "kernel/core/twin/twin.c",
+        "kernel/core/cap/promotion.c"
+      ],
+      "comparison": "The regime detector uses an envelope and the promotion gate checks candidate margins.",
+      "acceptance": "Exercise stationary telemetry, a regime exit, rejected adaptation, and return to the baseline.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 58,
+      "date": "2026-08-22",
+      "message_id": "98626b40-d8a8-4dc7-939d-9461ca4b487c",
+      "title": "AI-First OS Update: Schedule the Cognitive Plan Before the Hardware",
+      "learning": "Budget model choice, reasoning, skills, and context before physical placement.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/anxml/anxml.c",
+        "kernel/core/route/budget.c"
+      ],
+      "comparison": "Cognitive-envelope fields exist. Their header explicitly identifies missing integration with specialized anxml workflow dispatch.",
+      "acceptance": "Enforce a cognitive budget in the real inference dispatch path.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 59,
+      "date": "2026-08-23",
+      "message_id": "0808d44d-d49e-4e35-a05c-d1ddb54743e5",
+      "title": "AI-First OS Update: Late Binding May Be the Core Model-Native OS Abstraction",
+      "learning": "Keep logical identity stable while binding physical representation and execution late.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/twin/twin.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Cells, engine routing, and model representations are separate. Late binding needs version and readiness checks.",
+      "acceptance": "Rebind a task to an eligible engine without changing its identity or violating dependencies.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 60,
+      "date": "2026-08-24",
+      "message_id": "a5ddd2ca-0545-4045-823d-931bd901212f",
+      "title": "AI-First OS Update: Build a Model-State Fabric, Not Just a Model Scheduler",
+      "learning": "Treat model state as a movable resource with identity, validity, and transfer costs.",
+      "code": [
+        "kernel/core/anxml/anxml.c",
+        "kernel/core/state/xfer.c",
+        "kernel/core/mem/memplane.c"
+      ],
+      "comparison": "Tensor objects and state transfer exist. A general model-state transport fabric remains a separate integration.",
+      "acceptance": "Preserve model-state identity and access checks across a transfer.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 61,
+      "date": "2026-08-25",
+      "message_id": "e2f849a1-d8d9-4741-9440-50fa333e1238",
+      "title": "AI-First OS Update: Linux 7.3 Makes Hierarchical Scheduling a Real Kernel Primitive",
+      "learning": "Delegate revocable CPU ownership through a scheduler hierarchy.",
+      "code": [
+        "kernel/core/sched/scheduler.c",
+        "kernel/core/route/lease.c"
+      ],
+      "comparison": "Anunix has flat priority queues and engine leases. Linux sub-scheduler support is a reference, not an available Anunix API.",
+      "acceptance": "Revoke a child grant and establish that no task retains capacity outside its authority.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 62,
+      "date": "2026-08-26",
+      "message_id": "274013f7-dc77-40cf-93ee-b33bd4c2fa08",
+      "title": "AI-First OS Update: Reasoning Itself Is Becoming a Schedulable Parallel Program",
+      "learning": "Distinguish required parallel subtasks from competing trials in the execution graph.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Workflow graphs and cell dependencies exist. Trial completion and loser cancellation need explicit semantics.",
+      "acceptance": "Complete an OR group with one valid result and fence effects from losing branches.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 63,
+      "date": "2026-08-27",
+      "message_id": "ae5c3fd3-12f2-4b93-9152-5c30860468dd",
+      "title": "AI-First OS Update: The Harness Is Becoming a JIT-Compiled Control Image",
+      "learning": "Treat a generated harness as a bounded control program validated against a stable interface.",
+      "code": [
+        "kernel/core/workflow/wf_bundle.c",
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/cap/capability.c"
+      ],
+      "comparison": "Workflow bundles provide an executable structure. Capability validation must remain outside the generated program.",
+      "acceptance": "Reject a generated control artifact with an invalid transition or undeclared operation.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 64,
+      "date": "2026-08-28",
+      "message_id": "76e08520-047b-4b16-ac49-9d6162e4dd1e",
+      "title": "AI-First OS Update: Trust Has to Survive from Intent to Physical Use",
+      "learning": "Bind intent, delegation, effects, and the bytes used at execution time into one causal chain.",
+      "code": [
+        "kernel/core/cap/effect.c",
+        "kernel/core/state/provenance.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Effects reference cells and objects; provenance records lineage. Validation can become stale before physical use.",
+      "acceptance": "Reject execution after an authorized object's version changes between preparation and dispatch.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 65,
+      "date": "2026-08-29",
+      "message_id": "c4abc0ce-78d5-4add-ac3f-58e82e776015",
+      "title": "AI-First OS Update: Optimize Execution Shape Before Scheduling It",
+      "learning": "Optimize execution shape before placement and measure the complete workflow.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/twin/twin.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Workflows express logical steps and the Twin models placement. Physical fusion is not part of that snapshot.",
+      "acceptance": "Compare equivalent execution plans while preserving dependencies and authority boundaries.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 66,
+      "date": "2026-08-30",
+      "message_id": "dcdb3512-f8d3-4508-ba3b-f80e5a105b0f",
+      "title": "AI-First OS Update: Compile Experience into Versioned Procedural Artifacts",
+      "learning": "Compile experience into versioned procedural artifacts with traceable evidence.",
+      "code": [
+        "kernel/core/icm/icm.c",
+        "kernel/core/workflow/wf_bundle.c",
+        "kernel/core/state/provenance.c"
+      ],
+      "comparison": "ICM, workflow bundles, and provenance provide artifact storage. Automatic experience compilation needs independent validation.",
+      "acceptance": "Reject a procedural artifact with missing source evidence or an invalid dependency version.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 67,
+      "date": "2026-08-31",
+      "message_id": "26a8ff69-2235-4a97-9c44-c1ba8d2f559f",
+      "title": "AI-First OS Update: The Agent Runtime Should Be a Process Graph, Not a Monolithic Harness",
+      "learning": "Keep durable continuation identity while composing replaceable execution processes.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/include/anx/cell.h",
+        "kernel/core/credential.c"
+      ],
+      "comparison": "Workflow continuations and cell identities exist. A runtime-independent persistent agent is a broader lifecycle object.",
+      "acceptance": "Replace an execution binding while preserving the continuation's authority and completed effects.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 68,
+      "date": "2026-09-01",
+      "message_id": "77557664-206e-4b62-b50b-b5960f80d9ce",
+      "title": "AI-First OS Update: Suspension Needs to Become a First-Class OS State",
+      "learning": "Distinguish long suspension from short I/O waits and reclaim expensive idle state.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/route/lease.c",
+        "kernel/core/anxml/anxml.c"
+      ],
+      "comparison": "Workflow suspension exists. Engine leases and model residency need a coordinated suspension policy.",
+      "acceptance": "Release reclaimable resources during suspension and revalidate authority before resume.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 69,
+      "date": "2026-09-02",
+      "message_id": "1afdd52b-e9ef-42cc-b612-97e2606d48d0",
+      "title": "AI-First OS Update: Resume from a Frontier, Not from a Fully Restored Image",
+      "learning": "Resume from the minimum usable state frontier while restoring later dependencies incrementally.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/mem/memplane.c",
+        "kernel/core/workflow/workflow_exec.c"
+      ],
+      "comparison": "Readiness classes and workflow dependencies exist. The Twin does not model incremental state materialization.",
+      "acceptance": "Run only a ready frontier and reject execution whose immediate dependencies remain unavailable.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 70,
+      "date": "2026-09-03",
+      "message_id": "d1a26ace-fae8-4748-ba29-81c5edc427bd",
+      "title": "AI-First OS Update: Schedule Externalities, Not Just Resource Consumption",
+      "learning": "Account for interference imposed on other workloads and exposure from external effects.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/budget.c",
+        "kernel/core/cap/effect.c"
+      ],
+      "comparison": "Routing costs and effect phases exist. They do not measure general interference or irreversible exposure.",
+      "acceptance": "Reject a placement or effect that exceeds an explicit externality budget.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 71,
+      "date": "2026-09-04",
+      "message_id": "86fbcab7-8cf4-40a0-a928-8253e648b2b8",
+      "title": "AI-First OS Update: Separate the Logical Program from the Physical Machine Plan",
+      "learning": "Preserve an authoritative logical graph while deriving a replaceable physical execution plan.",
+      "code": [
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/twin/twin.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Workflow nodes and cell plans are distinct. Dynamic physical recompilation needs semantic equivalence checks.",
+      "acceptance": "Change placement while preserving logical dependencies, outputs, and effect order.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 72,
+      "date": "2026-09-05",
+      "message_id": "1ddbc849-f8fc-464b-a905-d204e865fa77",
+      "title": "AI-First OS Update: Schedule Evidence and Intent, Not Just Compute",
+      "learning": "Allocate independent evidence paths and durable future intentions alongside physical resources.",
+      "code": [
+        "kernel/core/state/provenance.c",
+        "kernel/core/workflow/workflow_exec.c",
+        "kernel/core/icm/icm.c"
+      ],
+      "comparison": "Provenance and workflows provide records. Evidence independence and durable intention triggers need explicit policies.",
+      "acceptance": "Reject duplicated evidence presented as independent and retain a pending intention through suspension.",
+      "status": "queued",
+      "branch": null
+    },
+    {
+      "day": 73,
+      "date": "2026-09-06",
+      "message_id": "3693656d-55cf-4075-85be-4d4e1312fb62",
+      "title": "AI-First OS Update: Make the Adaptive Kernel Proof-Carrying",
+      "learning": "Attach independently checked evidence to adaptive policy and enforce context privilege monotonicity.",
+      "code": [
+        "kernel/core/cap/promotion.c",
+        "kernel/core/icm/icm.c",
+        "kernel/core/state/access.c"
+      ],
+      "comparison": "Promotion gates and object metadata exist. They do not constitute formal kernel proofs or a context privilege boundary.",
+      "acceptance": "Reject missing policy evidence and unauthorized context role or scope promotion.",
+      "status": "queued",
+      "branch": null
+    }
+  ]
+}

@@ -123,6 +123,14 @@ LDFLAGS := -nostdlib --gc-sections
 endif
 
 # --- Source files ---
+RESEARCH_TEST ?= 0
+ifeq ($(filter $(RESEARCH_TEST),0 1),)
+$(error RESEARCH_TEST must be 0 or 1)
+endif
+ifeq ($(RESEARCH_TEST),1)
+CFLAGS += -DANX_RESEARCH_TEST=1
+endif
+
 ARCH_DIR    := kernel/arch/$(ARCH)
 CORE_DIR    := kernel/core
 LIB_DIR     := kernel/lib
@@ -148,10 +156,20 @@ DRIVER_S_OBJ := $(patsubst $(DRIVER_DIR)/%.S,$(BUILD_DIR)/drivers/%.o,$(DRIVER_S
 
 ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(DRIVER_OBJ) $(DRIVER_S_OBJ) $(LIB_OBJ)
 
+# Rebuild when switching between the normal and research images.
+RESEARCH_MODE_STAMP := $(BUILD_DIR)/.research-mode-$(RESEARCH_TEST)
+$(RESEARCH_MODE_STAMP):
+	@mkdir -p $(BUILD_DIR)
+	@rm -f $(BUILD_DIR)/.research-mode-0 $(BUILD_DIR)/.research-mode-1
+	@touch $@
+
+$(ALL_OBJ): $(RESEARCH_MODE_STAMP)
+
 KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
+.DEFAULT_GOAL := kernel
 .PHONY: kernel qemu qemu-fb qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
 
 kernel: $(KERNEL_BIN)

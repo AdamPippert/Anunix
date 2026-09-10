@@ -63,7 +63,9 @@ int anx_external_register_handler(const char *scheme,
 int anx_external_unregister_handler(const char *scheme);
 
 /*
- * Invoke an external call. Parses the scheme from call->endpoint,
+ * Trusted transport API; callers enforce authority before invoking it.
+ * The cell runtime checks execution.allow_side_effects during admission.
+ * Parses the scheme from call->endpoint,
  * looks up the handler, and delegates. Returns ANX_ENOENT if no
  * handler is registered for the scheme.
  */

@@ -28,7 +28,13 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 {
 	int ret;
 
-	/* Policy checks would go here (credentials, engine allowlist, etc.) */
+	/* The external handler can change another system before commit. */
+	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
+		if (!cell->ext_call)
+			return ANX_EINVAL;
+		if (!cell->execution.allow_side_effects)
+			return ANX_EPERM;
+	}
 
 	ret = anx_cell_transition(cell, ANX_CELL_ADMITTED);
 	if (ret != ANX_OK)
