@@ -306,6 +306,7 @@ struct anx_cell {
 	/* Plan and trace refs */
 	anx_pid_t plan_id;
 	anx_tid_t trace_id;
+	anx_oid_t trace_oid;		/* materialized trace, nil if unavailable */
 
 	/* Runtime state */
 	uint32_t attempt_count;
