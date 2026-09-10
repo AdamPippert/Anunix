@@ -257,7 +257,17 @@ static int runtime_execute(struct anx_cell *cell,
 			    cell->ext_call) {
 				int xret;
 
+				/* Count declared bytes and elapsed transport time per attempt. */
+				trace->tool.attempted = true;
+				trace->tool.request_bytes = cell->ext_call->request_size;
+				cell->ext_call->response_size = 0;
+				cell->ext_call->status_code = 0;
+				trace->tool.started_at = arch_time_now();
 				xret = anx_external_invoke(cell->ext_call);
+				trace->tool.completed_at = arch_time_now();
+				trace->tool.response_bytes = cell->ext_call->response_size;
+				trace->tool.transport_result = xret;
+				trace->tool.status_code = cell->ext_call->status_code;
 				if (xret != ANX_OK) {
 					anx_trace_append(trace,
 							 ANX_TRACE_STEP_COMPLETED,
@@ -366,7 +376,6 @@ int anx_cell_run(struct anx_cell *cell)
 {
 	struct anx_cell_plan *plan = NULL;
 	struct anx_cell_trace *trace = NULL;
-	anx_oid_t trace_oid;
 	int ret;
 
 	if (!cell)
@@ -399,6 +408,7 @@ int anx_cell_run(struct anx_cell *cell)
 		return ret;
 
 	cell->trace_id = trace->trace_id;
+	anx_memset(&cell->trace_oid, 0, sizeof(cell->trace_oid));
 	anx_trace_append(trace, ANX_TRACE_CREATED, "cell run started", ANX_OK);
 
 	/* Admission */
@@ -436,7 +446,7 @@ int anx_cell_run(struct anx_cell *cell)
 
 	/* Finalize trace into a State Object */
 	if (cell->commit.write_trace)
-		anx_trace_finalize(trace, &trace_oid);
+		anx_trace_finalize(trace, &cell->trace_oid);
 
 	anx_plan_destroy(plan);
 	anx_trace_destroy(trace);
@@ -444,11 +454,12 @@ int anx_cell_run(struct anx_cell *cell)
 
 fail:
 	cell->error_code = ret;
+	cell->completed_at = arch_time_now();
 	anx_cell_transition(cell, ANX_CELL_FAILED);
 	anx_trace_append(trace, ANX_TRACE_FAILED, "cell failed", ret);
 
 	if (cell->commit.write_trace)
-		anx_trace_finalize(trace, &trace_oid);
+		anx_trace_finalize(trace, &cell->trace_oid);
 
 	if (plan)
 		anx_plan_destroy(plan);
