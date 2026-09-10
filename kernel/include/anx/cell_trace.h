@@ -43,6 +43,16 @@ struct anx_trace_event {
 
 /* --- The Cell Trace --- */
 
+struct anx_tool_accounting {
+	bool attempted;
+	anx_time_t started_at;
+	anx_time_t completed_at;
+	uint32_t request_bytes;
+	uint32_t response_bytes;
+	int transport_result;
+	int status_code;
+};
+
 struct anx_cell_trace {
 	anx_tid_t trace_id;
 	anx_cid_t cell_ref;		/* cell this trace belongs to */
@@ -55,6 +65,7 @@ struct anx_cell_trace {
 	anx_time_t started_at;
 	anx_time_t completed_at;
 
+	struct anx_tool_accounting tool;
 	bool finalized;			/* true after cell completes */
 };
 

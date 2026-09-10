@@ -190,5 +190,6 @@ int test_cell_runtime(void)
 		anx_cell_destroy(p);
 	}
 
-	return anx_research_day006();
+	ret = anx_research_day006();
+	return ret == ANX_OK ? anx_research_day007() : ret;
 }
