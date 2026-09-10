@@ -5,6 +5,7 @@
 /* Exercise external-call authorization without resetting live stores. */
 int anx_research_day001(void);
 int anx_research_day002(void);
+int anx_research_day003(void);
 #endif
 
 #ifdef ANX_RESEARCH_TEST
