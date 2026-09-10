@@ -1004,7 +1004,7 @@ int anx_wf_lib_init(void)
 
 int anx_wf_lib_register(const struct anx_wf_template *tmpl)
 {
-	if (!tmpl || tmpl->uri[0] == '\0')
+	if (anx_wf_template_validate(tmpl) != ANX_OK)
 		return ANX_EINVAL;
 	if (g_lib_count >= ANX_WF_LIB_MAX)
 		return ANX_ENOMEM;
