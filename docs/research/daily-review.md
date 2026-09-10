@@ -27,7 +27,7 @@ Evidence: [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c), [kerne
 
 Planned acceptance: Deny an unauthorized external handler before invocation; preserve authorized execution and an audit trace.
 
-Status: Validated on Jekyll. Tested commit: `23f1e4f`. Source message: `38205a54-ff49-4d7e-90a3-354c4d155e1c`.
+Status: Merged at `b946a76` after Jekyll validation. Tested commit: `23f1e4f`. Source message: `38205a54-ff49-4d7e-90a3-354c4d155e1c`.
 
 ## Day 002 — 2026-06-27
 
@@ -35,13 +35,13 @@ Status: Validated on Jekyll. Tested commit: `23f1e4f`. Source message: `38205a54
 
 Learning: Convert repeated successful workflows into reusable, validated artifacts with explicit promotion and rollback.
 
-Anunix comparison: Workflow execution and binary bundles exist. Bundle registration is a separate boundary from capability validation.
+Anunix comparison: Baseline `b946a76` imports bounded binary bundles but does not validate strings, ports, or graph structure. Day 2 adds validation before library registration.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundle.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
 Planned acceptance: Reject malformed workflow artifacts before registration; exercise a valid packaged workflow in the guest.
 
-Status: Queued. Source message: `e2f56565-6637-4d84-acee-920ffaf5e9d8`.
+Status: Validated on Jekyll. Tested commit: `48673fa`. Source message: `e2f56565-6637-4d84-acee-920ffaf5e9d8`.
 
 ## Day 003 — 2026-06-28
 

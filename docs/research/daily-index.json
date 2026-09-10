@@ -16,10 +16,11 @@
       ],
       "comparison": "Cells, capabilities, and memory tiers exist. The external-call runtime bypasses its declared side-effect restriction.",
       "acceptance": "Deny an unauthorized external handler before invocation; preserve authorized execution and an audit trace.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-001",
       "tested_commit": "23f1e4f",
-      "evidence": "docs/research/evidence/day-001/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-001/uefi-boot.json",
+      "merged_commit": "b946a76"
     },
     {
       "day": 2,
@@ -32,10 +33,13 @@
         "kernel/core/workflow/wf_bundle.c",
         "kernel/core/cap/capability.c"
       ],
-      "comparison": "Workflow execution and binary bundles exist. Bundle registration is a separate boundary from capability validation.",
+      "comparison": "The baseline imports bounded binary bundles but does not validate strings, ports, or graph structure. Day 2 adds validation before library registration.",
       "acceptance": "Reject malformed workflow artifacts before registration; exercise a valid packaged workflow in the guest.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-002",
+      "comparison_baseline": "b946a76",
+      "tested_commit": "48673fa",
+      "evidence": "docs/research/evidence/day-002/uefi-boot.json"
     },
     {
       "day": 3,
@@ -376,7 +380,7 @@
       "day": 24,
       "date": "2026-07-19",
       "message_id": "38396083-009d-4719-87bb-27720ab59c9d",
-      "title": "AI-First OS Update: \u201cPause\u201d Must Be an Effect Fence",
+      "title": "AI-First OS Update: “Pause” Must Be an Effect Fence",
       "learning": "A pause must fence effects across the relevant execution scope.",
       "code": [
         "kernel/include/anx/cell.h",
