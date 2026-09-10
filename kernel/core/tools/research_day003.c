@@ -6,6 +6,7 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 #include <anx/arch.h>
+#include <anx/route.h>
 
 int anx_research_day003(void)
 {
@@ -15,6 +16,9 @@ int anx_research_day003(void)
 	struct anx_model_desc desc = {0};
 	struct anx_infer_request req = {0};
 	struct anx_cell *backing;
+	struct anx_cell *task = NULL;
+	struct anx_cell_intent intent = {0};
+	struct anx_route_result route;
 	anx_cid_t server_cid = {0};
 	anx_eid_t extra_id;
 	uint64_t before, during, after;
@@ -65,6 +69,43 @@ int anx_research_day003(void)
 		goto out;
 	}
 
+	/* Exercise propagation through the actual cell-to-model dispatch path. */
+	engine->quality_score = 100;
+	engine->supports_private_data = true;
+	anx_engine_set_topology(engine, 0xffff000000000003ULL, 0xffff000000000003ULL);
+	anx_strlcpy(intent.name, "research-day-003-task", sizeof(intent.name));
+	rc = anx_cell_create(ANX_CELL_TASK_EXECUTION, &intent, &task);
+	if (rc != ANX_OK)
+		goto out;
+	task->constraints.topology_bk_set = true;
+	task->constraints.topology_bk_lo = task->constraints.topology_bk_hi = 0xffff000000000003ULL;
+	task->constraints.max_latency_ms = 10000;
+	anx_cell_set_cognitive_envelope(task, 129, 0);
+	if (anx_route_plan(task, &route) != ANX_OK ||
+	    anx_uuid_compare(&route.candidates[route.selected_index].engine_id, &engine->eid) != 0) {
+		rc = -307;
+		goto out;
+	}
+	if (anx_cell_run(task) != ANX_EINVAL || task->status != ANX_CELL_FAILED ||
+	    srv->requests_served != 1) {
+		rc = -308;
+		goto out;
+	}
+	anx_cell_destroy(task);
+	task = NULL;
+	rc = anx_cell_create(ANX_CELL_TASK_EXECUTION, &intent, &task);
+	if (rc != ANX_OK)
+		goto out;
+	task->constraints.topology_bk_set = true;
+	task->constraints.topology_bk_lo = task->constraints.topology_bk_hi = 0xffff000000000003ULL;
+	task->constraints.max_latency_ms = ~(uint64_t)0;
+	anx_cell_set_cognitive_envelope(task, 64, 0);
+	if (anx_cell_run(task) != ANX_OK || task->status != ANX_CELL_COMPLETED ||
+	    srv->requests_served != 2) {
+		rc = -309;
+		goto out;
+	}
+
 	/* An over-capacity reservation fails without consuming the remainder. */
 	anx_uuid_generate(&extra_id);
 	if (anx_lease_grant(&extra_id, ANX_MEM_L1, during + 1,
@@ -85,6 +126,8 @@ int anx_research_day003(void)
 	}
 	rc = ANX_OK;
 out:
+	if (task)
+		anx_cell_destroy(task);
 	if (extra)
 		anx_lease_release(extra);
 	if (srv)

@@ -115,6 +115,28 @@ static int runtime_plan(struct anx_cell *cell, struct anx_cell_trace *trace,
 
 /* --- Execution --- */
 
+static int runtime_submit_model(struct anx_cell *cell,
+				struct anx_engine *engine,
+				struct anx_model_server *server)
+{
+	struct anx_infer_request req;
+	uint64_t latency_ms = cell->constraints.max_latency_ms;
+	int ret;
+
+	anx_memset(&req, 0, sizeof(req));
+	req.requestor_cid = cell->cid;
+	req.engine_id = engine->eid;
+	req.max_tokens = cell->cognitive.max_tokens;
+	if (latency_ms) {
+		/* Saturate an unrepresentable deadline instead of wrapping. */
+		req.deadline_ns = ~(uint64_t)0;
+		if (latency_ms <= (~(uint64_t)0 - cell->started_at) / 1000000)
+			req.deadline_ns = cell->started_at + latency_ms * 1000000;
+	}
+	ret = anx_msrv_submit(server, &req);
+	return ret == ANX_OK ? req.status : ret;
+}
+
 static int runtime_execute(struct anx_cell *cell,
 			   struct anx_cell_trace *trace,
 			   struct anx_cell_plan *plan)
@@ -179,12 +201,9 @@ static int runtime_execute(struct anx_cell *cell,
 
 					srv = anx_msrv_lookup(&step->assigned_engine);
 					if (srv) {
-						struct anx_infer_request req;
-
-						anx_memset(&req, 0, sizeof(req));
-						req.requestor_cid = cell->cid;
-						req.engine_id = eng->eid;
-						anx_msrv_submit(srv, &req);
+						ret = runtime_submit_model(cell, eng, srv);
+						if (ret != ANX_OK)
+							return ret;
 					}
 				}
 				/* Non-model engines: stub for now */
