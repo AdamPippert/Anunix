@@ -46,6 +46,7 @@ enum anx_wf_node_kind {
 	ANX_WF_NODE_HUMAN_REVIEW,	/* pause for human approval */
 	ANX_WF_NODE_SUBFLOW,		/* nested workflow reference */
 	ANX_WF_NODE_OUTPUT,		/* write result to named object or event */
+	ANX_WF_NODE_CAP_PROMOTION,	/* sealed evidence in port 0, decision out port 1 */
 	ANX_WF_NODE_KIND_COUNT,
 };
 
@@ -236,6 +237,7 @@ struct anx_wf_policy {
 	uint32_t	timeout_ms;	/* 0 = no timeout */
 	bool		auto_retry;
 	uint8_t		max_retries;
+	bool		allow_capability_install; /* trusted caller opt-in; false by default */
 };
 
 /* ------------------------------------------------------------------ */
