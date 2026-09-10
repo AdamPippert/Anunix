@@ -55,7 +55,7 @@ Evidence: [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kerne
 
 Planned acceptance: Exercise admission and release under bounded resources; reject work that exceeds its declared budget.
 
-Status: Validated on Jekyll. Tested commit: `ae7c64a`. Source message: `0a562c41-3184-421b-83a1-5f44f5af80c9`.
+Status: Merged at `f4b0172` after Jekyll validation. Tested commit: `ae7c64a`. Source message: `0a562c41-3184-421b-83a1-5f44f5af80c9`.
 
 ## Day 004 — 2026-06-29
 
@@ -63,13 +63,13 @@ Status: Validated on Jekyll. Tested commit: `ae7c64a`. Source message: `0a562c41
 
 Learning: Profile workloads before generating policies, then compare candidates against a fixed incumbent.
 
-Anunix comparison: The Resource Twin snapshots routing state. The promotion gate uses integer margins; it does not establish general statistical confidence.
+Anunix comparison: Baseline `f4b0172` has a Resource Twin and an integer promotion gate. Day 4 prevents arithmetic overflow and requires an installed incumbent. The gate does not establish statistical significance.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
 Planned acceptance: Reject a candidate indistinguishable from the incumbent and preserve the incumbent after rejection.
 
-Status: Queued. Source message: `1275902e-2f68-4578-9a29-56937f0cdd6e`.
+Status: Validated on Jekyll. Tested commit: `0f0faef`. Source message: `1275902e-2f68-4578-9a29-56937f0cdd6e`.
 
 ## Day 005 — 2026-06-30
 

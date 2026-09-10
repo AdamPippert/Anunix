@@ -55,11 +55,12 @@
       ],
       "comparison": "The baseline reserves engine memory but ignores model-request deadlines and output limits. Day 3 enforces request admission and forwards cell limits.",
       "acceptance": "Exercise admission and release under bounded resources; reject work that exceeds its declared budget.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-003",
       "comparison_baseline": "10f5213",
       "tested_commit": "ae7c64a",
-      "evidence": "docs/research/evidence/day-003/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-003/uefi-boot.json",
+      "merged_commit": "f4b0172"
     },
     {
       "day": 4,
@@ -72,10 +73,13 @@
         "kernel/core/regime/regime.c",
         "kernel/core/cap/promotion.c"
       ],
-      "comparison": "The Resource Twin snapshots routing state. The promotion gate uses integer margins; it does not establish general statistical confidence.",
+      "comparison": "The baseline promotion gate can overflow score margins and thresholds. It does not resolve the declared incumbent. Day 4 widens arithmetic and checks incumbent installation.",
       "acceptance": "Reject a candidate indistinguishable from the incumbent and preserve the incumbent after rejection.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-004",
+      "comparison_baseline": "f4b0172",
+      "tested_commit": "0f0faef",
+      "evidence": "docs/research/evidence/day-004/uefi-boot.json"
     },
     {
       "day": 5,
