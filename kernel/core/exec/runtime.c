@@ -24,9 +24,88 @@
 
 /* --- Admission --- */
 
+/* Zero removes a numeric bound, so it cannot replace a bounded parent. */
+static bool scope_widens(uint64_t child, uint64_t parent)
+{
+	return parent && (!child || child > parent);
+}
+
+static bool scope_contains(const struct anx_cell *parent,
+			   const struct anx_cell *child)
+{
+	uint32_t i;
+	bool linked = false;
+
+	if (parent->child_count > ANX_MAX_CHILD_CELLS)
+		return false;
+	for (i = 0; i < parent->child_count; i++)
+		if (anx_uuid_compare(&parent->child_cids[i], &child->cid) == 0)
+			linked = true;
+	if (!linked || !parent->execution.allow_recursive_cells ||
+	    parent->recursion_depth >= parent->execution.max_recursion_depth ||
+	    parent->recursion_depth >= parent->constraints.max_recursion_depth ||
+	    child->recursion_depth != parent->recursion_depth + 1)
+		return false;
+	if ((child->execution.allow_network && !parent->execution.allow_network) ||
+	    (child->execution.allow_remote_models && !parent->execution.allow_remote_models) ||
+	    (child->execution.allow_recursive_cells && !parent->execution.allow_recursive_cells) ||
+	    (child->execution.allow_side_effects && !parent->execution.allow_side_effects))
+		return false;
+	if (scope_widens(child->constraints.max_latency_ms, parent->constraints.max_latency_ms) ||
+	    scope_widens(child->constraints.max_cost_usd_cents, parent->constraints.max_cost_usd_cents) ||
+	    scope_widens(child->cognitive.max_tokens, parent->cognitive.max_tokens) ||
+	    scope_widens(child->cognitive.max_reasoning_depth, parent->cognitive.max_reasoning_depth) ||
+	    child->constraints.max_child_cells > parent->constraints.max_child_cells ||
+	    child->constraints.max_recursion_depth > parent->constraints.max_recursion_depth ||
+	    child->execution.max_recursion_depth > parent->execution.max_recursion_depth)
+		return false;
+	if ((parent->constraints.locality == ANX_LOCAL_ONLY ||
+	     parent->constraints.locality == ANX_REMOTE_REQUIRED) &&
+	    child->constraints.locality != parent->constraints.locality)
+		return false;
+	return true;
+}
+
+static int runtime_check_scope(struct anx_cell *cell)
+{
+	struct anx_cell *current = cell;
+	int ret = ANX_OK;
+
+	/* Check ancestors too: a revoked root must constrain grandchildren. */
+	while (!anx_uuid_is_nil(&current->parent_cid)) {
+		struct anx_cell *parent = anx_cell_store_lookup(&current->parent_cid);
+		bool allowed;
+
+		if (!parent) {
+			ret = ANX_EPERM;
+			break;
+		}
+		anx_spin_lock(&parent->lock);
+		allowed = scope_contains(parent, current);
+		anx_spin_unlock(&parent->lock);
+		if (!allowed) {
+			anx_cell_store_release(parent);
+			ret = ANX_EPERM;
+			break;
+		}
+		if (current != cell)
+			anx_cell_store_release(current);
+		current = parent;
+	}
+	if (ret == ANX_OK && current->recursion_depth != 0)
+		ret = ANX_EPERM;
+	if (current != cell)
+		anx_cell_store_release(current);
+	return ret;
+}
+
 static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 {
 	int ret;
+
+	ret = runtime_check_scope(cell);
+	if (ret != ANX_OK)
+		return ret;
 
 	/* The external handler can change another system before commit. */
 	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
@@ -393,20 +472,32 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	struct anx_cell *child;
 	int ret;
 
-	if (!parent || !child_out)
+	if (!child_out)
 		return ANX_EINVAL;
+	*child_out = NULL;
+	if (!parent)
+		return ANX_EINVAL;
+	ret = runtime_check_scope(parent);
+	if (ret != ANX_OK)
+		return ret;
 
-	/* Enforce recursion depth */
-	if (parent->recursion_depth >= parent->execution.max_recursion_depth)
-		return ANX_EPERM;
+	anx_spin_lock(&parent->lock);
+	if (!parent->execution.allow_recursive_cells ||
+	    parent->recursion_depth >= parent->execution.max_recursion_depth ||
+	    parent->recursion_depth >= parent->constraints.max_recursion_depth) {
+		ret = ANX_EPERM;
+		goto out;
+	}
 
-	/* Enforce child cell limit */
-	if (parent->child_count >= ANX_MAX_CHILD_CELLS)
-		return ANX_ENOMEM;
+	if (parent->child_count >= ANX_MAX_CHILD_CELLS ||
+	    parent->child_count >= parent->constraints.max_child_cells) {
+		ret = ANX_ENOMEM;
+		goto out;
+	}
 
 	ret = anx_cell_create(type, intent, &child);
 	if (ret != ANX_OK)
-		return ret;
+		goto out;
 
 	/* Wire up lineage */
 	child->parent_cid = parent->cid;
@@ -415,11 +506,19 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	/* Inherit stricter policies from parent */
 	child->constraints = parent->constraints;
 	child->execution = parent->execution;
+	child->cognitive = parent->cognitive;
+	child->routing = parent->routing;
+	child->validation = parent->validation;
+	child->commit = parent->commit;
+	child->retry = parent->retry;
+	child->contract = parent->contract;
 
 	/* Record in parent */
 	parent->child_cids[parent->child_count] = child->cid;
 	parent->child_count++;
 
 	*child_out = child;
-	return ANX_OK;
+out:
+	anx_spin_unlock(&parent->lock);
+	return ret;
 }
