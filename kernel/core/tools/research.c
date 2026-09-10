@@ -79,12 +79,19 @@ void cmd_research_test(int argc, char **argv)
 {
 	int ret;
 
-	if (argc != 2 || anx_strcmp(argv[1], "day-001") != 0) {
-		kprintf("usage: research-test day-001\n");
+	if (argc != 2) {
+		kprintf("usage: research-test day-NNN\n");
 		return;
 	}
-	ret = anx_research_day001();
-	kprintf("RESEARCH day-001 %s rc=%d\n", ret == ANX_OK ? "PASS" : "FAIL", ret);
+	if (anx_strcmp(argv[1], "day-001") == 0)
+		ret = anx_research_day001();
+	else if (anx_strcmp(argv[1], "day-002") == 0)
+		ret = anx_research_day002();
+	else {
+		kprintf("unknown research test: %s\n", argv[1]);
+		return;
+	}
+	kprintf("RESEARCH %s %s rc=%d\n", argv[1], ret == ANX_OK ? "PASS" : "FAIL", ret);
 }
 #endif
 #endif
