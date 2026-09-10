@@ -223,6 +223,7 @@ struct anx_execution_contract {
  * fields 0) means unset: no override, matching anxml's own "0 -> default"
  * convention for max_tokens, so existing cells are unaffected.
  *
+ * Model-server requests receive max_tokens through the cell runtime.
  * Wiring this into the live anx_anxml_cell_dispatch() call path is
  * future work: that dispatch function is reached through a function
  * pointer from workflow_exec with no cell context threaded through
