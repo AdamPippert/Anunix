@@ -16,8 +16,10 @@
       ],
       "comparison": "Cells, capabilities, and memory tiers exist. The external-call runtime bypasses its declared side-effect restriction.",
       "acceptance": "Deny an unauthorized external handler before invocation; preserve authorized execution and an audit trace.",
-      "status": "validation_in_progress",
-      "branch": "codex/ai-os-day-001"
+      "status": "validated",
+      "branch": "codex/ai-os-day-001",
+      "tested_commit": "23f1e4f",
+      "evidence": "docs/research/evidence/day-001/uefi-boot.json"
     },
     {
       "day": 2,
@@ -374,7 +376,7 @@
       "day": 24,
       "date": "2026-07-19",
       "message_id": "38396083-009d-4719-87bb-27720ab59c9d",
-      "title": "AI-First OS Update: “Pause” Must Be an Effect Fence",
+      "title": "AI-First OS Update: \u201cPause\u201d Must Be an Effect Fence",
       "learning": "A pause must fence effects across the relevant execution scope.",
       "code": [
         "kernel/include/anx/cell.h",

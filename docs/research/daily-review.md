@@ -27,7 +27,7 @@ Evidence: [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c), [kerne
 
 Planned acceptance: Deny an unauthorized external handler before invocation; preserve authorized execution and an audit trace.
 
-Status: Day 1 validation in progress. Source message: `38205a54-ff49-4d7e-90a3-354c4d155e1c`.
+Status: Validated on Jekyll. Tested commit: `23f1e4f`. Source message: `38205a54-ff49-4d7e-90a3-354c4d155e1c`.
 
 ## Day 002 — 2026-06-27
 
