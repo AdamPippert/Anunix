@@ -126,6 +126,7 @@ anx_wf_create(const char *name, const char *description, anx_oid_t *oid_out)
 	wf->policy.timeout_ms	= 0;
 	wf->policy.auto_retry	= false;
 	wf->policy.max_retries	= 0;
+	wf->policy.allow_capability_install = false;
 
 	wf->computed_cap	= anx_wf_cap_compute(&wf->policy);
 	wf->continuation	= NULL;

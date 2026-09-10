@@ -65,6 +65,7 @@ static const char *wf_node_kind_name(enum anx_wf_node_kind k)
 	case ANX_WF_NODE_HUMAN_REVIEW: return "human_review";
 	case ANX_WF_NODE_SUBFLOW:      return "subflow";
 	case ANX_WF_NODE_OUTPUT:       return "output";
+	case ANX_WF_NODE_CAP_PROMOTION: return "cap_promotion";
 	default:                        return "unknown";
 	}
 }
@@ -85,6 +86,7 @@ static int wf_parse_kind(const char *s, enum anx_wf_node_kind *out)
 	if (anx_strcmp(s, "human_review") == 0) { *out = ANX_WF_NODE_HUMAN_REVIEW; return 0; }
 	if (anx_strcmp(s, "subflow")      == 0) { *out = ANX_WF_NODE_SUBFLOW;      return 0; }
 	if (anx_strcmp(s, "output")       == 0) { *out = ANX_WF_NODE_OUTPUT;       return 0; }
+	if (anx_strcmp(s, "cap_promotion") == 0) { *out = ANX_WF_NODE_CAP_PROMOTION; return 0; }
 	return -1;
 }
 

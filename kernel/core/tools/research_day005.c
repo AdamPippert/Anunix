@@ -29,7 +29,7 @@ static int store_evidence(struct anx_promotion_evidence *evidence, anx_oid_t *oi
 static int check_decision(const anx_oid_t *oid, const anx_oid_t *source,
 			  const struct anx_promotion_evidence *evidence, int result)
 {
-	struct anx_object_handle handle;
+	struct anx_object_handle handle = {0};
 	struct anx_promotion_decision decision;
 	int rc = anx_so_open(oid, ANX_OPEN_READ, &handle);
 
@@ -55,7 +55,7 @@ int anx_research_day005(void)
 	struct anx_promotion_evidence evidence = {0};
 	struct anx_wf_node node = {0};
 	struct anx_wf_object *wf = NULL;
-	struct anx_object_handle handle;
+	struct anx_object_handle handle = {0};
 	anx_oid_t oid, source, original_engine;
 	uint16_t id;
 	int rc;
@@ -149,6 +149,23 @@ int anx_research_day005(void)
 	}
 	/* New sealed evidence can justify a later installation. */
 	evidence.trial.candidate_scores[0] = 75;
+	anx_uuid_generate(&evidence.incumbent_oid);
+	rc = store_evidence(&evidence, &source);
+	if (rc != ANX_OK)
+		goto out;
+	rc = anx_so_seal(&source);
+	if (rc != ANX_OK)
+		goto out;
+	wf->nodes[0].params.state_ref.obj_oid = source;
+	if (anx_wf_run(&oid, NULL) != ANX_EINVAL || candidate->status != ANX_CAP_VALIDATED ||
+	    wf->trace_entry_count != 2) {
+		rc = -507;
+		goto out;
+	}
+	rc = check_decision(&wf->trace_entries[1].trace_oid, &source, &evidence, ANX_EINVAL);
+	if (rc != ANX_OK)
+		goto out;
+	evidence.incumbent_oid = incumbent->cap_oid;
 	rc = store_evidence(&evidence, &source);
 	if (rc != ANX_OK)
 		goto out;
