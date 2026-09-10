@@ -69,7 +69,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject a candidate indistinguishable from the incumbent and preserve the incumbent after rejection.
 
-Status: Validated on Jekyll. Tested commit: `0f0faef`. Source message: `1275902e-2f68-4578-9a29-56937f0cdd6e`.
+Status: Merged at `2fd7c18` after Jekyll validation. Tested commit: `0f0faef`. Source message: `1275902e-2f68-4578-9a29-56937f0cdd6e`.
 
 ## Day 005 — 2026-06-30
 
@@ -77,13 +77,13 @@ Status: Validated on Jekyll. Tested commit: `0f0faef`. Source message: `1275902e
 
 Learning: Package observation, benchmarking, policy promotion, and rollback as auditable workflows.
 
-Anunix comparison: Workflows and provenance exist. Their presence does not prove a complete autonomous optimization loop.
+Anunix comparison: Baseline `2fd7c18` has workflows and a promotion gate but no connection between them. Day 5 adds a permission-gated step with sealed evidence and retained decisions.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c).
 
 Planned acceptance: Execute an optimization workflow with explicit evidence and retain the prior policy after a failed gate.
 
-Status: Queued. Source message: `cfc2060b-2b88-4876-a57d-ff393f2e5f9a`.
+Status: Validated on Jekyll. Tested commit: `42c7ca2`. Source message: `cfc2060b-2b88-4876-a57d-ff393f2e5f9a`.
 
 ## Day 006 — 2026-07-01
 

@@ -75,11 +75,12 @@
       ],
       "comparison": "The baseline promotion gate can overflow score margins and thresholds. It does not resolve the declared incumbent. Day 4 widens arithmetic and checks incumbent installation.",
       "acceptance": "Reject a candidate indistinguishable from the incumbent and preserve the incumbent after rejection.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-004",
       "comparison_baseline": "f4b0172",
       "tested_commit": "0f0faef",
-      "evidence": "docs/research/evidence/day-004/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-004/uefi-boot.json",
+      "merged_commit": "2fd7c18"
     },
     {
       "day": 5,
@@ -92,10 +93,13 @@
         "kernel/core/cap/capability.c",
         "kernel/core/state/provenance.c"
       ],
-      "comparison": "Workflows and provenance exist. Their presence does not prove a complete autonomous optimization loop.",
+      "comparison": "The baseline has workflow execution and a capability promotion gate but no connection between them. Day 5 adds a permission-gated workflow step with sealed evidence and retained decisions.",
       "acceptance": "Execute an optimization workflow with explicit evidence and retain the prior policy after a failed gate.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-005",
+      "comparison_baseline": "2fd7c18",
+      "tested_commit": "42c7ca2",
+      "evidence": "docs/research/evidence/day-005/uefi-boot.json"
     },
     {
       "day": 6,
