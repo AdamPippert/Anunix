@@ -10,6 +10,7 @@
 #include <anx/external_call.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 /* Handler that echoes request bytes back into the response buffer. */
 static int echo_handler(struct anx_external_call *call, void *ctx)
@@ -120,6 +121,7 @@ int test_external_call(void)
 		c2.request_body = "abcd";
 		c2.request_size = 4;
 		cell->ext_call = &c2;
+		cell->execution.allow_side_effects = true;
 
 		if (anx_cell_run(cell) != ANX_OK)
 			return -22;
@@ -155,6 +157,7 @@ int test_external_call(void)
 		anx_memset(&c3, 0, sizeof(c3));
 		anx_strlcpy(c3.endpoint, "bad://err", sizeof(c3.endpoint));
 		cell->ext_call = &c3;
+		cell->execution.allow_side_effects = true;
 
 		if (anx_cell_run(cell) != ANX_EIO)
 			return -32;
@@ -165,5 +168,5 @@ int test_external_call(void)
 		anx_external_unregister_handler("bad");
 	}
 
-	return 0;
+	return anx_research_day001();
 }
