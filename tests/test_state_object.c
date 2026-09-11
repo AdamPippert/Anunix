@@ -151,6 +151,9 @@ int test_state_object(void)
 		obj4->access_policy.rule_count = 1;
 
 		ret = anx_so_open(&obj4->oid, ANX_OPEN_READWRITE, &h4);
+		if (ret != ANX_EPERM)
+			return -13;
+		ret = anx_so_open(&obj4->oid, ANX_OPEN_WRITE, &h4);
 		if (ret != ANX_OK)
 			return -13;
 		anx_so_close(&h4);

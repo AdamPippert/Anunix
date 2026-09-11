@@ -36,7 +36,7 @@ int test_state_staged_mutation(void)
 		uint64_t version_before = obj->version;
 		char buf[16];
 
-		ret = anx_so_open(&obj->oid, ANX_OPEN_WRITE, &handle);
+		ret = anx_so_open(&obj->oid, ANX_OPEN_READWRITE, &handle);
 		if (ret != ANX_OK)
 			return -2;
 
