@@ -54,10 +54,11 @@ int anx_research_day006(void)
 	}
 	parent->constraints.max_recursion_depth = 4;
 	parent->constraints.max_latency_ms = 10000;
+	parent->constraints.max_memory_admission_bytes = 16;
 	parent->constraints.max_cost_usd_cents = 10;
 	anx_cell_set_cognitive_envelope(parent, 64, 2);
 
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < 8; i++) {
 		rc = anx_cell_derive_child(parent, ANX_CELL_TASK_EXTERNAL_CALL, &intent, &child);
 		if (rc != ANX_OK)
 			goto out;
@@ -84,9 +85,10 @@ int anx_research_day006(void)
 		case 4: child->constraints.max_latency_ms = 10001; break;
 		case 5: child->constraints.max_cost_usd_cents = 0; break;
 		case 6: parent->execution.allow_side_effects = false; break;
+		case 7: child->constraints.max_memory_admission_bytes = 0; break;
 		}
 		if (anx_cell_run(child) != ANX_EPERM || child->status != ANX_CELL_FAILED || state.calls != 0) {
-			rc = -605 - (int)i;
+			rc = i == 7 ? -619 : -605 - (int)i;
 			goto out;
 		}
 		parent->execution.allow_side_effects = true;

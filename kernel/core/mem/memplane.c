@@ -12,6 +12,8 @@
 #include <anx/uuid.h>
 #include <anx/hashtable.h>
 #include <anx/arch.h>
+#include <anx/cell.h>
+#include <anx/state_object.h>
 
 #define MEMPLANE_STORE_BITS	8	/* 256 buckets */
 
@@ -73,9 +75,16 @@ int anx_memplane_admit(const anx_oid_t *oid,
 		       struct anx_mem_entry **out)
 {
 	struct anx_mem_entry *entry;
+	struct anx_object_handle object = {0};
+	struct anx_cell *owner = NULL;
+	const anx_cid_t *cid = anx_cell_current_id();
+	uint64_t bytes;
 	uint64_t hash;
+	int ret;
 
-	if (!oid)
+	if (out)
+		*out = NULL;
+	if (!oid || (int)profile < 0 || profile > ANX_ADMIT_QUARANTINED)
 		return ANX_EINVAL;
 
 	/* Check if already admitted */
@@ -85,11 +94,46 @@ int anx_memplane_admit(const anx_oid_t *oid,
 		return ANX_EEXIST;
 	}
 
+	ret = anx_so_open(oid, ANX_OPEN_READ, &object);
+	if (ret != ANX_OK)
+		return ret;
+	bytes = object.obj->payload_size;
+	if (cid)
+		owner = anx_cell_store_lookup(cid);
+	if (owner && !owner->constraints.max_memory_admission_bytes) {
+		anx_cell_store_release(owner);
+		owner = NULL;
+	}
+	/* A bounded charge must refer to content whose size cannot grow. */
+	if (owner && object.obj->state != ANX_OBJ_SEALED) {
+		anx_so_close(&object);
+		anx_cell_store_release(owner);
+		return ANX_EPERM;
+	}
+	anx_so_close(&object);
 	entry = anx_zalloc(sizeof(*entry));
-	if (!entry)
+	if (!entry) {
+		if (owner)
+			anx_cell_store_release(owner);
 		return ANX_ENOMEM;
+	}
+	if (owner) {
+		uint64_t limit = owner->constraints.max_memory_admission_bytes;
+		anx_spin_lock(&owner->lock);
+		if (owner->memory_admitted_bytes > limit ||
+		    bytes > limit - owner->memory_admitted_bytes) {
+			anx_spin_unlock(&owner->lock);
+			anx_cell_store_release(owner);
+			anx_free(entry);
+			return ANX_ENOMEM;
+		}
+		owner->memory_admitted_bytes += bytes;
+		anx_spin_unlock(&owner->lock);
+	}
 
 	entry->oid = *oid;
+	entry->admitted_bytes = bytes;
+	entry->admission_owner = owner;
 	entry->profile = profile;
 	entry->tier_mask = profile_to_tiers(profile);
 	entry->freshness = profile_to_freshness(profile);
@@ -235,6 +279,17 @@ int anx_memplane_forget(struct anx_mem_entry *entry,
 
 	switch (mode) {
 	case ANX_FORGET_HARD_DELETE:
+		if (entry->admission_owner) {
+			struct anx_cell *owner = entry->admission_owner;
+			anx_spin_lock(&owner->lock);
+			if (owner->memory_admitted_bytes < entry->admitted_bytes) {
+				anx_spin_unlock(&owner->lock);
+				return ANX_EINVAL;
+			}
+			owner->memory_admitted_bytes -= entry->admitted_bytes;
+			anx_spin_unlock(&owner->lock);
+			anx_cell_store_release(owner);
+		}
 		anx_htable_del(&mem_table, &entry->store_link);
 		anx_free(entry);
 		break;
