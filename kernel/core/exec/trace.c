@@ -65,6 +65,8 @@ int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out)
 	struct anx_so_create_params params;
 	int ret;
 
+	if (trace_oid_out)
+		*trace_oid_out = ANX_UUID_NIL;
 	if (!trace)
 		return ANX_EINVAL;
 	if (trace->finalized)
@@ -79,13 +81,21 @@ int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out)
 	 */
 	anx_memset(&params, 0, sizeof(params));
 	params.object_type = ANX_OBJ_EXECUTION_TRACE;
+	params.schema_uri = ANX_CELL_TRACE_SCHEMA;
+	params.schema_version = "1";
 	params.payload = trace;
 	params.payload_size = sizeof(*trace);
 	params.creator_cell = trace->cell_ref;
 
 	ret = anx_so_create(&params, &obj);
 	if (ret != ANX_OK)
-		return ret;
+		goto fail;
+	ret = anx_so_seal(&obj->oid);
+	if (ret != ANX_OK) {
+		anx_so_delete(&obj->oid, false);
+		anx_objstore_release(obj);
+		goto fail;
+	}
 
 	if (trace_oid_out)
 		*trace_oid_out = obj->oid;
@@ -93,6 +103,10 @@ int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out)
 	/* Release the object store's reference — caller gets the OID */
 	anx_objstore_release(obj);
 	return ANX_OK;
+fail:
+	trace->finalized = false;
+	trace->completed_at = 0;
+	return ret;
 }
 
 void anx_trace_destroy(struct anx_cell_trace *trace)

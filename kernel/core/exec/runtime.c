@@ -178,6 +178,7 @@ static int runtime_plan(struct anx_cell *cell, struct anx_cell_trace *trace,
 	}
 
 	cell->plan_id = plan->plan_id;
+	trace->plan_ref = plan->plan_id;
 
 	ret = anx_cell_transition(cell, ANX_CELL_PLANNED);
 	if (ret != ANX_OK) {
@@ -408,6 +409,7 @@ int anx_cell_run(struct anx_cell *cell)
 		return ret;
 
 	cell->trace_id = trace->trace_id;
+	trace->parent_cell_ref = cell->parent_cid;
 	anx_memset(&cell->trace_oid, 0, sizeof(cell->trace_oid));
 	anx_trace_append(trace, ANX_TRACE_CREATED, "cell run started", ANX_OK);
 
