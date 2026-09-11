@@ -13,6 +13,7 @@
 
 #define ANX_MAX_TRACE_EVENTS	64
 #define ANX_CELL_TRACE_SCHEMA "anx:schema/cell-trace/v1"
+#define ANX_CELL_TRACE_SCHEMA_VERSION "1"
 
 /* --- Trace event types --- */
 
@@ -30,6 +31,16 @@ enum anx_trace_event_type {
 	ANX_TRACE_CANCELLED,
 	ANX_TRACE_FAILED,
 	ANX_TRACE_COMPLETED,
+	ANX_TRACE_ADMISSION_DENIED,
+};
+
+enum anx_admission_gate {
+	ANX_ADMISSION_NONE,
+	ANX_ADMISSION_SCOPE,
+	ANX_ADMISSION_DESCRIPTOR,
+	ANX_ADMISSION_AUTHORITY,
+	ANX_ADMISSION_AUDIT_REQUIRED,
+	ANX_ADMISSION_AUDIT_STORAGE,
 };
 
 /* --- Trace event --- */
@@ -67,6 +78,8 @@ struct anx_cell_trace {
 	anx_time_t completed_at;
 
 	struct anx_tool_accounting tool;
+	enum anx_admission_gate denied_gate;
+	anx_oid_t storage_oid;
 	bool finalized;			/* true after cell completes */
 };
 
@@ -83,6 +96,11 @@ int anx_trace_append(struct anx_cell_trace *trace,
 
 /* Finalize a trace (materializes as execution_trace State Object) */
 int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out);
+
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+void anx_trace_test_fail_reservation(bool fail);
+void anx_trace_test_fail_finalize(bool fail);
+#endif
 
 /* Destroy a trace */
 void anx_trace_destroy(struct anx_cell_trace *trace);
