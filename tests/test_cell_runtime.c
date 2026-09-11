@@ -194,5 +194,8 @@ int test_cell_runtime(void)
 	if (ret != ANX_OK)
 		return ret;
 	ret = anx_research_day007();
-	return ret == ANX_OK ? anx_research_day008() : ret;
+	if (ret != ANX_OK)
+		return ret;
+	ret = anx_research_day008();
+	return ret == ANX_OK ? anx_research_day009() : ret;
 }
