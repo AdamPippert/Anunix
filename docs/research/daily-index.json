@@ -235,11 +235,12 @@
       ],
       "comparison": "The baseline permits external calls without saved traces and records generic denials. Day 12 reserves audit objects, records typed gates, and reports audit failure separately from completed execution.",
       "acceptance": "Produce a denial trace that identifies the failed gate and records no successful external effect.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-012",
       "comparison_baseline": "c20f683",
       "tested_commit": "1e65c12",
-      "evidence": "docs/research/evidence/day-012/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-012/uefi-boot.json",
+      "merged_commit": "242fe58"
     },
     {
       "day": 13,
@@ -252,10 +253,12 @@
         "kernel/core/cap/capability.c",
         "kernel/core/cap/promotion.c"
       ],
-      "comparison": "Routing weight policies and capability promotion exist. Linux kernel-constant tuning does not directly apply.",
-      "acceptance": "Reject invalid policy parameters and retain the prior policy without partial activation.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline accepts negative scoring divisors and unchecked weights or snapshots. Day 13 validates policy and snapshot bounds before simulation, preserving the previous result on rejection.",
+      "acceptance": "Reject malformed simulation inputs without changing the previous result. A valid alternate candidate changes the simulated winner while replaying the incumbent reproduces its original result. Live policy activation remains outside this step.",
+      "status": "awaiting_vm",
+      "branch": "codex/ai-os-day-013",
+      "comparison_baseline": "242fe58",
+      "candidate_commit": "a199e97"
     },
     {
       "day": 14,
