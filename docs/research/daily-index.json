@@ -215,11 +215,12 @@
       ],
       "comparison": "The baseline admits memory entries without a cell byte ceiling. Day 11 checks sealed payload admission against an inherited limit and retains its accounting owner until forgetting.",
       "acceptance": "Reject excessive admission while preserving an existing cell's usable memory.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-011",
       "comparison_baseline": "a8fe0cc",
       "tested_commit": "4ef9177",
-      "evidence": "docs/research/evidence/day-011/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-011/uefi-boot.json",
+      "merged_commit": "c20f683"
     },
     {
       "day": 12,
@@ -232,10 +233,13 @@
         "kernel/core/state/provenance.c",
         "kernel/core/route/budget.c"
       ],
-      "comparison": "The runtime records execution traces. Resource controls exist in other native modules.",
+      "comparison": "The baseline permits external calls without saved traces and records generic denials. Day 12 reserves audit objects, records typed gates, and reports audit failure separately from completed execution.",
       "acceptance": "Produce a denial trace that identifies the failed gate and records no successful external effect.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-012",
+      "comparison_baseline": "c20f683",
+      "tested_commit": "1e65c12",
+      "evidence": "docs/research/evidence/day-012/uefi-boot.json"
     },
     {
       "day": 13,
