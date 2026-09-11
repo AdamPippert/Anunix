@@ -7,6 +7,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/research_test.h>
 #include <anx/state_object.h>
 #include <anx/icm.h>
 #include <anx/meta.h>
@@ -45,7 +46,7 @@ static int collect_cb(const struct anx_icm_view *view, void *arg)
 
 	c->count++;
 	anx_strlcpy(c->last_domain, view->domain, sizeof(c->last_domain));
-	return 0;
+	return anx_research_day017();
 }
 
 int test_icm(void)
@@ -168,5 +169,5 @@ int test_icm(void)
 		}
 	}
 
-	return 0;
+	return anx_research_day017();
 }
