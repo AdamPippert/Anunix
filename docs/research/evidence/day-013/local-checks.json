@@ -1,0 +1,18 @@
+{
+  "candidate_revision": "a199e97",
+  "baseline_revision": "981d5b9",
+  "environment": "local macOS host",
+  "candidate_host_tests": {
+    "passed": 59,
+    "failed": 0
+  },
+  "candidate_conformance": "PASS",
+  "baseline_host_tests": {
+    "passed": 58,
+    "failed": 1,
+    "test": "resourced_twin_simulate",
+    "error": -1301
+  },
+  "jekyll_validation": "pending: host offline",
+  "merged": false
+}

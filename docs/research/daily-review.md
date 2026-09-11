@@ -29,13 +29,15 @@ Planned acceptance: Deny an unauthorized external handler before invocation; pre
 
 Status: Merged at `b946a76` after Jekyll validation. Tested commit: `23f1e4f`. Source message: `38205a54-ff49-4d7e-90a3-354c4d155e1c`.
 
+Detailed comparison and results: [Day 001](day-001.md).
+
 ## Day 002 — 2026-06-27
 
 **AI-First OS Research Brief**
 
 Learning: Convert repeated successful workflows into reusable, validated artifacts with explicit promotion and rollback.
 
-Anunix comparison: Baseline `b946a76` imports bounded binary bundles but does not validate strings, ports, or graph structure. Day 2 adds validation before library registration.
+Anunix comparison: The baseline imports bounded binary bundles but does not validate strings, ports, or graph structure. Day 2 adds validation before library registration.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundle.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
@@ -43,13 +45,15 @@ Planned acceptance: Reject malformed workflow artifacts before registration; exe
 
 Status: Merged at `10f5213` after Jekyll validation. Tested commit: `48673fa`. Source message: `e2f56565-6637-4d84-acee-920ffaf5e9d8`.
 
+Detailed comparison and results: [Day 002](day-002.md).
+
 ## Day 003 — 2026-06-28
 
 **AI-First OS Exploration: Control Planes, Kernels, and Scheduling**
 
 Learning: Govern the scarce resources of an agent task, including tools, tokens, memory, and permissions.
 
-Anunix comparison: Baseline `10f5213` reserves engine memory but ignores model-request deadlines and output limits. Day 3 enforces request admission and forwards cell limits.
+Anunix comparison: The baseline reserves engine memory but ignores model-request deadlines and output limits. Day 3 enforces request admission and forwards cell limits.
 
 Evidence: [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
@@ -57,13 +61,15 @@ Planned acceptance: Exercise admission and release under bounded resources; reje
 
 Status: Merged at `f4b0172` after Jekyll validation. Tested commit: `ae7c64a`. Source message: `0a562c41-3184-421b-83a1-5f44f5af80c9`.
 
+Detailed comparison and results: [Day 003](day-003.md).
+
 ## Day 004 — 2026-06-29
 
 **AI-First OS Research Update: Agentic Control Planes + AI-Tuned Scheduling**
 
 Learning: Profile workloads before generating policies, then compare candidates against a fixed incumbent.
 
-Anunix comparison: Baseline `f4b0172` has a Resource Twin and an integer promotion gate. Day 4 prevents arithmetic overflow and requires an installed incumbent. The gate does not establish statistical significance.
+Anunix comparison: The baseline promotion gate can overflow score margins and thresholds. It does not resolve the declared incumbent. Day 4 widens arithmetic and checks incumbent installation.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
@@ -71,19 +77,23 @@ Planned acceptance: Reject a candidate indistinguishable from the incumbent and 
 
 Status: Merged at `2fd7c18` after Jekyll validation. Tested commit: `0f0faef`. Source message: `1275902e-2f68-4578-9a29-56937f0cdd6e`.
 
+Detailed comparison and results: [Day 004](day-004.md).
+
 ## Day 005 — 2026-06-30
 
 **AI-First OS Exploration: Agent-Native Scheduling and Tunable Kernels**
 
 Learning: Package observation, benchmarking, policy promotion, and rollback as auditable workflows.
 
-Anunix comparison: Baseline `2fd7c18` has workflows and a promotion gate but no connection between them. Day 5 adds a permission-gated step with sealed evidence and retained decisions.
+Anunix comparison: The baseline has workflow execution and a capability promotion gate but no connection between them. Day 5 adds a permission-gated workflow step with sealed evidence and retained decisions.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c).
 
 Planned acceptance: Execute an optimization workflow with explicit evidence and retain the prior policy after a failed gate.
 
-Status: Validated on Jekyll. Tested commit: `42c7ca2`. Source message: `cfc2060b-2b88-4876-a57d-ff393f2e5f9a`.
+Status: Merged at `35d0245` after Jekyll validation. Tested commit: `42c7ca2`. Source message: `cfc2060b-2b88-4876-a57d-ff393f2e5f9a`.
+
+Detailed comparison and results: [Day 005](day-005.md).
 
 ## Day 006 — 2026-07-01
 
@@ -91,13 +101,15 @@ Status: Validated on Jekyll. Tested commit: `42c7ca2`. Source message: `cfc2060b
 
 Learning: Give tool calls their own resource scope within an agent lifecycle.
 
-Anunix comparison: Execution Cells provide identifiers and parent links. Engine leases provide resource ownership.
+Anunix comparison: The baseline ignores recursion permission, configured child limits, cognitive inheritance, and slot cleanup. Day 6 enforces scoped derivation and ancestry admission, then returns slots on child destruction.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
 Planned acceptance: Check that a child tool call cannot exceed its parent scope and releases resources on failure.
 
-Status: Queued. Source message: `eb3a9f70-77e4-4830-a53d-3ad1d8b603a2`.
+Status: Merged at `2409aff` after Jekyll validation. Tested commit: `f181a9a`. Source message: `eb3a9f70-77e4-4830-a53d-3ad1d8b603a2`.
+
+Detailed comparison and results: [Day 006](day-006.md).
 
 ## Day 007 — 2026-07-02
 
@@ -105,13 +117,15 @@ Status: Queued. Source message: `eb3a9f70-77e4-4830-a53d-3ad1d8b603a2`.
 
 Learning: Schedule and account for the tool invocation, where short resource spikes occur.
 
-Anunix comparison: Cell constraints and lease accounting provide native starting points for the Linux-oriented research.
+Anunix comparison: The baseline drops the materialized trace identifier and has no per-tool timing or byte accounting. Day 7 records those values and tests child slot ownership and release.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c).
 
 Planned acceptance: Measure resource acquisition and release around one tool invocation, including its failure path.
 
-Status: Queued. Source message: `7689695c-608c-474b-b3d2-bc21f885aae4`.
+Status: Merged at `7985529` after Jekyll validation. Tested commit: `2fcac65`. Source message: `7689695c-608c-474b-b3d2-bc21f885aae4`.
+
+Detailed comparison and results: [Day 007](day-007.md).
 
 ## Day 008 — 2026-07-03
 
@@ -119,13 +133,15 @@ Status: Queued. Source message: `7689695c-608c-474b-b3d2-bc21f885aae4`.
 
 Learning: Separate agent identity, task branches, tool calls, and transport primitives.
 
-Anunix comparison: Cells express task types and lineage. The external registry dispatches transport handlers.
+Anunix comparison: The baseline omits parent and plan identifiers and leaves trace payloads writable. Day 8 preserves those identifiers and seals materialized traces.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c).
 
 Planned acceptance: Exercise a child call through the runtime while preserving lineage and enforcing delegated authority.
 
-Status: Queued. Source message: `7ae8ff25-29ce-435f-8a3c-f20a4e699dcc`.
+Status: Merged at `ca47725` after Jekyll validation. Tested commit: `2dd72f9`. Source message: `7ae8ff25-29ce-435f-8a3c-f20a4e699dcc`.
+
+Detailed comparison and results: [Day 008](day-008.md).
 
 ## Day 009 — 2026-07-04
 
@@ -133,13 +149,15 @@ Status: Queued. Source message: `7ae8ff25-29ce-435f-8a3c-f20a4e699dcc`.
 
 Learning: Enforce policy beneath model-visible tools, where an action actually reaches the system.
 
-Anunix comparison: State access checks and the effect protocol exist. Enforcement must also cover real dispatch paths.
+Anunix comparison: The baseline treats object creator identity as caller authority. Day 9 supplies the active cell identity and enforces separate read and write handle permissions.
 
 Evidence: [kernel/core/state/access.c](../../kernel/core/state/access.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
 Planned acceptance: Attempt a prohibited operation through the ordinary dispatch path and establish that no effect occurs.
 
-Status: Queued. Source message: `71a4dede-4ed0-409a-b882-c241fa4c4867`.
+Status: Merged at `21f7d71` after Jekyll validation. Tested commit: `cab5076`. Source message: `71a4dede-4ed0-409a-b882-c241fa4c4867`.
+
+Detailed comparison and results: [Day 009](day-009.md).
 
 ## Day 010 — 2026-07-05
 
@@ -147,13 +165,15 @@ Status: Queued. Source message: `71a4dede-4ed0-409a-b882-c241fa4c4867`.
 
 Learning: Admission, cancellation, and reaping belong to the runtime, alongside resource scheduling.
 
-Anunix comparison: Cells have lifecycle transitions and cancellation. The scheduler maintains separate queues.
+Anunix comparison: The baseline leaves descendants and duplicate queue entries after cancellation. Day 10 cancels queue ownership, preserves terminal runs, and reaps eligible child tasks.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
 Planned acceptance: Cancel queued work and establish that no runnable entry or resource owner survives cancellation.
 
-Status: Queued. Source message: `ec9c71c0-8871-450a-944e-a28f73b3e2dd`.
+Status: Merged at `a8fe0cc` after Jekyll validation. Tested commit: `fda8c2d`. Source message: `ec9c71c0-8871-450a-944e-a28f73b3e2dd`.
+
+Detailed comparison and results: [Day 010](day-010.md).
 
 ## Day 011 — 2026-07-06
 
@@ -161,13 +181,15 @@ Status: Queued. Source message: `ec9c71c0-8871-450a-944e-a28f73b3e2dd`.
 
 Learning: Treat memory as a governed resource alongside agent execution and tool admission.
 
-Anunix comparison: Anunix has memory tiers and cell constraints. These mechanisms need tests together under pressure.
+Anunix comparison: The baseline admits memory entries without a cell byte ceiling. Day 11 checks sealed payload admission against an inherited limit and retains its accounting owner until forgetting.
 
 Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/include/anx/memory.h](../../kernel/include/anx/memory.h), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
 Planned acceptance: Reject excessive admission while preserving an existing cell's usable memory.
 
-Status: Queued. Source message: `e231e283-bef2-43f6-8daa-b98afc7755e8`.
+Status: Merged at `c20f683` after Jekyll validation. Tested commit: `4ef9177`. Source message: `e231e283-bef2-43f6-8daa-b98afc7755e8`.
+
+Detailed comparison and results: [Day 011](day-011.md).
 
 ## Day 012 — 2026-07-07
 
@@ -175,13 +197,15 @@ Status: Queued. Source message: `e231e283-bef2-43f6-8daa-b98afc7755e8`.
 
 Learning: Make lifecycle and resource enforcement observable through one typed execution boundary.
 
-Anunix comparison: The runtime records execution traces. Resource controls exist in other native modules.
+Anunix comparison: The baseline permits external calls without saved traces and records generic denials. Day 12 reserves audit objects, records typed gates, and reports audit failure separately from completed execution.
 
 Evidence: [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c).
 
 Planned acceptance: Produce a denial trace that identifies the failed gate and records no successful external effect.
 
-Status: Queued. Source message: `afc05449-e490-4a36-8b73-13994999e7b0`.
+Status: Merged at `242fe58` after Jekyll validation. Tested commit: `1e65c12`. Source message: `afc05449-e490-4a36-8b73-13994999e7b0`.
+
+Detailed comparison and results: [Day 012](day-012.md).
 
 ## Day 013 — 2026-07-08
 
@@ -189,13 +213,15 @@ Status: Queued. Source message: `afc05449-e490-4a36-8b73-13994999e7b0`.
 
 Learning: Represent tunable policy as a typed artifact with bounded revision authority.
 
-Anunix comparison: Routing weight policies and capability promotion exist. Linux kernel-constant tuning does not directly apply.
+Anunix comparison: The baseline accepts negative scoring divisors and unchecked weights or snapshots. Day 13 validates policy and snapshot bounds before simulation, preserving the previous result on rejection.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
 Planned acceptance: Reject invalid policy parameters and retain the prior policy without partial activation.
 
-Status: Queued. Source message: `5048a664-da01-470d-a8f3-841629df80a5`.
+Status: Awaiting Jekyll VM validation. Candidate: `a199e97`. The host is offline; this branch has not merged. Source message: `5048a664-da01-470d-a8f3-841629df80a5`.
+
+Detailed comparison and results: [Day 013](day-013.md).
 
 ## Day 014 — 2026-07-09
 
