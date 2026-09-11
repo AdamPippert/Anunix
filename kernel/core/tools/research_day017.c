@@ -10,6 +10,7 @@
 
 struct context_state {
 	anx_oid_t private_oid, public_oid;
+	char domain[37];
 	bool owner;
 	uint32_t private_seen, public_seen;
 };
@@ -45,9 +46,9 @@ static int context_handler(struct anx_external_call *call, void *context)
 	if (ret != (state->owner ? ANX_OK : ANX_EPERM))
 		return -1703;
 	state->private_seen = state->public_seen = 0;
-	if (anx_icm_catalog("research-day-017", context_collect, state) != ANX_OK ||
+	if (anx_icm_catalog(state->domain, context_collect, state) != ANX_OK ||
 	    state->private_seen != (state->owner ? 1U : 0U) || state->public_seen != 1 ||
-	    anx_icm_count("research-day-017") != (state->owner ? 2 : 1))
+	    anx_icm_count(state->domain) != (state->owner ? 2 : 1))
 		return -1704;
 	state->private_seen = state->public_seen = 0;
 	if (anx_icm_published(context_collect, state) != ANX_OK ||
@@ -97,10 +98,11 @@ int anx_research_day017(void)
 		goto out;
 	state.private_oid = secret->oid;
 	state.public_oid = public->oid;
-	rc = anx_icm_tag(&secret->oid, "research-day-017", "doc", "own", "active", NULL, NULL);
+	anx_uuid_to_string(&secret->oid, state.domain, sizeof(state.domain));
+	rc = anx_icm_tag(&secret->oid, state.domain, "doc", "own", "active", NULL, NULL);
 	if (rc != ANX_OK)
 		goto out;
-	rc = anx_icm_tag(&public->oid, "research-day-017", "doc", "external", "active", NULL, NULL);
+	rc = anx_icm_tag(&public->oid, state.domain, "doc", "external", "active", NULL, NULL);
 	if (rc != ANX_OK)
 		goto out;
 	rc = anx_icm_publish(&secret->oid, "anx:research/day017@0");

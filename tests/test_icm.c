@@ -46,7 +46,7 @@ static int collect_cb(const struct anx_icm_view *view, void *arg)
 
 	c->count++;
 	anx_strlcpy(c->last_domain, view->domain, sizeof(c->last_domain));
-	return anx_research_day017();
+	return 0;
 }
 
 int test_icm(void)
