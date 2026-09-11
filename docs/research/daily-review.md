@@ -251,7 +251,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Preserve an eligible session's engine affinity while rejecting an unavailable engine.
 
-Status: Validated on Jekyll. Tested commit: `84d5cce`. Source message: `5437e7e4-38ad-4556-98c7-08606daa9991`.
+Status: Merged at `658e0f5` after Jekyll validation. Tested commit: `84d5cce`. Source message: `5437e7e4-38ad-4556-98c7-08606daa9991`.
 
 Detailed comparison and results: [Day 015](day-015.md).
 
@@ -261,13 +261,15 @@ Detailed comparison and results: [Day 015](day-015.md).
 
 Learning: Mediate tool calls as governed operations and change inference resources only at safe boundaries.
 
-Anunix comparison: Anunix has an effect protocol and engine leases. Inference gang scheduling needs runtime integration.
+Anunix comparison: The baseline checks authority only at effect preparation. Day 16 rechecks owner identity, lifecycle, permission, and data policy before dispatch while preserving settlement after dispatch begins.
 
 Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Reject a resource or authority change that would cross an active operation's safe boundary.
+Planned acceptance: Reject revoked authority and changed data policy before dispatch. Preserve the prepared phase on rejection and permit outcome settlement after dispatch begins.
 
-Status: Queued. Source message: `e5d6a0c6-bee9-48f7-bff4-00780959b7fb`.
+Status: Validated on Jekyll. Tested commit: `0987f34`. Source message: `e5d6a0c6-bee9-48f7-bff4-00780959b7fb`.
+
+Detailed comparison and results: [Day 016](day-016.md).
 
 ## Day 017 — 2026-07-12
 
