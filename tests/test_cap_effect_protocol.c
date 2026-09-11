@@ -4,6 +4,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/research_test.h>
 #include <anx/effect.h>
 #include <anx/cell.h>
 #include <anx/state_object.h>
@@ -206,5 +207,5 @@ int test_cap_effect_protocol(void)
 			return -91;
 	}
 
-	return 0;
+	return anx_research_day016();
 }
