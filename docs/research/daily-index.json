@@ -155,11 +155,12 @@
       ],
       "comparison": "The baseline omits parent and plan identifiers and leaves trace payloads writable. Day 8 preserves those identifiers and seals materialized traces.",
       "acceptance": "Exercise a child call through the runtime while preserving lineage and enforcing delegated authority.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-008",
       "comparison_baseline": "7985529",
       "tested_commit": "2dd72f9",
-      "evidence": "docs/research/evidence/day-008/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-008/uefi-boot.json",
+      "merged_commit": "ca47725"
     },
     {
       "day": 9,
@@ -172,10 +173,13 @@
         "kernel/core/cap/effect.c",
         "kernel/core/exec/runtime.c"
       ],
-      "comparison": "State access checks and the effect protocol exist. Enforcement must also cover real dispatch paths.",
+      "comparison": "The baseline treats object creator identity as caller authority. Day 9 supplies the active cell identity and enforces separate read and write handle permissions.",
       "acceptance": "Attempt a prohibited operation through the ordinary dispatch path and establish that no effect occurs.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-009",
+      "comparison_baseline": "ca47725",
+      "tested_commit": "cab5076",
+      "evidence": "docs/research/evidence/day-009/uefi-boot.json"
     },
     {
       "day": 10,
