@@ -168,5 +168,6 @@ int test_external_call(void)
 		anx_external_unregister_handler("bad");
 	}
 
-	return anx_research_day001();
+	ret = anx_research_day001();
+	return ret != ANX_OK ? ret : anx_research_day014();
 }
