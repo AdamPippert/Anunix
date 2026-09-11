@@ -32,9 +32,9 @@ Release notes distinguish implemented behavior from broader research proposals a
 A failing gate keeps the candidate on Forgejo.
 After every gate passes, the combined change can merge to GitHub.
 
-## Current checks
+## Initial publication checks
 
-Forgejo `main` was observed at `d7c8ba6`; GitHub `main` was observed at `0ee146a`.
+At initial publication, Forgejo `main` was observed at `d7c8ba6`; GitHub `main` was observed at `0ee146a`.
 These observations describe the publication checkpoint, not permanent upstream versions.
 Final integration must inspect both remotes again.
 
@@ -43,6 +43,6 @@ The committed release workflow publishes to GitHub on release tag pushes.
 Daily publication therefore pushes named research branches without release tags.
 The current workflow is [release.yml](../../.forgejo/workflows/release.yml).
 
-Days 001 through 012 have passed the required Jekyll checks and merged locally.
-Day 013 has passed local checks but remains pending while Jekyll is offline.
+At initial publication, Days 001 through 012 passed the Jekyll checks and merged locally.
+Day 013 was pending because Jekyll was offline.
 The [daily review](daily-review.md) and [Day 013 comparison](day-013.md) provide the detailed records.

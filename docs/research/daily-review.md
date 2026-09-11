@@ -121,7 +121,7 @@ Anunix comparison: The baseline drops the materialized trace identifier and has 
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c).
 
-Planned acceptance: Measure resource acquisition and release around one tool invocation, including its failure path.
+Planned acceptance: Record per-tool timing, byte counts and outcomes; verify child slot acquisition and release through failure and success.
 
 Status: Merged at `7985529` after Jekyll validation. Tested commit: `2fcac65`. Source message: `7689695c-608c-474b-b3d2-bc21f885aae4`.
 
@@ -217,9 +217,9 @@ Anunix comparison: The baseline accepts negative scoring divisors and unchecked 
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
-Planned acceptance: Reject invalid policy parameters and retain the prior policy without partial activation.
+Planned acceptance: Reject malformed simulation inputs without changing the previous result. A valid alternate candidate changes the simulated winner while replaying the incumbent reproduces its original result. Live policy activation remains outside this step.
 
-Status: Awaiting Jekyll VM validation. Candidate: `a199e97`. The host is offline; this branch has not merged. Source message: `5048a664-da01-470d-a8f3-841629df80a5`.
+Status: Validated on Jekyll. Tested commit: `a199e97`. Source message: `5048a664-da01-470d-a8f3-841629df80a5`.
 
 Detailed comparison and results: [Day 013](day-013.md).
 
