@@ -18,6 +18,7 @@ static struct {
 	struct anx_spinlock lock;
 	uint32_t depth;
 } queues[ANX_QUEUE_CLASS_COUNT];
+static bool initialized;
 
 void anx_sched_init(void)
 {
@@ -27,6 +28,7 @@ void anx_sched_init(void)
 		anx_spin_init(&queues[i].lock);
 		queues[i].depth = 0;
 	}
+	initialized = true;
 }
 
 int anx_sched_enqueue(const anx_cid_t *cell_id,
@@ -35,11 +37,21 @@ int anx_sched_enqueue(const anx_cid_t *cell_id,
 {
 	struct anx_sched_entry *entry;
 	struct anx_list_head *pos;
+	struct anx_cell *cell;
 
 	if (!cell_id)
 		return ANX_EINVAL;
 	if ((int)queue < 0 || queue >= ANX_QUEUE_CLASS_COUNT)
 		return ANX_EINVAL;
+	cell = anx_cell_store_lookup(cell_id);
+	if (cell) {
+		bool terminal = anx_cell_status_terminal(cell->status);
+		anx_cell_store_release(cell);
+		if (terminal)
+			return ANX_EPERM;
+	}
+	if (!initialized)
+		anx_sched_init();
 
 	entry = anx_zalloc(sizeof(*entry));
 	if (!entry)
@@ -120,9 +132,12 @@ uint32_t anx_sched_queue_depth(enum anx_queue_class queue)
 int anx_sched_cancel(const anx_cid_t *cell_id)
 {
 	uint32_t i;
+	bool removed = false;
 
 	if (!cell_id)
 		return ANX_EINVAL;
+	if (!initialized)
+		return ANX_ENOENT;
 
 	for (i = 0; i < ANX_QUEUE_CLASS_COUNT; i++) {
 		struct anx_list_head *pos, *tmp;
@@ -137,14 +152,13 @@ int anx_sched_cancel(const anx_cid_t *cell_id)
 			if (anx_uuid_compare(&entry->cell_id, cell_id) == 0) {
 				anx_list_del(&entry->queue_link);
 				queues[i].depth--;
-				anx_spin_unlock(&queues[i].lock);
 				anx_free(entry);
-				return ANX_OK;
+				removed = true;
 			}
 		}
 
 		anx_spin_unlock(&queues[i].lock);
 	}
 
-	return ANX_ENOENT;
+	return removed ? ANX_OK : ANX_ENOENT;
 }

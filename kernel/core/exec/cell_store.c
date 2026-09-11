@@ -12,6 +12,7 @@
 #include <anx/hashtable.h>
 #include <anx/string.h>
 #include <anx/arch.h>
+#include <anx/sched.h>
 
 #define CELL_STORE_BITS	8	/* 256 buckets */
 
@@ -109,7 +110,7 @@ int anx_cell_destroy(struct anx_cell *cell)
 		return ANX_EINVAL;
 
 	anx_spin_lock(&cell->lock);
-	if (cell->refcount > 1 || cell->child_count != 0) {
+	if (cell->refcount > 1 || cell->child_count != 0 || cell->runtime_active) {
 		anx_spin_unlock(&cell->lock);
 		return ANX_EBUSY;
 	}
@@ -136,6 +137,7 @@ int anx_cell_destroy(struct anx_cell *cell)
 		}
 	}
 
+	anx_sched_cancel(&cell->cid);
 	anx_htable_del(&cell_table, &cell->store_link);
 	anx_free(cell);
 	return ANX_OK;
@@ -166,7 +168,32 @@ int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg)
 
 int anx_cell_reap_children(struct anx_cell *parent, uint32_t *reaped_out)
 {
-	(void)parent;
-	(void)reaped_out;
-	return ANX_ENOSYS;
+	anx_cid_t children[ANX_MAX_CHILD_CELLS];
+	uint32_t count, i;
+
+	if (!parent || !reaped_out)
+		return ANX_EINVAL;
+	*reaped_out = 0;
+	anx_spin_lock(&parent->lock);
+	count = parent->child_count;
+	if (count > ANX_MAX_CHILD_CELLS) {
+		anx_spin_unlock(&parent->lock);
+		return ANX_EINVAL;
+	}
+	anx_memcpy(children, parent->child_cids, count * sizeof(children[0]));
+	anx_spin_unlock(&parent->lock);
+	for (i = 0; i < count; i++) {
+		struct anx_cell *child = anx_cell_store_lookup(&children[i]);
+		bool eligible;
+		if (!child)
+			continue;
+		/* Model servers, VMs and other subsystem-owned cells need their teardown. */
+		eligible = child->cell_type < ANX_CELL_MODEL_SERVER &&
+			anx_cell_status_terminal(child->status) &&
+			anx_uuid_compare(&child->parent_cid, &parent->cid) == 0;
+		anx_cell_store_release(child);
+		if (eligible && anx_cell_destroy(child) == ANX_OK)
+			(*reaped_out)++;
+	}
+	return ANX_OK;
 }
