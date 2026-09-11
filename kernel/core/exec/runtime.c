@@ -54,6 +54,7 @@ static bool scope_contains(const struct anx_cell *parent,
 	    (child->execution.allow_side_effects && !parent->execution.allow_side_effects))
 		return false;
 	if (scope_widens(child->constraints.max_latency_ms, parent->constraints.max_latency_ms) ||
+	    scope_widens(child->constraints.max_memory_admission_bytes, parent->constraints.max_memory_admission_bytes) ||
 	    scope_widens(child->constraints.max_cost_usd_cents, parent->constraints.max_cost_usd_cents) ||
 	    scope_widens(child->cognitive.max_tokens, parent->cognitive.max_tokens) ||
 	    scope_widens(child->cognitive.max_reasoning_depth, parent->cognitive.max_reasoning_depth) ||

@@ -13,6 +13,8 @@
 #include <anx/list.h>
 #include <anx/spinlock.h>
 
+struct anx_cell;
+
 /* --- Memory tiers (RFC-0004 Section 7) --- */
 
 enum anx_mem_tier {
@@ -90,6 +92,8 @@ struct anx_mem_entry {
 	uint32_t access_count;
 
 	/* Bookkeeping */
+	uint64_t admitted_bytes;
+	struct anx_cell *admission_owner; /* bounded owner held until hard forgetting */
 	struct anx_spinlock lock;
 	struct anx_list_head store_link;	/* memplane hash chain */
 };
