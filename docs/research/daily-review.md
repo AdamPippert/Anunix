@@ -235,7 +235,7 @@ Evidence: [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c), [kerne
 
 Planned acceptance: Trace an allowed effect and a denied effect back to separate requesting cells.
 
-Status: Validated on Jekyll. Tested commit: `c383dca`. Source message: `d2eef052-ef2c-4ac2-9fd2-5230b7b5aa2e`.
+Status: Merged at `09a3718` after Jekyll validation. Tested commit: `c383dca`. Source message: `d2eef052-ef2c-4ac2-9fd2-5230b7b5aa2e`.
 
 Detailed comparison and results: [Day 014](day-014.md).
 
@@ -245,13 +245,15 @@ Detailed comparison and results: [Day 014](day-014.md).
 
 Learning: Place sessions using continuity and locality, while different control loops run at appropriate timescales.
 
-Anunix comparison: Routing and model-server resources exist. A session is not yet a complete placement contract.
+Anunix comparison: The baseline scores each route independently. Day 15 adds an optional session planner that retains eligible affinity, rechecks a declared backend pool, and preserves prior state on rejection.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
 Planned acceptance: Preserve an eligible session's engine affinity while rejecting an unavailable engine.
 
-Status: Queued. Source message: `5437e7e4-38ad-4556-98c7-08606daa9991`.
+Status: Validated on Jekyll. Tested commit: `84d5cce`. Source message: `5437e7e4-38ad-4556-98c7-08606daa9991`.
+
+Detailed comparison and results: [Day 015](day-015.md).
 
 ## Day 016 — 2026-07-11
 
