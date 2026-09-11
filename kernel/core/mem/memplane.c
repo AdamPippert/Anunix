@@ -120,7 +120,8 @@ int anx_memplane_admit(const anx_oid_t *oid,
 	if (owner) {
 		uint64_t limit = owner->constraints.max_memory_admission_bytes;
 		anx_spin_lock(&owner->lock);
-		if (owner->memory_admitted_bytes > limit ||
+		if (owner->memory_admission_count == ~(uint32_t)0 ||
+		    owner->memory_admitted_bytes > limit ||
 		    bytes > limit - owner->memory_admitted_bytes) {
 			anx_spin_unlock(&owner->lock);
 			anx_cell_store_release(owner);
@@ -128,6 +129,7 @@ int anx_memplane_admit(const anx_oid_t *oid,
 			return ANX_ENOMEM;
 		}
 		owner->memory_admitted_bytes += bytes;
+		owner->memory_admission_count++;
 		anx_spin_unlock(&owner->lock);
 	}
 
@@ -282,11 +284,13 @@ int anx_memplane_forget(struct anx_mem_entry *entry,
 		if (entry->admission_owner) {
 			struct anx_cell *owner = entry->admission_owner;
 			anx_spin_lock(&owner->lock);
-			if (owner->memory_admitted_bytes < entry->admitted_bytes) {
+			if (!owner->memory_admission_count ||
+			    owner->memory_admitted_bytes < entry->admitted_bytes) {
 				anx_spin_unlock(&owner->lock);
 				return ANX_EINVAL;
 			}
 			owner->memory_admitted_bytes -= entry->admitted_bytes;
+			owner->memory_admission_count--;
 			anx_spin_unlock(&owner->lock);
 			anx_cell_store_release(owner);
 		}
