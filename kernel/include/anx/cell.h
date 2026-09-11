@@ -37,6 +37,12 @@ enum anx_cell_status {
 	ANX_CELL_STATUS_COUNT,
 };
 
+static inline bool anx_cell_status_terminal(enum anx_cell_status status)
+{
+	return status == ANX_CELL_COMPLETED || status == ANX_CELL_FAILED ||
+	       status == ANX_CELL_CANCELLED || status == ANX_CELL_COMPENSATED;
+}
+
 /* --- Cell type families (RFC-0003 Section 7) --- */
 
 enum anx_cell_type {
@@ -319,6 +325,7 @@ struct anx_cell {
 	char error_msg[256];
 
 	/* Kernel bookkeeping */
+	bool runtime_active;
 	struct anx_spinlock lock;
 	uint32_t refcount;
 	struct anx_list_head store_link;	/* cell_store hash chain */

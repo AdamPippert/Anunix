@@ -21,6 +21,7 @@
 #include <anx/uuid.h>
 #include <anx/string.h>
 #include <anx/external_call.h>
+#include <anx/sched.h>
 
 /* --- Admission --- */
 
@@ -41,7 +42,8 @@ static bool scope_contains(const struct anx_cell *parent,
 	for (i = 0; i < parent->child_count; i++)
 		if (anx_uuid_compare(&parent->child_cids[i], &child->cid) == 0)
 			linked = true;
-	if (!linked || !parent->execution.allow_recursive_cells ||
+	if (!linked || anx_cell_status_terminal(parent->status) ||
+	    !parent->execution.allow_recursive_cells ||
 	    parent->recursion_depth >= parent->execution.max_recursion_depth ||
 	    parent->recursion_depth >= parent->constraints.max_recursion_depth ||
 	    child->recursion_depth != parent->recursion_depth + 1)
@@ -418,6 +420,7 @@ static int runtime_run(struct anx_cell *cell)
 	cell->trace_id = trace->trace_id;
 	trace->parent_cell_ref = cell->parent_cid;
 	anx_memset(&cell->trace_oid, 0, sizeof(cell->trace_oid));
+	anx_sched_cancel(&cell->cid);
 	anx_trace_append(trace, ANX_TRACE_CREATED, "cell run started", ANX_OK);
 
 	/* Admission */
@@ -434,6 +437,10 @@ static int runtime_run(struct anx_cell *cell)
 	ret = runtime_execute(cell, trace, plan);
 	if (ret != ANX_OK)
 		goto fail;
+	if (cell->status == ANX_CELL_CANCELLED) {
+		ret = ANX_ECANCELED;
+		goto fail;
+	}
 
 	/* Validation */
 	ret = runtime_validate(cell, trace);
@@ -464,8 +471,14 @@ static int runtime_run(struct anx_cell *cell)
 fail:
 	cell->error_code = ret;
 	cell->completed_at = arch_time_now();
-	anx_cell_transition(cell, ANX_CELL_FAILED);
-	anx_trace_append(trace, ANX_TRACE_FAILED, "cell failed", ret);
+	if (cell->status == ANX_CELL_CANCELLED) {
+		ret = ANX_ECANCELED;
+		cell->error_code = ret;
+		anx_trace_append(trace, ANX_TRACE_CANCELLED, "cell cancelled", ret);
+	} else {
+		anx_cell_transition(cell, ANX_CELL_FAILED);
+		anx_trace_append(trace, ANX_TRACE_FAILED, "cell failed", ret);
+	}
 
 	if (cell->commit.write_trace)
 		anx_trace_finalize(trace, &cell->trace_oid);
@@ -483,18 +496,84 @@ int anx_cell_run(struct anx_cell *cell)
 
 	if (!cell)
 		return ANX_EINVAL;
+	anx_spin_lock(&cell->lock);
+	if (cell->status != ANX_CELL_CREATED || cell->runtime_active) {
+		anx_spin_unlock(&cell->lock);
+		return ANX_EBUSY;
+	}
+	cell->runtime_active = true;
+	cell->refcount++;
+	anx_spin_unlock(&cell->lock);
 	active_cell = cell;
 	ret = runtime_run(cell);
 	active_cell = previous;
+	cell->runtime_active = false;
+	anx_cell_store_release(cell);
 	return ret;
+}
+
+static int runtime_cancel_tree(struct anx_cell *cell)
+{
+	anx_cid_t children[ANX_MAX_CHILD_CELLS];
+	uint32_t count, i;
+	int ret, result = ANX_OK;
+
+	if (!cell)
+		return ANX_EINVAL;
+	if (!anx_cell_status_terminal(cell->status)) {
+		ret = anx_cell_transition(cell, ANX_CELL_CANCELLED);
+		if (ret != ANX_OK)
+			return ret;
+		cell->completed_at = arch_time_now();
+		cell->error_code = ANX_ECANCELED;
+		if (!cell->runtime_active && cell->commit.write_trace) {
+			struct anx_cell_trace *trace;
+			if (anx_trace_create(&cell->cid, &trace) == ANX_OK) {
+				trace->parent_cell_ref = cell->parent_cid;
+				trace->plan_ref = cell->plan_id;
+				cell->trace_id = trace->trace_id;
+				anx_trace_append(trace, ANX_TRACE_CANCELLED,
+					"cell cancelled", ANX_ECANCELED);
+				anx_trace_finalize(trace, &cell->trace_oid);
+				anx_trace_destroy(trace);
+			}
+		}
+	}
+	anx_sched_cancel(&cell->cid);
+	anx_spin_lock(&cell->lock);
+	count = cell->child_count;
+	if (count > ANX_MAX_CHILD_CELLS) {
+		anx_spin_unlock(&cell->lock);
+		return ANX_EINVAL;
+	}
+	anx_memcpy(children, cell->child_cids, count * sizeof(children[0]));
+	anx_spin_unlock(&cell->lock);
+	for (i = 0; i < count; i++) {
+		struct anx_cell *child = anx_cell_store_lookup(&children[i]);
+		if (!child)
+			continue;
+		if (anx_uuid_compare(&child->parent_cid, &cell->cid) == 0) {
+			if (cell->recursion_depth == ~(uint32_t)0 ||
+			    child->recursion_depth != cell->recursion_depth + 1)
+				ret = ANX_EINVAL;
+			else
+				ret = runtime_cancel_tree(child);
+			if (ret != ANX_OK)
+				result = ret;
+		}
+		anx_cell_store_release(child);
+	}
+
+	return result;
 }
 
 int anx_cell_cancel(struct anx_cell *cell)
 {
 	if (!cell)
 		return ANX_EINVAL;
-
-	return anx_cell_transition(cell, ANX_CELL_CANCELLED);
+	if (anx_cell_status_terminal(cell->status) && cell->status != ANX_CELL_CANCELLED)
+		return ANX_EINVAL;
+	return runtime_cancel_tree(cell);
 }
 
 int anx_cell_derive_child(struct anx_cell *parent,
@@ -515,7 +594,8 @@ int anx_cell_derive_child(struct anx_cell *parent,
 		return ret;
 
 	anx_spin_lock(&parent->lock);
-	if (!parent->execution.allow_recursive_cells ||
+	if (anx_cell_status_terminal(parent->status) ||
+	    !parent->execution.allow_recursive_cells ||
 	    parent->recursion_depth >= parent->execution.max_recursion_depth ||
 	    parent->recursion_depth >= parent->constraints.max_recursion_depth) {
 		ret = ANX_EPERM;
