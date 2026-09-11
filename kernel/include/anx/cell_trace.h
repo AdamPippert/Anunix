@@ -12,8 +12,8 @@
 #include <anx/types.h>
 
 #define ANX_MAX_TRACE_EVENTS	64
-#define ANX_CELL_TRACE_SCHEMA "anx:schema/cell-trace/v1"
-#define ANX_CELL_TRACE_SCHEMA_VERSION "1"
+#define ANX_CELL_TRACE_SCHEMA "anx:schema/cell-trace/v2"
+#define ANX_CELL_TRACE_SCHEMA_VERSION "2"
 
 /* --- Trace event types --- */
 
@@ -96,6 +96,9 @@ int anx_trace_append(struct anx_cell_trace *trace,
 
 /* Finalize a trace (materializes as execution_trace State Object) */
 int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out);
+
+/* Reserve the full trace object before an external handler may run. */
+int anx_trace_prepare(struct anx_cell_trace *trace);
 
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 void anx_trace_test_fail_reservation(bool fail);
