@@ -327,6 +327,7 @@ struct anx_cell {
 
 	/* Kernel bookkeeping */
 	uint64_t memory_admitted_bytes;
+	uint32_t memory_admission_count;
 	bool runtime_active;
 	struct anx_spinlock lock;
 	uint32_t refcount;

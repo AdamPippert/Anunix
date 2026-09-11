@@ -85,6 +85,8 @@ int anx_research_day011(void)
 	rc = anx_cell_run(state.cell);
 	if (rc != ANX_OK)
 		goto out;
+	/* Leave only the admission's reference: resource ownership still pins it. */
+	anx_cell_store_release(state.cell);
 	if (anx_cell_destroy(state.cell) != ANX_EBUSY) {
 		state.cell = NULL;
 		rc = -1107;
@@ -92,7 +94,7 @@ int anx_research_day011(void)
 	}
 	anx_memplane_forget(state.entries[0], ANX_FORGET_HARD_DELETE);
 	state.entries[0] = NULL;
-	if (state.cell->memory_admitted_bytes != 0) {
+	if (state.cell->memory_admitted_bytes != 0 || state.cell->memory_admission_count != 0) {
 		rc = -1108;
 		goto out;
 	}

@@ -110,7 +110,8 @@ int anx_cell_destroy(struct anx_cell *cell)
 		return ANX_EINVAL;
 
 	anx_spin_lock(&cell->lock);
-	if (cell->refcount > 1 || cell->child_count != 0 || cell->runtime_active) {
+	if (cell->refcount > 1 || cell->child_count != 0 || cell->runtime_active ||
+	    cell->memory_admission_count != 0) {
 		anx_spin_unlock(&cell->lock);
 		return ANX_EBUSY;
 	}
