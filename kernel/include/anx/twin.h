@@ -24,6 +24,7 @@
 #include <anx/cell.h>
 
 #define ANX_TWIN_MAX_ENGINES	32
+#define ANX_ROUTE_WEIGHT_LIMIT	1000
 
 /* --- Readiness (folds the topic plan's Readiness Contract in here) --- */
 
@@ -76,8 +77,8 @@ struct anx_resource_twin {
 struct anx_route_weight_policy {
 	int32_t locality_bonus;
 	int32_t local_first_bonus;
-	int32_t gpu_cost_divisor;		/* must be nonzero */
-	int32_t cpu_cost_divisor;		/* must be nonzero */
+	int32_t gpu_cost_divisor;		/* 1..ANX_ROUTE_WEIGHT_LIMIT */
+	int32_t cpu_cost_divisor;		/* 1..ANX_ROUTE_WEIGHT_LIMIT */
 	int32_t degraded_penalty;
 	int32_t private_data_bonus;
 	int32_t topology_overlap_bonus;
@@ -85,6 +86,9 @@ struct anx_route_weight_policy {
 };
 
 void anx_route_weight_policy_incumbent(struct anx_route_weight_policy *out);
+/* Bonuses: 0..LIMIT; penalties: -LIMIT..0; divisors: 1..LIMIT.
+ * These are simulator guardrails, not measured optimal weights. */
+int anx_route_weight_policy_validate(const struct anx_route_weight_policy *policy);
 
 struct anx_twin_simulate_result {
 	uint32_t candidate_count;	/* feasible engines considered */
@@ -108,6 +112,8 @@ void anx_twin_destroy(struct anx_resource_twin *twin);
  * snapshot under `policy`, without touching live state. Returns ANX_OK
  * with candidate_count == 0 (and no winner set) if no snapshot engine
  * is feasible for this cell — that is a valid, non-error outcome.
+ * Malformed policies, snapshots, or routing constraints return ANX_EINVAL
+ * before touching result_out. Simulation never activates a live policy.
  */
 int anx_twin_simulate(struct anx_resource_twin *twin,
 		      struct anx_cell *cell,

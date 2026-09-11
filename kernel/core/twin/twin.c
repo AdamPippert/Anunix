@@ -55,6 +55,43 @@ void anx_route_weight_policy_incumbent(struct anx_route_weight_policy *out)
 	out->topology_mismatch_penalty = -15;
 }
 
+int anx_route_weight_policy_validate(const struct anx_route_weight_policy *p)
+{
+	if (!p || p->gpu_cost_divisor < 1 || p->gpu_cost_divisor > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->cpu_cost_divisor < 1 || p->cpu_cost_divisor > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->locality_bonus < 0 || p->locality_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->local_first_bonus < 0 || p->local_first_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->private_data_bonus < 0 || p->private_data_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->topology_overlap_bonus < 0 || p->topology_overlap_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->degraded_penalty > 0 || p->degraded_penalty < -ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->topology_mismatch_penalty > 0 || p->topology_mismatch_penalty < -ANX_ROUTE_WEIGHT_LIMIT)
+		return ANX_EINVAL;
+	return ANX_OK;
+}
+
+static int validate_simulation(const struct anx_resource_twin *twin,
+			       const struct anx_cell *cell)
+{
+	uint32_t i;
+
+	if (twin->engine_count > ANX_TWIN_MAX_ENGINES ||
+	    (uint32_t)cell->constraints.locality > ANX_REMOTE_REQUIRED ||
+	    (uint32_t)cell->routing.strategy > ANX_ROUTE_POLICY_LOCKED ||
+	    (cell->constraints.topology_bk_set &&
+	     cell->constraints.topology_bk_lo > cell->constraints.topology_bk_hi))
+		return ANX_EINVAL;
+	for (i = 0; i < twin->engine_count; i++) {
+		const struct anx_twin_engine_snapshot *s = &twin->engines[i];
+		if ((uint32_t)s->engine_class >= ANX_ENGINE_CLASS_COUNT ||
+		    (uint32_t)s->status >= ANX_ENGINE_STATUS_COUNT ||
+		    s->readiness != anx_readiness_from_status(s->status) ||
+		    s->cpu_weight > 100 || s->gpu_weight > 100 || s->quality_score > 100 ||
+		    (s->has_topology_affinity && s->topology_bk_lo > s->topology_bk_hi))
+			return ANX_EINVAL;
+	}
+	return ANX_OK;
+}
+
 int anx_twin_snapshot(struct anx_resource_twin **out)
 {
 	struct anx_resource_twin *twin;
@@ -149,6 +186,7 @@ static int32_t score_snapshot(struct anx_cell *cell,
 			      const struct anx_twin_engine_snapshot *snap,
 			      const struct anx_route_weight_policy *policy)
 {
+	/* Preflight bounds imply scores in [-2200, 4100] and margins <= 6300. */
 	int32_t score = 0;
 
 	score += (int32_t)snap->quality_score;
@@ -200,7 +238,8 @@ int anx_twin_simulate(struct anx_resource_twin *twin,
 
 	if (!twin || !cell || !policy || !result_out)
 		return ANX_EINVAL;
-	if (policy->gpu_cost_divisor == 0 || policy->cpu_cost_divisor == 0)
+	if (anx_route_weight_policy_validate(policy) != ANX_OK ||
+	    validate_simulation(twin, cell) != ANX_OK)
 		return ANX_EINVAL;
 
 	anx_memset(result_out, 0, sizeof(*result_out));
