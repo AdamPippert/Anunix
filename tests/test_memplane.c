@@ -6,6 +6,7 @@
 #include <anx/memplane.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 int test_memplane(void)
 {
@@ -91,5 +92,5 @@ int test_memplane(void)
 		return -16;
 
 	anx_objstore_release(obj);
-	return 0;
+	return anx_research_day011();
 }

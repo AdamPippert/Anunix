@@ -112,6 +112,7 @@ enum anx_locality {
 
 struct anx_cell_constraints {
 	uint64_t max_latency_ms;	/* 0 = unlimited */
+	uint64_t max_memory_admission_bytes; /* 0 = unbounded memory-plane admission */
 	uint32_t max_cost_usd_cents;	/* 0 = unlimited */
 	enum anx_locality locality;
 	uint32_t max_recursion_depth;
@@ -325,6 +326,7 @@ struct anx_cell {
 	char error_msg[256];
 
 	/* Kernel bookkeeping */
+	uint64_t memory_admitted_bytes;
 	bool runtime_active;
 	struct anx_spinlock lock;
 	uint32_t refcount;
