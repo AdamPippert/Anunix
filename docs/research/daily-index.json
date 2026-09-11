@@ -195,11 +195,12 @@
       ],
       "comparison": "The baseline leaves descendants and duplicate queue entries after cancellation. Day 10 cancels queue ownership, preserves terminal runs, and reaps eligible child tasks.",
       "acceptance": "Cancel queued work and establish that no runnable entry or resource owner survives cancellation.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-010",
       "comparison_baseline": "21f7d71",
       "tested_commit": "fda8c2d",
-      "evidence": "docs/research/evidence/day-010/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-010/uefi-boot.json",
+      "merged_commit": "a8fe0cc"
     },
     {
       "day": 11,
@@ -212,10 +213,13 @@
         "kernel/include/anx/memory.h",
         "kernel/include/anx/cell.h"
       ],
-      "comparison": "Anunix has memory tiers and cell constraints. These mechanisms need tests together under pressure.",
+      "comparison": "The baseline admits memory entries without a cell byte ceiling. Day 11 checks sealed payload admission against an inherited limit and retains its accounting owner until forgetting.",
       "acceptance": "Reject excessive admission while preserving an existing cell's usable memory.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-011",
+      "comparison_baseline": "a8fe0cc",
+      "tested_commit": "4ef9177",
+      "evidence": "docs/research/evidence/day-011/uefi-boot.json"
     },
     {
       "day": 12,
