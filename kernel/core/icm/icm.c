@@ -8,6 +8,7 @@
  */
 
 #include <anx/icm.h>
+#include <anx/cell.h>
 #include <anx/meta.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
@@ -53,56 +54,60 @@ static bool domain_contains(const char *domains, const char *want)
 	return false;
 }
 
+static int icm_check_access(const struct anx_state_object *obj, enum anx_access_op op)
+{
+	if (obj->state != ANX_OBJ_ACTIVE && obj->state != ANX_OBJ_SEALED)
+		return ANX_EINVAL;
+	return anx_access_evaluate(&obj->access_policy, anx_cell_current_id(),
+				   &obj->creator_cell, op);
+}
+
 int anx_icm_tag(const anx_oid_t *oid, const char *domain, const char *kind,
 		const char *authority, const char *status,
 		const char *stack, const char *entry)
 {
+	const char *keys[] = {ANX_ICM_KEY_DOMAIN, ANX_ICM_KEY_KIND, ANX_ICM_KEY_AUTHORITY,
+		ANX_ICM_KEY_STATUS, ANX_ICM_KEY_STACK, ANX_ICM_KEY_ENTRY};
+	const char *values[] = {domain, kind, authority, status, stack, entry};
 	struct anx_state_object *obj;
+	uint32_t i;
+	int ret;
 
 	if (!oid)
 		return ANX_EINVAL;
-
 	obj = anx_objstore_lookup(oid);
 	if (!obj)
 		return ANX_ENOENT;
-	if (!obj->user_meta)
-		return ANX_EINVAL;
-
-	if (domain)
-		anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_DOMAIN, domain);
-	if (kind)
-		anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_KIND, kind);
-	if (authority)
-		anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_AUTHORITY, authority);
-	if (status)
-		anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_STATUS, status);
-	if (stack)
-		anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_STACK, stack);
-	if (entry)
-		anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_ENTRY, entry);
-
-	return ANX_OK;
+	ret = icm_check_access(obj, ANX_ACCESS_WRITE_META);
+	if (ret == ANX_OK && !obj->user_meta)
+		ret = ANX_EINVAL;
+	for (i = 0; ret == ANX_OK && i < sizeof(values) / sizeof(values[0]); i++)
+		if (values[i])
+			ret = anx_meta_set_str(obj->user_meta, keys[i], values[i]);
+	anx_objstore_release(obj);
+	return ret;
 }
 
 int anx_icm_publish(const anx_oid_t *oid, const char *release_uri)
 {
 	struct anx_state_object *obj;
+	int ret;
 
 	if (!oid || !release_uri || release_uri[0] == '\0')
 		return ANX_EINVAL;
-
 	obj = anx_objstore_lookup(oid);
 	if (!obj)
 		return ANX_ENOENT;
-	if (!obj->user_meta)
-		return ANX_EINVAL;
-
-	anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_PUBLISHED, release_uri);
-	return ANX_OK;
+	ret = icm_check_access(obj, ANX_ACCESS_WRITE_META);
+	if (ret == ANX_OK)
+		ret = obj->user_meta ? anx_meta_set_str(obj->user_meta, ANX_ICM_KEY_PUBLISHED, release_uri) : ANX_EINVAL;
+	anx_objstore_release(obj);
+	return ret;
 }
 
 static void fill_view(struct anx_state_object *obj, struct anx_icm_view *out)
 {
+	anx_memset(out, 0, sizeof(*out));
 	out->oid = obj->oid;
 	out->object_type = obj->object_type;
 	if (obj->user_meta) {
@@ -131,16 +136,18 @@ static void fill_view(struct anx_state_object *obj, struct anx_icm_view *out)
 int anx_icm_read_view(const anx_oid_t *oid, struct anx_icm_view *out)
 {
 	struct anx_state_object *obj;
+	int ret;
 
 	if (!oid || !out)
 		return ANX_EINVAL;
-
 	obj = anx_objstore_lookup(oid);
 	if (!obj)
 		return ANX_ENOENT;
-
-	fill_view(obj, out);
-	return ANX_OK;
+	ret = icm_check_access(obj, ANX_ACCESS_READ_META);
+	if (ret == ANX_OK)
+		fill_view(obj, out);
+	anx_objstore_release(obj);
+	return ret;
 }
 
 /* Context threaded through the objstore iterator. */
@@ -156,6 +163,8 @@ static int catalog_iter(struct anx_state_object *obj, void *arg)
 	struct catalog_ctx *ctx = arg;
 	struct anx_icm_view view;
 
+	if (icm_check_access(obj, ANX_ACCESS_READ_META) != ANX_OK)
+		return ANX_OK;
 	fill_view(obj, &view);
 
 	if (ctx->domain && !domain_contains(view.domain, ctx->domain))
