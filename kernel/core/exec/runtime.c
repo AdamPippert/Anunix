@@ -373,7 +373,14 @@ static int runtime_commit(struct anx_cell *cell,
 
 /* --- Public API --- */
 
-int anx_cell_run(struct anx_cell *cell)
+static struct anx_cell *active_cell;
+
+const anx_cid_t *anx_cell_current_id(void)
+{
+	return active_cell ? &active_cell->cid : NULL;
+}
+
+static int runtime_run(struct anx_cell *cell)
 {
 	struct anx_cell_plan *plan = NULL;
 	struct anx_cell_trace *trace = NULL;
@@ -466,6 +473,19 @@ fail:
 	if (plan)
 		anx_plan_destroy(plan);
 	anx_trace_destroy(trace);
+	return ret;
+}
+
+int anx_cell_run(struct anx_cell *cell)
+{
+	struct anx_cell *previous = active_cell;
+	int ret;
+
+	if (!cell)
+		return ANX_EINVAL;
+	active_cell = cell;
+	ret = runtime_run(cell);
+	active_cell = previous;
 	return ret;
 }
 

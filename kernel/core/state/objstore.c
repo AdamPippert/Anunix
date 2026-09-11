@@ -6,6 +6,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/cell.h>
 #include <anx/state_object.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -255,10 +256,15 @@ cleanup:
 int anx_so_open(const anx_oid_t *oid, enum anx_open_mode mode,
 		struct anx_object_handle *handle)
 {
-	struct anx_state_object *obj = anx_objstore_lookup(oid);
-	anx_cid_t nil_cell = ANX_UUID_NIL;
-	enum anx_access_op access_op;
-	int ar;
+	struct anx_state_object *obj;
+	const anx_cid_t *requestor = anx_cell_current_id();
+	int ar = ANX_OK;
+
+	if (!oid || !handle || (mode != ANX_OPEN_READ &&
+	    mode != ANX_OPEN_WRITE && mode != ANX_OPEN_READWRITE))
+		return ANX_EINVAL;
+	handle->obj = NULL;
+	obj = anx_objstore_lookup(oid);
 
 	if (!obj)
 		return ANX_ENOENT;
@@ -271,13 +277,12 @@ int anx_so_open(const anx_oid_t *oid, enum anx_open_mode mode,
 		return ANX_EPERM;
 	}
 
-	access_op = (mode == ANX_OPEN_READ)
-		? ANX_ACCESS_READ_PAYLOAD
-		: ANX_ACCESS_WRITE_PAYLOAD;
-
-	ar = anx_access_evaluate(&obj->access_policy, &nil_cell,
-				 (const anx_oid_t *)&obj->creator_cell,
-				 access_op);
+	if (mode != ANX_OPEN_WRITE)
+		ar = anx_access_evaluate(&obj->access_policy, requestor,
+			&obj->creator_cell, ANX_ACCESS_READ_PAYLOAD);
+	if (ar == ANX_OK && mode != ANX_OPEN_READ)
+		ar = anx_access_evaluate(&obj->access_policy, requestor,
+			&obj->creator_cell, ANX_ACCESS_WRITE_PAYLOAD);
 	if (ar != ANX_OK) {
 		anx_objstore_release(obj);
 		return ar;
@@ -368,10 +373,13 @@ int anx_so_delete(const anx_oid_t *oid, bool force)
 int anx_so_read_payload(struct anx_object_handle *handle,
 			uint64_t offset, void *buf, uint64_t len)
 {
-	struct anx_state_object *obj = handle->obj;
+	struct anx_state_object *obj;
 
-	if (!obj || !buf)
+	if (!handle || !handle->obj || !buf)
 		return ANX_EINVAL;
+	if (handle->mode != ANX_OPEN_READ && handle->mode != ANX_OPEN_READWRITE)
+		return ANX_EPERM;
+	obj = handle->obj;
 	if (offset >= obj->payload_size)
 		return 0;
 	if (offset + len > obj->payload_size)
