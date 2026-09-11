@@ -6,6 +6,7 @@
 #include <anx/types.h>
 #include <anx/effect.h>
 #include <anx/cell.h>
+#include <anx/state_object.h>
 #include <anx/alloc.h>
 #include <anx/uuid.h>
 
@@ -44,45 +45,49 @@ static int effect_transition(struct anx_pending_effect *effect,
 	return ANX_OK;
 }
 
+static int effect_check_authority(const anx_cid_t *cell_id, struct anx_sink *sink,
+                                  const anx_oid_t *object_oid)
+{
+	const anx_cid_t *active = anx_cell_current_id();
+	struct anx_cell *cell;
+	anx_oid_t nil_oid = ANX_UUID_NIL;
+	bool permitted;
+
+	if (active && anx_uuid_compare(active, cell_id) != 0)
+		return ANX_EPERM;
+	cell = anx_cell_store_lookup(cell_id);
+	if (!cell)
+		return ANX_ENOENT;
+	permitted = cell->execution.allow_side_effects && !anx_cell_status_terminal(cell->status);
+	anx_cell_store_release(cell);
+	if (!permitted)
+		return ANX_EPERM;
+	if (!sink)
+		return ANX_OK;
+	if (object_oid && !anx_uuid_is_nil(object_oid)) {
+		struct anx_state_object *object = anx_objstore_lookup(object_oid);
+		if (!object)
+			return ANX_ENOENT;
+		permitted = object->state != ANX_OBJ_DELETED && object->state != ANX_OBJ_TOMBSTONE;
+		anx_objstore_release(object);
+		if (!permitted)
+			return ANX_ENOENT;
+	}
+	return anx_sink_check_send(sink, object_oid ? object_oid : &nil_oid);
+}
+
 int anx_effect_prepare(anx_cid_t cell_id, struct anx_sink *sink,
 		       const anx_oid_t *object_oid,
 		       struct anx_pending_effect **out)
 {
-	struct anx_cell *cell;
 	struct anx_pending_effect *effect;
 	int ret;
 
 	if (!out)
 		return ANX_EINVAL;
-
-	cell = anx_cell_store_lookup(&cell_id);
-	if (!cell)
-		return ANX_ENOENT;
-
-	/* CAN_CALL: does this cell's execution policy permit side effects? */
-	if (!cell->execution.allow_side_effects) {
-		anx_cell_store_release(cell);
-		return ANX_EPERM;
-	}
-
-	/* CAN_SEND: independent of CAN_CALL — a capability to invoke an
-	 * operation never implies authority to send arbitrary data through
-	 * it. Skipped if this effect has no Sink (no data-flow component).
-	 * A NULL object_oid (no backing object) checks as nil, which
-	 * anx_object_get_sensitivity resolves to PUBLIC — a control effect
-	 * with no object data is never blocked by information flow, only
-	 * by CAN_CALL above. */
-	if (sink) {
-		anx_oid_t nil_oid = ANX_UUID_NIL;
-
-		ret = anx_sink_check_send(sink, object_oid ? object_oid : &nil_oid);
-		if (ret != ANX_OK) {
-			anx_cell_store_release(cell);
-			return ret;
-		}
-	}
-
-	anx_cell_store_release(cell);
+	ret = effect_check_authority(&cell_id, sink, object_oid);
+	if (ret != ANX_OK)
+		return ret;
 
 	effect = anx_zalloc(sizeof(*effect));
 	if (!effect)
@@ -99,6 +104,13 @@ int anx_effect_prepare(anx_cid_t cell_id, struct anx_sink *sink,
 
 int anx_effect_mark_dispatching(struct anx_pending_effect *effect)
 {
+	int ret;
+
+	if (!effect || effect->phase != ANX_EFFECT_PREPARED)
+		return ANX_EINVAL;
+	ret = effect_check_authority(&effect->cell, effect->sink, &effect->object_oid);
+	if (ret != ANX_OK)
+		return ret;
 	return effect_transition(effect, ANX_EFFECT_DISPATCHING);
 }
 

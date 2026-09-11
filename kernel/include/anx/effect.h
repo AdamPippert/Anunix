@@ -9,7 +9,7 @@
  * failure is a category error. This gives that ambiguity an explicit,
  * terminal state (ANX_EFFECT_UNKNOWN) instead of forcing a guess.
  *
- * anx_effect_prepare() is the enforcement point for both gates this
+ * Preparation and dispatch revalidate both gates this
  * RFC introduces: CAN_CALL (the existing RFC-0003 execution-policy
  * check — does this cell's execution_policy actually permit side
  * effects) and CAN_SEND (anx_sink_check_send(), RFC-0028's new
@@ -42,14 +42,14 @@ struct anx_pending_effect {
  * nil OID if no object-backed data is involved) to `sink` (may be
  * NULL if this effect has no data-flow component — e.g. a pure
  * control operation). Revalidates:
- *   CAN_CALL — cell->execution.allow_side_effects must be true
- *   CAN_SEND — anx_sink_check_send(sink, object_oid), skipped if sink is NULL
+ *   CAN_CALL — nonterminal owner permits effects and matches any active caller
+ *   CAN_SEND — existing data object fits the Sink ceiling, skipped if sink is NULL
  * On success, *out holds a heap-allocated ANX_EFFECT_PREPARED record;
  * the caller owns it and must resolve it via commit/restore/mark_unknown.
  * Returns:
  *   ANX_OK      prepared
  *   ANX_EINVAL  null cell/out
- *   ANX_ENOENT  cell does not resolve
+ *   ANX_ENOENT  cell or non-nil data object does not resolve
  *   ANX_EPERM   CAN_CALL or CAN_SEND denied
  *   ANX_ENOMEM  allocation failure
  */
@@ -57,7 +57,10 @@ int anx_effect_prepare(anx_cid_t cell, struct anx_sink *sink,
 		       const anx_oid_t *object_oid,
 		       struct anx_pending_effect **out);
 
-/* PREPARED -> DISPATCHING. Returns ANX_EINVAL if not in PREPARED. */
+/* PREPARED -> DISPATCHING after current CAN_CALL/CAN_SEND checks.
+ * Rejection leaves PREPARED unchanged. A later revocation cannot undo
+ * dispatch; commit/restore/mark_unknown remain available for settlement.
+ * An unscoped kernel caller remains trusted to act for the named cell. */
 int anx_effect_mark_dispatching(struct anx_pending_effect *effect);
 
 /*
