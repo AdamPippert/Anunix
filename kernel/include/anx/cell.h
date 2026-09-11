@@ -357,6 +357,9 @@ int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg);
 /* Run a cell through the full pipeline: admit→plan→execute→validate→commit */
 int anx_cell_run(struct anx_cell *cell);
 
+/* Identity of the synchronous runtime's active cell, NULL outside a run. */
+const anx_cid_t *anx_cell_current_id(void);
+
 /* Cancel a running or queued cell */
 int anx_cell_cancel(struct anx_cell *cell);
 

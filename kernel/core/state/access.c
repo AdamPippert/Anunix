@@ -7,9 +7,8 @@
  * request, access is permitted (permissive default, consistent with the
  * Phase 1 always-allow behavior for objects that carry no rules).
  *
- * Cell identity (RFC-0003) is not yet available at the kernel level, so
- * callers pass a nil cell; rules with specific principals therefore only
- * take effect once cell runtime is wired in.
+ * Object access uses the active runtime cell's identity. The object's
+ * creator is provenance, not the identity of the requesting cell.
  */
 
 #include <anx/types.h>
@@ -24,6 +23,7 @@ int anx_access_evaluate(const struct anx_access_policy *policy,
 			enum anx_access_op op)
 {
 	uint32_t i;
+	(void)creator_cell;
 
 	if (!policy || policy->rule_count == 0)
 		return ANX_OK;
@@ -36,10 +36,6 @@ int anx_access_evaluate(const struct anx_access_policy *policy,
 		if (anx_uuid_is_nil(&rule->principal)) {
 			principal_match = true;
 		} else if (cell && anx_uuid_compare(&rule->principal, cell) == 0) {
-			principal_match = true;
-		} else if (creator_cell &&
-			   anx_uuid_compare(&rule->principal,
-					    (const struct anx_uuid *)creator_cell) == 0) {
 			principal_match = true;
 		} else {
 			principal_match = false;
