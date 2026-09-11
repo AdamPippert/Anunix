@@ -219,7 +219,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject malformed simulation inputs without changing the previous result. A valid alternate candidate changes the simulated winner while replaying the incumbent reproduces its original result. Live policy activation remains outside this step.
 
-Status: Validated on Jekyll. Tested commit: `a199e97`. Source message: `5048a664-da01-470d-a8f3-841629df80a5`.
+Status: Merged at `57873d0` after Jekyll validation. Tested commit: `a199e97`. Source message: `5048a664-da01-470d-a8f3-841629df80a5`.
 
 Detailed comparison and results: [Day 013](day-013.md).
 
@@ -229,13 +229,15 @@ Detailed comparison and results: [Day 013](day-013.md).
 
 Learning: Connect agent intent to the system effects and resource changes it caused.
 
-Anunix comparison: Cell traces and provenance exist. Transport outcomes need causal linkage to their requesting cell.
+Anunix comparison: The baseline retains caller identifiers and outcomes but uses a generic creation event. Day 14 preserves the intent name before dispatch or cancellation and verifies causal records after cell destruction.
 
 Evidence: [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c).
 
 Planned acceptance: Trace an allowed effect and a denied effect back to separate requesting cells.
 
-Status: Queued. Source message: `d2eef052-ef2c-4ac2-9fd2-5230b7b5aa2e`.
+Status: Validated on Jekyll. Tested commit: `c383dca`. Source message: `d2eef052-ef2c-4ac2-9fd2-5230b7b5aa2e`.
+
+Detailed comparison and results: [Day 014](day-014.md).
 
 ## Day 015 — 2026-07-10
 

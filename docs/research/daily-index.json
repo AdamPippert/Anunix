@@ -255,11 +255,12 @@
       ],
       "comparison": "The baseline accepts negative scoring divisors and unchecked weights or snapshots. Day 13 validates policy and snapshot bounds before simulation, preserving the previous result on rejection.",
       "acceptance": "Reject malformed simulation inputs without changing the previous result. A valid alternate candidate changes the simulated winner while replaying the incumbent reproduces its original result. Live policy activation remains outside this step.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-013",
       "comparison_baseline": "242fe58",
       "tested_commit": "a199e97",
-      "evidence": "docs/research/evidence/day-013/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-013/uefi-boot.json",
+      "merged_commit": "57873d0"
     },
     {
       "day": 14,
@@ -272,10 +273,13 @@
         "kernel/core/state/provenance.c",
         "kernel/core/cap/effect.c"
       ],
-      "comparison": "Cell traces and provenance exist. Transport outcomes need causal linkage to their requesting cell.",
+      "comparison": "The baseline retains caller identifiers and outcomes but uses a generic creation event. Day 14 preserves the intent name before dispatch or cancellation and verifies causal records after cell destruction.",
       "acceptance": "Trace an allowed effect and a denied effect back to separate requesting cells.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-014",
+      "comparison_baseline": "57873d0",
+      "tested_commit": "c383dca",
+      "evidence": "docs/research/evidence/day-014/uefi-boot.json"
     },
     {
       "day": 15,
