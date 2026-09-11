@@ -13,6 +13,11 @@
 #include <anx/string.h>
 #include <anx/arch.h>
 
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+void anx_trace_test_fail_reservation(bool fail) { (void)fail; }
+void anx_trace_test_fail_finalize(bool fail) { (void)fail; }
+#endif
+
 int anx_trace_create(const anx_cid_t *cell_ref, struct anx_cell_trace **out)
 {
 	struct anx_cell_trace *trace;

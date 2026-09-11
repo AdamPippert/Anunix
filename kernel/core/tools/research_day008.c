@@ -71,7 +71,7 @@ int anx_research_day008(void)
 			goto out;
 		if (handle.obj->state != ANX_OBJ_SEALED ||
 		    anx_strcmp(handle.obj->schema_uri, ANX_CELL_TRACE_SCHEMA) != 0 ||
-		    anx_strcmp(handle.obj->schema_version, "1") != 0) {
+		    anx_strcmp(handle.obj->schema_version, ANX_CELL_TRACE_SCHEMA_VERSION) != 0) {
 			rc = -801;
 			goto out;
 		}
