@@ -55,6 +55,21 @@ void anx_route_planner_init(void);
  */
 int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result);
 
+/* Caller-owned placement hint for one compatible model backend pool.
+ * Initialize the selected engine and placement count to zero. The caller
+ * supplies unique eligible EIDs and owns logical model compatibility. */
+struct anx_route_session {
+	anx_eid_t eligible_engines[ANX_MAX_ROUTE_CANDIDATES];
+	uint32_t engine_count;
+	uint32_t required_caps;
+	anx_eid_t selected_engine;
+	uint64_t placement_count;
+};
+
+/* Reuse eligible affinity or select a scored fallback; errors preserve both outputs. */
+int anx_route_plan_session(struct anx_cell *cell, struct anx_route_session *session,
+			   struct anx_route_result *result);
+
 /*
  * Score a single engine against a cell's requirements.
  * Returns a score (higher = better fit), or negative on error.
