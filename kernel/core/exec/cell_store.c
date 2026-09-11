@@ -163,3 +163,10 @@ int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg)
 	}
 	return ANX_OK;
 }
+
+int anx_cell_reap_children(struct anx_cell *parent, uint32_t *reaped_out)
+{
+	(void)parent;
+	(void)reaped_out;
+	return ANX_ENOSYS;
+}
