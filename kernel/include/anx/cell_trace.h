@@ -12,6 +12,7 @@
 #include <anx/types.h>
 
 #define ANX_MAX_TRACE_EVENTS	64
+#define ANX_CELL_TRACE_SCHEMA "anx:schema/cell-trace/v1"
 
 /* --- Trace event types --- */
 
