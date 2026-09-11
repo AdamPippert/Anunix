@@ -115,11 +115,12 @@
       ],
       "comparison": "The baseline ignores recursion permission, configured child limits, cognitive inheritance, and slot cleanup. Day 6 enforces scoped derivation and ancestry admission, then returns slots on child destruction.",
       "acceptance": "Check that a child tool call cannot exceed its parent scope and releases resources on failure.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-006",
       "comparison_baseline": "35d0245",
       "tested_commit": "f181a9a",
-      "evidence": "docs/research/evidence/day-006/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-006/uefi-boot.json",
+      "merged_commit": "2409aff"
     },
     {
       "day": 7,
@@ -132,10 +133,13 @@
         "kernel/core/route/lease.c",
         "kernel/core/route/budget.c"
       ],
-      "comparison": "Cell constraints and lease accounting provide native starting points for the Linux-oriented research.",
-      "acceptance": "Measure resource acquisition and release around one tool invocation, including its failure path.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline drops the materialized trace identifier and has no per-tool timing or byte accounting. Day 7 records those values and tests child slot ownership and release.",
+      "acceptance": "Record per-tool timing, byte counts and outcomes; verify child slot acquisition and release through failure and success.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-007",
+      "comparison_baseline": "2409aff",
+      "tested_commit": "2fcac65",
+      "evidence": "docs/research/evidence/day-007/uefi-boot.json"
     },
     {
       "day": 8,
