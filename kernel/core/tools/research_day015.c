@@ -87,6 +87,36 @@ int anx_research_day015(void)
 		saved.selected_engine = a->eid;
 		saved.placement_count = 10;
 	}
+	session = saved;
+	a->capabilities = ANX_CAP_SUMMARIZATION;
+	b->engine_class = ANX_ENGINE_REMOTE_MODEL;
+	b->is_local = false;
+	cell->execution.allow_network = true;
+	cell->execution.allow_remote_models = true;
+	session.selected_engine = b->eid;
+	rc = -1507;
+	if (anx_route_plan_session(cell, &session, &result) != ANX_OK ||
+	    anx_uuid_compare(&session.selected_engine, &a->eid) != 0)
+		goto out;
+	cell->constraints.locality = ANX_REMOTE_REQUIRED;
+	rc = -1508;
+	if (anx_route_plan_session(cell, &session, &result) != ANX_OK ||
+	    anx_uuid_compare(&session.selected_engine, &b->eid) != 0)
+		goto out;
+	cell->execution.allow_remote_models = false;
+	saved = session;
+	previous = result;
+	rc = -1509;
+	if (anx_route_plan_session(cell, &session, &result) != ANX_EPERM ||
+	    anx_memcmp(&saved, &session, sizeof(saved)) || anx_memcmp(&previous, &result, sizeof(result)))
+		goto out;
+	cell->constraints.locality = ANX_LOCAL_ONLY;
+	anx_engine_unregister(b);
+	b = NULL;
+	rc = -1510;
+	if (anx_route_plan_session(cell, &session, &result) != ANX_OK ||
+	    anx_uuid_compare(&session.selected_engine, &a->eid) != 0)
+		goto out;
 	rc = ANX_OK;
 out:
 	if (a)
