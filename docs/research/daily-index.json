@@ -275,11 +275,12 @@
       ],
       "comparison": "The baseline retains caller identifiers and outcomes but uses a generic creation event. Day 14 preserves the intent name before dispatch or cancellation and verifies causal records after cell destruction.",
       "acceptance": "Trace an allowed effect and a denied effect back to separate requesting cells.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-014",
       "comparison_baseline": "57873d0",
       "tested_commit": "c383dca",
-      "evidence": "docs/research/evidence/day-014/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-014/uefi-boot.json",
+      "merged_commit": "09a3718"
     },
     {
       "day": 15,
@@ -292,10 +293,13 @@
         "kernel/core/route/lease.c",
         "kernel/core/anxml/anxml.c"
       ],
-      "comparison": "Routing and model-server resources exist. A session is not yet a complete placement contract.",
+      "comparison": "The baseline scores each route independently. Day 15 adds an optional session planner that retains eligible affinity, rechecks a declared backend pool, and preserves prior state on rejection.",
       "acceptance": "Preserve an eligible session's engine affinity while rejecting an unavailable engine.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-015",
+      "comparison_baseline": "09a3718",
+      "tested_commit": "84d5cce",
+      "evidence": "docs/research/evidence/day-015/uefi-boot.json"
     },
     {
       "day": 16,
