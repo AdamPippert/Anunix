@@ -26,6 +26,16 @@ static int boundary_handler(struct anx_external_call *call, void *context)
 	if (ret != ANX_EPERM || anx_effect_mark_dispatching(state->prepared) != ANX_EPERM ||
 	    state->prepared->phase != ANX_EFFECT_PREPARED)
 		return ANX_EIO;
+	other = NULL;
+	ret = anx_effect_prepare(*anx_cell_current_id(), NULL, NULL, &other);
+	if (ret == ANX_OK)
+		ret = anx_effect_mark_dispatching(other);
+	if (ret == ANX_OK)
+		ret = anx_effect_commit(other);
+	if (other)
+		anx_effect_destroy(other);
+	if (ret != ANX_OK)
+		return ret;
 	state->checked = true;
 	return ANX_OK;
 }

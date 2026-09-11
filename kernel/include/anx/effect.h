@@ -48,7 +48,7 @@ struct anx_pending_effect {
  * the caller owns it and must resolve it via commit/restore/mark_unknown.
  * Returns:
  *   ANX_OK      prepared
- *   ANX_EINVAL  null cell/out
+ *   ANX_EINVAL  null output pointer
  *   ANX_ENOENT  cell or non-nil data object does not resolve
  *   ANX_EPERM   CAN_CALL or CAN_SEND denied
  *   ANX_ENOMEM  allocation failure
