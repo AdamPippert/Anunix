@@ -25,6 +25,28 @@
 
 /* --- Admission --- */
 
+static bool runtime_needs_trace(const struct anx_cell *cell)
+{
+	return cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL || cell->commit.write_trace;
+}
+
+static int runtime_deny(struct anx_cell_trace *trace, enum anx_admission_gate gate,
+			int error, const char *reason)
+{
+	trace->denied_gate = gate;
+	anx_trace_append(trace, ANX_TRACE_ADMISSION_DENIED, reason, error);
+	return error;
+}
+
+static int runtime_finish_trace(struct anx_cell *cell, struct anx_cell_trace *trace)
+{
+	anx_oid_t final_oid;
+	int ret = anx_trace_finalize(trace, &final_oid);
+	/* Preserve the prepared record's address if finalization fails. */
+	cell->trace_oid = ret == ANX_OK ? final_oid : trace->storage_oid;
+	return ret;
+}
+
 /* Zero removes a numeric bound, so it cannot replace a bounded parent. */
 static bool scope_widens(uint64_t child, uint64_t parent)
 {
@@ -108,14 +130,19 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 
 	ret = runtime_check_scope(cell);
 	if (ret != ANX_OK)
-		return ret;
+		return runtime_deny(trace, ANX_ADMISSION_SCOPE, ret, "delegated scope denied");
 
 	/* The external handler can change another system before commit. */
 	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
 		if (!cell->ext_call)
-			return ANX_EINVAL;
+			return runtime_deny(trace, ANX_ADMISSION_DESCRIPTOR, ANX_EINVAL,
+				"external descriptor missing");
 		if (!cell->execution.allow_side_effects)
-			return ANX_EPERM;
+			return runtime_deny(trace, ANX_ADMISSION_AUTHORITY, ANX_EPERM,
+				"external authority denied");
+		if (!cell->commit.write_trace)
+			return runtime_deny(trace, ANX_ADMISSION_AUDIT_REQUIRED, ANX_EPERM,
+				"external audit required");
 	}
 
 	ret = anx_cell_transition(cell, ANX_CELL_ADMITTED);
@@ -423,6 +450,15 @@ static int runtime_run(struct anx_cell *cell)
 	anx_memset(&cell->trace_oid, 0, sizeof(cell->trace_oid));
 	anx_sched_cancel(&cell->cid);
 	anx_trace_append(trace, ANX_TRACE_CREATED, "cell run started", ANX_OK);
+	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
+		ret = anx_trace_prepare(trace);
+		if (ret != ANX_OK) {
+			ret = runtime_deny(trace, ANX_ADMISSION_AUDIT_STORAGE, ret,
+				"audit reservation failed");
+			goto fail;
+		}
+		cell->trace_oid = trace->storage_oid;
+	}
 
 	/* Admission */
 	ret = runtime_admit(cell, trace);
@@ -462,8 +498,13 @@ static int runtime_run(struct anx_cell *cell)
 	anx_trace_append(trace, ANX_TRACE_COMPLETED, "cell completed", ANX_OK);
 
 	/* Finalize trace into a State Object */
-	if (cell->commit.write_trace)
-		anx_trace_finalize(trace, &cell->trace_oid);
+	if (runtime_needs_trace(cell) && runtime_finish_trace(cell, trace) != ANX_OK) {
+		/* Execution has completed; this error must not imply it was rolled back. */
+		cell->error_code = ANX_EAUDIT;
+		anx_plan_destroy(plan);
+		anx_trace_destroy(trace);
+		return ANX_EAUDIT;
+	}
 
 	anx_plan_destroy(plan);
 	anx_trace_destroy(trace);
@@ -481,8 +522,8 @@ fail:
 		anx_trace_append(trace, ANX_TRACE_FAILED, "cell failed", ret);
 	}
 
-	if (cell->commit.write_trace)
-		anx_trace_finalize(trace, &cell->trace_oid);
+	if (runtime_needs_trace(cell))
+		runtime_finish_trace(cell, trace);
 
 	if (plan)
 		anx_plan_destroy(plan);
@@ -527,7 +568,7 @@ static int runtime_cancel_tree(struct anx_cell *cell)
 			return ret;
 		cell->completed_at = arch_time_now();
 		cell->error_code = ANX_ECANCELED;
-		if (!cell->runtime_active && cell->commit.write_trace) {
+		if (!cell->runtime_active && runtime_needs_trace(cell)) {
 			struct anx_cell_trace *trace;
 			if (anx_trace_create(&cell->cid, &trace) == ANX_OK) {
 				trace->parent_cell_ref = cell->parent_cid;
