@@ -4,6 +4,7 @@
 #include <anx/cell.h>
 #include <anx/external_call.h>
 #include <anx/state_object.h>
+#include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
 
@@ -40,7 +41,7 @@ int anx_research_day009(void)
 {
 	struct anx_cell *cells[5] = {0};
 	struct anx_cell_intent intent = {0};
-	struct anx_external_call calls[5] = {0};
+	struct anx_external_call *calls = NULL;
 	struct anx_state_object *obj = NULL;
 	struct anx_so_create_params params = {0};
 	struct anx_object_handle handle = {0};
@@ -53,6 +54,11 @@ int anx_research_day009(void)
 	rc = anx_external_register_handler("anxresearch009", access_handler, &state);
 	if (rc != ANX_OK)
 		return rc;
+	calls = anx_zalloc(5 * sizeof(*calls));
+	if (!calls) {
+		rc = ANX_ENOMEM;
+		goto out;
+	}
 	for (i = 0; i < 5; i++) {
 		rc = anx_cell_create(ANX_CELL_TASK_EXTERNAL_CALL, &intent, &cells[i]);
 		if (rc != ANX_OK)
@@ -114,6 +120,8 @@ out:
 	for (i = 0; i < 5; i++)
 		if (cells[i])
 			anx_cell_destroy(cells[i]);
+	if (calls)
+		anx_free(calls);
 	anx_external_unregister_handler("anxresearch009");
 	return rc;
 }
