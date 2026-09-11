@@ -175,11 +175,12 @@
       ],
       "comparison": "The baseline treats object creator identity as caller authority. Day 9 supplies the active cell identity and enforces separate read and write handle permissions.",
       "acceptance": "Attempt a prohibited operation through the ordinary dispatch path and establish that no effect occurs.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-009",
       "comparison_baseline": "ca47725",
       "tested_commit": "cab5076",
-      "evidence": "docs/research/evidence/day-009/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-009/uefi-boot.json",
+      "merged_commit": "21f7d71"
     },
     {
       "day": 10,
@@ -192,10 +193,13 @@
         "kernel/core/sched/scheduler.c",
         "kernel/core/exec/runtime.c"
       ],
-      "comparison": "Cells have lifecycle transitions and cancellation. The scheduler maintains separate queues.",
+      "comparison": "The baseline leaves descendants and duplicate queue entries after cancellation. Day 10 cancels queue ownership, preserves terminal runs, and reaps eligible child tasks.",
       "acceptance": "Cancel queued work and establish that no runnable entry or resource owner survives cancellation.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-010",
+      "comparison_baseline": "21f7d71",
+      "tested_commit": "fda8c2d",
+      "evidence": "docs/research/evidence/day-010/uefi-boot.json"
     },
     {
       "day": 11,
