@@ -295,11 +295,12 @@
       ],
       "comparison": "The baseline scores each route independently. Day 15 adds an optional session planner that retains eligible affinity, rechecks a declared backend pool, and preserves prior state on rejection.",
       "acceptance": "Preserve an eligible session's engine affinity while rejecting an unavailable engine.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-015",
       "comparison_baseline": "09a3718",
       "tested_commit": "84d5cce",
-      "evidence": "docs/research/evidence/day-015/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-015/uefi-boot.json",
+      "merged_commit": "658e0f5"
     },
     {
       "day": 16,
@@ -312,10 +313,13 @@
         "kernel/core/route/lease.c",
         "kernel/core/anxml/anxml.c"
       ],
-      "comparison": "Anunix has an effect protocol and engine leases. Inference gang scheduling needs runtime integration.",
-      "acceptance": "Reject a resource or authority change that would cross an active operation's safe boundary.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline checks authority only at effect preparation. Day 16 rechecks owner identity, lifecycle, permission, and data policy before dispatch while preserving settlement after dispatch begins.",
+      "acceptance": "Reject revoked authority and changed data policy before dispatch. Preserve the prepared phase on rejection and permit outcome settlement after dispatch begins.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-016",
+      "comparison_baseline": "658e0f5",
+      "tested_commit": "0987f34",
+      "evidence": "docs/research/evidence/day-016/uefi-boot.json"
     },
     {
       "day": 17,
