@@ -4,6 +4,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/research_test.h>
 #include <anx/twin.h>
 #include <anx/engine.h>
 #include <anx/cell.h>
@@ -106,5 +107,5 @@ int test_resourced_twin_simulate(void)
 		anx_twin_destroy(twin2);
 	}
 
-	return 0;
+	return anx_research_day013();
 }
