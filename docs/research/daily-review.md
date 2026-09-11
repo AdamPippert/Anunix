@@ -267,7 +267,7 @@ Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/co
 
 Planned acceptance: Reject revoked authority and changed data policy before dispatch. Preserve the prepared phase on rejection and permit outcome settlement after dispatch begins.
 
-Status: Validated on Jekyll. Tested commit: `0987f34`. Source message: `e5d6a0c6-bee9-48f7-bff4-00780959b7fb`.
+Status: Merged at `becb198` after Jekyll validation. Tested commit: `0987f34`. Source message: `e5d6a0c6-bee9-48f7-bff4-00780959b7fb`.
 
 Detailed comparison and results: [Day 016](day-016.md).
 
@@ -277,13 +277,15 @@ Detailed comparison and results: [Day 016](day-016.md).
 
 Learning: Protect model-visible context by trust, version, scope, and residency.
 
-Anunix comparison: ICM catalogs object metadata. Its authority annotation does not itself enforce model-context privilege.
+Anunix comparison: The baseline bypasses metadata access policies in ICM. Day 17 enforces metadata permissions for views, catalogs, tags, and publication while keeping annotations separate from access authority.
 
 Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/state/access.c](../../kernel/core/state/access.c), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c).
 
-Planned acceptance: Reject unauthorized context projection and prevent lower-trust input from increasing its role or scope.
+Planned acceptance: Deny unauthorized ICM projection and mutation. A public authority annotation must not grant access to protected metadata or payload, and authorized sealed-object annotations must remain usable.
 
-Status: Queued. Source message: `3d6016a3-1b0f-4d3e-9bc6-bca4af973f93`.
+Status: Validated on Jekyll. Tested commit: `a356f48`. Source message: `3d6016a3-1b0f-4d3e-9bc6-bca4af973f93`.
+
+Detailed comparison and results: [Day 017](day-017.md).
 
 ## Day 018 — 2026-07-13
 

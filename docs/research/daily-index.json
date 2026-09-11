@@ -315,11 +315,12 @@
       ],
       "comparison": "The baseline checks authority only at effect preparation. Day 16 rechecks owner identity, lifecycle, permission, and data policy before dispatch while preserving settlement after dispatch begins.",
       "acceptance": "Reject revoked authority and changed data policy before dispatch. Preserve the prepared phase on rejection and permit outcome settlement after dispatch begins.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-016",
       "comparison_baseline": "658e0f5",
       "tested_commit": "0987f34",
-      "evidence": "docs/research/evidence/day-016/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-016/uefi-boot.json",
+      "merged_commit": "becb198"
     },
     {
       "day": 17,
@@ -332,10 +333,13 @@
         "kernel/core/state/access.c",
         "kernel/core/mem/memplane.c"
       ],
-      "comparison": "ICM catalogs object metadata. Its authority annotation does not itself enforce model-context privilege.",
-      "acceptance": "Reject unauthorized context projection and prevent lower-trust input from increasing its role or scope.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline bypasses metadata access policies in ICM. Day 17 enforces metadata permissions for views, catalogs, tags, and publication while keeping annotations separate from access authority.",
+      "acceptance": "Deny unauthorized ICM projection and mutation. A public authority annotation must not grant access to protected metadata or payload, and authorized sealed-object annotations must remain usable.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-017",
+      "comparison_baseline": "becb198",
+      "tested_commit": "a356f48",
+      "evidence": "docs/research/evidence/day-017/uefi-boot.json"
     },
     {
       "day": 18,
