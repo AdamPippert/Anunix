@@ -135,11 +135,12 @@
       ],
       "comparison": "The baseline drops the materialized trace identifier and has no per-tool timing or byte accounting. Day 7 records those values and tests child slot ownership and release.",
       "acceptance": "Record per-tool timing, byte counts and outcomes; verify child slot acquisition and release through failure and success.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-007",
       "comparison_baseline": "2409aff",
       "tested_commit": "2fcac65",
-      "evidence": "docs/research/evidence/day-007/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-007/uefi-boot.json",
+      "merged_commit": "7985529"
     },
     {
       "day": 8,
@@ -152,10 +153,13 @@
         "kernel/core/exec/runtime.c",
         "kernel/core/cap/effect.c"
       ],
-      "comparison": "Cells express task types and lineage. The external registry dispatches transport handlers.",
+      "comparison": "The baseline omits parent and plan identifiers and leaves trace payloads writable. Day 8 preserves those identifiers and seals materialized traces.",
       "acceptance": "Exercise a child call through the runtime while preserving lineage and enforcing delegated authority.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-008",
+      "comparison_baseline": "7985529",
+      "tested_commit": "2dd72f9",
+      "evidence": "docs/research/evidence/day-008/uefi-boot.json"
     },
     {
       "day": 9,
