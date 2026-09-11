@@ -30,6 +30,16 @@ static bool runtime_needs_trace(const struct anx_cell *cell)
 	return cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL || cell->commit.write_trace;
 }
 
+static void runtime_trace_created(struct anx_cell_trace *trace, const struct anx_cell *cell)
+{
+	char name[sizeof(cell->intent.name)];
+
+	/* Retain the entry-time intent even if a handler changes or destroys it. */
+	anx_memcpy(name, cell->intent.name, sizeof(name));
+	name[sizeof(name) - 1] = '\0';
+	anx_trace_append(trace, ANX_TRACE_CREATED, name, ANX_OK);
+}
+
 static int runtime_deny(struct anx_cell_trace *trace, enum anx_admission_gate gate,
 			int error, const char *reason)
 {
@@ -449,7 +459,7 @@ static int runtime_run(struct anx_cell *cell)
 	trace->parent_cell_ref = cell->parent_cid;
 	anx_memset(&cell->trace_oid, 0, sizeof(cell->trace_oid));
 	anx_sched_cancel(&cell->cid);
-	anx_trace_append(trace, ANX_TRACE_CREATED, "cell run started", ANX_OK);
+	runtime_trace_created(trace, cell);
 	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
 		ret = anx_trace_prepare(trace);
 		if (ret != ANX_OK) {
@@ -574,6 +584,7 @@ static int runtime_cancel_tree(struct anx_cell *cell)
 				trace->parent_cell_ref = cell->parent_cid;
 				trace->plan_ref = cell->plan_id;
 				cell->trace_id = trace->trace_id;
+				runtime_trace_created(trace, cell);
 				anx_trace_append(trace, ANX_TRACE_CANCELLED,
 					"cell cancelled", ANX_ECANCELED);
 				anx_trace_finalize(trace, &cell->trace_oid);

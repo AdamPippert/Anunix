@@ -18,7 +18,7 @@
 /* --- Trace event types --- */
 
 enum anx_trace_event_type {
-	ANX_TRACE_CREATED,
+	ANX_TRACE_CREATED,		/* description: intent name at runtime entry */
 	ANX_TRACE_ADMITTED,
 	ANX_TRACE_PLAN_GENERATED,
 	ANX_TRACE_STEP_STARTED,
