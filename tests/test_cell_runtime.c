@@ -8,6 +8,7 @@
 #include <anx/uuid.h>
 #include <anx/string.h>
 #include <anx/research_test.h>
+#include <anx/sched.h>
 
 int test_cell_runtime(void)
 {
@@ -18,6 +19,7 @@ int test_cell_runtime(void)
 
 	anx_objstore_init();
 	anx_cell_store_init();
+	anx_sched_init();
 
 	/* Create and run a simple cell through the full pipeline */
 	anx_memset(&intent, 0, sizeof(intent));
@@ -197,5 +199,8 @@ int test_cell_runtime(void)
 	if (ret != ANX_OK)
 		return ret;
 	ret = anx_research_day008();
-	return ret == ANX_OK ? anx_research_day009() : ret;
+	if (ret != ANX_OK)
+		return ret;
+	ret = anx_research_day009();
+	return ret == ANX_OK ? anx_research_day010() : ret;
 }

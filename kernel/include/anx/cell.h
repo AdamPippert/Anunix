@@ -348,6 +348,9 @@ void anx_cell_store_release(struct anx_cell *cell);
 /* Destroy a cell (removes from store, must have refcount == 1) */
 int anx_cell_destroy(struct anx_cell *cell);
 
+/* Reap terminal direct child tasks with no descendants or extra references. */
+int anx_cell_reap_children(struct anx_cell *parent, uint32_t *reaped_out);
+
 /* Iterate all cells in the store */
 typedef int (*anx_cell_iter_fn)(struct anx_cell *cell, void *arg);
 int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg);
