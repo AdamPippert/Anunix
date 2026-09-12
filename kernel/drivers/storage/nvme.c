@@ -15,6 +15,7 @@
 
 #include <anx/types.h>
 #include <anx/nvme.h>
+#include <anx/mmio.h>
 #include <anx/blk.h>
 #include <anx/pci.h>
 #include <anx/page.h>
@@ -408,7 +409,20 @@ static int nvme_init_ctrl(struct nvme_ctrl *nvme, struct anx_pci_device *pci)
 	/* Decode BAR0 (64-bit) — clear type/prefetch bits [3:0] */
 	bar0 = ((uint64_t)pci->bar[0] & ~0xFULL) |
 	       ((uint64_t)pci->bar[1] << 32);
-	nvme->bar = (volatile uint8_t *)(uintptr_t)bar0;
+
+	/*
+	 * Map it. UEFI firmware puts 64-bit BARs above the boot-time
+	 * identity map — 0xc000000000 on QEMU with OVMF — and treating the
+	 * physical address as a pointer faulted on the first CAP read.
+	 * NVME_REG_DBS is the last fixed register; the doorbells follow it,
+	 * one per queue, so map a whole page.
+	 */
+	nvme->bar = anx_mmio_map(bar0, 0x2000);
+	if (!nvme->bar) {
+		kprintf("nvme: cannot map BAR0 at %llx\n",
+			(unsigned long long)bar0);
+		return ANX_ENOMEM;
+	}
 
 	anx_pci_enable_bus_master(pci);
 

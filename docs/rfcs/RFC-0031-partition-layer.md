@@ -98,6 +98,21 @@ What is missing is that `anx_gpt_read()` reads through the whole-system API, so
 it can only read the active device, and nothing turns a parsed entry into a
 registered device.
 
+### 1.4 A dependency, discovered on the way
+
+None of this is reachable on a UEFI machine until a driver can read its own
+registers. `boot.S` claims "UEFI identity mapping covers all physical memory".
+That was true of the firmware's page tables; the anxboot stub then replaces
+them with a 4 GiB map of its own (`efi_stub.c`, PML4[0] and PDPT[0..3]) and
+the claim stops holding. UEFI puts 64-bit BARs above 4 GiB, so the first
+register access faults.
+
+`anx_mmio_map()` (`kernel/arch/x86_64/mmio.c`) adds 1 GiB uncached pages for a
+requested physical range, and NVMe and AHCI now map their BARs through it
+rather than treating a physical address as a pointer. It is not part of the
+partition layer, but the partition layer could not be exercised on the target
+machines without it, and §8 depends on knowing it is fixed.
+
 ---
 
 ## 2. Partition devices
@@ -452,11 +467,16 @@ little-endian `ANX_DISK_MAGIC` — where the protective MBR had been. `sgdisk`
 reported `invalid main GPT header, but valid backup`. Had that been jekyll's
 `nvme0n1`, the Fedora installation would have been destroyed.
 
-The only reason this has not already cost a machine is an unrelated defect:
-the anxboot EFI stub identity-maps 4 GiB, UEFI firmware assigns NVMe a BAR
-above it, and the driver page-faults during probe. No block device registers,
-so nothing is formatted. Fixing the mapping without first fixing this section
-arms the failure rather than removing it.
+Until recently this had not cost a machine only because of an unrelated
+defect: the anxboot EFI stub identity-maps 4 GiB, UEFI firmware assigns NVMe a
+BAR above it (`0xc000000000` under OVMF), and the driver page-faulted during
+probe. No block device registered, so nothing was formatted.
+
+That accident is gone. `anx_mmio_map()` now maps a BAR before its driver
+touches it, and NVMe binds under UEFI. The storage stack reaches real
+hardware, and the guard in this section is the only thing standing between a
+boot and a reformatted disk. It is not a precaution against a future problem;
+it is the replacement for a bug that was doing the job by accident.
 
 ### 8.2 Requirements
 
