@@ -194,3 +194,77 @@ int test_blk_probe(void)
 	test_mock_blk_teardown();
 	return 0;
 }
+
+/*
+ * Active-device selection (RFC-0031 section 4).
+ *
+ * "First registered wins" picks whatever the firmware enumerated first,
+ * which on a partitioned machine is typically an EFI system partition.
+ * Selection must follow the superblock instead.
+ */
+int test_blk_select(void)
+{
+	struct anx_blk_dev *d0, *d1, *d2, *chosen;
+	uint32_t magic = ANX_DISK_MAGIC;
+	uint32_t version = ANX_DISK_VERSION;
+
+	/* Three devices; the store lives on the third. */
+	test_mock_blk_teardown();
+	d0 = test_mock_blk_add(DEV_SECTORS);
+	d1 = test_mock_blk_add(DEV_SECTORS);
+	d2 = test_mock_blk_add(DEV_SECTORS);
+	CHECK(d0 && d1 && d2, "could not create mock devices");
+	CHECK(anx_blk_active() == d0, "first registered should start active");
+
+	anx_memset(sec, 0, sizeof(sec));
+	anx_memcpy(sec, &magic, 4);
+	anx_memcpy(sec + 4, &version, 4);
+	CHECK(put(d2, 0, sec) == ANX_OK, "write superblock to d2");
+
+	chosen = anx_disk_select_store();
+	CHECK(chosen == d2, "selection must follow the superblock, not order");
+	CHECK(anx_blk_active() == d2, "active device must be updated");
+
+	/* No store anywhere: leave the active device alone rather than
+	 * picking something arbitrary to write to. */
+	test_mock_blk_teardown();
+	d0 = test_mock_blk_add(DEV_SECTORS);
+	CHECK(d0 != NULL, "mock device");
+	CHECK(anx_disk_select_store() == NULL,
+	      "no superblock anywhere must select nothing");
+
+	/* An array member carrying a stale superblock is never selected:
+	 * it belongs to its array. */
+	test_mock_blk_teardown();
+	d0 = test_mock_blk_add(DEV_SECTORS);
+	d1 = test_mock_blk_add(DEV_SECTORS);
+	CHECK(d0 && d1, "mock devices");
+	anx_memset(sec, 0, sizeof(sec));
+	anx_memcpy(sec, &magic, 4);
+	anx_memcpy(sec + 4, &version, 4);
+	CHECK(put(d1, 0, sec) == ANX_OK, "write superblock to d1");
+	anx_blk_dev_claim(d1);
+	CHECK(anx_disk_select_store() == NULL,
+	      "an array member must never be selected");
+	anx_blk_dev_release(d1);
+	CHECK(anx_disk_select_store() == d1,
+	      "released member should now be selectable");
+
+	/* A superblock this kernel does not understand is not a store. */
+	test_mock_blk_teardown();
+	d0 = test_mock_blk_add(DEV_SECTORS);
+	CHECK(d0 != NULL, "mock device");
+	anx_memset(sec, 0, sizeof(sec));
+	anx_memcpy(sec, &magic, 4);
+	{
+		uint32_t bad = ANX_DISK_VERSION + 99;
+
+		anx_memcpy(sec + 4, &bad, 4);
+	}
+	CHECK(put(d0, 0, sec) == ANX_OK, "write future-version superblock");
+	CHECK(anx_disk_select_store() == NULL,
+	      "an unknown superblock version must not be selected");
+
+	test_mock_blk_teardown();
+	return 0;
+}
