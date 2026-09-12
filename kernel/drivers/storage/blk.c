@@ -13,6 +13,7 @@
  */
 
 #include <anx/blk.h>
+#include <anx/part.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
 
@@ -94,10 +95,51 @@ struct anx_blk_dev *anx_blk_dev_register(const struct anx_blk_ops *ops,
 	return NULL;
 }
 
+struct anx_blk_dev *anx_blk_dev_register_named(const struct anx_blk_ops *ops,
+					       void *priv, const char *name)
+{
+	uint32_t i;
+
+	if (!ops || !ops->read || !ops->write || !ops->capacity || !name)
+		return NULL;
+	if (anx_blk_dev_find(name))
+		return NULL;
+
+	for (i = 0; i < ANX_BLK_MAX_DEVS; i++) {
+		struct anx_blk_dev *dev = &blk_devs[i];
+
+		if (dev->used)
+			continue;
+
+		dev->ops   = ops;
+		dev->priv  = priv;
+		dev->flags = 0;
+		dev->used  = true;
+		anx_strlcpy(dev->name, name, sizeof(dev->name));
+
+		/*
+		 * Deliberately does not touch the active device. A partition
+		 * appearing must never silently become what the object store
+		 * writes to; selection is RFC-0031 step 8.
+		 */
+		return dev;
+	}
+
+	kprintf("blk: registry full, dropping %s\n", name);
+	return NULL;
+}
+
 void anx_blk_dev_unregister(struct anx_blk_dev *dev)
 {
 	if (!dev || !dev->used)
 		return;
+	/*
+	 * Partitions hold a pointer to their parent. Drop them first, or
+	 * they outlive it holding a dangling pointer and keeping their
+	 * names reserved. A partition has no children of its own.
+	 */
+	if (!anx_part_is_partition(dev))
+		anx_part_forget_children(dev);
 	if (active_dev == dev)
 		active_dev = NULL;
 	dev->used  = false;

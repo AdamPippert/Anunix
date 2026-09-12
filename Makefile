@@ -430,6 +430,9 @@ DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 # The block registry is pure dispatch with no hardware access, and the
 # mock devices in the test harness register through it.
 DRIVER_C_ALL += $(DRIVER_DIR)/storage/blk.c
+# The partition layer is pure offset arithmetic over the block registry,
+# so it is testable on the host alongside blk.c.
+DRIVER_C_ALL += $(DRIVER_DIR)/storage/part.c
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/harness/mock_wifi.c \
@@ -492,7 +495,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_regime_detector.c \
                tests/test_sched_cognitive_envelope.c \
                tests/test_cap_measured_null_promotion.c \
-               tests/test_md_raid.c
+               tests/test_md_raid.c \
+               tests/test_part.c
 TEST_BIN    := build/test/anunix_test
 
 test:

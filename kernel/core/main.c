@@ -31,6 +31,7 @@
 #include <anx/auth.h>
 #include <anx/blk.h>
 #include <anx/md.h>
+#include <anx/part.h>
 #include <anx/objstore_disk.h>
 #include <anx/driver_table.h>
 #include <anx/mt7925.h>
@@ -289,6 +290,14 @@ void kernel_main(void)
 	PERF_BEGIN("audio_init");
 	anx_audio_init();
 	anx_video_init();
+	PERF_END();
+
+	/* 10b-2. Partition scan (RFC-0031) — register a block device per GPT
+	 * entry on every drive, so Anunix can live in a partition beside
+	 * another operating system. Runs before RAID assembly so an array
+	 * can take partitions as members. */
+	PERF_BEGIN("part_scan");
+	anx_part_scan_all();
 	PERF_END();
 
 	/* 10c. Software RAID — assemble arrays from member superblocks.
