@@ -13,6 +13,7 @@
 
 #include <anx/types.h>
 #include <anx/ahci.h>
+#include <anx/mmio.h>
 #include <anx/blk.h>
 #include <anx/pci.h>
 #include <anx/page.h>
@@ -492,7 +493,14 @@ int anx_ahci_init(void)
 		if (!bar5)
 			continue;
 
-		bar = (volatile uint8_t *)(uintptr_t)bar5;
+		/* Map before touching it: the identity map does not
+		 * necessarily reach a firmware-assigned BAR. */
+		bar = anx_mmio_map(bar5, 0x1100);
+		if (!bar) {
+			kprintf("ahci: cannot map BAR5 at %x\n", bar5);
+			continue;
+		}
+
 		anx_pci_enable_bus_master(pci);
 
 		/* Enable AHCI mode, disable interrupts */
