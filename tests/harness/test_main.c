@@ -79,6 +79,7 @@ int test_sched_cognitive_envelope(void);
 int test_cap_measured_null_promotion(void);
 int test_md_raid(void);
 int test_part(void);
+int test_blk_probe(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -142,6 +143,7 @@ static struct test_case tests[] = {
 	{ "cap_measured_null_promotion", test_cap_measured_null_promotion },
 	{ "md_raid",                    test_md_raid },
 	{ "part",                       test_part },
+	{ "blk_probe",                  test_blk_probe },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

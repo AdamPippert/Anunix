@@ -14,6 +14,8 @@
 
 #include <anx/types.h>
 #include <anx/objstore_disk.h>
+#include <anx/blk.h>
+#include <anx/blk_probe.h>
 #include <anx/virtio_blk.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -303,6 +305,37 @@ static int journal_commit(void)
 /* --- Public API --- */
 
 int anx_disk_format(const char *label)
+{
+	struct anx_blk_dev *dev = anx_blk_active();
+	enum anx_blk_content content;
+	char what[ANX_PROBE_DESC_MAX];
+
+	if (!anx_blk_ready())
+		return ANX_EIO;
+
+	/*
+	 * An array member holds metadata the array depends on. Formatting it
+	 * corrupts the array without touching the array device itself, which
+	 * makes the damage hard to attribute later.
+	 */
+	if (anx_blk_dev_is_member(dev)) {
+		kprintf("disk: refusing to format %s: claimed by a RAID array\n",
+			anx_blk_active_name());
+		return ANX_EBUSY;
+	}
+
+	content = anx_blk_probe(dev, what, sizeof(what));
+	if (content == ANX_CONTENT_FOREIGN) {
+		kprintf("disk: refusing to format %s: holds %s\n",
+			anx_blk_active_name(), what);
+		kprintf("disk: use the installer to overwrite it deliberately\n");
+		return ANX_EEXIST;
+	}
+
+	return anx_disk_format_forced(label);
+}
+
+int anx_disk_format_forced(const char *label)
 {
 	uint8_t *zero_buf;
 	uint32_t i;

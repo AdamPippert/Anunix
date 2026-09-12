@@ -90,7 +90,27 @@ struct anx_disk_index_entry {
 int anx_disk_store_init(void);
 
 /* Format a block device with an empty Anunix object store */
+/*
+ * Format the active block device as an Anunix object store.
+ *
+ * Refuses a device carrying anything Anunix did not write, and refuses a
+ * device claimed as a RAID member (RFC-0031 section 8). Formatting is not
+ * reversible, so the guard errs toward refusing: a device that cannot be
+ * read, or that holds bytes in a format we do not recognise, is treated as
+ * someone else's data.
+ *
+ * Returns ANX_EEXIST when refused for content, ANX_EBUSY for an array
+ * member.
+ */
 int anx_disk_format(const char *label);
+
+/*
+ * Format regardless of what is already there. Every caller MUST have an
+ * operator's explicit instruction naming this device -- an installer
+ * confirmation, or a provisioning config. Never call this from a fallback
+ * or recovery path.
+ */
+int anx_disk_format_forced(const char *label);
 
 /* Write a State Object to disk (journaled). boundary_key defaults to 0. */
 int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,
