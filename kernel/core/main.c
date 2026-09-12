@@ -32,6 +32,7 @@
 #include <anx/blk.h>
 #include <anx/md.h>
 #include <anx/part.h>
+#include <anx/blk_probe.h>
 #include <anx/objstore_disk.h>
 #include <anx/driver_table.h>
 #include <anx/mt7925.h>
@@ -311,17 +312,27 @@ void kernel_main(void)
 		int ds_ret = anx_disk_store_init();
 
 		if (ds_ret != ANX_OK) {
-			/* First boot on this disk — format automatically */
-			kprintf("disk: no store found, formatting...\n");
-			ds_ret = anx_disk_format("anunix");
-			if (ds_ret == ANX_OK)
-				ds_ret = anx_disk_store_init();
+			/*
+			 * Do not format. This path used to write a fresh
+			 * object store over the active device whenever it
+			 * failed to find one, reading nothing first -- which
+			 * destroyed the partition table of any disk Anunix
+			 * was booted beside (RFC-0031 section 8). Running
+			 * without a store is always recoverable; formatting
+			 * someone's disk is not.
+			 */
+			char what[ANX_PROBE_DESC_MAX];
+
+			(void)anx_blk_probe(anx_blk_active(), what,
+					    sizeof(what));
+			kprintf("disk: no object store on %s (holds %s)\n",
+				anx_blk_active_name(), what);
+			kprintf("disk: running without persistence; "
+				"install to create a store\n");
 		}
 		if (ds_ret == ANX_OK) {
 			kprintf("disk: object store mounted\n");
 			anx_bootlog_disk_init();
-		} else {
-			kprintf("disk: store init failed (%d)\n", ds_ret);
 		}
 	}
 

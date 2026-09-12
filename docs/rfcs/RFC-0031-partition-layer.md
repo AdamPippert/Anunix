@@ -30,7 +30,7 @@ writes to its parent with an LBA offset added and a length clamped. Everything
 above the block layer — the object store, the RAID layer, the installer — works
 unchanged, because a partition presents exactly the interface a drive presents.
 
-Three pieces make that work:
+Four pieces make that work:
 
 1. **A GPT scan at probe time.** Each drive that registers gets its partition
    table read. Each usable entry becomes its own block device: `nvme0p2`.
@@ -40,6 +40,13 @@ Three pieces make that work:
 3. **Superblock-directed activation.** The kernel picks the active device by
    finding an Anunix object store superblock, instead of taking whichever
    device registered first.
+4. **No formatting without being asked.** The boot path currently writes a
+   fresh object store over the active device whenever it fails to find one,
+   with no check for a partition table or filesystem. That is removed, and
+   `anx_disk_format()` gains a guard (§8). Of everything here this is the
+   piece that matters most: the bounds and the selection rules all exist to
+   keep Anunix off the host's data, and they count for nothing while the
+   boot path erases the disk before anyone asks it to.
 
 ---
 
@@ -402,6 +409,10 @@ conformant.
 8. Unregistering a device MUST unregister the partitions sitting on it
    (§2.5). A partition that outlives its parent holds a dangling parent
    pointer and keeps its name reserved against a later rescan.
+9. The kernel MUST NOT format a block device it was not told to format
+   (§8). This is the requirement the others exist to serve: every bound
+   above is worthless if the boot path writes a fresh object store over
+   the disk before anyone asks it to.
 
 Requirements 1 through 3 are the ones standing between this feature and a
 destroyed Fedora install. They warrant tests that assert the failure, not just
@@ -409,7 +420,115 @@ tests that assert the success.
 
 ---
 
-## 8. Non-goals
+## 8. Formatting safety
+
+### 8.1 What happens today
+
+`kernel/core/main.c` formats the active block device at boot whenever it does
+not find an object store on it:
+
+```c
+if (anx_blk_ready()) {
+        int ds_ret = anx_disk_store_init();
+
+        if (ds_ret != ANX_OK) {
+                /* First boot on this disk — format automatically */
+                kprintf("disk: no store found, formatting...\n");
+                ds_ret = anx_disk_format("anunix");
+```
+
+`anx_disk_format()` carries no guard of any kind. It zeroes sectors 0 through
+`ANX_DATA_START` and writes its superblock, without reading a single sector
+first. It does not look for a partition table, a filesystem, or an array
+member. There is no prompt and no undo.
+
+Combined with "the first device registered becomes the active device"
+(RFC-0030 §2.3), this means: **booting Anunix on a machine where any drive
+binds reformats that drive.**
+
+This is not hypothetical. Booting the 2026.9.4 ISO under UEFI against a disk
+partitioned like jekyll left sector 0 reading `44 58 4e 41` — `"DXNA"`, the
+little-endian `ANX_DISK_MAGIC` — where the protective MBR had been. `sgdisk`
+reported `invalid main GPT header, but valid backup`. Had that been jekyll's
+`nvme0n1`, the Fedora installation would have been destroyed.
+
+The only reason this has not already cost a machine is an unrelated defect:
+the anxboot EFI stub identity-maps 4 GiB, UEFI firmware assigns NVMe a BAR
+above it, and the driver page-faults during probe. No block device registers,
+so nothing is formatted. Fixing the mapping without first fixing this section
+arms the failure rather than removing it.
+
+### 8.2 Requirements
+
+1. The kernel MUST NOT format a block device as a side effect of booting.
+   Absent a mountable object store, it runs without one and says so.
+2. `anx_disk_format()` MUST probe the target (§8.3) and MUST refuse a device
+   holding content it did not write.
+3. A forced format MUST be a separate, explicitly named entry point. Forcing
+   MUST originate in an operator action — an installer confirmation, or a
+   provisioning config naming that exact device — never in a fallback path.
+4. A device carrying `ANX_BLK_F_MEMBER` MUST NOT be formatted: it belongs to
+   an array, and formatting it corrupts the array (RFC-0030 §2.4).
+5. A refusal MUST name the device and what was found on it. "Refused" without
+   a reason sends the operator looking for a hardware fault.
+6. A probe that cannot read the device MUST be treated as foreign. An
+   unreadable disk is not an empty one.
+
+### 8.3 Probing
+
+`anx_blk_probe()` classifies a device by reading a small number of sectors:
+
+| Result | Meaning |
+| --- | --- |
+| `ANX_CONTENT_BLANK` | Nothing recognisable; safe to format |
+| `ANX_CONTENT_ANUNIX` | An Anunix object store superblock |
+| `ANX_CONTENT_FOREIGN` | Someone else's partition table, filesystem or array |
+
+The signatures below are the minimum. They are chosen to cover what the target
+machines actually carry — GPT, mdadm arrays, XFS, and an EFI system partition
+— plus the formats most likely to be met on a drive moved between machines.
+
+| Structure | Offset | Signature |
+| --- | --- | --- |
+| Anunix object store | 0x0 | `ANXD` (`ANX_DISK_MAGIC`) |
+| GPT | LBA 1 | `EFI PART` |
+| MBR / protective MBR | 0x1FE | `0x55 0xAA` |
+| Linux RAID 1.x | 0x1000 | `0xA92B4EFC` |
+| Anunix RAID | 0x0 | `ANXR` (`ANX_MD_MAGIC`) |
+| LUKS | 0x0 | `LUKS\xBA\xBE` |
+| XFS | 0x0 | `XFSB` |
+| ext2/3/4 | 0x438 | `0x53 0xEF` |
+| btrfs | 0x10040 | `_BHRfS_M` |
+| FAT | 0x36 / 0x52 | `FAT` / `FAT32` |
+| NTFS | 0x3 | `NTFS␣␣␣␣` |
+
+A probe MUST read no more than is needed to reach the furthest signature, and
+MUST tolerate a device too small to contain one rather than failing the whole
+probe.
+
+An all-zero device is `ANX_CONTENT_BLANK`. So is one whose every probed sector
+reads as zero: a wiped drive is the case a fresh install starts from.
+
+### 8.4 Boot behaviour
+
+The boot path becomes:
+
+1. Select the active device (§4).
+2. `anx_disk_store_init()`. On success, mount and continue.
+3. On failure, log which device was examined and what the probe found, then
+   continue **without** an object store. Anunix runs from memory, exactly as
+   it does when no drive binds at all.
+
+Formatting moves entirely into the installer, where a human or a provisioning
+config has named the target.
+
+This costs the "boots straight into a working store on a blank disk" property
+on first boot. That property is worth less than a machine, and the installer
+still provides it for anyone who asks for it by name.
+
+---
+
+## 9. Non-goals
 
 - **MBR partition tables.** UEFI machines, GPT only. A protective MBR is read to
   confirm it is protective, never to find partitions.
@@ -423,7 +542,7 @@ tests that assert the success.
 
 ---
 
-## 9. Testing
+## 10. Testing
 
 Host-native tests under `tests/` using the existing mock block device:
 
@@ -440,6 +559,15 @@ Host-native tests under `tests/` using the existing mock block device:
 | `test_part_naming` | Entry 2 on `nvme0` registers as `nvme0p2` |
 | `test_active_select` | The device with an `ANXD` superblock wins over one registered earlier |
 | `test_active_skip_member` | An array member is never selected |
+| `test_probe_blank` | An all-zero device probes BLANK |
+| `test_probe_gpt` | A device carrying a GPT probes FOREIGN |
+| `test_probe_mbr` | A bare MBR signature probes FOREIGN |
+| `test_probe_anunix` | An Anunix superblock probes ANUNIX, not FOREIGN |
+| `test_probe_filesystems` | XFS, ext4, btrfs and LUKS each probe FOREIGN |
+| `test_format_refuses_foreign` | `anx_disk_format()` on a GPT disk returns an error **and leaves sector 0 byte-identical** |
+| `test_format_refuses_member` | A device flagged `ANX_BLK_F_MEMBER` is refused |
+| `test_format_accepts_blank` | A blank device formats and mounts |
+| `test_format_forced` | The forced entry point overwrites a foreign disk |
 
 `test_part_clamp_write` MUST verify the parent's contents, not merely the return
 code. A clamp that returns an error after writing is the bug this is looking for.
@@ -451,7 +579,7 @@ to partition 2, reboot, and assert that partition 1 is byte-identical.
 
 ---
 
-## 10. Compatibility
+## 11. Compatibility
 
 An Anunix installed on a whole drive keeps working. Its superblock sits at drive
 sector 0, no valid GPT is found, no partitions register, and selection rule 1
@@ -465,7 +593,7 @@ written on a whole drive is byte-identical to one written in a partition.
 
 ---
 
-## 11. Implementation order
+## 12. Implementation order
 
 1. Add `ANX_ERANGE` to `kernel/include/anx/types.h`.
 2. Move `crc32()` to `kernel/lib/crc32.c`; add `kernel/include/anx/crc32.h`.
@@ -476,9 +604,16 @@ written on a whole drive is byte-identical to one written in a partition.
 7. Call the scan from `anx_drivers_probe()` after storage, before assembly.
 8. Replace first-registered-wins with superblock-directed selection.
 9. Teach the installer partition targets and fix the confirmation wording.
-10. Tests, then `make qemu-part`.
+10. Add `anx_blk_probe()`; guard `anx_disk_format()`; split out a forced
+    entry point; remove the auto-format from `main.c` (§8).
+11. Tests, then `make qemu-part`.
 
 Steps 1 through 7 are additive and change no existing behavior: with no GPT on
 any drive, nothing registers and the system behaves as it does today. Step 8 is
 the first step that changes how an existing installation boots, and is the one to
 land behind the most test coverage.
+
+Step 10 is the one to land first. It is the only step that removes a way to
+lose a disk, and every other step in this RFC brings the storage stack closer
+to binding on real hardware — which is what makes the current auto-format
+reachable there.

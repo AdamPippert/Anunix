@@ -368,7 +368,9 @@ int anx_installer_run(const char *provision_json, uint32_t json_len)
 	/* Format object store on the Anunix data partition */
 	banner("Object Store");
 	status("formatting object store...");
-	ret = anx_disk_format(hostname);
+	/* The operator named this disk; the guard has been satisfied
+	 * by the confirmation above. */
+	ret = anx_disk_format_forced(hostname);
 	if (ret != ANX_OK) {
 		fail("format failed", ret);
 		anx_json_free(&root);
@@ -521,7 +523,9 @@ int anx_installer_interactive(void)
 	ok("partitions created");
 
 	status("formatting object store...");
-	ret = anx_disk_format(hostname);
+	/* The operator named this disk; the guard has been satisfied
+	 * by the confirmation above. */
+	ret = anx_disk_format_forced(hostname);
 	if (ret != ANX_OK) {
 		fail("format failed", ret);
 		return ret;
