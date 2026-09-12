@@ -309,7 +309,17 @@ void kernel_main(void)
 	PERF_END();
 
 	if (anx_blk_ready()) {
-		int ds_ret = anx_disk_store_init();
+		int ds_ret;
+
+		/*
+		 * Pick the device carrying our superblock rather than
+		 * whichever registered first (RFC-0031 section 4). Without
+		 * this the active device on a partitioned machine is
+		 * typically the firmware's EFI system partition.
+		 */
+		anx_disk_select_store();
+
+		ds_ret = anx_disk_store_init();
 
 		if (ds_ret != ANX_OK) {
 			/*

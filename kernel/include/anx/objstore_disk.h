@@ -102,6 +102,23 @@ int anx_disk_store_init(void);
  * Returns ANX_EEXIST when refused for content, ANX_EBUSY for an array
  * member.
  */
+/*
+ * Find the device carrying an Anunix object store and make it active
+ * (RFC-0031 section 4).
+ *
+ * "The first device registered becomes the active device" was correct when
+ * every registered device was a whole drive and Anunix owned the machine.
+ * With partitions it selects whatever the firmware enumerated first -- an
+ * EFI system partition, say -- which is not ours to write to.
+ *
+ * Scans every registered device for a valid superblock at sector 0 and
+ * prefers an array over a partition, and a partition over a whole drive.
+ * Array members are never selected. Returns the chosen device, or NULL when
+ * no store was found anywhere, in which case the active device is left
+ * alone.
+ */
+struct anx_blk_dev *anx_disk_select_store(void);
+
 int anx_disk_format(const char *label);
 
 /*
