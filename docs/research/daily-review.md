@@ -379,7 +379,7 @@ Evidence: [kernel/include/anx/interface_plane.h](../../kernel/include/anx/interf
 
 Planned acceptance: Reject stale or unauthorized control actions and verify that an allowed focus action reaches the intended surface.
 
-Status: Validated on Jekyll. Tested commit: `2b38e9f`. Source message: `18e4cfa8-3933-472b-900e-800cd425e87a`.
+Status: Merged at `2b8df85` after Jekyll validation. Tested commit: `2b38e9f`. Source message: `18e4cfa8-3933-472b-900e-800cd425e87a`.
 
 Detailed comparison and results: [Day 023](day-023.md).
 
@@ -389,13 +389,15 @@ Detailed comparison and results: [Day 023](day-023.md).
 
 Learning: A pause must fence effects across the relevant execution scope.
 
-Anunix comparison: Cells and workflows can wait or cancel. The effect protocol has its own independent phase transitions.
+Anunix comparison: Baseline 2b8df85 checks individual cell authority but lacks a shared run fence. Day 024 adds inherited holds, sticky terminal epochs, and governed dispatch checks.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c).
 
-Planned acceptance: Pause one branch and establish that sibling effects cannot cross the same scope's fence.
+Planned acceptance: Hold one branch and block sibling effects in the same run while harmless computation and unrelated runs can continue.
 
-Status: Queued. Source message: `38396083-009d-4719-87bb-27720ab59c9d`.
+Status: Validated on Jekyll. Tested commit: `e5ecdf3`. Source message: `38396083-009d-4719-87bb-27720ab59c9d`.
+
+Detailed comparison and results: [Day 024](day-024.md).
 
 ## Day 025 — 2026-07-20
 
