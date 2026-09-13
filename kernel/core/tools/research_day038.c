@@ -5,6 +5,7 @@
 #include <anx/state_object.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/kprintf.h>
 
 int anx_research_day038(void)
 {
@@ -16,6 +17,7 @@ int anx_research_day038(void)
 	anx_oid_t oid = ANX_UUID_NIL, conditions[2];
 	uint16_t source, output;
 	int ret;
+	uint32_t checkpoint = 1;
 	params.object_type = ANX_OBJ_BYTE_DATA;
 	params.payload = "condition-v1"; params.payload_size = 12;
 	ret = anx_so_create(&params, &obj);
@@ -39,6 +41,7 @@ int anx_research_day038(void)
 	if (wf->output_count != 1 || anx_uuid_compare(&wf->output_oids[0], &obj->oid)) { ret = -3800; goto out; }
 	anx_time_t previous_run = wf->last_run;
 	ret = anx_so_replace_payload(&write, "condition-v2", 12);
+	checkpoint = 2;
 	if (ret != ANX_OK) goto out;
 	ret = -3801;
 	if (anx_wf_run(&oid, NULL) != ANX_EBUSY || wf->last_run != previous_run || wf->output_count) goto out;
@@ -48,7 +51,8 @@ int anx_research_day038(void)
 	if (anx_wf_reuse_bind(&oid, ANX_WF_DETERMINISTIC, conditions, 2) != ANX_EINVAL ||
 	    anx_wf_reuse_bind(&oid, ANX_WF_DETERMINISTIC, NULL, 0) != ANX_EINVAL) goto out;
 	ret = anx_wf_reuse_bind(&oid, ANX_WF_DETERMINISTIC, conditions, 1);
-	if (ret == ANX_OK) ret = anx_wf_run(&oid, NULL);
+	checkpoint = 3;
+	if (ret == ANX_OK) { checkpoint = 4; ret = anx_wf_run(&oid, NULL); }
 	if (ret != ANX_OK) goto out;
 	/* Changing the graph requires a fresh validation, even with unchanged inputs. */
 	anx_strlcpy(wf->nodes[output - 1].params.output.dest_name, "changed", ANX_WF_NAME_MAX);
@@ -88,6 +92,7 @@ int anx_research_day038(void)
 	    anx_wf_reuse_status(&oid, &view) != ANX_OK || !view.demoted) goto out;
 	ret = ANX_OK;
 out:
+	if (ret != ANX_OK) kprintf("day-038: checkpoint %u rc=%d\n", checkpoint, ret);
 	if (!anx_uuid_is_nil(&oid)) anx_wf_destroy(&oid);
 	anx_so_close(&write);
 	if (obj) { anx_so_delete(&obj->oid, false); anx_objstore_release(obj); }
