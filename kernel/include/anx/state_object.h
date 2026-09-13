@@ -237,6 +237,9 @@ int anx_objstore_iterate(anx_objstore_iter_fn cb, void *arg);
 
 /* --- Staged mutation API --- */
 
+/* Internal shadow-write ownership gate; the caller holds the object lock. */
+int anx_object_stage_check_writer(const struct anx_state_object *obj);
+
 /*
  * Begin a staged mutation on an open handle (ANX_OPEN_WRITE or
  * ANX_OPEN_READWRITE). Once staged, anx_so_write_payload and
@@ -256,6 +259,8 @@ int anx_object_stage(struct anx_object_handle *handle, anx_cid_t staging_cell);
  * Atomically publish a staged mutation: the shadow payload becomes
  * the live payload, version increments exactly once, content_hash is
  * recomputed, and one ANX_PROV_MUTATED provenance event is appended.
+ * Publication requires a writable handle, the current actor's effect authority,
+ * object write permission, and the unchanged base version. A denial retains the stage.
  * Returns ANX_EINVAL if no stage is in progress.
  */
 int anx_object_commit(struct anx_object_handle *handle);
