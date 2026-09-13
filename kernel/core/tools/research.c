@@ -157,6 +157,8 @@ void cmd_research_test(int argc, char **argv)
 		ret = anx_research_day036();
 	else if (anx_strcmp(argv[1], "day-037") == 0)
 		ret = anx_research_day037();
+	else if (anx_strcmp(argv[1], "day-038") == 0)
+		ret = anx_research_day038();
 	else {
 		kprintf("unknown research test: %s\n", argv[1]);
 		return;

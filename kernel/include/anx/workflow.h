@@ -259,6 +259,7 @@ struct anx_wf_policy {
  * nodes and edges are dynamically allocated (ANX_WF_MAX_NODES /
  * ANX_WF_MAX_EDGES entries respectively) and freed on destroy.
  */
+struct anx_wf_reuse_guard;
 struct anx_wf_object {
 	bool		in_use;
 	anx_oid_t	oid;
@@ -270,6 +271,7 @@ struct anx_wf_object {
 	struct anx_wf_node	*nodes;	/* ANX_WF_MAX_NODES entries */
 	struct anx_wf_edge	*edges;	/* ANX_WF_MAX_EDGES entries */
 	struct anx_wf_topology_control topology;
+	struct anx_wf_reuse_guard *reuse;
 
 	enum anx_wf_run_state	run_state;
 	anx_cid_t		running_cid;

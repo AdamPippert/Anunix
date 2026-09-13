@@ -19,6 +19,7 @@
 
 #include <anx/types.h>
 #include <anx/workflow.h>
+#include <anx/workflow_reuse.h>
 #include <anx/cell.h>
 #include <anx/cell_trace.h>
 #include <anx/state_object.h>
@@ -787,6 +788,8 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 		return ANX_EBUSY;
 	if (wf->node_count == 0)
 		return ANX_EINVAL;
+	ret = anx_wf_reuse_check(wf);
+	if (ret != ANX_OK) return ret;
 
 	/* Snapshot system state before dispatch for JEPA training. */
 	if (anx_jepa_available()) {
@@ -857,6 +860,7 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 
 	if (run_cid_out)
 		anx_memset(run_cid_out, 0, sizeof(*run_cid_out));
+	anx_wf_reuse_observe(wf, ret);
 
 	return ret;
 }
