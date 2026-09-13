@@ -57,15 +57,39 @@ static int check_run_evidence(const struct anx_wf_object *wf)
 {
 	struct anx_object_handle handle = {0};
 	int ret;
-	if (wf->run_state != ANX_WF_RUN_COMPLETED || !wf->trace_entries || wf->trace_entry_count != wf->node_count)
+	if (wf->run_state != ANX_WF_RUN_COMPLETED || wf->topology.trace_epoch != wf->topology.epoch)
 		return ANX_EPERM;
+	ret = validate_graph(wf, wf->edges, wf->edge_count);
+	if (ret != ANX_OK) return ret;
 	ret = anx_so_open(&wf->trace_oid, ANX_OPEN_READ, &handle);
 	if (ret != ANX_OK) return ret;
 	anx_spin_lock(&handle.obj->lock);
-	uint64_t size = wf->trace_entry_count * sizeof(*wf->trace_entries);
+	uint64_t size = wf->node_count * sizeof(struct anx_wf_trace_entry);
+	uint32_t position[ANX_WF_MAX_NODES] = {0};
 	if (handle.obj->state != ANX_OBJ_SEALED || handle.obj->object_type != ANX_OBJ_EXECUTION_TRACE ||
-	    !handle.obj->payload || handle.obj->payload_size != size || anx_memcmp(handle.obj->payload, wf->trace_entries, size))
+	    !handle.obj->payload || handle.obj->payload_size != size) {
 		ret = ANX_EPERM;
+		goto out;
+	}
+	const struct anx_wf_trace_entry *entries = handle.obj->payload;
+	for (uint32_t i = 0; i < wf->node_count; i++) {
+		uint16_t id = entries[i].node_id;
+		if (!id || id > ANX_WF_MAX_NODES || position[id - 1] || wf->nodes[id - 1].id != id ||
+		    entries[i].node_kind != wf->nodes[id - 1].kind || entries[i].result != ANX_OK) {
+			ret = ANX_EPERM;
+			goto out;
+		}
+		position[id - 1] = i + 1;
+	}
+	for (uint32_t i = 0; i < ANX_WF_MAX_EDGES; i++) {
+		const struct anx_wf_edge *edge = &wf->edges[i];
+		if (edge->from_node && (!position[edge->from_node - 1] ||
+		    position[edge->from_node - 1] >= position[edge->to_node - 1])) {
+			ret = ANX_EPERM;
+			break;
+		}
+	}
+out:
 	anx_spin_unlock(&handle.obj->lock);
 	anx_so_close(&handle);
 	return ret;
@@ -85,6 +109,7 @@ static int controllable(const anx_oid_t *oid, struct anx_wf_object **out)
 static void require_new_run(struct anx_wf_object *wf)
 {
 	wf->run_state = ANX_WF_RUN_IDLE;
+	wf->topology.trace_epoch = 0;
 	wf->output_count = 0;
 	anx_memset(wf->output_oids, 0, sizeof(wf->output_oids));
 }
