@@ -795,6 +795,8 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 	}
 
 	/* Allocate trace entry table for this run. */
+	wf->trace_oid = ANX_UUID_NIL;
+	wf->topology.trace_epoch = 0;
 	anx_free(wf->trace_entries);
 	wf->trace_entries = anx_alloc(
 		sizeof(struct anx_wf_trace_entry) * ANX_WF_MAX_NODES);
@@ -899,6 +901,8 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 	}
 
 	if (action == ANX_WF_RESUME_REPLACE) {
+		if (wf->topology.enabled)
+			return ANX_EPERM;
 		if (!replacement || failed_slot >= ANX_WF_MAX_NODES)
 			return ANX_EINVAL;
 		/* Preserve the node's id and position in the graph. */
@@ -940,6 +944,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		wf->run_state   = ANX_WF_RUN_COMPLETED;
 		wf->last_status = ANX_OK;
 		kprintf("wf: '%s' completed after resume\n", wf->name);
+		anx_wf_trace_seal(wf_oid, NULL);
 	}
 
 	return ret;
@@ -971,10 +976,18 @@ anx_wf_trace_seal(const anx_oid_t *wf_oid, anx_oid_t *trace_oid_out)
 	ret = anx_so_create(&p, &obj);
 	if (ret != ANX_OK)
 		return ret;
+	ret = anx_so_seal(&obj->oid);
+	if (ret != ANX_OK) {
+		anx_so_delete(&obj->oid, false);
+		anx_objstore_release(obj);
+		return ret;
+	}
 
 	wf->trace_oid = obj->oid;
+	wf->topology.trace_epoch = wf->topology.epoch;
 	if (trace_oid_out)
 		*trace_oid_out = obj->oid;
+	anx_objstore_release(obj);
 
 	anx_free(wf->trace_entries);
 	wf->trace_entries     = NULL;

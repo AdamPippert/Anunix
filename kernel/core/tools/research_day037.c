@@ -6,6 +6,48 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 
+static bool ordered_trace(const struct anx_wf_object *wf, uint16_t a, uint16_t b, uint16_t c)
+{
+	struct anx_object_handle handle = {0};
+	struct anx_wf_trace_entry entries[3];
+	bool valid;
+	if (anx_so_open(&wf->trace_oid, ANX_OPEN_READ, &handle) != ANX_OK) return false;
+	valid = handle.obj->state == ANX_OBJ_SEALED && handle.obj->payload_size == sizeof(entries) &&
+		anx_so_read_payload(&handle, 0, entries, sizeof(entries)) == sizeof(entries) &&
+		entries[0].node_id == a && entries[1].node_id == b && entries[2].node_id == c;
+	anx_so_close(&handle);
+	return valid;
+}
+
+static int paused_graphs(void)
+{
+	for (uint32_t i = 0; i < 2; i++) {
+		anx_oid_t oid;
+		uint16_t id;
+		struct anx_wf_node node = {0};
+		int ret = anx_wf_create("research-day-037-paused", NULL, &oid);
+		if (ret != ANX_OK) return ret;
+		node.kind = i ? ANX_WF_NODE_CAP_PROMOTION : ANX_WF_NODE_HUMAN_REVIEW;
+		ret = anx_wf_node_add(&oid, &node, &id);
+		if (ret == ANX_OK) ret = anx_wf_topology_enable(&oid, 1);
+		if (ret == ANX_OK) ret = anx_wf_run(&oid, NULL);
+		struct anx_wf_object *wf = anx_wf_object_get(&oid);
+		bool valid = ret == (i ? ANX_EPERM : ANX_OK) &&
+			wf->run_state == (i ? ANX_WF_RUN_SUSPENDED : ANX_WF_RUN_WAITING_HUMAN) &&
+			anx_wf_topology_revise(&oid, 1, NULL, 0) == ANX_EBUSY &&
+			anx_wf_topology_rollback(&oid, 1) == ANX_EBUSY;
+		if (i && valid) {
+			node.kind = ANX_WF_NODE_TRIGGER;
+			valid = anx_wf_resume(&oid, ANX_WF_RESUME_REPLACE, &node) == ANX_EPERM &&
+				wf->nodes[id - 1].kind == ANX_WF_NODE_CAP_PROMOTION;
+			anx_wf_resume(&oid, ANX_WF_RESUME_ABORT, NULL);
+		}
+		anx_wf_destroy(&oid);
+		if (!valid) return -3707;
+	}
+	return ANX_OK;
+}
+
 int anx_research_day037(void)
 {
 	anx_oid_t oid;
@@ -56,8 +98,7 @@ int anx_research_day037(void)
 	ret = anx_wf_run(&oid, NULL);
 	if (ret != ANX_OK) goto out;
 	ret = -3703;
-	if (wf->trace_entry_count != 3 || wf->trace_entries[0].node_id != ids[0] ||
-	    wf->trace_entries[1].node_id != ids[1] || wf->trace_entries[2].node_id != ids[2]) goto out;
+	if (!ordered_trace(wf, ids[0], ids[1], ids[2])) goto out;
 	edges[0] = (struct anx_wf_edge){.from_node=ids[0], .to_node=ids[2], .from_port=1, .to_port=0};
 	edges[1] = (struct anx_wf_edge){.from_node=ids[2], .to_node=ids[1], .from_port=1, .to_port=0};
 	anx_oid_t evidence = wf->trace_oid;
@@ -71,19 +112,18 @@ int anx_research_day037(void)
 	ret = anx_wf_run(&oid, NULL);
 	if (ret != ANX_OK) goto out;
 	ret = -3705;
-	if (wf->trace_entry_count != 3 || wf->trace_entries[1].node_id != ids[2] ||
-	    wf->trace_entries[2].node_id != ids[1] || anx_wf_topology_rollback(&oid, epoch) != ANX_EBUSY) goto out;
+	if (!ordered_trace(wf, ids[0], ids[2], ids[1]) || anx_wf_topology_rollback(&oid, epoch) != ANX_EBUSY) goto out;
 	ret = anx_wf_topology_rollback(&oid, epoch + 1);
 	if (ret == ANX_OK) ret = anx_wf_run(&oid, NULL);
 	if (ret != ANX_OK) goto out;
 	ret = -3706;
 	if (anx_memcmp(original, wf->edges, sizeof(original)) || wf->topology.epoch != epoch + 2 ||
-	    wf->topology.accepted != 1 || wf->trace_entries[1].node_id != ids[1] ||
+	    wf->topology.accepted != 1 || !ordered_trace(wf, ids[0], ids[1], ids[2]) ||
 	    anx_wf_topology_revise(&oid, epoch + 2, edges, 2) != ANX_EFULL ||
 	    anx_wf_topology_rollback(&oid, epoch + 2) != ANX_EPERM) goto out;
 	ret = ANX_OK;
 out:
 	anx_wf_destroy(&oid);
-	return ret;
+	return ret == ANX_OK ? paused_graphs() : ret;
 }
 #endif

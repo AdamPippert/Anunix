@@ -179,7 +179,7 @@ struct anx_wf_edge {
 struct anx_wf_topology_control {
 	bool enabled, can_rollback;
 	uint32_t limit, accepted;
-	uint64_t epoch;
+	uint64_t epoch, trace_epoch;
 	anx_oid_t evidence_oid;
 	uint16_t previous_count;
 	struct anx_wf_edge previous[ANX_WF_MAX_EDGES];
