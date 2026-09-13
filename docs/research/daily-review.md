@@ -653,7 +653,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject infeasible typed bounds before evaluation or activation; deny failing or mismatched evidence; admit and roll back a passing compiled task.
 
-Status: Validated on Jekyll. Tested commit: `338af2e`. Source message: `e7cc63e2-9a8d-424f-9050-637fa34a1080`.
+Status: Merged at `4f69932` after Jekyll validation. Tested commit: `338af2e`. Source message: `e7cc63e2-9a8d-424f-9050-637fa34a1080`.
 
 Detailed comparison and results: [Day 040](day-040.md).
 
@@ -663,13 +663,15 @@ Detailed comparison and results: [Day 040](day-040.md).
 
 Learning: Schedule observations by validity, provenance, cost, and supersession.
 
-Anunix comparison: Objects and interface events carry structure. Catalog metadata alone does not establish observation coherence.
+Anunix comparison: Object metadata and interface structure now feed a bounded observation catalog. Reads reject changed, missing, inaccessible, and superseded dependencies; historical bytes remain accessible under normal policy. An interrupt regression also fixes unsafe x86 compiler stack use.
 
 Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/include/anx/interface_plane.h](../../kernel/include/anx/interface_plane.h).
 
 Planned acceptance: Reject an observation superseded by a newer state transition.
 
-Status: Queued. Source message: `5eb9115d-a4bb-4478-b033-ef28b0a7dc95`.
+Status: Validated on Jekyll. Tested commit: `5bf6a37`. Source message: `5eb9115d-a4bb-4478-b033-ef28b0a7dc95`.
+
+Detailed comparison and results: [Day 041](day-041.md).
 
 ## Day 042 — 2026-08-06
 

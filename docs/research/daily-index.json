@@ -795,11 +795,12 @@
       ],
       "comparison": "The baseline validates weights and evidence but has no typed policy task. The candidate checks declared domains and units, evaluates fixed observable constraints, and binds the complete task to required passing receipts.",
       "acceptance": "Reject infeasible typed bounds before evaluation or activation; deny failing or mismatched evidence; admit and roll back a passing compiled task.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-040",
       "comparison_baseline": "ff29ee6",
       "tested_commit": "338af2e",
-      "evidence": "docs/research/evidence/day-040/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-040/uefi-boot.json",
+      "merged_commit": "4f69932"
     },
     {
       "day": 41,
@@ -812,10 +813,13 @@
         "kernel/core/state/provenance.c",
         "kernel/include/anx/interface_plane.h"
       ],
-      "comparison": "Objects and interface events carry structure. Catalog metadata alone does not establish observation coherence.",
+      "comparison": "Object metadata and interface structure now feed a bounded observation catalog. Reads reject changed, missing, inaccessible, and superseded dependencies; historical bytes remain accessible under normal policy. An interrupt regression also fixes unsafe x86 compiler stack use.",
       "acceptance": "Reject an observation superseded by a newer state transition.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-041",
+      "comparison_baseline": "4f69932",
+      "tested_commit": "5bf6a37",
+      "evidence": "docs/research/evidence/day-041/uefi-boot.json"
     },
     {
       "day": 42,
