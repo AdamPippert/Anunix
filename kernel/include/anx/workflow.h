@@ -272,6 +272,10 @@ struct anx_wf_object {
 	struct anx_wf_edge	*edges;	/* ANX_WF_MAX_EDGES entries */
 	struct anx_wf_topology_control topology;
 	struct anx_wf_reuse_guard *reuse;
+	anx_oid_t checkpoint_oid;
+	uint64_t checkpoint_epoch;
+	uint8_t checkpoint_digest[32];
+	bool checkpoint_consumed;
 
 	enum anx_wf_run_state	run_state;
 	anx_cid_t		running_cid;
@@ -377,6 +381,10 @@ const struct anx_wf_continuation *anx_wf_continuation_get(const anx_oid_t *oid);
  * Returns ANX_ENOENT if no entries were recorded.
  */
 int anx_wf_trace_seal(const anx_oid_t *wf_oid, anx_oid_t *trace_oid_out);
+
+/* Save and unload a suspended continuation; restore only the latest issued image. */
+int anx_wf_checkpoint_save(const anx_oid_t *wf_oid, anx_oid_t *checkpoint_out);
+int anx_wf_checkpoint_restore(const anx_oid_t *wf_oid, const anx_oid_t *checkpoint);
 
 /*
  * Serialize a workflow to a human-readable/editable DSL string.
