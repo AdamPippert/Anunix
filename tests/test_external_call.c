@@ -169,5 +169,7 @@ int test_external_call(void)
 	}
 
 	ret = anx_research_day001();
-	return ret != ANX_OK ? ret : anx_research_day014();
+	if (ret == ANX_OK)
+		ret = anx_research_day014();
+	return ret == ANX_OK ? anx_research_day025() : ret;
 }

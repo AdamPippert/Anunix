@@ -294,6 +294,7 @@ struct anx_cell {
 	anx_cid_t parent_cid;
 	anx_oid_t identity_id;		/* stable authority identity; nil retains legacy admission */
 	anx_oid_t effect_fence_id;	/* inherited run fence; nil retains legacy effects */
+	anx_oid_t tool_namespace_id;	/* inherited catalog view; nil retains legacy transport */
 	anx_cid_t child_cids[ANX_MAX_CHILD_CELLS];
 	uint32_t child_count;
 	uint32_t recursion_depth;
