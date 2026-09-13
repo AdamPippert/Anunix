@@ -65,8 +65,8 @@ int anx_external_register_handler(const char *scheme,
 int anx_external_unregister_handler(const char *scheme);
 
 /*
- * Trusted transport API; callers enforce authority before invoking it.
- * The cell runtime checks execution.allow_side_effects during admission.
+ * Active cells pass current execution, identity, fence, and tool-namespace gates.
+ * Unscoped kernel callers retain trusted transport access.
  * Parses the scheme from call->endpoint,
  * looks up the handler, and delegates. Returns ANX_ENOENT if no
  * handler is registered for the scheme.

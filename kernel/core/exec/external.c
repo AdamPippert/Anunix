@@ -28,6 +28,8 @@ static bool initialized;
 void anx_external_init(void)
 {
 	uint32_t i;
+	if (anx_cell_current_id())
+		return;
 
 	for (i = 0; i < ANX_EXT_MAX_HANDLERS; i++) {
 		handlers[i].scheme[0] = '\0';
@@ -81,6 +83,8 @@ int anx_external_register_handler(const char *scheme,
 	struct anx_ext_slot *slot;
 	uint32_t i;
 
+	if (anx_cell_current_id())
+		return ANX_EPERM;
 	if (!scheme || !fn)
 		return ANX_EINVAL;
 	if (!initialized)
@@ -109,6 +113,8 @@ int anx_external_register_handler(const char *scheme,
 int anx_external_unregister_handler(const char *scheme)
 {
 	struct anx_ext_slot *slot;
+	if (anx_cell_current_id())
+		return ANX_EPERM;
 
 	if (!scheme)
 		return ANX_EINVAL;
@@ -151,6 +157,8 @@ int anx_external_invoke(struct anx_external_call *call)
 		if (caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
 		    anx_identity_admit(caller, NULL) == ANX_OK)
 			ret = anx_effect_fence_check(caller, NULL, NULL);
+		if (ret == ANX_OK)
+			ret = anx_tool_authorize_call(caller, call);
 		anx_cell_store_release(caller);
 		if (ret != ANX_OK)
 			return ret;
