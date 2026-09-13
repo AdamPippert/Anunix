@@ -576,11 +576,12 @@
       ],
       "comparison": "The baseline could evict produced inputs needed by unfinished workflow nodes. Eviction, demotion, and forgetting now preserve those inputs across active and paused workflows until their consumers finish.",
       "acceptance": "Retain an intermediate needed by runnable descendants and reclaim one with no live consumer.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-029",
       "comparison_baseline": "ff868c8",
       "tested_commit": "ee12ad9",
-      "evidence": "docs/research/evidence/day-029/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-029/uefi-boot.json",
+      "merged_commit": "1936ce2"
     },
     {
       "day": 30,
@@ -593,10 +594,13 @@
         "kernel/core/state/provenance.c",
         "kernel/core/twin/twin.c"
       ],
-      "comparison": "ICM annotations and provenance can describe artifacts. The Twin models only a bounded part of execution.",
+      "comparison": "The baseline bound tuning actions to policy generations only. Optional target contracts and sealed proposal artifacts now recheck the compiled profile, selected engine settings, and versioned knowledge and evaluation references.",
       "acceptance": "Reject an optimization artifact whose target description no longer matches the tested environment.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-030",
+      "comparison_baseline": "1936ce2",
+      "tested_commit": "bb5dc0b",
+      "evidence": "docs/research/evidence/day-030/uefi-boot.json"
     },
     {
       "day": 31,

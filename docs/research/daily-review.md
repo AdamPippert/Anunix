@@ -475,7 +475,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Retain an intermediate needed by runnable descendants and reclaim one with no live consumer.
 
-Status: Validated on Jekyll. Tested commit: `ee12ad9`. Source message: `1786af0d-1948-4d58-aada-fa836093fddc`.
+Status: Merged at `1936ce2` after Jekyll validation. Tested commit: `ee12ad9`. Source message: `1786af0d-1948-4d58-aada-fa836093fddc`.
 
 Detailed comparison and results: [Day 029](day-029.md).
 
@@ -485,13 +485,15 @@ Detailed comparison and results: [Day 029](day-029.md).
 
 Learning: Make target knowledge and task state explicit, versioned inputs to optimization.
 
-Anunix comparison: ICM annotations and provenance can describe artifacts. The Twin models only a bounded part of execution.
+Anunix comparison: The baseline bound tuning actions to policy generations only. Optional target contracts and sealed proposal artifacts now recheck the compiled profile, selected engine settings, and versioned knowledge and evaluation references.
 
 Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c).
 
 Planned acceptance: Reject an optimization artifact whose target description no longer matches the tested environment.
 
-Status: Queued. Source message: `de9ffcd8-6113-4a35-8372-3cba1927e61e`.
+Status: Validated on Jekyll. Tested commit: `bb5dc0b`. Source message: `de9ffcd8-6113-4a35-8372-3cba1927e61e`.
+
+Detailed comparison and results: [Day 030](day-030.md).
 
 ## Day 031 — 2026-07-26
 
