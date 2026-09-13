@@ -396,11 +396,12 @@
       ],
       "comparison": "The baseline has tier records and decay without bounded hints or protected eviction. Day 20 ranks a bounded candidate pool while preserving controller-protected tiers.",
       "acceptance": "Exercise expiring retention advice and controlled tier eviction; preserve protected object content and reject unauthorized protection changes.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-020",
       "comparison_baseline": "a7da2a2",
       "tested_commit": "9d1c753",
-      "evidence": "docs/research/evidence/day-020/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-020/uefi-boot.json",
+      "merged_commit": "b3ed9c7"
     },
     {
       "day": 21,
@@ -409,14 +410,18 @@
       "title": "AI-First OS Update: Semantic Control Loops Are Moving from Theory to Working Systems",
       "learning": "Use typed actions in slower control loops; retain deterministic resource ownership.",
       "code": [
-        "kernel/core/twin/twin.c",
-        "kernel/core/regime/regime.c",
-        "kernel/core/route/lease.c"
+        "kernel/core/route/tuning.c",
+        "kernel/core/route/planner.c",
+        "kernel/core/route/session.c",
+        "kernel/include/anx/tuning.h"
       ],
-      "comparison": "The Twin and regime detector support observation and gating. A general typed actuation loop remains separate.",
-      "acceptance": "Reject an out-of-range action and restore the prior policy after a failed trial.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline validates simulated weights but hardcodes live scoring. Day 21 activates typed, serialized policy trials and restores the prior weights after rejection.",
+      "acceptance": "Reject malformed or stale tuning actions; observe live placement changes and restore the previous policy after a failed trial.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-021",
+      "comparison_baseline": "b3ed9c7",
+      "tested_commit": "e07f352",
+      "evidence": "docs/research/evidence/day-021/uefi-boot.json"
     },
     {
       "day": 22,
