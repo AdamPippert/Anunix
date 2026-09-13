@@ -615,11 +615,12 @@
       ],
       "comparison": "The baseline accepted caller-authored evaluation payloads after checking target compatibility. Artifact trials now require an issued passing receipt from fixed routing checks, bound to the complete candidate action.",
       "acceptance": "Reject missing or mismatched evidence and accept only an independently checked candidate.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-031",
       "comparison_baseline": "7af3018",
       "tested_commit": "e885c86",
-      "evidence": "docs/research/evidence/day-031/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-031/uefi-boot.json",
+      "merged_commit": "4c0bc25"
     },
     {
       "day": 32,
@@ -632,10 +633,13 @@
         "kernel/core/route/lease.c",
         "kernel/include/anx/cell.h"
       ],
-      "comparison": "Cells expose recursion limits and budgets. Constraints need enforcement on every expansion path.",
-      "acceptance": "Reject excessive recursion or child creation without allocating an extra child.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline bounds concurrent children but returns slots after destruction. Day 32 adds a shared lifetime creation budget, explicit expansion, and permanent lease expiry.",
+      "acceptance": "Reject a child beyond the shared lifetime budget without allocation; permit explicit expansion and fence new children and effects after expiry.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-032",
+      "comparison_baseline": "4c0bc25",
+      "tested_commit": "003f72c",
+      "evidence": "docs/research/evidence/day-032/uefi-boot.json"
     },
     {
       "day": 33,
@@ -1286,6 +1290,127 @@
       "acceptance": "Reject missing policy evidence and unauthorized context role or scope promotion.",
       "status": "queued",
       "branch": null
+    },
+    {
+      "learning": "Separate stable logical state from a versioned resource shape and recheck placement after reconfiguration.",
+      "code": [
+        "kernel/include/anx/engine.h",
+        "kernel/core/route/planner.c",
+        "kernel/core/twin/twin.c"
+      ],
+      "comparison": "Engine topology hints and routing target fingerprints exist. Worker reshaping and shared resource-shape epochs need explicit control.",
+      "acceptance": "Reject placement against a stale resource shape; preserve logical identity after an authorized shape revision.",
+      "day": 74,
+      "date": "2026-09-07",
+      "message_id": "a3296827-dc83-4a98-ab4d-a033c2db25f9",
+      "title": "AI-First OS Update: Make Resource Shape a Schedulable Object",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
+    },
+    {
+      "learning": "Give planners explicit execution constraints and versioned compatibility contracts for memory, models, coordination, and quality.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/include/anx/memplane.h",
+        "kernel/core/route/optimization.c"
+      ],
+      "comparison": "Cells expose execution constraints, and optimization artifacts bind a target. Memory compatibility across model changes needs a declared contract.",
+      "acceptance": "Reject incompatible memory reuse after an executor change; permit reuse under a matching declared contract.",
+      "day": 75,
+      "date": "2026-09-08",
+      "message_id": "1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee",
+      "title": "AI-First OS Update: Define Semantic ABIs Between Models, Memory, Teams, and Hardware",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
+    },
+    {
+      "learning": "Expose logical memory objects and their consumers, then choose physical representations according to topology and measured benefit.",
+      "code": [
+        "kernel/core/mem/memplane.c",
+        "kernel/include/anx/memplane.h",
+        "kernel/core/workflow/workflow_exec.c"
+      ],
+      "comparison": "Memory tiers and workflow liveness exist. Topology-specific sharing or copying needs a checked representation plan.",
+      "acceptance": "Reject an inapplicable memory transformation and retain the original object representation; admit a compatible plan.",
+      "day": 76,
+      "date": "2026-09-09",
+      "message_id": "b6df868e-dc4e-4388-b987-eb9f2591d320",
+      "title": "AI-First OS Update: The Memory Scheduler Is Becoming as Important as the CPU Scheduler",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
+    },
+    {
+      "learning": "Control computation depth, speculation, and parallelism within explicit quality and resource limits, with deterministic enforcement.",
+      "code": [
+        "kernel/core/route/planner.c",
+        "kernel/core/route/budget.c",
+        "kernel/include/anx/cell.h"
+      ],
+      "comparison": "Routing scores and cognitive budgets exist. Joint execution-shape changes need explicit quality bounds and admission checks.",
+      "acceptance": "Reject an execution-shape proposal outside its quality or resource contract before changing the active plan.",
+      "day": 77,
+      "date": "2026-09-10",
+      "message_id": "598f8149-e0fb-47a4-a0bb-975e0b26d183",
+      "title": "AI-first OS update \u2014 September 10: schedule the amount of computation, not only where it runs",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
+    },
+    {
+      "learning": "Use agent phases, idle intervals, lineage, and shared origins to schedule state movement while preserving capacity and correctness.",
+      "code": [
+        "kernel/include/anx/cell.h",
+        "kernel/core/mem/memplane.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "Cell lineage and memory tiers exist. State movement does not yet combine idle phases with lineage-aware eligibility.",
+      "acceptance": "Permit eligible state movement during a declared idle phase and reject a stale or incompatible phase assumption.",
+      "day": 78,
+      "date": "2026-09-11",
+      "message_id": "04ea316e-9606-4726-8f4f-cf54680e81c2",
+      "title": "AI-first OS update \u2014 September 11: treat agent idle time and lineage as schedulable resources",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
+    },
+    {
+      "learning": "Bind scheduling decisions to execution phases and state versions, then revalidate those assumptions at commit.",
+      "code": [
+        "kernel/core/twin/twin.c",
+        "kernel/core/route/tuning.c",
+        "kernel/core/cap/effect_fence.c"
+      ],
+      "comparison": "Routing trials use policy generations, and effects use fence epochs. Decisions spanning multiple changing resources need a common validation boundary.",
+      "acceptance": "Reject a decision after any required state version changes; accept an unchanged observation at the commit boundary.",
+      "day": 79,
+      "date": "2026-09-12",
+      "message_id": "01591a3b-c89f-42b3-bdfb-2c93786e2f23",
+      "title": "AI-first OS update \u2014 September 12: schedule phases, progress, and state versions",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
+    },
+    {
+      "learning": "Treat speculation as a bounded transaction with isolated mutable state, buffered external effects, and explicit commit or abort.",
+      "code": [
+        "kernel/core/cap/effect.c",
+        "kernel/core/state/stage.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "Staged mutations, pending effects, and run fences exist. A shared speculation domain must coordinate state and external-effect admission.",
+      "acceptance": "Abort a speculative branch without dispatching its buffered effects; admit only the validated branch at commit.",
+      "day": 80,
+      "date": "2026-09-13",
+      "message_id": "8e6b3d50-036a-46c2-b5f4-8c5127cf88f1",
+      "title": "AI-first OS update \u2014 September 13: reversible execution is becoming a kernel primitive",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "4c0bc25"
     }
-  ]
+  ],
+  "scope": "Include later daily briefings before final release preparation.",
+  "last_source_check": "2026-09-13"
 }

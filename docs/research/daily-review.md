@@ -1,7 +1,9 @@
 # Daily AI-first OS research review
 
-The review covers 73 briefings from June 26 through September 6, 2026.
+The review covers 80 briefings from June 26 through September 13, 2026.
 The user confirmed one briefing per day in this sequence.
+The user extended the scope to include later briefings before final release preparation.
+Days 074 through 080 have an initial comparison against `4c0bc25`; each day receives an updated comparison before implementation.
 
 Source: [AI-first OS research and Project Solara updates](https://chatgpt.com/c/6a3eabf4-cb88-83ea-942e-a601dd12b392).
 Each entry retains the source message identifier.
@@ -507,7 +509,7 @@ Evidence: [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c), [ker
 
 Planned acceptance: Reject missing or mismatched evidence and accept only an independently checked candidate.
 
-Status: Validated on Jekyll. Tested commit: `e885c86`. Source message: `2b5bed64-2acb-4d7b-a1a7-0ef932383afd`.
+Status: Merged at `4c0bc25` after Jekyll validation. Tested commit: `e885c86`. Source message: `2b5bed64-2acb-4d7b-a1a7-0ef932383afd`.
 
 Detailed comparison and results: [Day 031](day-031.md).
 
@@ -517,13 +519,15 @@ Detailed comparison and results: [Day 031](day-031.md).
 
 Learning: Grant bounded execution leases and enlarge them only through an explicit decision.
 
-Anunix comparison: Cells expose recursion limits and budgets. Constraints need enforcement on every expansion path.
+Anunix comparison: The baseline bounds concurrent children but returns slots after destruction. Day 32 adds a shared lifetime creation budget, explicit expansion, and permanent lease expiry.
 
 Evidence: [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Reject excessive recursion or child creation without allocating an extra child.
+Planned acceptance: Reject a child beyond the shared lifetime budget without allocation; permit explicit expansion and fence new children and effects after expiry.
 
-Status: Queued. Source message: `52886424-fea8-48fb-adb3-5793d7b23eb6`.
+Status: Validated on Jekyll. Tested commit: `003f72c`. Source message: `52886424-fea8-48fb-adb3-5793d7b23eb6`.
+
+Detailed comparison and results: [Day 032](day-032.md).
 
 ## Day 033 — 2026-07-28
 
@@ -1098,3 +1102,101 @@ Evidence: [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c), [ker
 Planned acceptance: Reject missing policy evidence and unauthorized context role or scope promotion.
 
 Status: Queued. Source message: `3693656d-55cf-4075-85be-4d4e1312fb62`.
+
+## Day 074 — 2026-09-07
+
+**AI-First OS Update: Make Resource Shape a Schedulable Object**
+
+Learning: Separate stable logical state from a versioned resource shape and recheck placement after reconfiguration.
+
+Anunix comparison: Engine topology hints and routing target fingerprints exist. Worker reshaping and shared resource-shape epochs need explicit control.
+
+Evidence: [kernel/include/anx/engine.h](../../kernel/include/anx/engine.h), [kernel/core/route/planner.c](../../kernel/core/route/planner.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c).
+
+Planned acceptance: Reject placement against a stale resource shape; preserve logical identity after an authorized shape revision.
+
+Status: Queued. Source message: `a3296827-dc83-4a98-ab4d-a033c2db25f9`.
+
+## Day 075 — 2026-09-08
+
+**AI-First OS Update: Define Semantic ABIs Between Models, Memory, Teams, and Hardware**
+
+Learning: Give planners explicit execution constraints and versioned compatibility contracts for memory, models, coordination, and quality.
+
+Anunix comparison: Cells expose execution constraints, and optimization artifacts bind a target. Memory compatibility across model changes needs a declared contract.
+
+Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/include/anx/memplane.h](../../kernel/include/anx/memplane.h), [kernel/core/route/optimization.c](../../kernel/core/route/optimization.c).
+
+Planned acceptance: Reject incompatible memory reuse after an executor change; permit reuse under a matching declared contract.
+
+Status: Queued. Source message: `1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee`.
+
+## Day 076 — 2026-09-09
+
+**AI-First OS Update: The Memory Scheduler Is Becoming as Important as the CPU Scheduler**
+
+Learning: Expose logical memory objects and their consumers, then choose physical representations according to topology and measured benefit.
+
+Anunix comparison: Memory tiers and workflow liveness exist. Topology-specific sharing or copying needs a checked representation plan.
+
+Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/include/anx/memplane.h](../../kernel/include/anx/memplane.h), [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c).
+
+Planned acceptance: Reject an inapplicable memory transformation and retain the original object representation; admit a compatible plan.
+
+Status: Queued. Source message: `b6df868e-dc4e-4388-b987-eb9f2591d320`.
+
+## Day 077 — 2026-09-10
+
+**AI-first OS update — September 10: schedule the amount of computation, not only where it runs**
+
+Learning: Control computation depth, speculation, and parallelism within explicit quality and resource limits, with deterministic enforcement.
+
+Anunix comparison: Routing scores and cognitive budgets exist. Joint execution-shape changes need explicit quality bounds and admission checks.
+
+Evidence: [kernel/core/route/planner.c](../../kernel/core/route/planner.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
+
+Planned acceptance: Reject an execution-shape proposal outside its quality or resource contract before changing the active plan.
+
+Status: Queued. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
+
+## Day 078 — 2026-09-11
+
+**AI-first OS update — September 11: treat agent idle time and lineage as schedulable resources**
+
+Learning: Use agent phases, idle intervals, lineage, and shared origins to schedule state movement while preserving capacity and correctness.
+
+Anunix comparison: Cell lineage and memory tiers exist. State movement does not yet combine idle phases with lineage-aware eligibility.
+
+Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
+
+Planned acceptance: Permit eligible state movement during a declared idle phase and reject a stale or incompatible phase assumption.
+
+Status: Queued. Source message: `04ea316e-9606-4726-8f4f-cf54680e81c2`.
+
+## Day 079 — 2026-09-12
+
+**AI-first OS update — September 12: schedule phases, progress, and state versions**
+
+Learning: Bind scheduling decisions to execution phases and state versions, then revalidate those assumptions at commit.
+
+Anunix comparison: Routing trials use policy generations, and effects use fence epochs. Decisions spanning multiple changing resources need a common validation boundary.
+
+Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/tuning.c](../../kernel/core/route/tuning.c), [kernel/core/cap/effect_fence.c](../../kernel/core/cap/effect_fence.c).
+
+Planned acceptance: Reject a decision after any required state version changes; accept an unchanged observation at the commit boundary.
+
+Status: Queued. Source message: `01591a3b-c89f-42b3-bdfb-2c93786e2f23`.
+
+## Day 080 — 2026-09-13
+
+**AI-first OS update — September 13: reversible execution is becoming a kernel primitive**
+
+Learning: Treat speculation as a bounded transaction with isolated mutable state, buffered external effects, and explicit commit or abort.
+
+Anunix comparison: Staged mutations, pending effects, and run fences exist. A shared speculation domain must coordinate state and external-effect admission.
+
+Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
+
+Planned acceptance: Abort a speculative branch without dispatching its buffered effects; admit only the validated branch at commit.
+
+Status: Queued. Source message: `8e6b3d50-036a-46c2-b5f4-8c5127cf88f1`.
