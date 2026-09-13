@@ -42,6 +42,8 @@ struct anx_route_result {
 	uint32_t selected_index;	/* index of best candidate */
 	enum anx_route_stage decided_at;
 	bool needs_escalation;		/* stage 2/3 recommended */
+	bool profile_applied;
+	int profile_status; /* zero when unused or applied; rejection retains incumbent */
 };
 
 /* --- Route Planner API --- */

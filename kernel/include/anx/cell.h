@@ -151,6 +151,7 @@ enum anx_decomp_mode {
 struct anx_routing_policy {
 	enum anx_routing_strategy strategy;
 	enum anx_decomp_mode decomposition;
+	anx_oid_t profile_oid; /* optional privately validated finite routing profile */
 };
 
 /* --- Validation policy (RFC-0003 Section 12) --- */
