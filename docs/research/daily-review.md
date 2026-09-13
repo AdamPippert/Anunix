@@ -525,7 +525,7 @@ Evidence: [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kerne
 
 Planned acceptance: Reject a child beyond the shared lifetime budget without allocation; permit explicit expansion and fence new children and effects after expiry.
 
-Status: Validated on Jekyll. Tested commit: `003f72c`. Source message: `52886424-fea8-48fb-adb3-5793d7b23eb6`.
+Status: Merged at `e534009` after Jekyll validation. Tested commit: `003f72c`. Source message: `52886424-fea8-48fb-adb3-5793d7b23eb6`.
 
 Detailed comparison and results: [Day 032](day-032.md).
 
@@ -535,13 +535,15 @@ Detailed comparison and results: [Day 032](day-032.md).
 
 Learning: Compile policy and its boundary contracts together; distinguish parameter changes from authority changes.
 
-Anunix comparison: Typed routing policies and capability lifecycle states exist. Revision classes need explicit enforcement.
+Anunix comparison: The baseline has no revision grant between active-cell denial of tuning and permission to install capabilities. Day 33 adds parameter and implementation ceilings, inherited leases, and trial ownership.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/credential.c](../../kernel/core/credential.c).
 
-Planned acceptance: Permit a bounded parameter change while rejecting a change to the policy's authority ceiling.
+Planned acceptance: Permit bounded parameter trials under an inherited grant while rejecting implementation changes, authority expansion, foreign trial acceptance, and revoked grants.
 
-Status: Queued. Source message: `9497f51e-3371-473c-a157-70c6a0b61e6e`.
+Status: Validated on Jekyll. Tested commit: `18d0b5a`. Source message: `9497f51e-3371-473c-a157-70c6a0b61e6e`.
+
+Detailed comparison and results: [Day 033](day-033.md).
 
 ## Day 034 — 2026-07-29
 
