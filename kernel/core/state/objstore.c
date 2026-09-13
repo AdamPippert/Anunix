@@ -418,6 +418,11 @@ int anx_so_write_payload(struct anx_object_handle *handle,
 
 	/* While staged, writes target the shadow copy — the live payload
 	 * (and its version/hash/provenance) stays untouched until commit. */
+	int access = anx_object_stage_check_writer(obj);
+	if (access != ANX_OK) {
+		anx_spin_unlock(&obj->lock);
+		return access;
+	}
 	void **target_payload = obj->staged ? &obj->staged->shadow_payload
 					    : &obj->payload;
 	uint64_t *target_size = obj->staged ? &obj->staged->shadow_size
@@ -475,6 +480,11 @@ int anx_so_replace_payload(struct anx_object_handle *handle,
 	anx_spin_lock(&obj->lock);
 
 	void *new_buf = NULL;
+	int access = anx_object_stage_check_writer(obj);
+	if (access != ANX_OK) {
+		anx_spin_unlock(&obj->lock);
+		return access;
+	}
 	if (data && len > 0) {
 		new_buf = anx_alloc(len);
 		if (!new_buf) {

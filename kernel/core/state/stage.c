@@ -16,31 +16,79 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/arch.h>
+#include <anx/cell.h>
+#include <anx/identity.h>
+#include <anx/effect_fence.h>
+#include <anx/uuid.h>
 
 /* Defined in objstore.c; shared the way anx_lifecycle_transition is. */
 void anx_so_compute_content_hash(struct anx_state_object *obj);
 
+/* Caller holds the object lock. Trusted control can resolve abandoned stages. */
+int anx_object_stage_check_writer(const struct anx_state_object *obj)
+{
+	const anx_cid_t *active = anx_cell_current_id();
+	if (obj->staged && active && anx_uuid_compare(active, &obj->staged->staging_cell))
+		return ANX_EPERM;
+	return ANX_OK;
+}
+
+static int writable_handle(const struct anx_object_handle *handle)
+{
+	if (!handle || !handle->obj) return ANX_EINVAL;
+	if (handle->mode == ANX_OPEN_READ) return ANX_EPERM;
+	return handle->mode == ANX_OPEN_WRITE || handle->mode == ANX_OPEN_READWRITE ? ANX_OK : ANX_EINVAL;
+}
+
+/* Preparation grants no publication authority; recheck the original actor now. */
+static int commit_authority(struct anx_state_object *obj)
+{
+	struct anx_cell *owner;
+	const anx_cid_t *actor = &obj->staged->staging_cell;
+	int ret = anx_object_stage_check_writer(obj);
+	if (ret != ANX_OK) return ret;
+	ret = anx_access_evaluate(&obj->access_policy, actor, &obj->creator_cell, ANX_ACCESS_WRITE_PAYLOAD);
+	if (ret != ANX_OK || anx_uuid_is_nil(actor)) return ret;
+	owner = anx_cell_store_lookup(actor);
+	if (!owner) return ANX_ENOENT;
+	ret = owner->execution.allow_side_effects && !anx_cell_status_terminal(owner->status) ? ANX_OK : ANX_EPERM;
+	if (ret == ANX_OK) ret = anx_identity_admit(owner, NULL);
+	if (ret == ANX_OK) ret = anx_effect_fence_check(owner, NULL, NULL);
+	anx_cell_store_release(owner);
+	return ret;
+}
+
 int anx_object_stage(struct anx_object_handle *handle, anx_cid_t staging_cell)
 {
+	const anx_cid_t *active = anx_cell_current_id();
 	struct anx_state_object *obj;
 	struct anx_staged_mutation *stage;
+	int ret;
 
 	if (!handle || !handle->obj)
 		return ANX_EINVAL;
 	if (handle->mode == ANX_OPEN_READ)
 		return ANX_EINVAL;
+	ret = writable_handle(handle);
+	if (ret != ANX_OK) return ret;
+	if (active && anx_uuid_compare(active, &staging_cell)) return ANX_EPERM;
 
 	obj = handle->obj;
 
 	anx_spin_lock(&obj->lock);
 
-	if (obj->state == ANX_OBJ_SEALED) {
+	if (obj->state == ANX_OBJ_SEALED || obj->state == ANX_OBJ_DELETED || obj->state == ANX_OBJ_TOMBSTONE) {
 		anx_spin_unlock(&obj->lock);
 		return ANX_EPERM;
 	}
 	if (obj->staged) {
 		anx_spin_unlock(&obj->lock);
 		return ANX_EBUSY;
+	}
+	ret = anx_access_evaluate(&obj->access_policy, &staging_cell, &obj->creator_cell, ANX_ACCESS_WRITE_PAYLOAD);
+	if (ret != ANX_OK) {
+		anx_spin_unlock(&obj->lock);
+		return ret;
 	}
 
 	stage = anx_zalloc(sizeof(*stage));
@@ -75,9 +123,9 @@ int anx_object_commit(struct anx_object_handle *handle)
 	struct anx_state_object *obj;
 	struct anx_staged_mutation *stage;
 	struct anx_prov_event ev;
+	int ret = writable_handle(handle);
 
-	if (!handle || !handle->obj)
-		return ANX_EINVAL;
+	if (ret != ANX_OK) return ret;
 
 	obj = handle->obj;
 
@@ -89,6 +137,15 @@ int anx_object_commit(struct anx_object_handle *handle)
 	}
 
 	stage = obj->staged;
+	ret = commit_authority(obj);
+	if (ret == ANX_OK && (obj->state == ANX_OBJ_SEALED || obj->state == ANX_OBJ_DELETED ||
+	    obj->state == ANX_OBJ_TOMBSTONE)) ret = ANX_EPERM;
+	if (ret == ANX_OK && obj->version != stage->base_version) ret = ANX_EBUSY;
+	if (ret == ANX_OK && obj->version == ~(uint64_t)0) ret = ANX_EFULL;
+	if (ret != ANX_OK) {
+		anx_spin_unlock(&obj->lock);
+		return ret;
+	}
 
 	if (obj->payload)
 		anx_free(obj->payload);
@@ -115,9 +172,9 @@ int anx_object_abort(struct anx_object_handle *handle)
 	struct anx_state_object *obj;
 	struct anx_staged_mutation *stage;
 	struct anx_prov_event ev;
+	int ret = writable_handle(handle);
 
-	if (!handle || !handle->obj)
-		return ANX_EINVAL;
+	if (ret != ANX_OK) return ret;
 
 	obj = handle->obj;
 
@@ -129,6 +186,11 @@ int anx_object_abort(struct anx_object_handle *handle)
 	}
 
 	stage = obj->staged;
+	ret = anx_object_stage_check_writer(obj);
+	if (ret != ANX_OK) {
+		anx_spin_unlock(&obj->lock);
+		return ret;
+	}
 
 	if (stage->shadow_payload)
 		anx_free(stage->shadow_payload);
