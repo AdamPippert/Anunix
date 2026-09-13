@@ -355,11 +355,12 @@
       ],
       "comparison": "The baseline records image hashes without a compiled configuration profile. Day 18 binds architecture and research mode to an artifact digest and checks the running guest.",
       "acceptance": "Bind the compiled architecture and research mode to the tested image; reject incompatible requirements and changed artifacts.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-018",
       "comparison_baseline": "01c91d6",
       "tested_commit": "8311951",
-      "evidence": "docs/research/evidence/day-018/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-018/uefi-boot.json",
+      "merged_commit": "074b3ec"
     },
     {
       "day": 19,
@@ -369,13 +370,16 @@
       "learning": "Allow capabilities to evolve while keeping their authority ceiling under independent control.",
       "code": [
         "kernel/core/cap/capability.c",
-        "kernel/core/credential.c",
-        "kernel/core/cap/promotion.c"
+        "kernel/include/anx/capability.h",
+        "kernel/core/tools/research_day019.c"
       ],
-      "comparison": "Capabilities have a trust lifecycle and credentials hold authority. The promotion gate provides a separate performance check.",
-      "acceptance": "Reject capability expansion without corresponding authority while accepting a validated replacement within scope.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline checks lifecycle and promotion scores without an independent authority ceiling. Day 19 checks private grants, installed lineage scope, and the promoting cell before registration.",
+      "acceptance": "Reject ungranted or expanded execution authority; accept a scored replacement within the incumbent scope and the caller permissions.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-019",
+      "comparison_baseline": "074b3ec",
+      "tested_commit": "387ddc4",
+      "evidence": "docs/research/evidence/day-019/uefi-boot.json"
     },
     {
       "day": 20,
