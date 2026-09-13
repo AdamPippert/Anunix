@@ -443,7 +443,7 @@ Evidence: [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundl
 
 Planned acceptance: Reject a behavioral package with unsatisfied dependencies or a wider permission request.
 
-Status: Validated on Jekyll. Tested commit: `8014d85`. Source message: `f78a94e9-de8d-40bb-ab51-35b163f06800`.
+Status: Merged at `ca41ae4` after Jekyll validation. Tested commit: `8014d85`. Source message: `f78a94e9-de8d-40bb-ab51-35b163f06800`.
 
 Detailed comparison and results: [Day 027](day-027.md).
 
@@ -453,13 +453,15 @@ Detailed comparison and results: [Day 027](day-027.md).
 
 Learning: Authorize trajectories using accumulated lineage and effects, rather than isolated calls alone.
 
-Anunix comparison: Provenance records relationships and effects have phases. Cross-call trajectory policy needs explicit state.
+Anunix comparison: The baseline checked declared object labels but forgot sensitive reads across calls. Bound run fences now retain the highest read sensitivity and constrain later protected effects across branches.
 
 Evidence: [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
 Planned acceptance: Deny a prohibited sequence even when its individual operations are separately available.
 
-Status: Queued. Source message: `42b27027-d6d6-4591-9e36-ad4a065f6657`.
+Status: Validated on Jekyll. Tested commit: `99dfbfa`. Source message: `42b27027-d6d6-4591-9e36-ad4a065f6657`.
+
+Detailed comparison and results: [Day 028](day-028.md).
 
 ## Day 029 — 2026-07-24
 

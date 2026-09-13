@@ -536,11 +536,12 @@
       ],
       "comparison": "The prior validator accepted a missing required engine at score 75. Validation and installation now require bounded, unique dependencies with current readiness; the existing authority ceiling also applies.",
       "acceptance": "Reject a behavioral package with unsatisfied dependencies or a wider permission request.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-027",
       "comparison_baseline": "3c650e5",
       "tested_commit": "8014d85",
-      "evidence": "docs/research/evidence/day-027/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-027/uefi-boot.json",
+      "merged_commit": "ca41ae4"
     },
     {
       "day": 28,
@@ -553,10 +554,13 @@
         "kernel/core/cap/effect.c",
         "kernel/include/anx/cell.h"
       ],
-      "comparison": "Provenance records relationships and effects have phases. Cross-call trajectory policy needs explicit state.",
+      "comparison": "The baseline checked declared object labels but forgot sensitive reads across calls. Bound run fences now retain the highest read sensitivity and constrain later protected effects across branches.",
       "acceptance": "Deny a prohibited sequence even when its individual operations are separately available.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-028",
+      "comparison_baseline": "ca41ae4",
+      "tested_commit": "99dfbfa",
+      "evidence": "docs/research/evidence/day-028/uefi-boot.json"
     },
     {
       "day": 29,
