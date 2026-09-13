@@ -1,12 +1,9 @@
 /*
  * decay.c — Memory freshness decay logic.
  *
- * Stubbed implementation. A real decay sweep would run periodically
- * (e.g., via timer interrupt or background cell) and adjust decay
- * scores based on time, access patterns, and freshness class.
- *
- * For now, this walks the hash table and bumps decay scores for
- * entries that haven't been accessed recently.
+ * A sweep advances each entry's score and expires bounded retention hints.
+ * Freshness classes determine the increment; recorded accesses reduce scores.
+ * The controller invokes eviction separately from decay.
  */
 
 #include <anx/types.h>
@@ -30,9 +27,6 @@ static uint32_t decay_rate(enum anx_freshness_class fc)
 /* Threshold at which an entry becomes stale */
 #define DECAY_STALE_THRESHOLD	500
 
-/* Threshold at which an entry is eligible for auto-forgetting */
-#define DECAY_FORGET_THRESHOLD	900
-
 /*
  * External: the memory table. We need access to walk all entries.
  * In a real kernel this would be a proper internal interface.
@@ -41,8 +35,21 @@ extern struct anx_htable mem_table;
 
 int anx_memplane_decay_entry(struct anx_mem_entry *entry)
 {
-	(void)entry;
-	return ANX_ENOSYS;
+	uint32_t rate;
+	if (!entry)
+		return ANX_EINVAL;
+	anx_spin_lock(&entry->lock);
+	rate = decay_rate(entry->freshness);
+	if (entry->decay_score >= 1000 - rate)
+		entry->decay_score = 1000;
+	else
+		entry->decay_score += rate;
+	if (entry->retention.sweeps && --entry->retention.sweeps == 0)
+		entry->retention.priority = 0;
+	if (entry->decay_score >= DECAY_STALE_THRESHOLD && entry->validation == ANX_MEMVAL_VALIDATED)
+		entry->validation = ANX_MEMVAL_STALE;
+	anx_spin_unlock(&entry->lock);
+	return ANX_OK;
 }
 
 int anx_memplane_decay_sweep(void)
@@ -62,26 +69,7 @@ int anx_memplane_decay_sweep(void)
 			entry = ANX_LIST_ENTRY(pos, struct anx_mem_entry,
 					       store_link);
 
-			anx_spin_lock(&entry->lock);
-
-			/* Bump decay score based on freshness class */
-			entry->decay_score += decay_rate(entry->freshness);
-			if (entry->decay_score > 1000)
-				entry->decay_score = 1000;
-
-			/* Auto-mark stale */
-			if (entry->decay_score >= DECAY_STALE_THRESHOLD &&
-			    entry->validation == ANX_MEMVAL_VALIDATED)
-				entry->validation = ANX_MEMVAL_STALE;
-
-			/*
-			 * Auto-forget candidates: entries past the
-			 * forget threshold and in ephemeral/cache tiers
-			 * only. Real forgetting is deferred — we just
-			 * flag them here for a future collection pass.
-			 */
-
-			anx_spin_unlock(&entry->lock);
+			anx_memplane_decay_entry(entry);
 		}
 	}
 

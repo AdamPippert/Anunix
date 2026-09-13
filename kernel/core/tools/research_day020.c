@@ -91,8 +91,12 @@ int anx_research_day020(void)
 	    anx_memplane_demote(entries[0], ANX_MEM_L0) != ANX_EBUSY)
 		goto out;
 	for (int mode = ANX_FORGET_HARD_DELETE; mode <= ANX_FORGET_REDERIVE; mode++) {
-		if (anx_memplane_forget(entries[0], (enum anx_forget_mode)mode) != ANX_EBUSY)
+		int result = anx_memplane_forget(entries[0], (enum anx_forget_mode)mode);
+		if (result != ANX_EBUSY) {
+			if (result == ANX_OK && mode == ANX_FORGET_HARD_DELETE)
+				entries[0] = NULL;
 			goto out;
+		}
 	}
 	entries[0]->validation = ANX_MEMVAL_VALIDATED;
 	rc = -2006;
@@ -152,6 +156,13 @@ int anx_research_day020(void)
 	    anx_memcmp(payload, "retained", 8) || objects[0]->state != ANX_OBJ_SEALED ||
 	    entries[0]->protected_tiers != ANX_TIER_BIT(ANX_MEM_L0) ||
 	    entries[0]->retention.priority != 0)
+		goto out;
+	/* Protection permits operations that preserve the protected tier. */
+	rc = -2013;
+	if (anx_memplane_promote(entries[2], ANX_MEM_L2) != ANX_OK ||
+	    anx_memplane_protect(entries[2], ANX_TIER_BIT(ANX_MEM_L2)) != ANX_OK ||
+	    anx_memplane_forget(entries[2], ANX_FORGET_ARCHIVE) != ANX_OK ||
+	    entries[2]->tier_mask != ANX_TIER_BIT(ANX_MEM_L2))
 		goto out;
 	rc = ANX_OK;
 out:
