@@ -92,5 +92,6 @@ int test_memplane(void)
 		return -16;
 
 	anx_objstore_release(obj);
-	return anx_research_day011();
+	ret = anx_research_day011();
+	return ret == ANX_OK ? anx_research_day020() : ret;
 }

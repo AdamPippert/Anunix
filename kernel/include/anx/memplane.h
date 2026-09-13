@@ -71,6 +71,15 @@ enum anx_forget_mode {
 
 /* --- Memory placement record --- */
 
+#define ANX_MEM_RETENTION_PRIORITY_MAX 100U
+#define ANX_MEM_RETENTION_SWEEPS_MAX 16U
+#define ANX_MEM_EVICTION_CANDIDATES_MAX 32U
+
+struct anx_mem_retention_hint {
+	uint32_t priority;
+	uint32_t sweeps;
+};
+
 struct anx_mem_entry {
 	anx_oid_t oid;				/* State Object reference */
 
@@ -90,6 +99,8 @@ struct anx_mem_entry {
 	/* Decay scoring (higher = more likely to be demoted/forgotten) */
 	uint32_t decay_score;			/* 0-1000 */
 	uint32_t access_count;
+	struct anx_mem_retention_hint retention; /* advisory; zero means no hint */
+	uint8_t protected_tiers;                 /* controller-owned protection */
 
 	/* Bookkeeping */
 	uint64_t admitted_bytes;
@@ -145,9 +156,19 @@ void anx_memplane_record_access(struct anx_mem_entry *entry);
 int anx_memplane_forget(struct anx_mem_entry *entry,
 			enum anx_forget_mode mode);
 
+/* Metadata-authorized hints cannot grant residency or validation. */
+int anx_memplane_hint(struct anx_mem_entry *entry, const struct anx_mem_retention_hint *hint);
+/* Trusted controller API; active cells cannot set or clear protection. */
+int anx_memplane_protect(struct anx_mem_entry *entry, uint32_t tiers);
+/* Evict one logical L0/L1/L3 placement from a bounded, controller-selected pool. */
+int anx_memplane_evict(const anx_oid_t *candidates, uint32_t count,
+		       enum anx_mem_tier tier, anx_oid_t *victim_out);
+
 /* --- Decay API --- */
 
 /* Run one decay sweep over all entries (called periodically) */
 int anx_memplane_decay_sweep(void);
+/* Advance one entry without changing other live entries. */
+int anx_memplane_decay_entry(struct anx_mem_entry *entry);
 
 #endif /* ANX_MEMPLANE_H */
