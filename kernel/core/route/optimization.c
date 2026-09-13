@@ -37,6 +37,12 @@ static int object_ref(const anx_oid_t *oid, struct anx_route_artifact_ref *out)
 	return ret;
 }
 
+static bool refs_equal(const struct anx_route_artifact_ref *a, const struct anx_route_artifact_ref *b)
+{
+	return !anx_uuid_compare(&a->oid, &b->oid) && a->version == b->version &&
+	       a->sensitivity == b->sensitivity && !anx_memcmp(a->digest, b->digest, sizeof(a->digest));
+}
+
 int anx_route_target_capture(const anx_eid_t *eid, const anx_oid_t *knowledge,
 			     struct anx_route_target_contract *out)
 {
@@ -71,6 +77,25 @@ int anx_route_target_capture(const anx_eid_t *eid, const anx_oid_t *knowledge,
 	return ANX_OK;
 }
 
+int anx_route_target_check(const struct anx_route_target_contract *target)
+{
+	struct anx_route_target_contract current;
+	int ret;
+	if (!target) return ANX_EINVAL;
+	if (!target->schema) {
+		struct anx_route_target_contract empty = {0};
+		return anx_memcmp(target, &empty, sizeof(empty)) ? ANX_EINVAL : ANX_OK;
+	}
+	if (target->schema != 1) return ANX_EINVAL;
+	ret = anx_kernel_profile_check(&target->build);
+	if (ret != ANX_OK) return ret;
+	ret = anx_route_target_capture(&target->engine_id, &target->knowledge.oid, &current);
+	if (ret != ANX_OK) return ret;
+	return refs_equal(&current.knowledge, &target->knowledge) &&
+	       !anx_memcmp(current.engine_digest, target->engine_digest, sizeof(current.engine_digest)) ?
+	       ANX_OK : ANX_EBUSY;
+}
+
 int anx_route_tuning_artifact_create(const struct anx_route_tuning_action *action,
 				     const anx_oid_t *evaluation, anx_oid_t *out)
 {
@@ -83,6 +108,8 @@ int anx_route_tuning_artifact_create(const struct anx_route_tuning_action *actio
 	if (!action || !evaluation || !out || action->schema != 1 || !action->expected_generation ||
 	    action->target.schema != 1 || anx_route_weight_policy_validate(&action->weights) != ANX_OK)
 		return ANX_EINVAL;
+	ret = anx_route_target_check(&action->target);
+	if (ret != ANX_OK) return ret;
 	ret = object_ref(evaluation, &artifact.evaluation);
 	if (ret != ANX_OK) return ret;
 	artifact.schema = 1;
@@ -130,6 +157,6 @@ int anx_route_tuning_begin_artifact(const anx_oid_t *oid, uint64_t *trial_out)
 	if (artifact.schema != 1 || artifact.action.target.schema != 1) return ANX_EINVAL;
 	ret = object_ref(&artifact.evaluation.oid, &current);
 	if (ret != ANX_OK) return ret;
-	if (anx_memcmp(&current, &artifact.evaluation, sizeof(current))) return ANX_EBUSY;
+	if (!refs_equal(&current, &artifact.evaluation)) return ANX_EBUSY;
 	return anx_route_tuning_begin(&artifact.action, trial_out);
 }
