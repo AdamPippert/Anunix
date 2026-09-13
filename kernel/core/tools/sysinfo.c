@@ -21,6 +21,7 @@
 #include <anx/interface_plane.h>
 #include <anx/kprintf.h>
 #include <anx/list.h>
+#include <anx/kernel_profile.h>
 
 void cmd_sysinfo(int argc, char **argv)
 {
@@ -31,6 +32,7 @@ void cmd_sysinfo(int argc, char **argv)
 	(void)argv;
 
 	kprintf("\n=== Anunix System Information ===\n\n");
+	kprintf("%s", anx_kernel_profile_marker());
 
 	/* CPU */
 	acpi = anx_acpi_get_info();
