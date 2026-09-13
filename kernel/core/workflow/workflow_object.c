@@ -182,6 +182,7 @@ anx_wf_destroy(const anx_oid_t *oid)
 	anx_free(wf->edges);
 	anx_free(wf->continuation);
 	anx_free(wf->trace_entries);
+	anx_free(wf->reuse);
 
 	anx_memset(wf, 0, sizeof(*wf));
 	wf_count--;
