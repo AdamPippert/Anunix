@@ -347,7 +347,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject malformed or stale tuning actions; observe live placement changes and restore the previous policy after a failed trial.
 
-Status: Validated on Jekyll. Tested commit: `e07f352`. Source message: `4d0e3645-bcdc-41c0-bb55-a3e4cd28e04e`.
+Status: Merged at `4d6e43c` after Jekyll validation. Tested commit: `e07f352`. Source message: `4d0e3645-bcdc-41c0-bb55-a3e4cd28e04e`.
 
 Detailed comparison and results: [Day 021](day-021.md).
 
@@ -357,13 +357,15 @@ Detailed comparison and results: [Day 021](day-021.md).
 
 Learning: Keep persistent agent identity separate from model, process, and host identity.
 
-Anunix comparison: Credentials and cell identities exist. Persona Objects remain a design document rather than a complete lifecycle service.
+Anunix comparison: Baseline 4d6e43c has cell permissions and capability grants but no signed identity commitment. Day 022 adds signed authority history and admission across cell replacement.
 
 Evidence: [kernel/core/credential.c](../../kernel/core/credential.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Require an authorized identity transition before widening the persistent mandate.
+Planned acceptance: Require a valid operator signature for authority changes; preserve revocation across replacement cells and identify the admission commitment in traces.
 
-Status: Queued. Source message: `e3b5929c-297d-4584-a409-2ba221be3fa4`.
+Status: Validated on Jekyll. Tested commit: `7f776bc`. Source message: `e3b5929c-297d-4584-a409-2ba221be3fa4`.
+
+Detailed comparison and results: [Day 022](day-022.md).
 
 ## Day 023 — 2026-07-18
 
