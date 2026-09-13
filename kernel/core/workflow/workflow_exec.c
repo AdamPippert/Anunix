@@ -20,6 +20,7 @@
 #include <anx/types.h>
 #include <anx/workflow.h>
 #include <anx/workflow_reuse.h>
+#include <anx/workflow_semantic.h>
 #include <anx/cell.h>
 #include <anx/cell_trace.h>
 #include <anx/state_object.h>
@@ -789,6 +790,8 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 		return ANX_EBUSY;
 	if (wf->node_count == 0)
 		return ANX_EINVAL;
+	ret = anx_wf_semantic_check(wf);
+	if (ret != ANX_OK) return ret;
 	ret = anx_wf_reuse_check(wf);
 	if (ret != ANX_OK) return ret;
 
@@ -896,6 +899,10 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 	}
 	if (!cont)
 		return ANX_EINVAL;
+	if (action != ANX_WF_RESUME_ABORT) {
+		ret = anx_wf_semantic_check(wf);
+		if (ret != ANX_OK) return ret;
+	}
 
 	wf_build_tables(wf, slot_id, slot_by_id);
 
@@ -916,7 +923,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 	}
 
 	if (action == ANX_WF_RESUME_REPLACE) {
-		if (wf->topology.enabled)
+		if (wf->topology.enabled || wf->semantic)
 			return ANX_EPERM;
 		if (!replacement || failed_slot >= ANX_WF_MAX_NODES)
 			return ANX_EINVAL;

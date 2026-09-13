@@ -1,13 +1,14 @@
 /* Restore only an issued, current continuation image and its exact dependencies. */
 #include <anx/workflow.h>
 #include <anx/workflow_reuse.h>
+#include <anx/workflow_semantic.h>
 #include <anx/cell.h>
 #include <anx/alloc.h>
 #include <anx/crypto.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
 
-#define WF_CHECKPOINT_SCHEMA 1U
+#define WF_CHECKPOINT_SCHEMA 2U
 #define WF_CHECKPOINT_REFS ANX_WF_MAX_EDGES
 #define WF_CHECKPOINT_OBJECT_MAX (1024U * 1024U)
 struct checkpoint_ref {
@@ -20,6 +21,7 @@ struct checkpoint_ref {
 struct checkpoint_image {
 	uint32_t schema, trace_count, ref_count, cap;
 	anx_oid_t workflow;
+	anx_oid_t semantic;
 	uint64_t epoch, topology_epoch;
 	anx_time_t last_run;
 	uint8_t graph[32];
@@ -97,6 +99,8 @@ int anx_wf_checkpoint_save(const anx_oid_t *oid, anx_oid_t *out)
 	*out = ANX_UUID_NIL;
 	int ret = suspended(oid, &wf);
 	if (ret != ANX_OK) return ret;
+	ret = anx_wf_semantic_check(wf);
+	if (ret != ANX_OK) return ret;
 	if (!wf->continuation || !wf->trace_entries || !wf->trace_entry_count ||
 	    wf->trace_entry_count > ANX_WF_MAX_NODES || wf->output_count > ANX_WF_MAX_PORTS ||
 	    !wf->computed_cap || wf->computed_cap > ANX_WF_MAX_NODES) return ANX_EINVAL;
@@ -108,6 +112,7 @@ int anx_wf_checkpoint_save(const anx_oid_t *oid, anx_oid_t *out)
 	if (!image) return ANX_ENOMEM;
 	image->schema = WF_CHECKPOINT_SCHEMA;
 	image->workflow = wf->oid;
+	image->semantic = anx_wf_semantic_id(wf);
 	image->epoch = wf->checkpoint_epoch + 1;
 	image->topology_epoch = wf->topology.epoch;
 	image->last_run = wf->last_run;
@@ -152,10 +157,12 @@ int anx_wf_checkpoint_save(const anx_oid_t *oid, anx_oid_t *out)
 		ret = add_ref(image, &image->trace[i].trace_oid);
 		if (ret != ANX_OK) goto done;
 	}
+	ret = add_ref(image, &image->semantic);
+	if (ret != ANX_OK) goto done;
 	anx_sha256(image, sizeof(*image), digest);
 	p.object_type = ANX_OBJ_STRUCTURED_DATA;
-	p.schema_uri = "anx:workflow/continuation/v1";
-	p.schema_version = "1";
+	p.schema_uri = "anx:workflow/continuation/v2";
+	p.schema_version = "2";
 	p.payload = image; p.payload_size = sizeof(*image);
 	/* A checkpoint exposes the highest sensitivity among its dependencies. */
 	for (uint32_t i = 0; i < image->ref_count; i++)
@@ -206,6 +213,10 @@ int anx_wf_checkpoint_restore(const anx_oid_t *oid, const anx_oid_t *checkpoint)
 	if (anx_memcmp(digest, wf->checkpoint_digest, sizeof(digest)) || image->schema != WF_CHECKPOINT_SCHEMA ||
 	    anx_uuid_compare(&image->workflow, oid) || image->epoch != wf->checkpoint_epoch ||
 	    image->last_run != wf->last_run || image->topology_epoch != wf->topology.epoch) { ret = ANX_EPERM; goto done; }
+	anx_oid_t semantic = anx_wf_semantic_id(wf);
+	if (anx_uuid_compare(&image->semantic, &semantic)) { ret = ANX_EPERM; goto done; }
+	ret = anx_wf_semantic_check(wf);
+	if (ret != ANX_OK) goto done;
 	if (!image->trace_count || image->trace_count > ANX_WF_MAX_NODES || image->ref_count > WF_CHECKPOINT_REFS ||
 	    image->output_count > ANX_WF_MAX_PORTS || !image->cap || image->cap > ANX_WF_MAX_NODES) {
 		ret = ANX_EINVAL; goto done;
