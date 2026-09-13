@@ -9,6 +9,17 @@
 #include <anx/uuid.h>
 
 struct observation_context { anx_oid_t current, old; struct anx_observation_spec spec; bool foreign; };
+/* Inline interrupt entry must preserve compiler-owned leaf-function locals. */
+#if defined(__x86_64__) && !defined(ANX_HOST_TEST)
+__attribute__((noinline)) static int interrupt_stack_check(void)
+{
+	volatile uint64_t canary[16];
+	for (uint32_t i = 0; i < 16; i++) canary[i] = 0x514e580000000000ULL + i;
+	__asm__ volatile("int $0x20" ::: "memory");
+	for (uint32_t i = 0; i < 16; i++) if (canary[i] != 0x514e580000000000ULL + i) return -4110;
+	return ANX_OK;
+}
+#endif
 static int observe_handler(struct anx_external_call *call, void *arg)
 {
 	struct observation_context *c = arg;
@@ -26,6 +37,10 @@ static int observe_handler(struct anx_external_call *call, void *arg)
 
 int anx_research_day041(void)
 {
+#if defined(__x86_64__) && !defined(ANX_HOST_TEST)
+	int interrupt_ret = interrupt_stack_check();
+	if (interrupt_ret != ANX_OK) return interrupt_ret;
+#endif
 	struct anx_state_object *objects[5] = {0};
 	const char *payloads[] = {"state-v1", "visual-v1", "state-v2", "tool-read", "other"};
 	struct anx_so_create_params p = {0};
