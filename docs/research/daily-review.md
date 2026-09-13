@@ -283,7 +283,7 @@ Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/sta
 
 Planned acceptance: Deny unauthorized ICM projection and mutation. A public authority annotation must not grant access to protected metadata or payload, and authorized sealed-object annotations must remain usable.
 
-Status: Validated on Jekyll. Tested commit: `a356f48`. Source message: `3d6016a3-1b0f-4d3e-9bc6-bca4af973f93`.
+Status: Merged at `01c91d6` after Jekyll validation. Tested commit: `a356f48`. Source message: `3d6016a3-1b0f-4d3e-9bc6-bca4af973f93`.
 
 Detailed comparison and results: [Day 017](day-017.md).
 
@@ -293,13 +293,15 @@ Detailed comparison and results: [Day 017](day-017.md).
 
 Learning: Separate build configuration, runtime policy, and scheduler dispatch into distinct optimization loops.
 
-Anunix comparison: Anunix builds a native kernel through Make. Linux Kconfig search is not an Anunix mechanism.
+Anunix comparison: The baseline records image hashes without a compiled configuration profile. Day 18 binds architecture and research mode to an artifact digest and checks the running guest.
 
 Evidence: [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
-Planned acceptance: Bind a tested configuration profile to its image and reject an incompatible profile.
+Planned acceptance: Bind the compiled architecture and research mode to the tested image; reject incompatible requirements and changed artifacts.
 
-Status: Queued. Source message: `0f7ae5cd-ece1-4b5f-917c-cdcd0ae3339e`.
+Status: Validated on Jekyll. Tested commit: `8311951`. Source message: `0f7ae5cd-ece1-4b5f-917c-cdcd0ae3339e`.
+
+Detailed comparison and results: [Day 018](day-018.md).
 
 ## Day 019 — 2026-07-14
 
