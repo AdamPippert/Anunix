@@ -8,6 +8,9 @@
 
 #include <anx/types.h>
 #include <anx/external_call.h>
+#include <anx/cell.h>
+#include <anx/identity.h>
+#include <anx/effect_fence.h>
 #include <anx/string.h>
 
 #define ANX_EXT_MAX_HANDLERS	16
@@ -140,5 +143,17 @@ int anx_external_invoke(struct anx_external_call *call)
 
 	call->response_size = 0;
 	call->status_code = 0;
+	if (anx_cell_current_id()) {
+		struct anx_cell *caller = anx_cell_store_lookup(anx_cell_current_id());
+		if (!caller)
+			return ANX_EPERM;
+		ret = ANX_EPERM;
+		if (caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
+		    anx_identity_admit(caller, NULL) == ANX_OK)
+			ret = anx_effect_fence_check(caller, NULL, NULL);
+		anx_cell_store_release(caller);
+		if (ret != ANX_OK)
+			return ret;
+	}
 	return slot->fn(call, slot->ctx);
 }

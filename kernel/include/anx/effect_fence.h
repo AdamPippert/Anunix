@@ -34,7 +34,7 @@ int anx_effect_fence_hold(struct anx_cell *cell);
 int anx_effect_fence_cancel(struct anx_cell *cell);
 /* Nil bindings retain legacy behavior. HELD returns EBUSY; closed runs return EPERM. */
 int anx_effect_fence_check(const struct anx_cell *cell, anx_oid_t *id_out, uint64_t *epoch_out);
-/* The final dispatch transition shares the fence lock with control transitions. */
+/* Internal phase gate. Call anx_effect_mark_dispatching for complete authorization. */
 int anx_effect_fence_dispatch(struct anx_pending_effect *effect);
 
 #endif
