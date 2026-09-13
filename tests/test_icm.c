@@ -169,5 +169,6 @@ int test_icm(void)
 		}
 	}
 
-	return anx_research_day017();
+	ret = anx_research_day017();
+	return ret == ANX_OK ? anx_research_day041() : ret;
 }
