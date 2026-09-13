@@ -64,6 +64,16 @@ int anx_research_day041(void)
 	anx_memset(bytes, 'X', sizeof(bytes));
 	ret = -4101;
 	if (anx_observation_read(&records[0], 0, bytes, sizeof(bytes)) != ANX_EBUSY || bytes[0] != 'X') goto out;
+	struct anx_observation_spec bad = spec;
+	anx_oid_t denied = ANX_UUID_NIL;
+	bad.provenance = objects[1]->oid;
+	ret = -4109;
+	if (anx_observation_publish(&bad, &denied) != ANX_EPERM || !anx_uuid_is_nil(&denied)) goto out;
+	bad = spec; bad.content = objects[4]->oid;
+	if (anx_observation_publish(&bad, &denied) != ANX_EPERM || !anx_uuid_is_nil(&denied)) goto out;
+	objects[0]->sensitivity = ANX_SENSITIVITY_CONFIDENTIAL;
+	if (anx_observation_publish(&spec, &denied) != ANX_EPERM || !anx_uuid_is_nil(&denied)) goto out;
+	objects[0]->sensitivity = ANX_SENSITIVITY_PUBLIC;
 	ret = anx_observation_publish(&spec, &records[1]);
 	spec.kind = ANX_OBSERVATION_STRUCTURED; spec.content = objects[2]->oid; spec.full_coverage = false;
 	if (ret == ANX_OK) ret = anx_observation_publish(&spec, &records[2]);
@@ -84,6 +94,11 @@ int anx_research_day041(void)
 	if (anx_observation_describe(&records[1], &view) != ANX_OK ||
 	    anx_uuid_compare(&view.superseded_by, &records[3]) ||
 	    anx_observation_read(&records[1], 0, bytes, sizeof(bytes)) != ANX_EBUSY) goto out;
+	objects[0]->access_policy.rule_count = 1;
+	objects[0]->access_policy.rules[0].operations = ANX_ACCESS_READ_PAYLOAD;
+	objects[0]->access_policy.rules[0].effect = ANX_EFFECT_DENY;
+	if (anx_observation_read(&records[3], 0, bytes, sizeof(bytes)) != ANX_EPERM) goto out;
+	objects[0]->access_policy.rule_count = 0;
 	ret = anx_so_open(&objects[1]->oid, ANX_OPEN_READ, &h);
 	if (ret != ANX_OK) goto out;
 	ret = -4105;
