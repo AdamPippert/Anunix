@@ -90,7 +90,44 @@ struct anx_disk_index_entry {
 int anx_disk_store_init(void);
 
 /* Format a block device with an empty Anunix object store */
+/*
+ * Format the active block device as an Anunix object store.
+ *
+ * Refuses a device carrying anything Anunix did not write, and refuses a
+ * device claimed as a RAID member (RFC-0031 section 8). Formatting is not
+ * reversible, so the guard errs toward refusing: a device that cannot be
+ * read, or that holds bytes in a format we do not recognise, is treated as
+ * someone else's data.
+ *
+ * Returns ANX_EEXIST when refused for content, ANX_EBUSY for an array
+ * member.
+ */
+/*
+ * Find the device carrying an Anunix object store and make it active
+ * (RFC-0031 section 4).
+ *
+ * "The first device registered becomes the active device" was correct when
+ * every registered device was a whole drive and Anunix owned the machine.
+ * With partitions it selects whatever the firmware enumerated first -- an
+ * EFI system partition, say -- which is not ours to write to.
+ *
+ * Scans every registered device for a valid superblock at sector 0 and
+ * prefers an array over a partition, and a partition over a whole drive.
+ * Array members are never selected. Returns the chosen device, or NULL when
+ * no store was found anywhere, in which case the active device is left
+ * alone.
+ */
+struct anx_blk_dev *anx_disk_select_store(void);
+
 int anx_disk_format(const char *label);
+
+/*
+ * Format regardless of what is already there. Every caller MUST have an
+ * operator's explicit instruction naming this device -- an installer
+ * confirmation, or a provisioning config. Never call this from a fallback
+ * or recovery path.
+ */
+int anx_disk_format_forced(const char *label);
 
 /* Write a State Object to disk (journaled). boundary_key defaults to 0. */
 int anx_disk_write_obj(const anx_oid_t *oid, uint32_t obj_type,

@@ -17,7 +17,9 @@
 
 #include <anx/types.h>
 
-#define ANX_BLK_MAX_DEVS	16
+/* Raised from 16 for RFC-0031: a two-drive machine with a full GPT on
+ * each drive plus an array over two partitions already needs 14. */
+#define ANX_BLK_MAX_DEVS	32
 #define ANX_BLK_NAME_MAX	16
 
 /* Device flags */
@@ -47,6 +49,13 @@ struct anx_blk_dev {
  * appends the next free index. Returns NULL when the registry is full. */
 struct anx_blk_dev *anx_blk_dev_register(const struct anx_blk_ops *ops,
 					 void *priv, const char *base);
+
+/* Register one device under an exact name rather than a class prefix.
+ * The partition layer uses this so a partition is named after its parent
+ * and GPT entry index ("nvme0p2") instead of registration order. Returns
+ * NULL when the name is taken or the registry is full. */
+struct anx_blk_dev *anx_blk_dev_register_named(const struct anx_blk_ops *ops,
+					       void *priv, const char *name);
 
 /* Release a registry slot. Clears the active pointer if it named dev. */
 void anx_blk_dev_unregister(struct anx_blk_dev *dev);
