@@ -207,6 +207,6 @@ int test_cap_effect_protocol(void)
 			return -91;
 	}
 
-	int ret = anx_research_day016();
+	ret = anx_research_day016();
 	return ret == ANX_OK ? anx_research_day024() : ret;
 }
