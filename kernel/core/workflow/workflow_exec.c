@@ -26,6 +26,7 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/arch.h>
+#include <anx/uuid.h>
 #include <anx/jepa.h>
 #include <anx/jepa_cell.h>
 #include <anx/agent_cell.h>
