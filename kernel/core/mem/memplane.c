@@ -14,6 +14,7 @@
 #include <anx/arch.h>
 #include <anx/cell.h>
 #include <anx/state_object.h>
+#include <anx/workflow.h>
 
 #define MEMPLANE_STORE_BITS	8	/* 256 buckets */
 
@@ -213,6 +214,8 @@ int anx_memplane_demote(struct anx_mem_entry *entry,
 		return ANX_EINVAL;
 	if ((int)tier < 0 || tier >= ANX_MEM_TIER_COUNT)
 		return ANX_EINVAL;
+	if (anx_mem_in_tier(entry, tier) && anx_wf_cache_needed(&entry->oid))
+		return ANX_EBUSY;
 
 	anx_spin_lock(&entry->lock);
 	if (entry->protected_tiers & ANX_TIER_BIT(tier)) {
@@ -291,6 +294,8 @@ int anx_memplane_forget(struct anx_mem_entry *entry,
 	else if (mode == ANX_FORGET_REDERIVE)
 		removed &= ANX_TIER_BIT(ANX_MEM_L0) | ANX_TIER_BIT(ANX_MEM_L1) | ANX_TIER_BIT(ANX_MEM_L3);
 	if (entry->protected_tiers & removed)
+		return ANX_EBUSY;
+	if ((removed || mode == ANX_FORGET_HARD_DELETE) && anx_wf_cache_needed(&entry->oid))
 		return ANX_EBUSY;
 
 	switch (mode) {

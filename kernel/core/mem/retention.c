@@ -2,6 +2,7 @@
 #include <anx/state_object.h>
 #include <anx/cell.h>
 #include <anx/uuid.h>
+#include <anx/workflow.h>
 
 static bool registered(struct anx_mem_entry *entry)
 {
@@ -73,7 +74,8 @@ int anx_memplane_evict(const anx_oid_t *candidates, uint32_t count,
 		struct anx_mem_entry *entry = entries[i];
 		uint32_t decay, priority;
 		int32_t score;
-		if (!anx_mem_in_tier(entry, tier) || (entry->protected_tiers & ANX_TIER_BIT(tier)))
+		if (!anx_mem_in_tier(entry, tier) || (entry->protected_tiers & ANX_TIER_BIT(tier)) ||
+		    anx_wf_cache_needed(&entry->oid))
 			continue;
 		decay = entry->decay_score > 1000 ? 1000 : entry->decay_score;
 		priority = entry->retention.sweeps ? entry->retention.priority : 0;

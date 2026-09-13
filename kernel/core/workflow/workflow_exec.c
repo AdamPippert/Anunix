@@ -571,6 +571,44 @@ wf_suspend(struct anx_wf_object *wf, uint16_t failed_node_id, int error_code,
 /* Core dispatch loop                                                  */
 /* ------------------------------------------------------------------ */
 
+static void wf_cache_refresh(struct anx_wf_object *wf, const bool *completed,
+			     const uint32_t *slot_by_id,
+			     const anx_oid_t (*port_oid)[ANX_WF_MAX_PORTS])
+{
+	wf->cache_live_count = 0;
+	wf->cache_liveness_unknown = false;
+	for (uint32_t i = 0; i < ANX_WF_MAX_EDGES; i++) {
+		const struct anx_wf_edge *edge = &wf->edges[i];
+		uint32_t from, to, j;
+		anx_oid_t oid;
+		if (!edge->from_node && !edge->to_node)
+			continue;
+		if (!edge->from_node || !edge->to_node || edge->from_node > ANX_WF_MAX_NODES ||
+		    edge->to_node > ANX_WF_MAX_NODES || edge->from_port >= ANX_WF_MAX_PORTS ||
+		    edge->to_port >= ANX_WF_MAX_PORTS)
+			goto unknown;
+		from = slot_by_id[edge->from_node];
+		to = slot_by_id[edge->to_node];
+		if (from >= ANX_WF_MAX_NODES || to >= ANX_WF_MAX_NODES ||
+		    wf->nodes[from].id != edge->from_node || wf->nodes[to].id != edge->to_node)
+			goto unknown;
+		if (completed[to])
+			continue;
+		oid = port_oid[from][edge->from_port];
+		if (oid_is_null(&oid))
+			continue;
+		for (j = 0; j < wf->cache_live_count; j++)
+			if (wf->cache_live_oids[j].hi == oid.hi && wf->cache_live_oids[j].lo == oid.lo)
+				break;
+		if (j == wf->cache_live_count)
+			wf->cache_live_oids[wf->cache_live_count++] = oid;
+	}
+	return;
+unknown:
+	/* An invalid edge cannot justify reclaiming any active workflow input. */
+	wf->cache_liveness_unknown = true;
+}
+
 /*
  * Execute the workflow from the given executor state.
  *
@@ -597,6 +635,7 @@ wf_run_inner(struct anx_wf_object *wf,
 	uint32_t i;
 
 	wf_build_tables(wf, slot_id, slot_by_id);
+	wf_cache_refresh(wf, completed, slot_by_id, port_oid);
 
 	/* Count occupied slots. */
 	total_nodes = 0;
@@ -681,6 +720,7 @@ wf_run_inner(struct anx_wf_object *wf,
 			/* Success: mark completed, reduce successors. */
 			completed[slot] = true;
 			processed++;
+			wf_cache_refresh(wf, completed, slot_by_id, port_oid);
 
 			for (i = 0; i < ANX_WF_MAX_EDGES; i++) {
 				uint16_t from = wf->edges[i].from_node;

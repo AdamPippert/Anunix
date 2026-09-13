@@ -279,6 +279,11 @@ struct anx_wf_object {
 	/* Outputs produced by ANX_WF_NODE_OUTPUT nodes */
 	anx_oid_t		output_oids[ANX_WF_MAX_PORTS];
 	uint8_t			output_count;
+
+	/* Executor-owned intermediate liveness; this never grants reuse permission. */
+	anx_oid_t		cache_live_oids[ANX_WF_MAX_EDGES];
+	uint16_t		cache_live_count;
+	bool			cache_liveness_unknown;
 };
 
 /* ------------------------------------------------------------------ */
@@ -320,6 +325,9 @@ int anx_wf_list(anx_oid_t *results, uint32_t max, uint32_t *count_out);
 
 /* Look up workflow object by OID — returns internal pointer (valid until destroy). */
 struct anx_wf_object *anx_wf_object_get(const anx_oid_t *oid);
+
+/* True while an active or paused workflow still needs this produced input. */
+bool anx_wf_cache_needed(const anx_oid_t *oid);
 
 /* Render the workflow node graph onto a pixel buffer (width x height, 32bpp). */
 int anx_wf_render_canvas(const anx_oid_t *wf_oid, uint32_t *pixels,
