@@ -556,11 +556,12 @@
       ],
       "comparison": "The baseline checked declared object labels but forgot sensitive reads across calls. Bound run fences now retain the highest read sensitivity and constrain later protected effects across branches.",
       "acceptance": "Deny a prohibited sequence even when its individual operations are separately available.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-028",
       "comparison_baseline": "ca41ae4",
       "tested_commit": "99dfbfa",
-      "evidence": "docs/research/evidence/day-028/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-028/uefi-boot.json",
+      "merged_commit": "ff868c8"
     },
     {
       "day": 29,
@@ -573,10 +574,13 @@
         "kernel/core/state/provenance.c",
         "kernel/core/mem/memplane.c"
       ],
-      "comparison": "Workflow graphs and object provenance exist. Memory placement does not by itself establish graph-aware eviction.",
+      "comparison": "The baseline could evict produced inputs needed by unfinished workflow nodes. Eviction, demotion, and forgetting now preserve those inputs across active and paused workflows until their consumers finish.",
       "acceptance": "Retain an intermediate needed by runnable descendants and reclaim one with no live consumer.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-029",
+      "comparison_baseline": "ff868c8",
+      "tested_commit": "ee12ad9",
+      "evidence": "docs/research/evidence/day-029/uefi-boot.json"
     },
     {
       "day": 30,
