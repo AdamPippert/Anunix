@@ -411,7 +411,7 @@ Evidence: [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [k
 
 Planned acceptance: Bound discovery to authorized entries and reject invocation through revoked, stale, foreign, or altered tool handles.
 
-Status: Validated on Jekyll. Tested commit: `a0bca2e`. Source message: `b3e419a3-edae-45ea-9b87-b3975f94202c`.
+Status: Merged at `654d3e8` after Jekyll validation. Tested commit: `a0bca2e`. Source message: `b3e419a3-edae-45ea-9b87-b3975f94202c`.
 
 Detailed comparison and results: [Day 025](day-025.md).
 
@@ -421,13 +421,15 @@ Detailed comparison and results: [Day 025](day-025.md).
 
 Learning: Schedule continuation state using dependencies, residency, and expected reuse.
 
-Anunix comparison: The Twin captures engines and queue depths. It does not capture the complete continuation or KV state.
+Anunix comparison: Baseline 654d3e8 retains eligible session affinity indefinitely. Day 026 adds expiring, cost-aware reuse of validated logical state while preserving current engine permission checks.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Prefer usable resident state without selecting an engine that violates admission constraints.
+Planned acceptance: Prefer readable, validated resident state only while the hint remains useful and unexpired, without selecting an ineligible engine.
 
-Status: Queued. Source message: `8f38db3a-f37c-44db-be06-1612a846def1`.
+Status: Validated on Jekyll. Tested commit: `a7b91d7`. Source message: `8f38db3a-f37c-44db-be06-1612a846def1`.
+
+Detailed comparison and results: [Day 026](day-026.md).
 
 ## Day 027 — 2026-07-22
 

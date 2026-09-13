@@ -496,11 +496,12 @@
       ],
       "comparison": "Baseline 5111209 has capability records and a transport registry but no scoped catalog or revocable tool handle. Day 025 adds bounded discovery and current-grant invocation checks.",
       "acceptance": "Bound discovery to authorized entries and reject invocation through revoked, stale, foreign, or altered tool handles.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-025",
       "comparison_baseline": "5111209",
       "tested_commit": "a0bca2e",
-      "evidence": "docs/research/evidence/day-025/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-025/uefi-boot.json",
+      "merged_commit": "654d3e8"
     },
     {
       "day": 26,
@@ -513,10 +514,13 @@
         "kernel/core/route/lease.c",
         "kernel/core/anxml/anxml.c"
       ],
-      "comparison": "The Twin captures engines and queue depths. It does not capture the complete continuation or KV state.",
-      "acceptance": "Prefer usable resident state without selecting an engine that violates admission constraints.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Baseline 654d3e8 retains eligible session affinity indefinitely. Day 026 adds expiring, cost-aware reuse of validated logical state while preserving current engine permission checks.",
+      "acceptance": "Prefer readable, validated resident state only while the hint remains useful and unexpired, without selecting an ineligible engine.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-026",
+      "comparison_baseline": "654d3e8",
+      "tested_commit": "a7b91d7",
+      "evidence": "docs/research/evidence/day-026/uefi-boot.json"
     },
     {
       "day": 27,
