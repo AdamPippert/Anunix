@@ -4,7 +4,7 @@
 
 #define ANX_ROUTE_POLICY_VARIABLES 8U
 #define ANX_ROUTE_POLICY_CONSTRAINTS 4U
-enum anx_policy_unit { ANX_POLICY_COUNT = 1, ANX_POLICY_SCORE, ANX_POLICY_PERCENT, ANX_POLICY_DIVISOR };
+enum anx_policy_unit { ANX_POLICY_COUNT = 1, ANX_POLICY_SCORE, ANX_POLICY_COST_WEIGHT, ANX_POLICY_DIVISOR };
 enum anx_policy_origin { ANX_POLICY_OPERATOR = 1, ANX_POLICY_DEFAULT };
 enum anx_policy_metric { ANX_POLICY_FEASIBLE = 1, ANX_POLICY_MARGIN, ANX_POLICY_CPU, ANX_POLICY_GPU };
 struct anx_policy_range { int32_t minimum, maximum; uint32_t unit, origin; };
