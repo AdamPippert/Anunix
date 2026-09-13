@@ -299,7 +299,7 @@ Evidence: [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), 
 
 Planned acceptance: Bind the compiled architecture and research mode to the tested image; reject incompatible requirements and changed artifacts.
 
-Status: Validated on Jekyll. Tested commit: `8311951`. Source message: `0f7ae5cd-ece1-4b5f-917c-cdcd0ae3339e`.
+Status: Merged at `074b3ec` after Jekyll validation. Tested commit: `8311951`. Source message: `0f7ae5cd-ece1-4b5f-917c-cdcd0ae3339e`.
 
 Detailed comparison and results: [Day 018](day-018.md).
 
@@ -309,13 +309,15 @@ Detailed comparison and results: [Day 018](day-018.md).
 
 Learning: Allow capabilities to evolve while keeping their authority ceiling under independent control.
 
-Anunix comparison: Capabilities have a trust lifecycle and credentials hold authority. The promotion gate provides a separate performance check.
+Anunix comparison: The baseline checks lifecycle and promotion scores without an independent authority ceiling. Day 19 checks private grants, installed lineage scope, and the promoting cell before registration.
 
 Evidence: [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/credential.c](../../kernel/core/credential.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
-Planned acceptance: Reject capability expansion without corresponding authority while accepting a validated replacement within scope.
+Planned acceptance: Reject ungranted or expanded execution authority; accept a scored replacement within the incumbent scope and the caller permissions.
 
-Status: Queued. Source message: `c20ed7d5-7da3-4ba6-ba26-549efe59e0c5`.
+Status: Validated on Jekyll. Tested commit: `387ddc4`. Source message: `c20ed7d5-7da3-4ba6-ba26-549efe59e0c5`.
+
+Detailed comparison and results: [Day 019](day-019.md).
 
 ## Day 020 — 2026-07-15
 
