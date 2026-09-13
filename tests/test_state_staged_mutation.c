@@ -7,6 +7,7 @@
 #include <anx/state_object.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 int test_state_staged_mutation(void)
 {
@@ -207,5 +208,5 @@ int test_state_staged_mutation(void)
 	if (ret != ANX_OK)
 		return -41;
 
-	return 0;
+	return anx_research_day034();
 }
