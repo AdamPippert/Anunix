@@ -23,6 +23,7 @@
 #include <anx/external_call.h>
 #include <anx/sched.h>
 #include <anx/identity.h>
+#include <anx/effect_fence.h>
 
 /* --- Admission --- */
 
@@ -71,7 +72,8 @@ static bool scope_contains(const struct anx_cell *parent,
 	bool linked = false;
 
 	if (parent->child_count > ANX_MAX_CHILD_CELLS ||
-	    anx_uuid_compare(&parent->identity_id, &child->identity_id))
+	    anx_uuid_compare(&parent->identity_id, &child->identity_id) ||
+	    anx_uuid_compare(&parent->effect_fence_id, &child->effect_fence_id))
 		return false;
 	for (i = 0; i < parent->child_count; i++)
 		if (anx_uuid_compare(&parent->child_cids[i], &child->cid) == 0)
@@ -156,6 +158,17 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 
 	/* The external handler can change another system before commit. */
 	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
+		anx_oid_t fence;
+		uint64_t epoch;
+		ret = anx_effect_fence_check(cell, &fence, &epoch);
+		if (!anx_uuid_is_nil(&fence)) {
+			char oid[37], description[128];
+			anx_uuid_to_string(&fence, oid, sizeof(oid));
+			anx_snprintf(description, sizeof(description), "%s epoch=%llu", oid, (unsigned long long)epoch);
+			anx_trace_append(trace, ANX_TRACE_EFFECT_FENCE, description, ret);
+		}
+		if (ret != ANX_OK)
+			return runtime_deny(trace, ANX_ADMISSION_EFFECT_FENCE, ret, "run effect fence denied");
 		if (!cell->ext_call)
 			return runtime_deny(trace, ANX_ADMISSION_DESCRIPTOR, ANX_EINVAL,
 				"external descriptor missing");
@@ -634,10 +647,14 @@ static int runtime_cancel_tree(struct anx_cell *cell)
 
 int anx_cell_cancel(struct anx_cell *cell)
 {
+	int ret;
 	if (!cell)
 		return ANX_EINVAL;
 	if (anx_cell_status_terminal(cell->status) && cell->status != ANX_CELL_CANCELLED)
 		return ANX_EINVAL;
+	ret = anx_effect_fence_cancel(cell);
+	if (ret != ANX_OK)
+		return ret;
 	return runtime_cancel_tree(cell);
 }
 
@@ -683,6 +700,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	/* Wire up lineage */
 	child->parent_cid = parent->cid;
 	child->identity_id = parent->identity_id;
+	child->effect_fence_id = parent->effect_fence_id;
 	child->recursion_depth = parent->recursion_depth + 1;
 
 	/* Inherit stricter policies from parent */

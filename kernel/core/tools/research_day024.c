@@ -35,6 +35,8 @@ static int fence_handler(struct anx_external_call *call, void *arg)
 		    anx_effect_fence_transition(&fence.id, fence.generation, ANX_FENCE_RUNNING) != ANX_EPERM ||
 		    anx_effect_prepare(caller->cid, NULL, NULL, &attempt) != ANX_EBUSY || attempt)
 			goto out;
+		if (anx_external_invoke(call) != ANX_EBUSY || context->calls != 1)
+			goto out;
 		/* The active branch cannot dispatch a different cell's prepared effect. */
 		if (anx_effect_mark_dispatching(context->sibling) != ANX_EPERM)
 			goto out;

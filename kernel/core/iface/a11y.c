@@ -10,6 +10,7 @@
 #include <anx/types.h>
 #include <anx/cell.h>
 #include <anx/identity.h>
+#include <anx/effect_fence.h>
 #include <anx/uuid.h>
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +108,10 @@ int anx_a11y_action_checked(uint32_t node_id, uint64_t generation,
 	if (!caller->execution.allow_side_effects || anx_cell_status_terminal(caller->status) ||
 	    anx_identity_admit(caller, NULL) != ANX_OK)
 		goto release;
+	ret = anx_effect_fence_check(caller, NULL, NULL);
+	if (ret != ANX_OK)
+		goto release;
+	ret = ANX_EPERM;
 	anx_spin_lock_irqsave(&a11y_lock, &flags);
 	if (generation != observation_generation) {
 		ret = ANX_EBUSY;

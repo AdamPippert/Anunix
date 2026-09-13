@@ -33,7 +33,7 @@ enum anx_trace_event_type {
 	ANX_TRACE_COMPLETED,
 	ANX_TRACE_ADMISSION_DENIED,
 	ANX_TRACE_IDENTITY_COMMITMENT,	/* description: signed commitment record OID */
-	ANX_TRACE_EFFECT_FENCE,		/* description: fence OID, epoch, and generation */
+	ANX_TRACE_EFFECT_FENCE,		/* description: fence OID and epoch */
 };
 
 enum anx_admission_gate {

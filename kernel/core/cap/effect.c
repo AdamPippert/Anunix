@@ -10,6 +10,7 @@
 #include <anx/alloc.h>
 #include <anx/uuid.h>
 #include <anx/identity.h>
+#include <anx/effect_fence.h>
 
 /* One-way transition table — UNKNOWN is a dead end by construction. */
 static const bool effect_transitions[5][5] = {
@@ -83,11 +84,21 @@ int anx_effect_prepare(anx_cid_t cell_id, struct anx_sink *sink,
 		       struct anx_pending_effect **out)
 {
 	struct anx_pending_effect *effect;
+	struct anx_cell *owner;
+	anx_oid_t fence_id;
+	uint64_t fence_epoch;
 	int ret;
 
 	if (!out)
 		return ANX_EINVAL;
 	ret = effect_check_authority(&cell_id, sink, object_oid);
+	if (ret != ANX_OK)
+		return ret;
+	owner = anx_cell_store_lookup(&cell_id);
+	if (!owner)
+		return ANX_ENOENT;
+	ret = anx_effect_fence_check(owner, &fence_id, &fence_epoch);
+	anx_cell_store_release(owner);
 	if (ret != ANX_OK)
 		return ret;
 
@@ -99,6 +110,8 @@ int anx_effect_prepare(anx_cid_t cell_id, struct anx_sink *sink,
 	effect->sink = sink;
 	effect->object_oid = object_oid ? *object_oid : ANX_UUID_NIL;
 	effect->phase = ANX_EFFECT_PREPARED;
+	effect->fence_id = fence_id;
+	effect->fence_epoch = fence_epoch;
 
 	*out = effect;
 	return ANX_OK;
@@ -113,7 +126,7 @@ int anx_effect_mark_dispatching(struct anx_pending_effect *effect)
 	ret = effect_check_authority(&effect->cell, effect->sink, &effect->object_oid);
 	if (ret != ANX_OK)
 		return ret;
-	return effect_transition(effect, ANX_EFFECT_DISPATCHING);
+	return anx_effect_fence_dispatch(effect);
 }
 
 int anx_effect_commit(struct anx_pending_effect *effect)

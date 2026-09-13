@@ -16,6 +16,7 @@
 #include <anx/kprintf.h>
 #include <anx/cell.h>
 #include <anx/identity.h>
+#include <anx/effect_fence.h>
 
 #define CAP_STORE_BITS	6	/* 64 buckets */
 
@@ -64,7 +65,8 @@ static int check_authority(struct anx_capability *cap, uint32_t ceiling)
 	if (!caller)
 		return ANX_EPERM;
 	may_install = caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
-		      anx_identity_admit(caller, NULL) == ANX_OK;
+		      anx_identity_admit(caller, NULL) == ANX_OK &&
+		      anx_effect_fence_check(caller, NULL, NULL) == ANX_OK;
 	if (caller->execution.allow_network)
 		available |= ANX_CAP_AUTH_NETWORK;
 	if (caller->execution.allow_remote_models)
