@@ -8,6 +8,7 @@
 #include <anx/state_object.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 int test_capability(void)
 {
@@ -149,5 +150,5 @@ int test_capability(void)
 			return -17;
 	}
 
-	return 0;
+	return anx_research_day019();
 }
