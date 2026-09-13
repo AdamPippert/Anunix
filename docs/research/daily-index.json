@@ -835,11 +835,12 @@
       ],
       "comparison": "Engine leases now support controller-issued role contracts and one active phase per cell. Busy reservations block transitions; stale or excessive requests cannot replace the current lease. Cell lifetime remains pinned until phase closure and detachment.",
       "acceptance": "Release a finished phase's lease before starting a phase with different resource needs.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-042",
       "comparison_baseline": "2d349b5",
       "tested_commit": "fb3ca11",
-      "evidence": "docs/research/evidence/day-042/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-042/uefi-boot.json",
+      "merged_commit": "e367e95"
     },
     {
       "day": 43,
@@ -852,10 +853,13 @@
         "kernel/core/state/stage.c",
         "kernel/core/anxml/anxml.c"
       ],
-      "comparison": "Object staging and workflow suspension exist. Prompts, models, tools, and policies need a consistent version boundary.",
+      "comparison": "A sealed semantic manifest now pins named artifact versions, compatibility declarations, schemas, and the workflow graph. Start, resume, save, and restore check the manifest before changing execution state; mismatches preserve the continuation and permit abort.",
       "acceptance": "Reject resume against changed semantic dependencies and preserve the original continuation.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-043",
+      "comparison_baseline": "e367e95",
+      "tested_commit": "e001c00",
+      "evidence": "docs/research/evidence/day-043/uefi-boot.json"
     },
     {
       "day": 44,
