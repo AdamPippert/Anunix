@@ -122,6 +122,11 @@ ASFLAGS := -target $(TARGET) \
 LDFLAGS := -nostdlib --gc-sections
 endif
 
+# Interrupt entry uses the current kernel stack, including the red zone.
+ifeq ($(ARCH),x86_64)
+CFLAGS += -mno-red-zone
+endif
+
 # --- Source files ---
 RESEARCH_TEST ?= 0
 ifeq ($(filter $(RESEARCH_TEST),0 1),)
