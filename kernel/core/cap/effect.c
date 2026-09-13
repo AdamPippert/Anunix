@@ -54,6 +54,7 @@ static int effect_check_authority(const anx_cid_t *cell_id, struct anx_sink *sin
 	struct anx_cell *cell;
 	anx_oid_t nil_oid = ANX_UUID_NIL;
 	bool permitted;
+	int ret;
 
 	if (active && anx_uuid_compare(active, cell_id) != 0)
 		return ANX_EPERM;
@@ -62,9 +63,10 @@ static int effect_check_authority(const anx_cid_t *cell_id, struct anx_sink *sin
 		return ANX_ENOENT;
 	permitted = cell->execution.allow_side_effects && !anx_cell_status_terminal(cell->status) &&
 		    anx_identity_admit(cell, NULL) == ANX_OK;
+	ret = permitted ? anx_effect_fence_check_sink(cell, sink) : ANX_EPERM;
 	anx_cell_store_release(cell);
-	if (!permitted)
-		return ANX_EPERM;
+	if (ret != ANX_OK)
+		return ret;
 	if (!sink)
 		return ANX_OK;
 	if (object_oid && !anx_uuid_is_nil(object_oid)) {

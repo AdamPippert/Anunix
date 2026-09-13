@@ -119,11 +119,12 @@ struct anx_sink {
 	enum anx_sensitivity max_sensitivity;
 };
 
-/* One-time registry init. Safe to call multiple times. */
+/* Trusted registry reset; active cells cannot reset destination grants. */
 void anx_sink_registry_init(void);
 
 /*
  * Register a Sink. Replaces any existing Sink with the same name.
+ * Trusted control only; active cells receive ANX_EPERM. Invalid labels fail.
  * Returns ANX_OK, ANX_EINVAL (bad args), or ANX_ENOMEM (registry full).
  */
 int anx_sink_register(const char *name, enum anx_sensitivity max_sensitivity,

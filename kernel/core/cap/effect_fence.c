@@ -204,6 +204,67 @@ int anx_effect_fence_check(const struct anx_cell *cell, anx_oid_t *id_out, uint6
 	return ret;
 }
 
+int anx_effect_fence_observe_read(const anx_oid_t *oid, enum anx_sensitivity sensitivity)
+{
+	const anx_cid_t *active = anx_cell_current_id();
+	struct anx_effect_fence_view *fence;
+	struct anx_cell *cell;
+	bool flags;
+	int ret = ANX_OK;
+	if (!active)
+		return ANX_OK;
+	cell = anx_cell_store_lookup(active);
+	if (!cell)
+		return ANX_ENOENT;
+	if (anx_uuid_is_nil(&cell->effect_fence_id))
+		goto out;
+	if (!oid || anx_uuid_is_nil(oid) || (int)sensitivity < 0 || sensitivity > ANX_SENSITIVITY_RESTRICTED) {
+		ret = ANX_EINVAL;
+		goto out;
+	}
+	anx_spin_lock_irqsave(&fence_lock, &flags);
+	fence = find_fence(&cell->effect_fence_id);
+	if (!fence)
+		ret = ANX_ENOENT;
+	else {
+		if (sensitivity > fence->read_sensitivity) {
+			fence->read_sensitivity = sensitivity;
+			fence->read_origin = *oid;
+		}
+		if (fence->read_count != ~(uint64_t)0)
+			fence->read_count++;
+	}
+	anx_spin_unlock_irqrestore(&fence_lock, flags);
+out:
+	anx_cell_store_release(cell);
+	return ret;
+}
+
+static int sink_check(const struct anx_effect_fence_view *fence, const struct anx_sink *sink)
+{
+	if (!fence)
+		return ANX_ENOENT;
+	if (!sink)
+		return fence->read_sensitivity == ANX_SENSITIVITY_PUBLIC ? ANX_OK : ANX_EPERM;
+	if ((int)sink->max_sensitivity < 0 || sink->max_sensitivity > ANX_SENSITIVITY_RESTRICTED)
+		return ANX_EINVAL;
+	return fence->read_sensitivity <= sink->max_sensitivity ? ANX_OK : ANX_EPERM;
+}
+
+int anx_effect_fence_check_sink(const struct anx_cell *cell, const struct anx_sink *sink)
+{
+	bool flags;
+	int ret;
+	if (!cell)
+		return ANX_EINVAL;
+	if (anx_uuid_is_nil(&cell->effect_fence_id))
+		return ANX_OK;
+	anx_spin_lock_irqsave(&fence_lock, &flags);
+	ret = sink_check(find_fence(&cell->effect_fence_id), sink);
+	anx_spin_unlock_irqrestore(&fence_lock, flags);
+	return ret;
+}
+
 int anx_effect_fence_dispatch(struct anx_pending_effect *effect)
 {
 	struct anx_effect_fence_view *fence;
@@ -230,6 +291,8 @@ int anx_effect_fence_dispatch(struct anx_pending_effect *effect)
 			ret = ANX_EPERM;
 		else
 			ret = state_check(fence);
+		if (ret == ANX_OK)
+			ret = sink_check(fence, effect->sink);
 	}
 	if (ret == ANX_OK)
 		effect->phase = ANX_EFFECT_DISPATCHING;

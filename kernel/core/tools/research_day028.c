@@ -23,6 +23,13 @@ static int read_handler(struct anx_external_call *call, void *context)
 	    anx_so_read_payload(&handle, 0, payload, sizeof(payload)) != 4 ||
 	    anx_memcmp(payload, "data", 4))
 		goto out;
+	ret = -2806;
+	if (anx_sink_register("research-day-028-public", ANX_SENSITIVITY_RESTRICTED, NULL) != ANX_EPERM)
+		goto out;
+	anx_sink_registry_init();
+	if (!anx_sink_lookup("research-day-028-public") ||
+	    anx_sink_lookup("research-day-028-public")->max_sensitivity != ANX_SENSITIVITY_PUBLIC)
+		goto out;
 	ret = ANX_OK;
 out:
 	anx_so_close(&handle);

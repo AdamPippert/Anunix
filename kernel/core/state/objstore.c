@@ -15,6 +15,7 @@
 #include <anx/arch.h>
 #include <anx/crypto.h>
 #include <anx/uor.h>
+#include <anx/effect_fence.h>
 
 int anx_lifecycle_transition(struct anx_state_object *obj,
 			     enum anx_object_state new_state);
@@ -374,19 +375,31 @@ int anx_so_read_payload(struct anx_object_handle *handle,
 			uint64_t offset, void *buf, uint64_t len)
 {
 	struct anx_state_object *obj;
+	int ret = 0;
 
 	if (!handle || !handle->obj || !buf)
 		return ANX_EINVAL;
 	if (handle->mode != ANX_OPEN_READ && handle->mode != ANX_OPEN_READWRITE)
 		return ANX_EPERM;
 	obj = handle->obj;
-	if (offset >= obj->payload_size)
-		return 0;
-	if (offset + len > obj->payload_size)
+	anx_spin_lock(&obj->lock);
+	if (offset >= obj->payload_size || !len)
+		goto out;
+	if (len > obj->payload_size - offset)
 		len = obj->payload_size - offset;
-
+	/* The API returns a signed byte count. Never expose an unreportable read. */
+	if (len > 0x7fffffffU) {
+		ret = ANX_EINVAL;
+		goto out;
+	}
+	ret = anx_effect_fence_observe_read(&obj->oid, obj->sensitivity);
+	if (ret != ANX_OK)
+		goto out;
 	anx_memcpy(buf, (uint8_t *)obj->payload + offset, len);
-	return (int)len;
+	ret = (int)len;
+out:
+	anx_spin_unlock(&obj->lock);
+	return ret;
 }
 
 int anx_so_write_payload(struct anx_object_handle *handle,
