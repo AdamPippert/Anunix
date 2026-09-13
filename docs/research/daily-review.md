@@ -701,7 +701,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Reject resume against changed semantic dependencies and preserve the original continuation.
 
-Status: Validated on Jekyll. Tested commit: `e001c00`. Source message: `f6d60d8a-4387-4496-96d4-d12bd2211617`.
+Status: Merged at `4447733` after Jekyll validation. Tested commit: `e001c00`. Source message: `f6d60d8a-4387-4496-96d4-d12bd2211617`.
 
 Detailed comparison and results: [Day 043](day-043.md).
 
@@ -711,13 +711,15 @@ Detailed comparison and results: [Day 043](day-043.md).
 
 Learning: Synthesize kernel profiles offline and select validated profiles deterministically at runtime.
 
-Anunix comparison: The Twin and regime detector cover routing policy experiments. They do not tune Linux build configuration.
+Anunix comparison: A trusted compiler now seals finite routing cases and measured simulation results against a captured incumbent and engine environment. The live planner selects the issued profile per decision only while that envelope matches; all rejections retain incumbent weights.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
 Planned acceptance: Reject a profile outside its validated operating envelope and use the incumbent.
 
-Status: Queued. Source message: `ad4ddc59-952c-4cfe-b496-8bb3ea56f9db`.
+Status: Validated on Jekyll. Tested commit: `3a4537d`. Source message: `ad4ddc59-952c-4cfe-b496-8bb3ea56f9db`.
+
+Detailed comparison and results: [Day 044](day-044.md).
 
 ## Day 045 — 2026-08-09
 
