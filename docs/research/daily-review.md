@@ -557,7 +557,7 @@ Evidence: [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/
 
 Planned acceptance: Reject staged publication without effect permission or during a hold; abort preserves committed state and prevents external dispatch.
 
-Status: Validated on Jekyll. Tested commit: `2324a14`. Source message: `0b7c44cc-1651-400d-828e-5eab296603de`.
+Status: Merged at `6b5a9e2` after Jekyll validation. Tested commit: `2324a14`. Source message: `0b7c44cc-1651-400d-828e-5eab296603de`.
 
 Detailed comparison and results: [Day 034](day-034.md).
 
@@ -567,13 +567,15 @@ Detailed comparison and results: [Day 034](day-034.md).
 
 Learning: Describe data movement semantically and validate the implementation's scheduling invariants.
 
-Anunix comparison: State transfer and scheduler queues exist. Cross-device movement graphs need explicit lowering and checks.
+Anunix comparison: The baseline matches raw prefixes and skips policy checks at write and commit. Day 35 validates namespace boundaries, rejects truncation, and rechecks destination policy while preserving digest continuity.
 
 Evidence: [kernel/core/state/xfer.c](../../kernel/core/state/xfer.c), [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c).
 
-Planned acceptance: Preserve transfer permissions and data identity while rejecting an invalid destination.
+Planned acceptance: Reject invalid or revoked destinations before more bytes or a committed result; preserve the exact digest across interruption and resume.
 
-Status: Queued. Source message: `6ee3d16a-44f6-4657-ae00-480794c4c9a6`.
+Status: Validated on Jekyll. Tested commit: `874665b`. Source message: `6ee3d16a-44f6-4657-ae00-480794c4c9a6`.
+
+Detailed comparison and results: [Day 035](day-035.md).
 
 ## Day 036 — 2026-07-31
 
