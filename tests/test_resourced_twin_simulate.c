@@ -107,5 +107,6 @@ int test_resourced_twin_simulate(void)
 		anx_twin_destroy(twin2);
 	}
 
-	return anx_research_day013();
+	int research = anx_research_day013();
+	return research == ANX_OK ? anx_research_day030() : research;
 }
