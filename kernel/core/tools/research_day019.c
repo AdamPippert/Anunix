@@ -126,9 +126,9 @@ int anx_research_day019(void)
 	rc = anx_cap_create("research-day-019-ready", "1", &ready);
 	if (rc != ANX_OK)
 		goto out;
-	ready->required_authority = ANX_CAP_AUTH_NETWORK;
+	ready->required_authority = ANX_CAP_AUTH_ALL;
 	rc = -1908;
-	if (anx_cap_set_authority_ceiling(ready, ANX_CAP_AUTH_NETWORK) != ANX_OK ||
+	if (anx_cap_set_authority_ceiling(ready, ANX_CAP_AUTH_ALL) != ANX_OK ||
 	    anx_cap_validate(ready) != ANX_OK)
 		goto out;
 	state.draft = draft;
@@ -143,14 +143,16 @@ int anx_research_day019(void)
 		goto out;
 	anx_strlcpy(call->endpoint, "anxresearch019://promotion", sizeof(call->endpoint));
 	anx_strlcpy(intent.name, "research-day-019-caller", sizeof(intent.name));
-	for (int network = 0; network < 2; network++) {
+	for (int denied_permission = 0; denied_permission < 4; denied_permission++) {
 		rc = anx_cell_create(ANX_CELL_TASK_EXTERNAL_CALL, &intent, &caller);
 		if (rc != ANX_OK)
 			goto out;
 		caller->execution.allow_side_effects = true;
-		caller->execution.allow_network = network != 0;
+		caller->execution.allow_network = denied_permission != 0;
+		caller->execution.allow_remote_models = denied_permission != 1;
+		caller->execution.allow_recursive_cells = denied_permission != 2;
 		caller->ext_call = call;
-		state.expected_install = network ? ANX_OK : ANX_EPERM;
+		state.expected_install = denied_permission == 3 ? ANX_OK : ANX_EPERM;
 		rc = anx_cell_run(caller);
 		if (rc != ANX_OK)
 			goto out;
