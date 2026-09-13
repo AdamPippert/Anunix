@@ -26,6 +26,7 @@
 #define ANX_WF_LABEL_MAX	64	/* node display label */
 #define ANX_WF_EXPR_MAX		128	/* expression / template strings */
 #define ANX_WF_MAX_WFS		16	/* max concurrent workflows in registry */
+#define ANX_WF_TOPOLOGY_REVISIONS_MAX 8U
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
@@ -175,6 +176,15 @@ struct anx_wf_edge {
 	uint8_t		to_port;
 };
 
+struct anx_wf_topology_control {
+	bool enabled, can_rollback;
+	uint32_t limit, accepted;
+	uint64_t epoch;
+	anx_oid_t evidence_oid;
+	uint16_t previous_count;
+	struct anx_wf_edge previous[ANX_WF_MAX_EDGES];
+};
+
 /* ------------------------------------------------------------------ */
 /* Trace entry                                                         */
 /* ------------------------------------------------------------------ */
@@ -259,6 +269,7 @@ struct anx_wf_object {
 	uint16_t		edge_count;
 	struct anx_wf_node	*nodes;	/* ANX_WF_MAX_NODES entries */
 	struct anx_wf_edge	*edges;	/* ANX_WF_MAX_EDGES entries */
+	struct anx_wf_topology_control topology;
 
 	enum anx_wf_run_state	run_state;
 	anx_cid_t		running_cid;
@@ -315,6 +326,12 @@ int anx_wf_edge_remove(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from
 		       uint16_t to_node, uint8_t to_port);
 
 /* Run a workflow (topological sort -> Cell sequence). */
+/* Opt into bounded, controller-owned edge revisions with frozen node interfaces. */
+int anx_wf_topology_enable(const anx_oid_t *oid, uint32_t revision_limit);
+int anx_wf_topology_revise(const anx_oid_t *oid, uint64_t expected_epoch,
+			   const struct anx_wf_edge *edges, uint32_t count);
+int anx_wf_topology_rollback(const anx_oid_t *oid, uint64_t expected_epoch);
+
 int anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out);
 
 /* Get current run state. */
