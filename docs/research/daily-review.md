@@ -459,7 +459,7 @@ Evidence: [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c)
 
 Planned acceptance: Deny a prohibited sequence even when its individual operations are separately available.
 
-Status: Validated on Jekyll. Tested commit: `99dfbfa`. Source message: `42b27027-d6d6-4591-9e36-ad4a065f6657`.
+Status: Merged at `ff868c8` after Jekyll validation. Tested commit: `99dfbfa`. Source message: `42b27027-d6d6-4591-9e36-ad4a065f6657`.
 
 Detailed comparison and results: [Day 028](day-028.md).
 
@@ -469,13 +469,15 @@ Detailed comparison and results: [Day 028](day-028.md).
 
 Learning: Preserve workflow intermediates according to causal importance and reconstruction cost.
 
-Anunix comparison: Workflow graphs and object provenance exist. Memory placement does not by itself establish graph-aware eviction.
+Anunix comparison: The baseline could evict produced inputs needed by unfinished workflow nodes. Eviction, demotion, and forgetting now preserve those inputs across active and paused workflows until their consumers finish.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c).
 
 Planned acceptance: Retain an intermediate needed by runnable descendants and reclaim one with no live consumer.
 
-Status: Queued. Source message: `1786af0d-1948-4d58-aada-fa836093fddc`.
+Status: Validated on Jekyll. Tested commit: `ee12ad9`. Source message: `1786af0d-1948-4d58-aada-fa836093fddc`.
+
+Detailed comparison and results: [Day 029](day-029.md).
 
 ## Day 030 — 2026-07-25
 
