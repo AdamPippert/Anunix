@@ -917,6 +917,8 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		wf->nodes[failed_slot].id = preserved_id;
 	}
 
+	ret = anx_wf_reuse_check(wf);
+	if (ret != ANX_OK) return ret;
 	if (action == ANX_WF_RESUME_SKIP && failed_slot < ANX_WF_MAX_NODES) {
 		/* Mark the failed node as completed with null outputs. */
 		cont->completed[failed_slot] = true;
@@ -951,6 +953,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		kprintf("wf: '%s' completed after resume\n", wf->name);
 		anx_wf_trace_seal(wf_oid, NULL);
 	}
+	anx_wf_reuse_observe(wf, ret);
 
 	return ret;
 }
