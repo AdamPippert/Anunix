@@ -2,7 +2,6 @@
 """Boot one research image and save native regression evidence."""
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -10,11 +9,7 @@ import socket
 import subprocess
 import time
 import urllib.request
-
-
-def digest(path):
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+from kernel_profile import create_profile, digest, load_profile, validate_guest, validate_profile
 
 
 def main():
@@ -26,13 +21,20 @@ def main():
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--test", action="append", required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--profile", type=Path, help="existing artifact profile; otherwise capture one before boot")
     parser.add_argument("--expect-failure", action="store_true")
     args = parser.parse_args()
     if any(not re.fullmatch(r"day-[0-9]{3}", name) for name in args.test):
         parser.error("test names must use day-NNN")
     artifact = (args.kernel or args.image).resolve(strict=True)
+    try:
+        profile = load_profile(args.profile) if args.profile else create_profile(artifact, args.revision)
+        validate_profile(profile, artifact, args.revision, "x86_64", 1)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
     out = args.out_dir.resolve()
     out.mkdir(parents=True, exist_ok=False)
+    (out / "kernel-profile.json").write_text(json.dumps(profile, indent=2) + "\n")
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
@@ -49,6 +51,7 @@ def main():
     report = {"revision": args.revision, "artifact": str(artifact),
               "sha256": digest(artifact), "qemu_command": command,
               "qemu_version": subprocess.check_output([command[0], "--version"], text=True).splitlines()[0],
+              "kernel_profile": profile, "profile_verified": False,
               "tests": [], "passed": False, "expected_failure": args.expect_failure}
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -74,6 +77,7 @@ def main():
                         raise RuntimeError("guest health timeout")
                     time.sleep(0.5)
             report["sysinfo"] = request("/api/v1/exec", {"command": "sysinfo"})
+            validate_guest(profile, report["sysinfo"].get("output", ""))
             for name in args.test:
                 response = request("/api/v1/exec", {"command": f"research-test {name}"})
                 marker = f"RESEARCH {name} PASS rc=0"
@@ -87,6 +91,8 @@ def main():
                     raise RuntimeError(f"{name}: native regression failed")
             if process.poll() is not None:
                 raise RuntimeError("guest exited during tests")
+            validate_profile(profile, artifact, args.revision, "x86_64", 1)
+            report["profile_verified"] = True
             report["passed"] = not args.expect_failure
             report["expected_result_observed"] = True
         except Exception as error:

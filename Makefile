@@ -483,6 +483,7 @@ test:
 	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(DRIVER_C_ALL) $(LIB_C) -o $(TEST_BIN)
 	@echo "  Running tests..."
 	@$(TEST_BIN)
+	@python3 tests/test_kernel_profile.py
 
 conformance:
 	@echo "  Running deterministic conformance harness..."

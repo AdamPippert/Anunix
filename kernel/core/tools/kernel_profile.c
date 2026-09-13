@@ -37,6 +37,12 @@ const char *anx_kernel_profile_marker(void)
 
 int anx_kernel_profile_check(const struct anx_kernel_profile *required)
 {
-	(void)required;
-	return ANX_ENOSYS;
+	if (!required || required->schema != 1 ||
+	    required->architecture < ANX_KERNEL_X86_64 ||
+	    required->architecture > ANX_KERNEL_HETERIS || required->research_test > 1)
+		return ANX_EINVAL;
+	if (required->architecture != current.architecture ||
+	    required->research_test != current.research_test)
+		return ANX_ENOTSUP;
+	return ANX_OK;
 }
