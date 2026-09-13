@@ -4,6 +4,7 @@
 #include <anx/crypto.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/optimization_harness.h>
 
 static void hash_word(struct anx_sha256_ctx *hash, uint64_t value)
 {
@@ -158,5 +159,7 @@ int anx_route_tuning_begin_artifact(const anx_oid_t *oid, uint64_t *trial_out)
 	ret = object_ref(&artifact.evaluation.oid, &current);
 	if (ret != ANX_OK) return ret;
 	if (!refs_equal(&current, &artifact.evaluation)) return ANX_EBUSY;
+	ret = anx_route_evaluation_check(&artifact.action, &current);
+	if (ret != ANX_OK) return ret;
 	return anx_route_tuning_begin(&artifact.action, trial_out);
 }
