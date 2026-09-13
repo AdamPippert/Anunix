@@ -637,7 +637,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Restore unloaded workflow progress and retain the completed result object without repeating its creation; reject drift, revoked access, and checkpoint replay.
 
-Status: Validated on Jekyll. Tested commit: `b98bacc`. Source message: `583e07ee-0781-4425-81ed-0a3a942cebd5`.
+Status: Merged at `ff29ee6` after Jekyll validation. Tested commit: `b98bacc`. Source message: `583e07ee-0781-4425-81ed-0a3a942cebd5`.
 
 Detailed comparison and results: [Day 039](day-039.md).
 
@@ -647,13 +647,15 @@ Detailed comparison and results: [Day 039](day-039.md).
 
 Learning: Compile natural-language intent into typed objectives and constraints before searching policy candidates.
 
-Anunix comparison: The Twin accepts routing weights and budgets expose constraints. A natural-language policy compiler is outside these primitives.
+Anunix comparison: The baseline validates weights and evidence but has no typed policy task. The candidate checks declared domains and units, evaluates fixed observable constraints, and binds the complete task to required passing receipts.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
-Planned acceptance: Reject an infeasible typed objective before candidate execution or promotion.
+Planned acceptance: Reject infeasible typed bounds before evaluation or activation; deny failing or mismatched evidence; admit and roll back a passing compiled task.
 
-Status: Queued. Source message: `e7cc63e2-9a8d-424f-9050-637fa34a1080`.
+Status: Validated on Jekyll. Tested commit: `338af2e`. Source message: `e7cc63e2-9a8d-424f-9050-637fa34a1080`.
+
+Detailed comparison and results: [Day 040](day-040.md).
 
 ## Day 041 — 2026-08-05
 

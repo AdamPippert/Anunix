@@ -775,11 +775,12 @@
       ],
       "comparison": "The baseline keeps progress in memory but only serializes graph text. The candidate seals and unloads a bounded continuation image, checks its graph and dependencies on restore, and prevents replay of a consumed checkpoint.",
       "acceptance": "Restore unloaded workflow progress and retain the completed result object without repeating its creation; reject drift, revoked access, and checkpoint replay.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-039",
       "comparison_baseline": "c1a6f02",
       "tested_commit": "b98bacc",
-      "evidence": "docs/research/evidence/day-039/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-039/uefi-boot.json",
+      "merged_commit": "ff29ee6"
     },
     {
       "day": 40,
@@ -792,10 +793,13 @@
         "kernel/core/route/budget.c",
         "kernel/core/cap/promotion.c"
       ],
-      "comparison": "The Twin accepts routing weights and budgets expose constraints. A natural-language policy compiler is outside these primitives.",
-      "acceptance": "Reject an infeasible typed objective before candidate execution or promotion.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline validates weights and evidence but has no typed policy task. The candidate checks declared domains and units, evaluates fixed observable constraints, and binds the complete task to required passing receipts.",
+      "acceptance": "Reject infeasible typed bounds before evaluation or activation; deny failing or mismatched evidence; admit and roll back a passing compiled task.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-040",
+      "comparison_baseline": "ff29ee6",
+      "tested_commit": "338af2e",
+      "evidence": "docs/research/evidence/day-040/uefi-boot.json"
     },
     {
       "day": 41,
