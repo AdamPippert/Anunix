@@ -516,11 +516,12 @@
       ],
       "comparison": "Baseline 654d3e8 retains eligible session affinity indefinitely. Day 026 adds expiring, cost-aware reuse of validated logical state while preserving current engine permission checks.",
       "acceptance": "Prefer readable, validated resident state only while the hint remains useful and unexpired, without selecting an ineligible engine.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-026",
       "comparison_baseline": "654d3e8",
       "tested_commit": "a7b91d7",
-      "evidence": "docs/research/evidence/day-026/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-026/uefi-boot.json",
+      "merged_commit": "3c650e5"
     },
     {
       "day": 27,
@@ -533,10 +534,13 @@
         "kernel/core/cap/capability.c",
         "kernel/core/icm/icm.c"
       ],
-      "comparison": "Workflow bundles and capabilities provide packaging components. A skill manifest alone supplies no enforcement.",
+      "comparison": "The prior validator accepted a missing required engine at score 75. Validation and installation now require bounded, unique dependencies with current readiness; the existing authority ceiling also applies.",
       "acceptance": "Reject a behavioral package with unsatisfied dependencies or a wider permission request.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-027",
+      "comparison_baseline": "3c650e5",
+      "tested_commit": "8014d85",
+      "evidence": "docs/research/evidence/day-027/uefi-boot.json"
     },
     {
       "day": 28,

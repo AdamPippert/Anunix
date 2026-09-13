@@ -427,7 +427,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Prefer readable, validated resident state only while the hint remains useful and unexpired, without selecting an ineligible engine.
 
-Status: Validated on Jekyll. Tested commit: `a7b91d7`. Source message: `8f38db3a-f37c-44db-be06-1612a846def1`.
+Status: Merged at `3c650e5` after Jekyll validation. Tested commit: `a7b91d7`. Source message: `8f38db3a-f37c-44db-be06-1612a846def1`.
 
 Detailed comparison and results: [Day 026](day-026.md).
 
@@ -437,13 +437,15 @@ Detailed comparison and results: [Day 026](day-026.md).
 
 Learning: Treat skills as versioned behavioral packages with dependencies, permissions, and evaluations.
 
-Anunix comparison: Workflow bundles and capabilities provide packaging components. A skill manifest alone supplies no enforcement.
+Anunix comparison: The prior validator accepted a missing required engine at score 75. Validation and installation now require bounded, unique dependencies with current readiness; the existing authority ceiling also applies.
 
 Evidence: [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundle.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c).
 
 Planned acceptance: Reject a behavioral package with unsatisfied dependencies or a wider permission request.
 
-Status: Queued. Source message: `f78a94e9-de8d-40bb-ab51-35b163f06800`.
+Status: Validated on Jekyll. Tested commit: `8014d85`. Source message: `f78a94e9-de8d-40bb-ab51-35b163f06800`.
+
+Detailed comparison and results: [Day 027](day-027.md).
 
 ## Day 028 — 2026-07-23
 
