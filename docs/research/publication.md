@@ -1,8 +1,11 @@
 # Daily research publication and release gates
 
-Forgejo stores each daily sequence while the 73-day research program proceeds.
+Forgejo stores each daily sequence while the daily research program proceeds.
 GitHub publication waits until every day is complete, the release notes are ready, and final testing passes.
 The user's publication instruction governs this sequence.
+The user extended the scope to later briefings on September 13, 2026.
+The current queue contains 80 days through September 13.
+Final release preparation includes another source check and completion of any later days.
 
 ## Daily publication
 
@@ -20,7 +23,7 @@ The final publication requires all of these results:
 
 | Gate | Required evidence |
 | --- | --- |
-| Daily completion | All 73 entries identify their merged change and passing Jekyll evidence. |
+| Daily completion | Every scoped entry identifies its merged change and passing Jekyll evidence. |
 | Repository integration | The final candidate preserves the current Forgejo and GitHub changes and resolves conflicts. |
 | Host validation | The complete host suite and conformance checks pass for the final candidate. |
 | Guest validation | The final research kernel and UEFI image pass all daily regressions on Jekyll. |
