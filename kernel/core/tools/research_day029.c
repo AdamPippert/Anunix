@@ -25,12 +25,16 @@ static int waiting_workflow(const char *name, const anx_oid_t *needed, const anx
 	node.kind = consumer;
 	node.port_count = 1;
 	node.ports[0].dir = ANX_WF_PORT_IN;
+	if (consumer == ANX_WF_NODE_CAP_PROMOTION) {
+		node.port_count = 2;
+		node.ports[1].dir = ANX_WF_PORT_OUT;
+	}
 	if (ret == ANX_OK) ret = anx_wf_node_add(out, &node, &target);
 	if (ret == ANX_OK) ret = anx_wf_edge_add(out, source, 0, target, 0);
 	if (ret != ANX_OK) return ret;
 	ret = anx_wf_run(out, NULL);
-	if (consumer == ANX_WF_NODE_RETRIEVAL)
-		return ret == ANX_ENOSYS && anx_wf_object_get(out)->run_state == ANX_WF_RUN_SUSPENDED ? ANX_OK : ANX_EIO;
+	if (consumer == ANX_WF_NODE_CAP_PROMOTION)
+		return ret == ANX_EPERM && anx_wf_object_get(out)->run_state == ANX_WF_RUN_SUSPENDED ? ANX_OK : ANX_EIO;
 	return ret == ANX_OK && anx_wf_object_get(out)->run_state == ANX_WF_RUN_WAITING_HUMAN ? ANX_OK : ANX_EIO;
 }
 
@@ -52,9 +56,9 @@ int anx_research_day029(void)
 		pool[i] = objects[i]->oid;
 		entries[i]->decay_score = i == 0 ? 1000 : 0;
 	}
-	ret = waiting_workflow("research-day-029-first", &pool[0], &pool[1], ANX_WF_NODE_RETRIEVAL, &workflows[0]);
+	ret = waiting_workflow("research-day-029-first", &pool[0], &pool[1], ANX_WF_NODE_CAP_PROMOTION, &workflows[0]);
 	if (ret == ANX_OK)
-		ret = waiting_workflow("research-day-029-shared", &pool[0], &pool[1], ANX_WF_NODE_RETRIEVAL, &workflows[1]);
+		ret = waiting_workflow("research-day-029-shared", &pool[0], &pool[1], ANX_WF_NODE_CAP_PROMOTION, &workflows[1]);
 	if (ret != ANX_OK) goto out;
 	ret = -2901;
 	if (anx_memplane_evict(pool, 2, ANX_MEM_L0, &victim) != ANX_OK ||
