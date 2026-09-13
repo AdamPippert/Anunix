@@ -16,6 +16,7 @@ int anx_research_day035(void)
 		"anx://store//out", "anx://store/%2e%2e/out", "anx://store\\evil/out",
 		"anx://store@evil/out", "anx://store/out?target=evil", "anx://store/out#other",
 		"anx://store/with space", "anx://store/line\nbreak",
+		"anx://:80/out", "anx://store:bad/out", "anx://store:65536/out", "anx://store:/out",
 	};
 	anx_xfer_policy_init(&policy, "research-day-035", 0);
 	if (anx_xfer_policy_allow(&policy, "anx://store") != ANX_OK) return -3500;
