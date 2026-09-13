@@ -695,11 +695,12 @@
       ],
       "comparison": "The baseline matches raw prefixes and skips policy checks at write and commit. Day 35 validates namespace boundaries, rejects truncation, and rechecks destination policy while preserving digest continuity.",
       "acceptance": "Reject invalid or revoked destinations before more bytes or a committed result; preserve the exact digest across interruption and resume.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-035",
       "comparison_baseline": "6b5a9e2",
       "tested_commit": "874665b",
-      "evidence": "docs/research/evidence/day-035/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-035/uefi-boot.json",
+      "merged_commit": "72ab01b"
     },
     {
       "day": 36,
@@ -712,10 +713,13 @@
         "kernel/core/sched/scheduler.c",
         "kernel/core/twin/twin.c"
       ],
-      "comparison": "Engine leases and readiness classes exist. Nested scheduler ownership is not implied by flat queues.",
-      "acceptance": "Reject a child reservation beyond its parent grant and reclaim capacity after revocation.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline accounts for flat global leases. Day 36 adds bounded parent grants, shared root accounting, and subtree revocation with explicit record cleanup.",
+      "acceptance": "Reject a child beyond its parent grant; preserve global accounting across nesting and restore ledger capacity after quiescent subtree revocation.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-036",
+      "comparison_baseline": "72ab01b",
+      "tested_commit": "1dafa66",
+      "evidence": "docs/research/evidence/day-036/uefi-boot.json"
     },
     {
       "day": 37,
