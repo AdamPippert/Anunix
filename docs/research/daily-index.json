@@ -417,11 +417,12 @@
       ],
       "comparison": "The baseline validates simulated weights but hardcodes live scoring. Day 21 activates typed, serialized policy trials and restores the prior weights after rejection.",
       "acceptance": "Reject malformed or stale tuning actions; observe live placement changes and restore the previous policy after a failed trial.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-021",
       "comparison_baseline": "b3ed9c7",
       "tested_commit": "e07f352",
-      "evidence": "docs/research/evidence/day-021/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-021/uefi-boot.json",
+      "merged_commit": "4d6e43c"
     },
     {
       "day": 22,
@@ -434,10 +435,13 @@
         "kernel/core/cap/capability.c",
         "kernel/include/anx/cell.h"
       ],
-      "comparison": "Credentials and cell identities exist. Persona Objects remain a design document rather than a complete lifecycle service.",
-      "acceptance": "Require an authorized identity transition before widening the persistent mandate.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Baseline 4d6e43c has cell permissions and capability grants but no signed identity commitment. Day 022 adds signed authority history and admission across cell replacement.",
+      "acceptance": "Require a valid operator signature for authority changes; preserve revocation across replacement cells and identify the admission commitment in traces.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-022",
+      "comparison_baseline": "4d6e43c",
+      "tested_commit": "7f776bc",
+      "evidence": "docs/research/evidence/day-022/uefi-boot.json"
     },
     {
       "day": 23,
