@@ -168,5 +168,6 @@ int test_route_planner(void)
 	int ret = anx_research_day015();
 	if (ret == ANX_OK)
 		ret = anx_research_day021();
-	return ret == ANX_OK ? anx_research_day026() : ret;
+	if (ret == ANX_OK) ret = anx_research_day026();
+	return ret == ANX_OK ? anx_research_day044() : ret;
 }
