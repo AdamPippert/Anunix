@@ -25,6 +25,8 @@ enum anx_accel_type {
 
 /* --- Resource lease --- */
 
+#define ANX_LEASE_DEPTH_MAX 8U
+
 struct anx_engine_lease {
 	anx_eid_t engine_id;
 
@@ -40,6 +42,9 @@ struct anx_engine_lease {
 	/* Lifetime */
 	anx_time_t granted_at;
 	anx_time_t expires_at;		/* 0 = no expiry */
+	struct anx_engine_lease *parent;
+	uint32_t depth;
+	bool revoked;
 
 	/* Bookkeeping */
 	struct anx_spinlock lock;
@@ -58,6 +63,12 @@ int anx_lease_grant(const anx_eid_t *engine_id,
 		    enum anx_accel_type accel,
 		    uint32_t accel_pct,
 		    struct anx_engine_lease **out);
+
+/* Delegate a subset of a parent's reservation, using its tier and accelerator. */
+int anx_lease_grant_child(struct anx_engine_lease *parent, const anx_eid_t *engine_id,
+			  uint64_t mem_bytes, uint32_t accel_pct, struct anx_engine_lease **out);
+/* Revoke a quiescent subtree. Physical users must stop before this ledger operation. */
+int anx_lease_revoke(struct anx_engine_lease *lease);
 
 /* Look up the lease for an engine */
 struct anx_engine_lease *anx_lease_lookup(const anx_eid_t *engine_id);

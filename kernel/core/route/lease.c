@@ -149,6 +149,24 @@ struct anx_engine_lease *anx_lease_lookup(const anx_eid_t *engine_id)
 	return NULL;
 }
 
+int anx_lease_grant_child(struct anx_engine_lease *parent, const anx_eid_t *engine_id,
+			  uint64_t mem_bytes, uint32_t accel_pct, struct anx_engine_lease **out)
+{
+	int ret;
+	if (!parent || !out) return ANX_EINVAL;
+	*out = NULL;
+	ret = anx_lease_grant(engine_id, parent->mem_tier, mem_bytes, parent->accel, accel_pct, out);
+	if (ret == ANX_OK) { (*out)->parent = parent; (*out)->depth = parent->depth + 1; }
+	return ret;
+}
+
+int anx_lease_revoke(struct anx_engine_lease *lease)
+{
+	if (!lease) return ANX_EINVAL;
+	lease->revoked = true;
+	return ANX_OK;
+}
+
 int anx_lease_release(struct anx_engine_lease *lease)
 {
 	if (!lease)
