@@ -67,12 +67,9 @@ struct anx_resource_twin {
 
 /* --- Candidate routing weight policy ---
  *
- * Mirrors the scoring dimensions anx_route_score_engine already applies,
- * as tunable weights instead of hardcoded constants. A candidate policy
- * is what an AI proposal would vary; anx_route_weight_policy_incumbent()
- * reproduces the live function's current constants, so simulating with
- * the incumbent policy against a snapshot taken immediately before a
- * live anx_route_plan() call should reproduce the same winner.
+ * These weights control the deterministic score dimensions.
+ * anx_route_weight_policy_incumbent() returns the currently active weights.
+ * Simulation excludes JEPA and escalation, and never activates a policy.
  */
 struct anx_route_weight_policy {
 	int32_t locality_bonus;
@@ -87,7 +84,7 @@ struct anx_route_weight_policy {
 
 void anx_route_weight_policy_incumbent(struct anx_route_weight_policy *out);
 /* Bonuses: 0..LIMIT; penalties: -LIMIT..0; divisors: 1..LIMIT.
- * These are simulator guardrails, not measured optimal weights. */
+ * These bound simulation and live trials; they are not measured optima. */
 int anx_route_weight_policy_validate(const struct anx_route_weight_policy *policy);
 
 struct anx_twin_simulate_result {

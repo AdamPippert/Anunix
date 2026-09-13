@@ -10,6 +10,7 @@
 #include <anx/alloc.h>
 #include <anx/arch.h>
 #include <anx/string.h>
+#include <anx/tuning.h>
 
 void anx_twin_init(void)
 {
@@ -39,20 +40,11 @@ enum anx_readiness anx_readiness_from_status(enum anx_engine_status status)
 
 void anx_route_weight_policy_incumbent(struct anx_route_weight_policy *out)
 {
+	struct anx_route_tuning_state current;
 	if (!out)
 		return;
-
-	/* Mirrors the constants anx_route_score_engine currently hardcodes
-	 * (kernel/core/route/planner.c). Keep these in sync if that
-	 * function's constants change. */
-	out->locality_bonus = 20;
-	out->local_first_bonus = 30;
-	out->gpu_cost_divisor = 5;
-	out->cpu_cost_divisor = 10;
-	out->degraded_penalty = -25;
-	out->private_data_bonus = 10;
-	out->topology_overlap_bonus = 25;
-	out->topology_mismatch_penalty = -15;
+	anx_route_tuning_snapshot(&current);
+	*out = current.weights;
 }
 
 int anx_route_weight_policy_validate(const struct anx_route_weight_policy *p)
