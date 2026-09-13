@@ -635,11 +635,12 @@
       ],
       "comparison": "The baseline bounds concurrent children but returns slots after destruction. Day 32 adds a shared lifetime creation budget, explicit expansion, and permanent lease expiry.",
       "acceptance": "Reject a child beyond the shared lifetime budget without allocation; permit explicit expansion and fence new children and effects after expiry.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-032",
       "comparison_baseline": "4c0bc25",
       "tested_commit": "003f72c",
-      "evidence": "docs/research/evidence/day-032/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-032/uefi-boot.json",
+      "merged_commit": "e534009"
     },
     {
       "day": 33,
@@ -652,10 +653,13 @@
         "kernel/core/cap/capability.c",
         "kernel/core/credential.c"
       ],
-      "comparison": "Typed routing policies and capability lifecycle states exist. Revision classes need explicit enforcement.",
-      "acceptance": "Permit a bounded parameter change while rejecting a change to the policy's authority ceiling.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline has no revision grant between active-cell denial of tuning and permission to install capabilities. Day 33 adds parameter and implementation ceilings, inherited leases, and trial ownership.",
+      "acceptance": "Permit bounded parameter trials under an inherited grant while rejecting implementation changes, authority expansion, foreign trial acceptance, and revoked grants.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-033",
+      "comparison_baseline": "e534009",
+      "tested_commit": "18d0b5a",
+      "evidence": "docs/research/evidence/day-033/uefi-boot.json"
     },
     {
       "day": 34,
