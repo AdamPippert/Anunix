@@ -260,6 +260,7 @@ struct anx_wf_policy {
  * ANX_WF_MAX_EDGES entries respectively) and freed on destroy.
  */
 struct anx_wf_reuse_guard;
+struct anx_wf_semantic_guard;
 struct anx_wf_object {
 	bool		in_use;
 	anx_oid_t	oid;
@@ -272,6 +273,7 @@ struct anx_wf_object {
 	struct anx_wf_edge	*edges;	/* ANX_WF_MAX_EDGES entries */
 	struct anx_wf_topology_control topology;
 	struct anx_wf_reuse_guard *reuse;
+	struct anx_wf_semantic_guard *semantic;
 	anx_oid_t checkpoint_oid;
 	uint64_t checkpoint_epoch;
 	uint8_t checkpoint_digest[32];
