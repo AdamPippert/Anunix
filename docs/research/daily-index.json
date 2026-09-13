@@ -715,11 +715,12 @@
       ],
       "comparison": "The baseline accounts for flat global leases. Day 36 adds bounded parent grants, shared root accounting, and subtree revocation with explicit record cleanup.",
       "acceptance": "Reject a child beyond its parent grant; preserve global accounting across nesting and restore ledger capacity after quiescent subtree revocation.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-036",
       "comparison_baseline": "72ab01b",
       "tested_commit": "1dafa66",
-      "evidence": "docs/research/evidence/day-036/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-036/uefi-boot.json",
+      "merged_commit": "01512bc"
     },
     {
       "day": 37,
@@ -732,10 +733,13 @@
         "kernel/include/anx/cell.h",
         "kernel/core/state/provenance.c"
       ],
-      "comparison": "Workflow graphs and cell dependencies exist. Runtime graph changes need their own validity gate.",
-      "acceptance": "Reject a cycle or invalid graph revision while preserving the runnable original graph.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline executes workflow graphs but lacks controlled topology revisions. The candidate validates complete edge replacements against frozen nodes, requires sealed evidence from the current revision, and adds bounded rollback.",
+      "acceptance": "Reject invalid graph revisions without changing the runnable original; execute the revised and restored orders; deny stale, over-budget, and paused changes.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-037",
+      "comparison_baseline": "01512bc",
+      "tested_commit": "adf1950",
+      "evidence": "docs/research/evidence/day-037/uefi-boot.json"
     },
     {
       "day": 38,
