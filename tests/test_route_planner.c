@@ -165,5 +165,6 @@ int test_route_planner(void)
 	anx_engine_unregister(near);
 	anx_engine_unregister(far);
 	anx_engine_unregister(generalist);
-	return anx_research_day015();
+	int ret = anx_research_day015();
+	return ret == ANX_OK ? anx_research_day021() : ret;
 }
