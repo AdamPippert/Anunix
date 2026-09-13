@@ -784,7 +784,8 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 	wf = anx_wf_object_get(wf_oid);
 	if (!wf)
 		return ANX_ENOENT;
-	if (wf->run_state == ANX_WF_RUN_RUNNING)
+	if (wf->run_state == ANX_WF_RUN_RUNNING || wf->run_state == ANX_WF_RUN_SUSPENDED ||
+	    wf->run_state == ANX_WF_RUN_WAITING_HUMAN)
 		return ANX_EBUSY;
 	if (wf->node_count == 0)
 		return ANX_EINVAL;
@@ -799,6 +800,7 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 	}
 
 	/* Allocate trace entry table for this run. */
+	wf->checkpoint_consumed = true;
 	wf->trace_oid = ANX_UUID_NIL;
 	wf->topology.trace_epoch = 0;
 	anx_free(wf->trace_entries);
@@ -883,8 +885,15 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		return ANX_ENOENT;
 	if (wf->run_state != ANX_WF_RUN_SUSPENDED)
 		return ANX_EINVAL;
+	if (action < ANX_WF_RESUME_RETRY || action > ANX_WF_RESUME_REPLACE)
+		return ANX_EINVAL;
 
 	cont = wf->continuation;
+	if (!cont && action == ANX_WF_RESUME_ABORT && !anx_uuid_is_nil(&wf->checkpoint_oid)) {
+		wf->checkpoint_consumed = true;
+		wf->run_state = ANX_WF_RUN_FAILED;
+		return ANX_OK;
+	}
 	if (!cont)
 		return ANX_EINVAL;
 
@@ -897,6 +906,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 
 	if (action == ANX_WF_RESUME_ABORT) {
 		int saved_error = cont->error_code;
+		wf->checkpoint_consumed = true;
 
 		anx_free(cont);
 		wf->continuation = NULL;
@@ -941,6 +951,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 
 	wf->run_state = ANX_WF_RUN_RUNNING;
 	wf->continuation = NULL;	/* executor takes ownership back */
+	wf->checkpoint_consumed = true;
 
 	ret = wf_run_inner(wf, cont->in_deg, cont->completed, cont->port_oid,
 			   wf->computed_cap);

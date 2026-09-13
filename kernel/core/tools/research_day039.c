@@ -62,6 +62,33 @@ int anx_research_day039(void)
 	if (!wf->continuation || !wf->continuation->completed[editor - 1] ||
 	    anx_uuid_compare(&wf->continuation->port_oid[editor - 1][2], &result_oid) ||
 	    anx_wf_checkpoint_restore(&oid, &checkpoint) != ANX_EBUSY) goto out;
+	/* A second issued image unloads progress until every dependency is valid. */
+	anx_so_delete(&checkpoint, false);
+	ret = anx_wf_checkpoint_save(&oid, &checkpoint);
+	if (ret != ANX_OK) goto out;
+	ret = -3906;
+	if (wf->continuation || wf->trace_entries || anx_wf_run(&oid, NULL) != ANX_EBUSY ||
+	    anx_wf_checkpoint_restore(&oid, &result_oid) != ANX_EPERM) goto out;
+	wf->nodes[editor - 1].label[0] = 'X';
+	if (anx_wf_checkpoint_restore(&oid, &checkpoint) != ANX_EBUSY || wf->continuation) goto out;
+	wf->nodes[editor - 1].label[0] = '\0';
+	ret = anx_so_open(&objects[0]->oid, ANX_OPEN_READWRITE, &handle);
+	if (ret == ANX_OK) ret = anx_object_stage(&handle, ANX_UUID_NIL);
+	if (ret == ANX_OK) ret = anx_so_replace_payload(&handle, "changed", 7);
+	if (ret != ANX_OK) goto out;
+	ret = -3907;
+	if (anx_wf_checkpoint_restore(&oid, &checkpoint) != ANX_EBUSY || wf->continuation) goto out;
+	ret = anx_object_abort(&handle);
+	anx_so_close(&handle);
+	if (ret != ANX_OK) goto out;
+	objects[0]->access_policy.rule_count = 1;
+	objects[0]->access_policy.rules[0].operations = ANX_ACCESS_READ_PAYLOAD;
+	objects[0]->access_policy.rules[0].effect = ANX_EFFECT_DENY;
+	ret = -3908;
+	if (anx_wf_checkpoint_restore(&oid, &checkpoint) != ANX_EPERM || wf->continuation) goto out;
+	objects[0]->access_policy.rule_count = 0;
+	ret = anx_wf_checkpoint_restore(&oid, &checkpoint);
+	if (ret != ANX_OK) goto out;
 	ret = anx_wf_resume(&oid, ANX_WF_RESUME_SKIP, NULL);
 	if (ret != ANX_OK) goto out;
 	ret = -3903;
@@ -83,6 +110,7 @@ int anx_research_day039(void)
 	    entries[2].node_id != editor || entries[4].node_id != output) goto out;
 	ret = ANX_OK;
 out:
+	if (handle.obj && handle.obj->staged) anx_object_abort(&handle);
 	anx_so_close(&handle);
 	if (!anx_uuid_is_nil(&oid)) anx_wf_destroy(&oid);
 	if (!anx_uuid_is_nil(&checkpoint)) anx_so_delete(&checkpoint, false);
