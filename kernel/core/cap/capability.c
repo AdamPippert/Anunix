@@ -19,6 +19,13 @@
 
 static struct anx_htable cap_table;
 
+int anx_cap_set_authority_ceiling(struct anx_capability *cap, uint32_t ceiling)
+{
+	(void)cap;
+	(void)ceiling;
+	return ANX_ENOSYS;
+}
+
 /* Lifecycle transition table */
 static const bool cap_transitions[ANX_CAP_STATUS_COUNT][ANX_CAP_STATUS_COUNT] = {
 	/* draft -> */

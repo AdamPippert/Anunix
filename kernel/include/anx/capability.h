@@ -32,6 +32,13 @@ enum anx_cap_status {
 
 /* --- Capability struct --- */
 
+/* Execution requirements are distinct from an engine's computational skills. */
+#define ANX_CAP_AUTH_NETWORK       (1U << 0)
+#define ANX_CAP_AUTH_REMOTE_MODEL  (1U << 1)
+#define ANX_CAP_AUTH_DERIVE_CELL   (1U << 2)
+#define ANX_CAP_AUTH_SIDE_EFFECT   (1U << 3)
+#define ANX_CAP_AUTH_ALL           ((1U << 4) - 1)
+
 struct anx_capability {
 	/* Identity */
 	anx_oid_t cap_oid;		/* underlying State Object OID */
@@ -42,6 +49,7 @@ struct anx_capability {
 	/* Contracts */
 	uint32_t input_cap_mask;	/* required input capabilities */
 	uint32_t output_cap_mask;	/* declared output capabilities */
+	uint32_t required_authority;	/* requested execution scope; default none */
 
 	/* Dependencies */
 	anx_eid_t required_engines[8];
@@ -81,6 +89,9 @@ int anx_cap_transition(struct anx_capability *cap,
 
 /* Install a validated capability into the engine registry */
 int anx_cap_install(struct anx_capability *cap);
+
+/* Set a fresh DRAFT's ceiling from trusted kernel control code, outside a cell. */
+int anx_cap_set_authority_ceiling(struct anx_capability *cap, uint32_t ceiling);
 
 /* Uninstall a capability from the engine registry */
 int anx_cap_uninstall(struct anx_capability *cap);
