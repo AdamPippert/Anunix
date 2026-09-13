@@ -23,10 +23,15 @@ static bool closed(enum anx_effect_fence_state state)
 	return state >= ANX_FENCE_REJECTED;
 }
 
-static int state_check(const struct anx_effect_fence_view *fence)
+static int change_state(struct anx_effect_fence_view *fence, enum anx_effect_fence_state state);
+
+/* Called under fence_lock: expiry permanently fences subsequent admissions. */
+static int state_check(struct anx_effect_fence_view *fence)
 {
 	if (!fence)
 		return ANX_ENOENT;
+	if (!closed(fence->state) && fence->expires_at && arch_time_now() >= fence->expires_at)
+		change_state(fence, ANX_FENCE_TIMED_OUT);
 	if (fence->state == ANX_FENCE_HELD)
 		return ANX_EBUSY;
 	return closed(fence->state) ? ANX_EPERM : ANX_OK;
@@ -83,8 +88,10 @@ int anx_effect_fence_get(const anx_oid_t *id, struct anx_effect_fence_view *out)
 		return ANX_EINVAL;
 	anx_spin_lock_irqsave(&fence_lock, &flags);
 	fence = find_fence(id);
-	if (fence)
+	if (fence) {
+		(void)state_check(fence);
 		*out = *fence;
+	}
 	anx_spin_unlock_irqrestore(&fence_lock, flags);
 	return fence ? ANX_OK : ANX_ENOENT;
 }
@@ -130,6 +137,7 @@ int anx_effect_fence_transition(const anx_oid_t *id, uint64_t generation, enum a
 		return ANX_EINVAL;
 	anx_spin_lock_irqsave(&fence_lock, &flags);
 	fence = find_fence(id);
+	(void)state_check(fence);
 	if (!fence)
 		ret = ANX_ENOENT;
 	else if (fence->generation != generation)
@@ -164,6 +172,32 @@ int anx_effect_fence_set_execution_lease(const anx_oid_t *id, uint64_t generatio
 	return ret;
 }
 
+int anx_effect_fence_create_child(const struct anx_cell *parent, enum anx_cell_type type,
+				 const struct anx_cell_intent *intent, struct anx_cell **child_out)
+{
+	struct anx_effect_fence_view *fence;
+	bool flags;
+	int ret;
+	if (!child_out) return ANX_EINVAL;
+	*child_out = NULL;
+	if (!parent) return ANX_EINVAL;
+	if (anx_uuid_is_nil(&parent->effect_fence_id))
+		return anx_cell_create(type, intent, child_out);
+	anx_spin_lock_irqsave(&fence_lock, &flags);
+	fence = find_fence(&parent->effect_fence_id);
+	ret = state_check(fence);
+	if (ret == ANX_OK && (fence->child_creations == ~(uint64_t)0 ||
+	    (fence->child_limit && fence->child_creations >= fence->child_limit)))
+		ret = ANX_EFULL;
+	/* Reserve and allocate under one lock; failed allocations never consume a slot. */
+	if (ret == ANX_OK) {
+		ret = anx_cell_create(type, intent, child_out);
+		if (ret == ANX_OK) fence->child_creations++;
+	}
+	anx_spin_unlock_irqrestore(&fence_lock, flags);
+	return ret;
+}
+
 static int request_state(struct anx_cell *cell, enum anx_effect_fence_state state)
 {
 	const anx_cid_t *active = anx_cell_current_id();
@@ -186,6 +220,7 @@ static int request_state(struct anx_cell *cell, enum anx_effect_fence_state stat
 	}
 	anx_spin_lock_irqsave(&fence_lock, &flags);
 	fence = find_fence(&cell->effect_fence_id);
+	(void)state_check(fence);
 	if (!fence)
 		ret = ANX_ENOENT;
 	else if (fence->state == state || (state == ANX_FENCE_CANCELLED && closed(fence->state)))
