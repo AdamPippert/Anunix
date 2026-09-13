@@ -39,6 +39,12 @@ static uint32_t decay_rate(enum anx_freshness_class fc)
  */
 extern struct anx_htable mem_table;
 
+int anx_memplane_decay_entry(struct anx_mem_entry *entry)
+{
+	(void)entry;
+	return ANX_ENOSYS;
+}
+
 int anx_memplane_decay_sweep(void)
 {
 	uint32_t bucket_count;
