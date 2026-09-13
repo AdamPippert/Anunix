@@ -437,11 +437,12 @@
       ],
       "comparison": "Baseline 4d6e43c has cell permissions and capability grants but no signed identity commitment. Day 022 adds signed authority history and admission across cell replacement.",
       "acceptance": "Require a valid operator signature for authority changes; preserve revocation across replacement cells and identify the admission commitment in traces.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-022",
       "comparison_baseline": "4d6e43c",
       "tested_commit": "7f776bc",
-      "evidence": "docs/research/evidence/day-022/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-022/uefi-boot.json",
+      "merged_commit": "f0e4f56"
     },
     {
       "day": 23,
@@ -453,10 +454,13 @@
         "kernel/include/anx/interface_plane.h",
         "kernel/core/state/access.c"
       ],
-      "comparison": "The interface plane and accessibility structures exist. Raw coordinates do not establish semantic action validity.",
-      "acceptance": "Reject an action on a stale or unauthorized control and validate an allowed action's resulting state.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Baseline f0e4f56 has accessibility nodes but no observation generation or caller check. Day 023 adds authorized focus with stale-target rejection and a verified focus receipt.",
+      "acceptance": "Reject stale or unauthorized control actions and verify that an allowed focus action reaches the intended surface.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-023",
+      "comparison_baseline": "f0e4f56",
+      "tested_commit": "2b38e9f",
+      "evidence": "docs/research/evidence/day-023/uefi-boot.json"
     },
     {
       "day": 24,

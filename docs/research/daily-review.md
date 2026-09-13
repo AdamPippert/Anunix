@@ -363,7 +363,7 @@ Evidence: [kernel/core/credential.c](../../kernel/core/credential.c), [kernel/co
 
 Planned acceptance: Require a valid operator signature for authority changes; preserve revocation across replacement cells and identify the admission commitment in traces.
 
-Status: Validated on Jekyll. Tested commit: `7f776bc`. Source message: `e3b5929c-297d-4584-a409-2ba221be3fa4`.
+Status: Merged at `f0e4f56` after Jekyll validation. Tested commit: `7f776bc`. Source message: `e3b5929c-297d-4584-a409-2ba221be3fa4`.
 
 Detailed comparison and results: [Day 022](day-022.md).
 
@@ -373,13 +373,15 @@ Detailed comparison and results: [Day 022](day-022.md).
 
 Learning: Expose graphical controls as typed objects with state and verifiable actions.
 
-Anunix comparison: The interface plane and accessibility structures exist. Raw coordinates do not establish semantic action validity.
+Anunix comparison: Baseline f0e4f56 has accessibility nodes but no observation generation or caller check. Day 023 adds authorized focus with stale-target rejection and a verified focus receipt.
 
 Evidence: [kernel/include/anx/interface_plane.h](../../kernel/include/anx/interface_plane.h), [kernel/core/state/access.c](../../kernel/core/state/access.c).
 
-Planned acceptance: Reject an action on a stale or unauthorized control and validate an allowed action's resulting state.
+Planned acceptance: Reject stale or unauthorized control actions and verify that an allowed focus action reaches the intended surface.
 
-Status: Queued. Source message: `18e4cfa8-3933-472b-900e-800cd425e87a`.
+Status: Validated on Jekyll. Tested commit: `2b38e9f`. Source message: `18e4cfa8-3933-472b-900e-800cd425e87a`.
+
+Detailed comparison and results: [Day 023](day-023.md).
 
 ## Day 024 — 2026-07-19
 
