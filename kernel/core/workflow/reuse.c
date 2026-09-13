@@ -6,6 +6,7 @@
 #include <anx/crypto.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/kprintf.h>
 
 struct reuse_condition {
 	anx_oid_t oid;
@@ -164,14 +165,26 @@ int anx_wf_reuse_check(struct anx_wf_object *wf)
 	if (g->view.demoted) return demote(wf, g->view.reason);
 	if (!wf->nodes || !wf->edges) return demote(wf, ANX_EINVAL);
 	graph_digest(wf, digest);
-	if (anx_memcmp(digest, g->graph, sizeof(digest))) return demote(wf, ANX_EBUSY);
+	if (anx_memcmp(digest, g->graph, sizeof(digest))) {
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+		kprintf("reuse: '%s' graph changed\n", wf->name);
+#endif
+		return demote(wf, ANX_EBUSY);
+	}
 	for (uint32_t i = 0; i < g->count; i++) {
 		struct reuse_condition current;
 		const struct reuse_condition *c = &g->conditions[i];
 		int ret = capture_condition(&c->oid, &current);
 		if (ret != ANX_OK) return demote(wf, ret);
 		if (current.version != c->version || current.type != c->type || current.sensitivity != c->sensitivity ||
-		    anx_memcmp(current.digest, c->digest, sizeof(c->digest))) return demote(wf, ANX_EBUSY);
+		    anx_memcmp(current.digest, c->digest, sizeof(c->digest))) {
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+			kprintf("reuse: '%s' condition %u changed (version %llu to %llu, hash %d)\n",
+				wf->name, i, (unsigned long long)c->version, (unsigned long long)current.version,
+				anx_memcmp(current.digest, c->digest, sizeof(c->digest)) != 0);
+#endif
+			return demote(wf, ANX_EBUSY);
+		}
 	}
 	return ANX_OK;
 }
