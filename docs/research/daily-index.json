@@ -375,11 +375,12 @@
       ],
       "comparison": "The baseline checks lifecycle and promotion scores without an independent authority ceiling. Day 19 checks private grants, installed lineage scope, and the promoting cell before registration.",
       "acceptance": "Reject ungranted or expanded execution authority; accept a scored replacement within the incumbent scope and the caller permissions.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-019",
       "comparison_baseline": "074b3ec",
       "tested_commit": "387ddc4",
-      "evidence": "docs/research/evidence/day-019/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-019/uefi-boot.json",
+      "merged_commit": "a7da2a2"
     },
     {
       "day": 20,
@@ -388,14 +389,18 @@
       "title": "AI-First OS Update: Semantic Memory Metadata Is Becoming a Scheduling ABI",
       "learning": "Export semantic retention hints while the memory subsystem owns physical placement.",
       "code": [
+        "kernel/core/mem/retention.c",
+        "kernel/core/mem/decay.c",
         "kernel/core/mem/memplane.c",
-        "kernel/core/anxml/anxml.c",
-        "kernel/include/anx/memory.h"
+        "kernel/include/anx/memplane.h"
       ],
-      "comparison": "Memory tiers and decay exist. Semantic prompt regions are not automatically physical KV-cache regions.",
-      "acceptance": "Exercise bounded retention hints and preserve protected state during eviction.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline has tier records and decay without bounded hints or protected eviction. Day 20 ranks a bounded candidate pool while preserving controller-protected tiers.",
+      "acceptance": "Exercise expiring retention advice and controlled tier eviction; preserve protected object content and reject unauthorized protection changes.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-020",
+      "comparison_baseline": "a7da2a2",
+      "tested_commit": "9d1c753",
+      "evidence": "docs/research/evidence/day-020/uefi-boot.json"
     },
     {
       "day": 21,

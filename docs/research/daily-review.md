@@ -315,7 +315,7 @@ Evidence: [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [k
 
 Planned acceptance: Reject ungranted or expanded execution authority; accept a scored replacement within the incumbent scope and the caller permissions.
 
-Status: Validated on Jekyll. Tested commit: `387ddc4`. Source message: `c20ed7d5-7da3-4ba6-ba26-549efe59e0c5`.
+Status: Merged at `a7da2a2` after Jekyll validation. Tested commit: `387ddc4`. Source message: `c20ed7d5-7da3-4ba6-ba26-549efe59e0c5`.
 
 Detailed comparison and results: [Day 019](day-019.md).
 
@@ -325,13 +325,15 @@ Detailed comparison and results: [Day 019](day-019.md).
 
 Learning: Export semantic retention hints while the memory subsystem owns physical placement.
 
-Anunix comparison: Memory tiers and decay exist. Semantic prompt regions are not automatically physical KV-cache regions.
+Anunix comparison: The baseline has tier records and decay without bounded hints or protected eviction. Day 20 ranks a bounded candidate pool while preserving controller-protected tiers.
 
 Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/include/anx/memory.h](../../kernel/include/anx/memory.h).
 
-Planned acceptance: Exercise bounded retention hints and preserve protected state during eviction.
+Planned acceptance: Exercise expiring retention advice and controlled tier eviction; preserve protected object content and reject unauthorized protection changes.
 
-Status: Queued. Source message: `d2928218-8709-4a8b-8251-f76e37b0577c`.
+Status: Validated on Jekyll. Tested commit: `9d1c753`. Source message: `d2928218-8709-4a8b-8251-f76e37b0577c`.
+
+Detailed comparison and results: [Day 020](day-020.md).
 
 ## Day 021 — 2026-07-16
 
