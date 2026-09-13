@@ -331,7 +331,7 @@ Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kerne
 
 Planned acceptance: Exercise expiring retention advice and controlled tier eviction; preserve protected object content and reject unauthorized protection changes.
 
-Status: Validated on Jekyll. Tested commit: `9d1c753`. Source message: `d2928218-8709-4a8b-8251-f76e37b0577c`.
+Status: Merged at `b3ed9c7` after Jekyll validation. Tested commit: `9d1c753`. Source message: `d2928218-8709-4a8b-8251-f76e37b0577c`.
 
 Detailed comparison and results: [Day 020](day-020.md).
 
@@ -341,13 +341,15 @@ Detailed comparison and results: [Day 020](day-020.md).
 
 Learning: Use typed actions in slower control loops; retain deterministic resource ownership.
 
-Anunix comparison: The Twin and regime detector support observation and gating. A general typed actuation loop remains separate.
+Anunix comparison: The baseline validates simulated weights but hardcodes live scoring. Day 21 activates typed, serialized policy trials and restores the prior weights after rejection.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c).
 
-Planned acceptance: Reject an out-of-range action and restore the prior policy after a failed trial.
+Planned acceptance: Reject malformed or stale tuning actions; observe live placement changes and restore the previous policy after a failed trial.
 
-Status: Queued. Source message: `4d0e3645-bcdc-41c0-bb55-a3e4cd28e04e`.
+Status: Validated on Jekyll. Tested commit: `e07f352`. Source message: `4d0e3645-bcdc-41c0-bb55-a3e4cd28e04e`.
+
+Detailed comparison and results: [Day 021](day-021.md).
 
 ## Day 022 — 2026-07-17
 
