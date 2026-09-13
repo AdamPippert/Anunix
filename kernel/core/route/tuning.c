@@ -1,6 +1,8 @@
 #include <anx/tuning.h>
 #include <anx/string.h>
 #include <anx/spinlock.h>
+#include <anx/revision.h>
+#include <anx/uuid.h>
 
 static struct anx_spinlock tuning_lock = ANX_SPINLOCK_INIT;
 static struct anx_route_tuning_state active = {
@@ -8,6 +10,7 @@ static struct anx_route_tuning_state active = {
 	.generation = 1,
 };
 static struct anx_route_weight_policy previous;
+static anx_cid_t trial_owner;
 
 int anx_route_tuning_snapshot(struct anx_route_tuning_state *out)
 {
@@ -25,11 +28,12 @@ int anx_route_tuning_snapshot(struct anx_route_tuning_state *out)
 
 int anx_route_tuning_begin(const struct anx_route_tuning_action *action, uint64_t *trial_out)
 {
+	const anx_cid_t *caller = anx_cell_current_id();
 	struct anx_route_tuning_action proposal;
 	bool irq_state;
-	int ret = ANX_OK;
-	if (anx_cell_current_id())
-		return ANX_EPERM;
+	int ret = anx_revision_check(ANX_REVISION_PARAMETERS, true);
+	if (ret != ANX_OK)
+		return ret;
 	if (!action || !trial_out)
 		return ANX_EINVAL;
 	proposal = *action;
@@ -48,6 +52,7 @@ int anx_route_tuning_begin(const struct anx_route_tuning_action *action, uint64_
 		previous = active.weights;
 		active.weights = proposal.weights;
 		active.trial_active = true;
+		trial_owner = caller ? *caller : ANX_UUID_NIL;
 		*trial_out = ++active.generation;
 	}
 	anx_spin_unlock_irqrestore(&tuning_lock, irq_state);
@@ -56,21 +61,25 @@ int anx_route_tuning_begin(const struct anx_route_tuning_action *action, uint64_
 
 int anx_route_tuning_finish(uint64_t trial, enum anx_route_trial_result result)
 {
+	const anx_cid_t *caller = anx_cell_current_id();
 	bool irq_state;
-	int ret = ANX_OK;
-	if (anx_cell_current_id())
-		return ANX_EPERM;
+	int ret = anx_revision_check(ANX_REVISION_PARAMETERS, true);
+	if (ret != ANX_OK)
+		return ret;
 	if (!trial || (result != ANX_ROUTE_TRIAL_REJECT && result != ANX_ROUTE_TRIAL_ACCEPT))
 		return ANX_EINVAL;
 	anx_spin_lock_irqsave(&tuning_lock, &irq_state);
 	if (!active.trial_active)
 		ret = ANX_ENOENT;
+	else if (caller && anx_uuid_compare(caller, &trial_owner))
+		ret = ANX_EPERM;
 	else if (trial != active.generation)
 		ret = ANX_EBUSY;
 	else {
 		if (result == ANX_ROUTE_TRIAL_REJECT)
 			active.weights = previous;
 		active.trial_active = false;
+		trial_owner = ANX_UUID_NIL;
 		active.generation++;
 	}
 	anx_spin_unlock_irqrestore(&tuning_lock, irq_state);
