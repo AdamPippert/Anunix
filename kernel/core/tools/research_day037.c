@@ -51,6 +51,8 @@ int anx_research_day037(void)
 	    anx_wf_node_remove(&oid, ids[2]) != ANX_EPERM ||
 	    anx_wf_edge_add(&oid, ids[0], 1, ids[2], 0) != ANX_EPERM ||
 	    anx_wf_edge_remove(&oid, ids[0], 1, ids[1], 0) != ANX_EPERM) goto out;
+	if (anx_so_delete(&wf->trace_oid, false) != ANX_OK ||
+	    anx_wf_topology_revise(&oid, epoch, original, 2) != ANX_ENOENT || wf->topology.accepted) goto out;
 	ret = anx_wf_run(&oid, NULL);
 	if (ret != ANX_OK) goto out;
 	ret = -3703;
