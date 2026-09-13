@@ -815,11 +815,12 @@
       ],
       "comparison": "Object metadata and interface structure now feed a bounded observation catalog. Reads reject changed, missing, inaccessible, and superseded dependencies; historical bytes remain accessible under normal policy. An interrupt regression also fixes unsafe x86 compiler stack use.",
       "acceptance": "Reject an observation superseded by a newer state transition.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-041",
       "comparison_baseline": "4f69932",
       "tested_commit": "5bf6a37",
-      "evidence": "docs/research/evidence/day-041/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-041/uefi-boot.json",
+      "merged_commit": "2d349b5"
     },
     {
       "day": 42,
@@ -832,10 +833,13 @@
         "kernel/include/anx/cell.h",
         "kernel/core/route/lease.c"
       ],
-      "comparison": "Workflows have node kinds and continuations. Role changes need resource and authority accounting.",
+      "comparison": "Engine leases now support controller-issued role contracts and one active phase per cell. Busy reservations block transitions; stale or excessive requests cannot replace the current lease. Cell lifetime remains pinned until phase closure and detachment.",
       "acceptance": "Release a finished phase's lease before starting a phase with different resource needs.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-042",
+      "comparison_baseline": "2d349b5",
+      "tested_commit": "fb3ca11",
+      "evidence": "docs/research/evidence/day-042/uefi-boot.json"
     },
     {
       "day": 43,
