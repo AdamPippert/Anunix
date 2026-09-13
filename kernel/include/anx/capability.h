@@ -38,6 +38,7 @@ enum anx_cap_status {
 #define ANX_CAP_AUTH_DERIVE_CELL   (1U << 2)
 #define ANX_CAP_AUTH_SIDE_EFFECT   (1U << 3)
 #define ANX_CAP_AUTH_ALL           ((1U << 4) - 1)
+#define ANX_CAP_REQUIRED_ENGINES_MAX 8U
 
 struct anx_capability {
 	/* Identity */
@@ -52,7 +53,7 @@ struct anx_capability {
 	uint32_t required_authority;	/* requested execution scope; default none */
 
 	/* Dependencies */
-	anx_eid_t required_engines[8];
+	anx_eid_t required_engines[ANX_CAP_REQUIRED_ENGINES_MAX];
 	uint32_t required_engine_count;
 
 	/* Supersession */
