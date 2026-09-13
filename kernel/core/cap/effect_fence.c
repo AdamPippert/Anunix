@@ -4,6 +4,7 @@
 #include <anx/spinlock.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/arch.h>
 
 static struct anx_effect_fence_view fences[ANX_EFFECT_FENCE_MAX];
 static uint32_t fence_count;
@@ -135,6 +136,30 @@ int anx_effect_fence_transition(const anx_oid_t *id, uint64_t generation, enum a
 		ret = ANX_EBUSY;
 	else
 		ret = change_state(fence, state);
+	anx_spin_unlock_irqrestore(&fence_lock, flags);
+	return ret;
+}
+
+int anx_effect_fence_set_execution_lease(const anx_oid_t *id, uint64_t generation,
+					uint32_t child_limit, anx_time_t expires_at)
+{
+	struct anx_effect_fence_view *fence;
+	bool flags;
+	int ret;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || anx_uuid_is_nil(id) || !generation || !child_limit || child_limit > ANX_EXECUTION_CHILDREN_MAX ||
+	    (expires_at && expires_at <= arch_time_now())) return ANX_EINVAL;
+	anx_spin_lock_irqsave(&fence_lock, &flags);
+	fence = find_fence(id);
+	ret = state_check(fence);
+	if (ret == ANX_OK && generation != fence->generation) ret = ANX_EBUSY;
+	if (ret == ANX_OK && child_limit < fence->child_creations) ret = ANX_EINVAL;
+	if (ret == ANX_OK && fence->generation == ~(uint64_t)0) ret = ANX_EFULL;
+	if (ret == ANX_OK) {
+		fence->child_limit = child_limit;
+		fence->expires_at = expires_at;
+		fence->generation++;
+	}
 	anx_spin_unlock_irqrestore(&fence_lock, flags);
 	return ret;
 }

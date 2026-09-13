@@ -5,6 +5,7 @@
 #include <anx/state_object.h>
 
 #define ANX_EFFECT_FENCE_MAX 256U
+#define ANX_EXECUTION_CHILDREN_MAX 1024U
 
 enum anx_effect_fence_state {
 	ANX_FENCE_RUNNING,
@@ -22,6 +23,9 @@ struct anx_effect_fence_view {
 	enum anx_sensitivity read_sensitivity;
 	anx_oid_t read_origin;
 	uint64_t read_count;
+	uint32_t child_limit; /* zero leaves the legacy unbounded creation budget */
+	uint64_t child_creations;
+	anx_time_t expires_at; /* zero has no deadline */
 };
 
 struct anx_cell;
@@ -34,6 +38,9 @@ int anx_effect_fence_get(const anx_oid_t *id, struct anx_effect_fence_view *out)
 int anx_effect_fence_bind(struct anx_cell *cell, const anx_oid_t *id);
 int anx_effect_fence_transition(const anx_oid_t *id, uint64_t expected_generation,
 				enum anx_effect_fence_state state);
+/* Explicit controller decision; finite lifetime child budget and optional deadline. */
+int anx_effect_fence_set_execution_lease(const anx_oid_t *id, uint64_t expected_generation,
+					uint32_t child_limit, anx_time_t expires_at);
 /* A branch can request a hold or cancellation for its inherited run fence. */
 int anx_effect_fence_hold(struct anx_cell *cell);
 int anx_effect_fence_cancel(struct anx_cell *cell);
