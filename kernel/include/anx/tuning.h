@@ -55,6 +55,7 @@ struct anx_route_optimization_artifact {
 /* Trusted control captures a bounded target and creates a sealed native artifact. */
 int anx_route_target_capture(const anx_eid_t *engine, const anx_oid_t *knowledge,
 			     struct anx_route_target_contract *out);
+int anx_route_target_check(const struct anx_route_target_contract *target);
 int anx_route_tuning_artifact_create(const struct anx_route_tuning_action *action,
 				     const anx_oid_t *evaluation, anx_oid_t *out);
 int anx_route_tuning_begin_artifact(const anx_oid_t *artifact, uint64_t *trial_out);

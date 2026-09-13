@@ -11,6 +11,9 @@ int anx_research_day030(void)
 	struct anx_route_tuning_state original, current;
 	struct anx_route_tuning_action action = {0}, wrong;
 	struct anx_state_object *knowledge = NULL, *evaluation = NULL;
+	struct anx_state_object *unsealed = NULL;
+	struct anx_object_handle handle = {0};
+	struct anx_route_optimization_artifact record;
 	struct anx_so_create_params params = {0};
 	struct anx_engine *engine = NULL;
 	anx_oid_t artifact = ANX_UUID_NIL;
@@ -45,6 +48,20 @@ int anx_research_day030(void)
 	engine->model.context_window = 4096;
 	if (anx_route_tuning_begin_artifact(&artifact, &sentinel) != ANX_EBUSY || sentinel != 123) goto out;
 	engine->model.context_window = 0;
+	ret = anx_so_open(&artifact, ANX_OPEN_READ, &handle);
+	if (ret != ANX_OK) goto out;
+	ret = -3007;
+	if (anx_so_read_payload(&handle, 0, &record, sizeof(record)) != (int)sizeof(record)) goto out;
+	anx_so_close(&handle);
+	params.object_type = ANX_OBJ_STRUCTURED_DATA;
+	params.schema_uri = ANX_ROUTE_OPTIMIZATION_SCHEMA;
+	params.schema_version = "1";
+	params.payload = &record;
+	params.payload_size = sizeof(record);
+	ret = anx_so_create(&params, &unsealed);
+	if (ret != ANX_OK) goto out;
+	ret = -3008;
+	if (anx_route_tuning_begin_artifact(&unsealed->oid, &sentinel) != ANX_EPERM || sentinel != 123) goto out;
 	wrong = action;
 	wrong.target.build.research_test ^= 1;
 	ret = -3003;
@@ -71,10 +88,12 @@ int anx_research_day030(void)
 	if (anx_route_tuning_begin_artifact(&artifact, &sentinel) != ANX_ENOENT || sentinel != 123) goto out;
 	ret = ANX_OK;
 out:
+	if (handle.obj) anx_so_close(&handle);
 	if (trial) anx_route_tuning_finish(trial, ANX_ROUTE_TRIAL_REJECT);
 	if (!anx_uuid_is_nil(&artifact)) anx_so_delete(&artifact, false);
 	if (knowledge) { anx_so_delete(&knowledge->oid, false); anx_objstore_release(knowledge); }
 	if (evaluation) { anx_so_delete(&evaluation->oid, false); anx_objstore_release(evaluation); }
+	if (unsealed) { anx_so_delete(&unsealed->oid, false); anx_objstore_release(unsealed); }
 	if (engine) anx_engine_unregister(engine);
 	return ret;
 }

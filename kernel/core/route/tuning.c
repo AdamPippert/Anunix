@@ -36,6 +36,9 @@ int anx_route_tuning_begin(const struct anx_route_tuning_action *action, uint64_
 	if (proposal.schema != 1 || !proposal.expected_generation ||
 	    anx_route_weight_policy_validate(&proposal.weights) != ANX_OK)
 		return ANX_EINVAL;
+	ret = anx_route_target_check(&proposal.target);
+	if (ret != ANX_OK)
+		return ret;
 	anx_spin_lock_irqsave(&tuning_lock, &irq_state);
 	if (active.trial_active || proposal.expected_generation != active.generation)
 		ret = ANX_EBUSY;
