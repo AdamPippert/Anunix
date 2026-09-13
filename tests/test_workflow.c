@@ -255,5 +255,6 @@ int test_workflow(void)
 	ret = anx_research_day002();
 	if (ret != ANX_OK)
 		return ret;
-	return anx_research_day005();
+	ret = anx_research_day005();
+	return ret == ANX_OK ? anx_research_day029() : ret;
 }
