@@ -96,6 +96,7 @@ int anx_research_day025(void)
 	registered++;
 	for (uint32_t i = 1; i < 4; i++) {
 		anx_snprintf(descriptor.name, sizeof(descriptor.name), "research.tool%u", i);
+		anx_snprintf(descriptor.endpoint, sizeof(descriptor.endpoint), "anxresearch025://tool%u", i);
 		descriptor.required_authority = i == 3 ? ANX_CAP_AUTH_NETWORK : 0;
 		ret = anx_tool_register(&descriptor, &tools[i]);
 		if (ret != ANX_OK)
@@ -152,6 +153,7 @@ int anx_research_day025(void)
 		goto out;
 	forged = entries[0];
 	forged.handle.tool = tools[2];
+	anx_strlcpy(forged.descriptor.endpoint, "anxresearch025://tool2", sizeof(forged.descriptor.endpoint));
 	ret = run_request(root, &forged, 0, ANX_EPERM, &context);
 	if (ret != ANX_OK)
 		goto out;
@@ -193,6 +195,15 @@ int anx_research_day025(void)
 	    anx_tool_discover(root, entries, ANX_TOOL_WORKING_SET_MAX, &count) != ANX_OK)
 		goto out;
 	ret = run_request(root, &entries[0], 0, ANX_OK, &context);
+	if (ret != ANX_OK)
+		goto out;
+	saved = entries[0];
+	ret = -2509;
+	if (anx_tool_namespace_replace(&namespace, grants + 1, 2, &namespace) != ANX_OK ||
+	    anx_tool_discover(root, entries, ANX_TOOL_WORKING_SET_MAX, &count) != ANX_OK || count != 1 ||
+	    anx_uuid_compare(&entries[0].handle.tool.id, &tools[1].id))
+		goto out;
+	ret = run_request(root, &saved, 0, ANX_EBUSY, &context);
 out:
 	if (entries) anx_free(entries);
 	if (root) anx_cell_destroy(root);

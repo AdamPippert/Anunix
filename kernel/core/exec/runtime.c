@@ -73,7 +73,8 @@ static bool scope_contains(const struct anx_cell *parent,
 
 	if (parent->child_count > ANX_MAX_CHILD_CELLS ||
 	    anx_uuid_compare(&parent->identity_id, &child->identity_id) ||
-	    anx_uuid_compare(&parent->effect_fence_id, &child->effect_fence_id))
+	    anx_uuid_compare(&parent->effect_fence_id, &child->effect_fence_id) ||
+	    anx_uuid_compare(&parent->tool_namespace_id, &child->tool_namespace_id))
 		return false;
 	for (i = 0; i < parent->child_count; i++)
 		if (anx_uuid_compare(&parent->child_cids[i], &child->cid) == 0)
@@ -172,6 +173,9 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 		if (!cell->ext_call)
 			return runtime_deny(trace, ANX_ADMISSION_DESCRIPTOR, ANX_EINVAL,
 				"external descriptor missing");
+		ret = anx_tool_authorize_call(cell, cell->ext_call);
+		if (ret != ANX_OK)
+			return runtime_deny(trace, ANX_ADMISSION_TOOL_NAMESPACE, ret, "tool namespace denied");
 		if (!cell->execution.allow_side_effects)
 			return runtime_deny(trace, ANX_ADMISSION_AUTHORITY, ANX_EPERM,
 				"external authority denied");
@@ -701,6 +705,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	child->parent_cid = parent->cid;
 	child->identity_id = parent->identity_id;
 	child->effect_fence_id = parent->effect_fence_id;
+	child->tool_namespace_id = parent->tool_namespace_id;
 	child->recursion_depth = parent->recursion_depth + 1;
 
 	/* Inherit stricter policies from parent */
