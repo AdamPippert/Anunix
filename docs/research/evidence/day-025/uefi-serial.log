@@ -1,0 +1,175 @@
+[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01HBdsDxe: failed to load Boot0001 "UEFI QEMU DVD-ROM QM00003 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Master,0x0): Not Found
+BdsDxe: loading Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
+BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1,0x1)/Ata(Primary,Master,0x0)
+[2J[01;01Hanxboot 0.1 -- Anunix UEFI loaderanxboot: kernel staged @ 0x000000003dbd4000, 5736232 bytesanxboot: entry=0x0000000000100000 span=0x0000000000100000..0x0000000000624000anxboot: pt-alloc: status=0x0000000000000000 base=0x000000003dbc7000anxboot: identity-RWX page tables readyframebuffer console: 1280x800 @ 32bpp addr=80000000 pitch=5120
+[2J[H
+                       [38;5;37m___[0m
+                      [38;5;37m/[0m   [38;5;37m\[0m
+                     [38;5;37m/[0m  [38;5;6mo[0m  [38;5;73m\[0m
+                    [38;5;30m/[0m       [38;5;73m\[0m
+                   [38;5;30m/[0m  [38;5;37m_____[0m  [38;5;73m\[0m
+                  [38;5;24m/[0m  [38;5;30m/[0m     [38;5;73m\[0m  [38;5;73m\[0m
+                 [38;5;24m/[0m  [38;5;24m/[0m       [38;5;37m\[0m  [38;5;37m\[0m
+                [38;5;24m/[0m[38;5;24m__[0m[38;5;24m/[0m         [38;5;37m\[0m[38;5;37m__[0m[38;5;37m\[0m
+
+                [38;5;37mA N U N I X[0m
+          [38;5;243mThe AI-Native Operating System[0m
+
+  Anunix 2026.5.8 booting
+
+arch init complete
+state object layer initialized
+execution cell runtime initialized
+memory control plane initialized
+routing plane and scheduler initialized
+network plane initialized
+capability store initialized
+interface plane initialized
+usb_mouse: no USB controller found (non-fatal)
+posix compatibility layer initialized
+credential store initialized
+acpi: RSDP not found
+pci: 6 devices found
+virtio-net: 52:54:0:12:34:56 on irq 11
+driver: virtio-net ok
+[pal] no persisted state (first boot or fresh format)
+[pal-prime] hw: npu=0 fb=1 wifi=0 storage=0
+[pal] updated world=anx:world/workflow-search/v1 sessions=1
+[pal] updated world=anx:world/workflow-search/v1 sessions=2
+[pal] updated world=anx:world/workflow-search/v1 sessions=3
+wf: subsystem initialized (max 16 workflows)
+[wf-lib] registered 16 built-in workflow templates
+workflow subsystem initialized
+[jepa] no tensor engine available — world model disabled
+vm: subsystem initialized (max 32 VMs)
+vm subsystem initialized
+[loop] session subsystem initialized (max 32 sessions)
+[ebm] initialized: 4 scorers (world/goal/constraint/uncertainty)
+theme: switched to pretty
+theme: initialized pretty
+theme subsystem initialized
+dhcp: discovering...
+dhcp: offered 10.0.2.15
+dhcp: ip 10.0.2.15 gw 10.0.2.2 dns 10.0.2.3
+net: ip 10.0.2.15 gw 10.0.2.2 dns 10.0.2.3
+ntp: 14:1:28 UTC (unix 1789308088)
+tcp: listening on port 8080
+httpd: API server listening on port 8080
+tcp: listening on port 22
+sshd: SSH server listening on port 22
+[wm] hotkeys registered (42 bindings)
+[wm] initialized (9 workspaces)
+window manager initialized
+kernel init complete -- all subsystems online
+
+=== Performance Profile ===
+
+  arch_init: 931587 Kcycles (~931587 us)
+  splash: 9988741 Kcycles (~9988741 us)
+  gui_init: 253 Kcycles (~253 us)
+  objstore_init: 34 Kcycles (~34 us)
+  acpi_init: 870 Kcycles (~870 us)
+  pci_init: 153537 Kcycles (~153537 us)
+  drivers_probe: 2327 Kcycles (~2327 us)
+  audio_init: 33 Kcycles (~33 us)
+  dhcp_discover: 3222 Kcycles (~3222 us)
+  net_stack_init: 1306 Kcycles (~1306 us)
+
+  TOTAL: 11081915 Kcycles (~11081915 us)
+
+[wm] desktop session started (workspace 1)
+[wm] keybindings:
+[wm]   Meta+1..9      switch workspace
+[wm]   Meta+Shift+1..9 send window to workspace
+[wm]   Meta+Enter     open terminal
+[wm]   Meta+Q         close window
+[wm]   Meta+F         fullscreen toggle
+[wm]   Meta+[         tile left
+[wm]   Meta+]         tile right
+[wm]   Meta+Shift+F   float (restore from tile)
+[wm]   Meta+Tab       cycle window focus
+[wm]   Meta+Space     command search
+[wm]   Meta+W         workflow designer
+[wm]   Meta+O         object viewer
+[wm]   Meta+M         minimize window
+[wm]   Meta+Shift+H   halt system
+[agent] opened
+
+=== Anunix System Information ===
+
+ANUNIX_KERNEL_PROFILE_V1 arch=x86_64 research_test=1
+Memory:    11136 KiB free / 16384 KiB total (32% used)
+Disk:      none
+Network:   52:54:0:12:34:56 (ip 10.0.2.15)
+PCI:       6 devices
+Scheduler: int=0 bg=0 lat=0 batch=0
+Event Queue: depth=0/256 drops=0 threshold=90%
+  Latency: <1ms=0 1-5ms=0 5-10ms=0 >10ms=0
+
+RESEARCH day-001 PASS rc=0
+wf_bundle: size mismatch (got 1685, need 1686)
+wf_bundle: size mismatch (got 1687, need 1686)
+wf: created 'research-day-002' (cap 1)
+wf: running 'research-day-002' (2 nodes, 1 edges, cap 1)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-002' completed
+wf: 'research-day-002' trace sealed
+RESEARCH day-002 PASS rc=0
+RESEARCH day-003 PASS rc=0
+[cap] validated: research-day-004-incumbent v1 score=100
+[cap] validated: research-day-004-candidate v2 score=100
+RESEARCH day-004 PASS rc=0
+[cap] validated: research-day-005-incumbent v1 score=100
+[cap] validated: research-day-005-candidate v2 score=100
+wf: created 'research-day-005' (cap 1)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 1)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 1)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 1)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 1)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -2)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 1)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-005' completed
+wf: 'research-day-005' trace sealed
+RESEARCH day-005 PASS rc=0
+RESEARCH day-006 PASS rc=0
+RESEARCH day-007 PASS rc=0
+RESEARCH day-008 PASS rc=0
+RESEARCH day-009 PASS rc=0
+RESEARCH day-010 PASS rc=0
+RESEARCH day-011 PASS rc=0
+RESEARCH day-012 PASS rc=0
+RESEARCH day-013 PASS rc=0
+RESEARCH day-014 PASS rc=0
+RESEARCH day-015 PASS rc=0
+RESEARCH day-016 PASS rc=0
+RESEARCH day-017 PASS rc=0
+RESEARCH day-018 PASS rc=0
+[cap] validated: research-day-019-denied v1 score=100
+[cap] validated: research-day-019-incumbent v1 score=100
+[cap] validated: research-day-019-candidate v2 score=100
+[cap] validated: research-day-019-next v3 score=100
+[cap] validated: research-day-019-ready v1 score=100
+[cap] validated: research-day-019-draft v1 score=100
+RESEARCH day-019 PASS rc=0
+RESEARCH day-020 PASS rc=0
+RESEARCH day-021 PASS rc=0
+RESEARCH day-022 PASS rc=0
+RESEARCH day-023 PASS rc=0
+RESEARCH day-024 PASS rc=0
+RESEARCH day-025 PASS rc=0
+RESEARCH day-025 PASS rc=0

@@ -476,11 +476,12 @@
       ],
       "comparison": "Baseline 2b8df85 checks individual cell authority but lacks a shared run fence. Day 024 adds inherited holds, sticky terminal epochs, and governed dispatch checks.",
       "acceptance": "Hold one branch and block sibling effects in the same run while harmless computation and unrelated runs can continue.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-024",
       "comparison_baseline": "2b8df85",
       "tested_commit": "e5ecdf3",
-      "evidence": "docs/research/evidence/day-024/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-024/uefi-boot.json",
+      "merged_commit": "5111209"
     },
     {
       "day": 25,
@@ -493,10 +494,13 @@
         "kernel/core/icm/icm.c",
         "kernel/core/exec/runtime.c"
       ],
-      "comparison": "The capability registry and object catalog exist. Discovery and invocation need a common authority boundary.",
-      "acceptance": "Reject invocation through a revoked handle and bound the visible catalog to authorized entries.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Baseline 5111209 has capability records and a transport registry but no scoped catalog or revocable tool handle. Day 025 adds bounded discovery and current-grant invocation checks.",
+      "acceptance": "Bound discovery to authorized entries and reject invocation through revoked, stale, foreign, or altered tool handles.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-025",
+      "comparison_baseline": "5111209",
+      "tested_commit": "a0bca2e",
+      "evidence": "docs/research/evidence/day-025/uefi-boot.json"
     },
     {
       "day": 26,

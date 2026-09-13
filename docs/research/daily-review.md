@@ -395,7 +395,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Hold one branch and block sibling effects in the same run while harmless computation and unrelated runs can continue.
 
-Status: Validated on Jekyll. Tested commit: `e5ecdf3`. Source message: `38396083-009d-4719-87bb-27720ab59c9d`.
+Status: Merged at `5111209` after Jekyll validation. Tested commit: `e5ecdf3`. Source message: `38396083-009d-4719-87bb-27720ab59c9d`.
 
 Detailed comparison and results: [Day 024](day-024.md).
 
@@ -405,13 +405,15 @@ Detailed comparison and results: [Day 024](day-024.md).
 
 Learning: Expose a bounded tool namespace through capability handles instead of loading every schema into context.
 
-Anunix comparison: The capability registry and object catalog exist. Discovery and invocation need a common authority boundary.
+Anunix comparison: Baseline 5111209 has capability records and a transport registry but no scoped catalog or revocable tool handle. Day 025 adds bounded discovery and current-grant invocation checks.
 
 Evidence: [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c), [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
-Planned acceptance: Reject invocation through a revoked handle and bound the visible catalog to authorized entries.
+Planned acceptance: Bound discovery to authorized entries and reject invocation through revoked, stale, foreign, or altered tool handles.
 
-Status: Queued. Source message: `b3e419a3-edae-45ea-9b87-b3975f94202c`.
+Status: Validated on Jekyll. Tested commit: `a0bca2e`. Source message: `b3e419a3-edae-45ea-9b87-b3975f94202c`.
+
+Detailed comparison and results: [Day 025](day-025.md).
 
 ## Day 026 — 2026-07-21
 
