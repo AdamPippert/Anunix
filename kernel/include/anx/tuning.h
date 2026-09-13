@@ -5,7 +5,7 @@
 #include <anx/kernel_profile.h>
 #include <anx/route_policy_task.h>
 
-#define ANX_ROUTE_OPTIMIZATION_SCHEMA "anx:optimization/route/v1"
+#define ANX_ROUTE_OPTIMIZATION_SCHEMA "anx:optimization/route/v2"
 #define ANX_ROUTE_OPTIMIZATION_INPUT_MAX (1U << 20)
 
 struct anx_route_artifact_ref {

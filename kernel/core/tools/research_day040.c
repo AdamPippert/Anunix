@@ -39,7 +39,7 @@ int anx_research_day040(void)
 	if (anx_route_evaluate(&changed, &denied) != ANX_EINVAL || !anx_uuid_is_nil(&denied) ||
 	    anx_route_tuning_begin(&changed, &untouched) != ANX_EINVAL || untouched != 123) goto out;
 	anx_route_policy_defaults(&task);
-	task.variables[2].unit = ANX_POLICY_PERCENT;
+	task.variables[2].unit = ANX_POLICY_COST_WEIGHT;
 	ret = -4002;
 	if (anx_route_policy_compile(&task, &base, &compiled) != ANX_EINVAL) goto out;
 	anx_route_policy_defaults(&task);

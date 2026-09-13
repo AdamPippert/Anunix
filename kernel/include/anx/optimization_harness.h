@@ -22,5 +22,7 @@ int anx_route_evaluation_check(const struct anx_route_tuning_action *action,
 			       const struct anx_route_artifact_ref *receipt);
 /* Revoke the in-memory issuance record; the sealed object remains for audit. */
 int anx_route_evaluation_release(const anx_oid_t *receipt);
+/* Compiled policy tasks require a current, privately issued passing evaluation. */
+int anx_route_evaluated_action_check(const struct anx_route_tuning_action *action);
 
 #endif

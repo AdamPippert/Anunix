@@ -26,6 +26,7 @@ static void hash_word(struct anx_sha256_ctx *hash, uint64_t value)
 static void action_digest(const struct anx_route_tuning_action *a, uint8_t out[32])
 {
 	struct anx_sha256_ctx hash;
+	uint8_t task_digest[32];
 	uint64_t fields[] = {
 		a->schema, a->expected_generation, (uint32_t)a->weights.locality_bonus,
 		(uint32_t)a->weights.local_first_bonus, (uint32_t)a->weights.gpu_cost_divisor,
@@ -40,10 +41,12 @@ static void action_digest(const struct anx_route_tuning_action *a, uint8_t out[3
 	for (uint32_t i = 0; i < sizeof(fields) / sizeof(fields[0]); i++) hash_word(&hash, fields[i]);
 	anx_sha256_update(&hash, a->target.engine_digest, sizeof(a->target.engine_digest));
 	anx_sha256_update(&hash, a->target.knowledge.digest, sizeof(a->target.knowledge.digest));
+	anx_route_policy_digest(&a->task, task_digest);
+	anx_sha256_update(&hash, task_digest, sizeof(task_digest));
 	anx_sha256_final(&hash, out);
 }
 
-static int evaluate_cases(const struct anx_route_weight_policy *policy, struct anx_route_evaluation *record)
+static int evaluate_cases(const struct anx_route_tuning_action *action, struct anx_route_evaluation *record)
 {
 	struct anx_resource_twin *twin = anx_zalloc(sizeof(*twin));
 	struct anx_cell *cell = anx_zalloc(sizeof(*cell));
@@ -67,11 +70,12 @@ static int evaluate_cases(const struct anx_route_weight_policy *policy, struct a
 		cell->constraints.locality = i == 1 ? ANX_LOCAL_ONLY : ANX_REMOTE_ALLOWED;
 		cell->execution.allow_network = i != 2;
 		cell->execution.allow_remote_models = i != 3;
-		ret = anx_twin_simulate(twin, cell, policy, &result);
+		ret = anx_twin_simulate(twin, cell, &action->weights, &result);
 		if (ret != ANX_OK) goto out;
 		record->observed_winner[i] = result.candidate_count ? result.winner_index : ~(uint32_t)0;
 		/* Every fixed case requires the local engine, including the preference case. */
-		if (!result.candidate_count || result.winner_index != 0) record->failure_count++;
+		if (!result.candidate_count || result.winner_index != 0 ||
+		    anx_route_policy_result_check(&action->task, twin, &result) != ANX_OK) record->failure_count++;
 	}
 out:
 	anx_free(twin);
@@ -93,7 +97,7 @@ int anx_route_evaluate(const struct anx_route_tuning_action *action, anx_oid_t *
 	if (!action || !out) return ANX_EINVAL;
 	proposal = *action;
 	if (proposal.schema != 1 || !proposal.expected_generation || proposal.target.schema != 1 ||
-	    anx_route_weight_policy_validate(&proposal.weights) != ANX_OK) return ANX_EINVAL;
+	    anx_route_policy_validate(&proposal.task, &proposal.weights) != ANX_OK) return ANX_EINVAL;
 	ret = anx_route_target_check(&proposal.target);
 	if (ret != ANX_OK) return ret;
 	anx_spin_lock_irqsave(&issuance_lock, &flags);
@@ -104,7 +108,7 @@ int anx_route_evaluate(const struct anx_route_tuning_action *action, anx_oid_t *
 	if (slot == ANX_ROUTE_HARNESS_RECEIPTS) return ANX_EFULL;
 	record.schema = 1;
 	action_digest(&proposal, record.action_digest);
-	ret = evaluate_cases(&proposal.weights, &record);
+	ret = evaluate_cases(&proposal, &record);
 	if (ret != ANX_OK) goto out;
 	params.object_type = ANX_OBJ_STRUCTURED_DATA;
 	params.schema_uri = ANX_ROUTE_HARNESS_SCHEMA;
@@ -156,6 +160,41 @@ int anx_route_evaluation_check(const struct anx_route_tuning_action *action,
 	}
 	anx_spin_unlock_irqrestore(&issuance_lock, flags);
 	return ret;
+}
+
+int anx_route_evaluated_action_check(const struct anx_route_tuning_action *action)
+{
+	uint8_t digest[32];
+	bool flags;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!action) return ANX_EINVAL;
+	action_digest(action, digest);
+	for (uint32_t i = 0; i < ANX_ROUTE_HARNESS_RECEIPTS; i++) {
+		struct issued_receipt receipt;
+		struct anx_object_handle h = {0};
+		uint8_t payload[32];
+		anx_spin_lock_irqsave(&issuance_lock, &flags);
+		receipt = issued[i];
+		anx_spin_unlock_irqrestore(&issuance_lock, flags);
+		if (receipt.state != 2 || !receipt.passed || anx_memcmp(receipt.action_digest, digest, sizeof(digest))) continue;
+		int ret = anx_so_open(&receipt.oid, ANX_OPEN_READ, &h);
+		if (ret != ANX_OK) continue;
+		anx_spin_lock(&h.obj->lock);
+		if (h.obj->state != ANX_OBJ_SEALED || h.obj->object_type != ANX_OBJ_STRUCTURED_DATA ||
+		    h.obj->payload_size != sizeof(struct anx_route_evaluation) || !h.obj->payload) ret = ANX_EPERM;
+		else {
+			anx_sha256(h.obj->payload, (uint32_t)h.obj->payload_size, payload);
+			if (anx_memcmp(payload, receipt.payload_digest, sizeof(payload))) ret = ANX_EPERM;
+		}
+		anx_spin_unlock(&h.obj->lock);
+		anx_so_close(&h);
+		if (ret != ANX_OK) continue;
+		anx_spin_lock_irqsave(&issuance_lock, &flags);
+		ret = !anx_memcmp(&receipt, &issued[i], sizeof(receipt)) ? ANX_OK : ANX_EPERM;
+		anx_spin_unlock_irqrestore(&issuance_lock, flags);
+		if (ret == ANX_OK) return ret;
+	}
+	return ANX_EPERM;
 }
 
 int anx_route_evaluation_release(const anx_oid_t *receipt)

@@ -3,6 +3,7 @@
 #include <anx/spinlock.h>
 #include <anx/revision.h>
 #include <anx/uuid.h>
+#include <anx/optimization_harness.h>
 
 static struct anx_spinlock tuning_lock = ANX_SPINLOCK_INIT;
 static struct anx_route_tuning_state active = {
@@ -38,11 +39,15 @@ int anx_route_tuning_begin(const struct anx_route_tuning_action *action, uint64_
 		return ANX_EINVAL;
 	proposal = *action;
 	if (proposal.schema != 1 || !proposal.expected_generation ||
-	    anx_route_weight_policy_validate(&proposal.weights) != ANX_OK)
+	    anx_route_policy_validate(&proposal.task, &proposal.weights) != ANX_OK)
 		return ANX_EINVAL;
 	ret = anx_route_target_check(&proposal.target);
 	if (ret != ANX_OK)
 		return ret;
+	if (proposal.task.schema) {
+		ret = anx_route_evaluated_action_check(&proposal);
+		if (ret != ANX_OK) return ret;
+	}
 	anx_spin_lock_irqsave(&tuning_lock, &irq_state);
 	if (active.trial_active || proposal.expected_generation != active.generation)
 		ret = ANX_EBUSY;

@@ -107,7 +107,7 @@ int anx_route_tuning_artifact_create(const struct anx_route_tuning_action *actio
 	int ret;
 	if (anx_cell_current_id()) return ANX_EPERM;
 	if (!action || !evaluation || !out || action->schema != 1 || !action->expected_generation ||
-	    action->target.schema != 1 || anx_route_weight_policy_validate(&action->weights) != ANX_OK)
+	    action->target.schema != 1 || anx_route_policy_validate(&action->task, &action->weights) != ANX_OK)
 		return ANX_EINVAL;
 	ret = anx_route_target_check(&action->target);
 	if (ret != ANX_OK) return ret;
@@ -119,7 +119,7 @@ int anx_route_tuning_artifact_create(const struct anx_route_tuning_action *actio
 	parents[1] = *evaluation;
 	params.object_type = ANX_OBJ_STRUCTURED_DATA;
 	params.schema_uri = ANX_ROUTE_OPTIMIZATION_SCHEMA;
-	params.schema_version = "1";
+	params.schema_version = "2";
 	params.payload = &artifact;
 	params.payload_size = sizeof(artifact);
 	params.parent_oids = parents;
@@ -147,7 +147,7 @@ int anx_route_tuning_begin_artifact(const anx_oid_t *oid, uint64_t *trial_out)
 		ret = ANX_EPERM;
 	else if (handle.obj->object_type != ANX_OBJ_STRUCTURED_DATA || handle.obj->payload_size != sizeof(artifact) ||
 		 anx_strcmp(handle.obj->schema_uri, ANX_ROUTE_OPTIMIZATION_SCHEMA) ||
-		 anx_strcmp(handle.obj->schema_version, "1"))
+		 anx_strcmp(handle.obj->schema_version, "2"))
 		ret = ANX_EINVAL;
 	else {
 		ret = anx_so_read_payload(&handle, 0, &artifact, sizeof(artifact));
