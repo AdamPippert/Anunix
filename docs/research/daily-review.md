@@ -685,7 +685,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Release a finished phase's lease before starting a phase with different resource needs.
 
-Status: Validated on Jekyll. Tested commit: `fb3ca11`. Source message: `401f482f-a77c-4c64-949e-0fe1fd3af2b7`.
+Status: Merged at `e367e95` after Jekyll validation. Tested commit: `fb3ca11`. Source message: `401f482f-a77c-4c64-949e-0fe1fd3af2b7`.
 
 Detailed comparison and results: [Day 042](day-042.md).
 
@@ -695,13 +695,15 @@ Detailed comparison and results: [Day 042](day-042.md).
 
 Learning: Preserve a workflow's semantic environment across suspension and compile repeated work where valid.
 
-Anunix comparison: Object staging and workflow suspension exist. Prompts, models, tools, and policies need a consistent version boundary.
+Anunix comparison: A sealed semantic manifest now pins named artifact versions, compatibility declarations, schemas, and the workflow graph. Start, resume, save, and restore check the manifest before changing execution state; mismatches preserve the continuation and permit abort.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
 Planned acceptance: Reject resume against changed semantic dependencies and preserve the original continuation.
 
-Status: Queued. Source message: `f6d60d8a-4387-4496-96d4-d12bd2211617`.
+Status: Validated on Jekyll. Tested commit: `e001c00`. Source message: `f6d60d8a-4387-4496-96d4-d12bd2211617`.
+
+Detailed comparison and results: [Day 043](day-043.md).
 
 ## Day 044 — 2026-08-08
 
