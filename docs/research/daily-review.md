@@ -573,7 +573,7 @@ Evidence: [kernel/core/state/xfer.c](../../kernel/core/state/xfer.c), [kernel/co
 
 Planned acceptance: Reject invalid or revoked destinations before more bytes or a committed result; preserve the exact digest across interruption and resume.
 
-Status: Validated on Jekyll. Tested commit: `874665b`. Source message: `6ee3d16a-44f6-4657-ae00-480794c4c9a6`.
+Status: Merged at `72ab01b` after Jekyll validation. Tested commit: `874665b`. Source message: `6ee3d16a-44f6-4657-ae00-480794c4c9a6`.
 
 Detailed comparison and results: [Day 035](day-035.md).
 
@@ -583,13 +583,15 @@ Detailed comparison and results: [Day 035](day-035.md).
 
 Learning: Delegate bounded scheduling authority to domains and distinguish reservation from readiness.
 
-Anunix comparison: Engine leases and readiness classes exist. Nested scheduler ownership is not implied by flat queues.
+Anunix comparison: The baseline accounts for flat global leases. Day 36 adds bounded parent grants, shared root accounting, and subtree revocation with explicit record cleanup.
 
 Evidence: [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c).
 
-Planned acceptance: Reject a child reservation beyond its parent grant and reclaim capacity after revocation.
+Planned acceptance: Reject a child beyond its parent grant; preserve global accounting across nesting and restore ledger capacity after quiescent subtree revocation.
 
-Status: Queued. Source message: `7037ad65-bc52-48dc-a3c7-faa6f20e6f40`.
+Status: Validated on Jekyll. Tested commit: `1dafa66`. Source message: `7037ad65-bc52-48dc-a3c7-faa6f20e6f40`.
+
+Detailed comparison and results: [Day 036](day-036.md).
 
 ## Day 037 — 2026-08-01
 
