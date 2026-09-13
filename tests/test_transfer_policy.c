@@ -12,6 +12,7 @@
 #include <anx/xfer.h>
 #include <anx/crypto.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 #define ASSERT(cond, code)    do { if (!(cond)) return (code); } while (0)
 #define ASSERT_EQ(a, b, code) do { if ((a) != (b)) return (code); } while (0)
@@ -215,5 +216,5 @@ int test_transfer_policy(void)
 	if (rc != 0)
 		return rc;
 
-	return 0;
+	return anx_research_day035();
 }
