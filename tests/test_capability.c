@@ -104,7 +104,7 @@ int test_capability(void)
 			return -15;
 	}
 
-	/* Test 16: validate with 3 missing required engines → score 25 < 50 → DRAFT */
+	/* Test 16: duplicate dependency IDs fail before validation. */
 	{
 		struct anx_capability *cap3;
 		anx_eid_t fake_eid;
@@ -121,11 +121,11 @@ int test_capability(void)
 		cap3->required_engine_count = 3;
 
 		ret = anx_cap_validate(cap3);
-		if (ret == ANX_OK)
+		if (ret != ANX_EINVAL)
 			return -16;	/* must fail */
 		if (cap3->status != ANX_CAP_DRAFT)
 			return -16;	/* rolled back */
-		if (cap3->validation_score >= 50)
+		if (cap3->validation_score != 0)
 			return -16;
 	}
 

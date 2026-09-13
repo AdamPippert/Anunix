@@ -63,6 +63,22 @@ int anx_research_day027(void)
 	}
 	missing->required_engines[0] = dependency->eid;
 	missing->required_engine_count = 1;
+	anx_memset(missing->version, 'v', sizeof(missing->version));
+	ret = -2707;
+	if (anx_cap_validate(missing) != ANX_EINVAL || missing->status != ANX_CAP_DRAFT ||
+	    missing->validation_score != 73)
+		goto out;
+	anx_strlcpy(missing->version, "1", sizeof(missing->version));
+	missing->name[0] = 0;
+	if (anx_cap_validate(missing) != ANX_EINVAL || missing->validation_score != 73)
+		goto out;
+	anx_strlcpy(missing->name, "research-day-027-missing", sizeof(missing->name));
+	dependency->status = ANX_ENGINE_OFFLINE;
+	ret = -2708;
+	if (anx_cap_validate(missing) != ANX_EPERM || missing->status != ANX_CAP_DRAFT ||
+	    missing->validation_score != 0)
+		goto out;
+	dependency->status = ANX_ENGINE_AVAILABLE;
 	ret = anx_cap_validate(missing);
 	if (ret != ANX_OK)
 		goto out;
@@ -102,6 +118,7 @@ int anx_research_day027(void)
 	if (anx_cap_install(wide) != ANX_EPERM || wide->status != ANX_CAP_VALIDATED ||
 	    !anx_uuid_is_nil(&wide->installed_engine_id))
 		goto out;
+	dependency->status = ANX_ENGINE_DEGRADED;
 	ret = package("research-day-027-good", &dependency->eid,
 		      ANX_CAP_AUTH_SIDE_EFFECT, ANX_CAP_AUTH_SIDE_EFFECT, &good);
 	if (ret != ANX_OK)

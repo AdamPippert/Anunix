@@ -60,7 +60,7 @@ struct anx_capability {
 	anx_oid_t supersedes_oid;	/* capability this supersedes */
 
 	/* Trust */
-	uint32_t validation_score;	/* 0-100 */
+	uint32_t validation_score;	/* structural readiness: 0 or 100 */
 	uint32_t invocation_count;
 	uint32_t success_count;
 
@@ -100,7 +100,7 @@ int anx_cap_uninstall(struct anx_capability *cap);
 /* Record an invocation result */
 void anx_cap_record_invocation(struct anx_capability *cap, bool success);
 
-/* Validate a DRAFT capability; transitions to VALIDATED or back to DRAFT */
+/* Validate a bounded DRAFT declaration and all dependencies before VALIDATED. */
 int anx_cap_validate(struct anx_capability *cap);
 
 /* --- Sinks (RFC-0028 Protected Operation ABI) --- */
