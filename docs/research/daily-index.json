@@ -596,11 +596,12 @@
       ],
       "comparison": "The baseline bound tuning actions to policy generations only. Optional target contracts and sealed proposal artifacts now recheck the compiled profile, selected engine settings, and versioned knowledge and evaluation references.",
       "acceptance": "Reject an optimization artifact whose target description no longer matches the tested environment.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-030",
       "comparison_baseline": "1936ce2",
       "tested_commit": "bb5dc0b",
-      "evidence": "docs/research/evidence/day-030/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-030/uefi-boot.json",
+      "merged_commit": "7af3018"
     },
     {
       "day": 31,
@@ -612,10 +613,13 @@
         "kernel/core/cap/promotion.c",
         "kernel/core/cap/capability.c"
       ],
-      "comparison": "Anunix has conformance and promotion gates. Candidate-controlled evidence must not become self-authorization.",
+      "comparison": "The baseline accepted caller-authored evaluation payloads after checking target compatibility. Artifact trials now require an issued passing receipt from fixed routing checks, bound to the complete candidate action.",
       "acceptance": "Reject missing or mismatched evidence and accept only an independently checked candidate.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-031",
+      "comparison_baseline": "7af3018",
+      "tested_commit": "e885c86",
+      "evidence": "docs/research/evidence/day-031/uefi-boot.json"
     },
     {
       "day": 32,
