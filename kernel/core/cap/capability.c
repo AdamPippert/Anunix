@@ -17,6 +17,7 @@
 #include <anx/cell.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
+#include <anx/revision.h>
 
 #define CAP_STORE_BITS	6	/* 64 buckets */
 
@@ -196,6 +197,11 @@ int anx_cap_transition(struct anx_capability *cap,
 		return ANX_EINVAL;
 	if (!cap_transitions[old][new_status])
 		return ANX_EINVAL;
+	if (old == ANX_CAP_INSTALLED || old == ANX_CAP_SUSPENDED || old == ANX_CAP_SUPERSEDED ||
+	    new_status == ANX_CAP_INSTALLED) {
+		int ret = anx_revision_check(ANX_REVISION_IMPLEMENTATION, false);
+		if (ret != ANX_OK) return ret;
+	}
 
 	cap->status = new_status;
 	return ANX_OK;
@@ -248,6 +254,9 @@ static int do_install(struct anx_capability *cap, uint32_t ceiling)
 
 	if (!entry)
 		return ANX_EINVAL;
+	ret = anx_revision_check(ANX_REVISION_IMPLEMENTATION, false);
+	if (ret != ANX_OK)
+		return ret;
 	ret = check_declaration(cap);
 	if (ret != ANX_OK)
 		return ret;
@@ -341,9 +350,13 @@ int anx_cap_install_gated(struct anx_capability *cap,
 int anx_cap_uninstall(struct anx_capability *cap)
 {
 	struct anx_engine *eng;
+	int ret;
 
 	if (!cap)
 		return ANX_EINVAL;
+	ret = anx_revision_check(ANX_REVISION_IMPLEMENTATION, false);
+	if (ret != ANX_OK)
+		return ret;
 
 	if (cap->status != ANX_CAP_INSTALLED &&
 	    cap->status != ANX_CAP_SUSPENDED)

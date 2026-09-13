@@ -42,7 +42,8 @@ enum anx_route_trial_result {
 };
 
 int anx_route_tuning_snapshot(struct anx_route_tuning_state *out);
-/* Only trusted control code outside an active cell can mutate the policy. */
+/* Trusted control or an active cell with a parameter revision lease can tune weights.
+ * An active cell can finish only its own trial; trusted control can recover any trial. */
 int anx_route_tuning_begin(const struct anx_route_tuning_action *action, uint64_t *trial_out);
 int anx_route_tuning_finish(uint64_t trial, enum anx_route_trial_result result);
 
