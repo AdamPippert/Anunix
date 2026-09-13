@@ -70,6 +70,27 @@ struct anx_route_session {
 int anx_route_plan_session(struct anx_cell *cell, struct anx_route_session *session,
 			   struct anx_route_result *result);
 
+#define ANX_CONTINUITY_MAX_HOLD_NS 30000000000ULL
+#define ANX_CONTINUITY_COST_MAX_MS 3600000U
+
+/* Caller-owned advice about a versioned state object in logical L0/L1 residency. */
+struct anx_continuity_hint {
+	uint32_t schema;
+	anx_eid_t engine_id;
+	anx_oid_t state_oid;
+	uint64_t state_version;
+	uint64_t created_at_ns;
+	uint64_t expires_at_ns;
+	uint32_t return_probability_permille;
+	uint32_t restoration_cost_ms;
+	uint32_t reservation_cost_ms;
+	uint32_t interference_cost_ms;
+};
+
+/* Expiring state reuse replaces indefinite affinity for this placement call. */
+int anx_route_plan_continuity(struct anx_cell *cell, struct anx_route_session *session,
+			      const struct anx_continuity_hint *hint, struct anx_route_result *result);
+
 /*
  * Score a single engine against a cell's requirements.
  * Valid scores may be negative. Invalid arguments return -1.
