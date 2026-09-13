@@ -12,14 +12,12 @@
 #include <anx/engine.h>
 #include <anx/string.h>
 #include <anx/jepa.h>
+#include <anx/tuning.h>
 
 void anx_route_planner_init(void)
 {
-	/* Nothing to initialize yet — planner is stateless */
+	/* The tuning controller retains its policy across planner initialization. */
 }
-
-#define ANX_ROUTE_TOPOLOGY_OVERLAP_BONUS	25
-#define ANX_ROUTE_TOPOLOGY_MISMATCH_PENALTY	15
 
 /*
  * Score a single engine against a cell's requirements.
@@ -31,12 +29,13 @@ void anx_route_planner_init(void)
  *   +policy fit (private data support, network constraints)
  *   +topology   (engine affinity overlaps cell's boundary-key range)
  */
-int32_t anx_route_score_engine(struct anx_cell *cell,
-			       struct anx_engine *engine)
+int32_t anx_route_score_with_policy(struct anx_cell *cell, struct anx_engine *engine,
+				    const struct anx_route_weight_policy *policy)
 {
 	int32_t score = 0;
 
-	if (!cell || !engine)
+	if (!cell || !engine || engine->quality_score > 100 || engine->gpu_weight > 100 ||
+	    engine->cpu_weight > 100 || anx_route_weight_policy_validate(policy) != ANX_OK)
 		return -1;
 
 	/* Base quality */
@@ -44,23 +43,23 @@ int32_t anx_route_score_engine(struct anx_cell *cell,
 
 	/* Locality bonus */
 	if (engine->is_local) {
-		score += 20;
+		score += policy->locality_bonus;
 		/* Extra bonus for local_first strategy */
 		if (cell->routing.strategy == ANX_ROUTE_LOCAL_FIRST)
-			score += 30;
+			score += policy->local_first_bonus;
 	}
 
 	/* Cost penalty: higher weight = more expensive */
-	score -= (int32_t)(engine->gpu_weight / 5);
-	score -= (int32_t)(engine->cpu_weight / 10);
+	score -= (int32_t)engine->gpu_weight / policy->gpu_cost_divisor;
+	score -= (int32_t)engine->cpu_weight / policy->cpu_cost_divisor;
 
 	/* Degraded engine penalty */
 	if (engine->status == ANX_ENGINE_DEGRADED)
-		score -= 25;
+		score += policy->degraded_penalty;
 
 	/* Private data bonus if engine supports it */
 	if (engine->supports_private_data)
-		score += 10;
+		score += policy->private_data_bonus;
 
 	/*
 	 * Topology affinity. When the cell declares a boundary-key
@@ -79,9 +78,9 @@ int32_t anx_route_score_engine(struct anx_cell *cell,
 		uint64_t olap_hi = (ce_hi < eg_hi) ? ce_hi : eg_hi;
 
 		if (olap_lo <= olap_hi)
-			score += ANX_ROUTE_TOPOLOGY_OVERLAP_BONUS;
+			score += policy->topology_overlap_bonus;
 		else
-			score -= ANX_ROUTE_TOPOLOGY_MISMATCH_PENALTY;
+			score += policy->topology_mismatch_penalty;
 	}
 
 	/*
@@ -99,6 +98,13 @@ int32_t anx_route_score_engine(struct anx_cell *cell,
 	return score;
 }
 
+int32_t anx_route_score_engine(struct anx_cell *cell, struct anx_engine *engine)
+{
+	struct anx_route_tuning_state current;
+	anx_route_tuning_snapshot(&current);
+	return anx_route_score_with_policy(cell, engine, &current.weights);
+}
+
 /*
  * Check feasibility of an engine for a cell (RFC-0005 Section 10).
  * Returns true if the engine passes all hard constraints.
@@ -107,6 +113,10 @@ static bool engine_feasible(struct anx_cell *cell,
 			    struct anx_engine *engine,
 			    char *reason, size_t reason_len)
 {
+	if (engine->quality_score > 100 || engine->gpu_weight > 100 || engine->cpu_weight > 100) {
+		anx_strlcpy(reason, "invalid engine weights", reason_len);
+		return false;
+	}
 	/* Must be available or degraded */
 	if (engine->status == ANX_ENGINE_OFFLINE ||
 	    engine->status == ANX_ENGINE_MAINTENANCE) {
@@ -141,15 +151,18 @@ static bool engine_feasible(struct anx_cell *cell,
 int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 {
 	struct anx_engine *engines[ANX_MAX_ROUTE_CANDIDATES];
+	struct anx_route_tuning_state current;
 	uint32_t found = 0;
 	uint32_t i;
-	int32_t best_score = -1;
+	int32_t best_score = 0;
 	uint32_t best_idx = 0;
+	bool have_best = false;
 
 	if (!cell || !result)
 		return ANX_EINVAL;
 
 	anx_memset(result, 0, sizeof(*result));
+	anx_route_tuning_snapshot(&current);
 
 	/*
 	 * Search across all engine classes for matching engines.
@@ -182,10 +195,11 @@ int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 						 sizeof(cand->reason));
 
 		if (cand->feasible) {
-			cand->score = anx_route_score_engine(cell, engines[i]);
-			if (cand->score > best_score) {
+			cand->score = anx_route_score_with_policy(cell, engines[i], &current.weights);
+			if (!have_best || cand->score > best_score) {
 				best_score = cand->score;
 				best_idx = result->candidate_count;
+				have_best = true;
 			}
 		} else {
 			cand->score = -1;
@@ -201,18 +215,8 @@ int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 	if (result->candidate_count == 0)
 		return ANX_ENOENT;
 
-	/* Check that at least one candidate is feasible */
-	{
-		bool any_feasible = false;
-		for (i = 0; i < result->candidate_count; i++) {
-			if (result->candidates[i].feasible) {
-				any_feasible = true;
-				break;
-			}
-		}
-		if (!any_feasible)
-			return ANX_EPERM;
-	}
+	if (!have_best)
+		return ANX_EPERM;
 
 	/*
 	 * Escalation heuristic: if the best score is low, or the
@@ -223,14 +227,17 @@ int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 		result->needs_escalation = true;
 
 	if (result->candidate_count >= 2) {
-		int32_t second_best = -1;
+		int32_t second_best = 0;
+		bool have_second = false;
 
 		for (i = 0; i < result->candidate_count; i++) {
 			if (i != best_idx && result->candidates[i].feasible &&
-			    result->candidates[i].score > second_best)
+			    (!have_second || result->candidates[i].score > second_best)) {
 				second_best = result->candidates[i].score;
+				have_second = true;
+			}
 		}
-		if (second_best >= 0 &&
+		if (have_second &&
 		    best_score - second_best <= 5)
 			result->needs_escalation = true;
 	}

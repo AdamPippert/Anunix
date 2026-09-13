@@ -2,6 +2,7 @@
 #include <anx/route.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/tuning.h>
 
 static bool session_engine_eligible(const struct anx_cell *cell,
 				    const struct anx_engine *engine, uint32_t caps)
@@ -25,6 +26,7 @@ int anx_route_plan_session(struct anx_cell *cell, struct anx_route_session *sess
 			   struct anx_route_result *result)
 {
 	struct anx_route_result next = {0};
+	struct anx_route_tuning_state current;
 	uint32_t i, j, best = 0, affinity = 0;
 	bool have_best = false, have_affinity = false, selected_member = false;
 	bool unbound;
@@ -41,6 +43,7 @@ int anx_route_plan_session(struct anx_cell *cell, struct anx_route_session *sess
 	unbound = anx_uuid_is_nil(&session->selected_engine);
 	if (unbound != (session->placement_count == 0))
 		return ANX_EINVAL;
+	anx_route_tuning_snapshot(&current);
 	for (i = 0; i < session->engine_count; i++) {
 		if (anx_uuid_is_nil(&session->eligible_engines[i]))
 			return ANX_EINVAL;
@@ -62,7 +65,7 @@ int anx_route_plan_session(struct anx_cell *cell, struct anx_route_session *sess
 			anx_strlcpy(candidate->reason, "session backend ineligible", sizeof(candidate->reason));
 			continue;
 		}
-		candidate->score = anx_route_score_engine(cell, engine);
+		candidate->score = anx_route_score_with_policy(cell, engine, &current.weights);
 		if (!have_best || candidate->score > next.candidates[best].score) {
 			best = i;
 			have_best = true;
