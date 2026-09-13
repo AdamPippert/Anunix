@@ -325,13 +325,13 @@ int anx_wf_edge_add(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_po
 int anx_wf_edge_remove(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_port,
 		       uint16_t to_node, uint8_t to_port);
 
-/* Run a workflow (topological sort -> Cell sequence). */
 /* Opt into bounded, controller-owned edge revisions with frozen node interfaces. */
 int anx_wf_topology_enable(const anx_oid_t *oid, uint32_t revision_limit);
 int anx_wf_topology_revise(const anx_oid_t *oid, uint64_t expected_epoch,
 			   const struct anx_wf_edge *edges, uint32_t count);
 int anx_wf_topology_rollback(const anx_oid_t *oid, uint64_t expected_epoch);
 
+/* Run a workflow (topological sort -> Cell sequence). */
 int anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out);
 
 /* Get current run state. */

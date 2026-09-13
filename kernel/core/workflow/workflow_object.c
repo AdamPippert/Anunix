@@ -202,6 +202,7 @@ anx_wf_node_add(const anx_oid_t *wf_oid, const struct anx_wf_node *spec,
 		return ANX_ENOENT;
 	if (wf_live(wf))
 		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 	if (!spec || !id_out)
 		return ANX_EINVAL;
 	if (wf->node_count >= ANX_WF_MAX_NODES)
@@ -238,6 +239,7 @@ anx_wf_node_remove(const anx_oid_t *wf_oid, uint16_t node_id)
 		return ANX_ENOENT;
 	if (wf_live(wf))
 		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 
 	/* Find the node. */
 	for (i = 0; i < ANX_WF_MAX_NODES; i++) {
@@ -275,6 +277,7 @@ anx_wf_edge_add(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_port,
 		return ANX_ENOENT;
 	if (wf_live(wf))
 		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 	if (wf->edge_count >= ANX_WF_MAX_EDGES)
 		return ANX_ENOMEM;
 	if (from_node == to_node)
@@ -311,6 +314,7 @@ anx_wf_edge_remove(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_por
 		return ANX_ENOENT;
 	if (wf_live(wf))
 		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 
 	for (i = 0; i < ANX_WF_MAX_EDGES; i++) {
 		if (wf->edges[i].from_node == from_node &&
