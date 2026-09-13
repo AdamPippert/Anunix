@@ -605,7 +605,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Reject invalid graph revisions without changing the runnable original; execute the revised and restored orders; deny stale, over-budget, and paused changes.
 
-Status: Validated on Jekyll. Tested commit: `adf1950`. Source message: `8ee2a2ac-3033-40ce-9edf-df54b335bf33`.
+Status: Merged at `533e417` after Jekyll validation. Tested commit: `adf1950`. Source message: `8ee2a2ac-3033-40ce-9edf-df54b335bf33`.
 
 Detailed comparison and results: [Day 037](day-037.md).
 
@@ -615,13 +615,15 @@ Detailed comparison and results: [Day 037](day-037.md).
 
 Learning: Compile repeated trajectories into deterministic or hybrid workflows and demote them when conditions change.
 
-Anunix comparison: Workflow packages and capability promotion support reusable execution. Automatic trajectory compilation is a separate feature.
+Anunix comparison: The baseline validates templates but does not pin reuse assumptions. The candidate binds hybrid or deterministic forms to graph and object digests, reevaluates read access, and demotes stale or failed forms before reuse.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundle.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
-Planned acceptance: Run a validated artifact and reject reuse after its declared preconditions become false.
+Planned acceptance: Run a deterministic state-to-output artifact, then reject changed or deleted preconditions before dispatch; check graph drift, read revocation, and sticky failure demotion.
 
-Status: Queued. Source message: `d31e2d3b-65f3-4bf9-8af5-ce71dc356965`.
+Status: Validated on Jekyll. Tested commit: `85945f0`. Source message: `d31e2d3b-65f3-4bf9-8af5-ce71dc356965`.
+
+Detailed comparison and results: [Day 038](day-038.md).
 
 ## Day 039 — 2026-08-03
 

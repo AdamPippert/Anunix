@@ -735,11 +735,12 @@
       ],
       "comparison": "The baseline executes workflow graphs but lacks controlled topology revisions. The candidate validates complete edge replacements against frozen nodes, requires sealed evidence from the current revision, and adds bounded rollback.",
       "acceptance": "Reject invalid graph revisions without changing the runnable original; execute the revised and restored orders; deny stale, over-budget, and paused changes.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-037",
       "comparison_baseline": "01512bc",
       "tested_commit": "adf1950",
-      "evidence": "docs/research/evidence/day-037/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-037/uefi-boot.json",
+      "merged_commit": "533e417"
     },
     {
       "day": 38,
@@ -752,10 +753,13 @@
         "kernel/core/workflow/wf_bundle.c",
         "kernel/core/cap/capability.c"
       ],
-      "comparison": "Workflow packages and capability promotion support reusable execution. Automatic trajectory compilation is a separate feature.",
-      "acceptance": "Run a validated artifact and reject reuse after its declared preconditions become false.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline validates templates but does not pin reuse assumptions. The candidate binds hybrid or deterministic forms to graph and object digests, reevaluates read access, and demotes stale or failed forms before reuse.",
+      "acceptance": "Run a deterministic state-to-output artifact, then reject changed or deleted preconditions before dispatch; check graph drift, read revocation, and sticky failure demotion.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-038",
+      "comparison_baseline": "533e417",
+      "tested_commit": "85945f0",
+      "evidence": "docs/research/evidence/day-038/uefi-boot.json"
     },
     {
       "day": 39,
