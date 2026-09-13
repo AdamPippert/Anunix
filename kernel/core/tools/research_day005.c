@@ -124,11 +124,15 @@ int anx_research_day005(void)
 		rc = -501;
 		goto out;
 	}
+	rc = anx_wf_resume(&oid, ANX_WF_RESUME_ABORT, NULL);
+	if (rc != ANX_OK) goto out;
 	wf->policy.allow_capability_install = true;
 	if (anx_wf_run(&oid, NULL) != ANX_EPERM || candidate->status != ANX_CAP_VALIDATED) {
 		rc = -502;
 		goto out;
 	}
+	rc = anx_wf_resume(&oid, ANX_WF_RESUME_ABORT, NULL);
+	if (rc != ANX_OK) goto out;
 	rc = anx_so_seal(&source);
 	if (rc != ANX_OK)
 		goto out;
@@ -156,6 +160,8 @@ int anx_research_day005(void)
 	rc = anx_so_seal(&source);
 	if (rc != ANX_OK)
 		goto out;
+	rc = anx_wf_resume(&oid, ANX_WF_RESUME_ABORT, NULL);
+	if (rc != ANX_OK) goto out;
 	wf->nodes[0].params.state_ref.obj_oid = source;
 	if (anx_wf_run(&oid, NULL) != ANX_EINVAL || candidate->status != ANX_CAP_VALIDATED ||
 	    wf->trace_entry_count != 2) {
@@ -166,6 +172,8 @@ int anx_research_day005(void)
 	if (rc != ANX_OK)
 		goto out;
 	evidence.incumbent_oid = incumbent->cap_oid;
+	rc = anx_wf_resume(&oid, ANX_WF_RESUME_ABORT, NULL);
+	if (rc != ANX_OK) goto out;
 	rc = store_evidence(&evidence, &source);
 	if (rc != ANX_OK)
 		goto out;
