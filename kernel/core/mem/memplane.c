@@ -215,6 +215,10 @@ int anx_memplane_demote(struct anx_mem_entry *entry,
 		return ANX_EINVAL;
 
 	anx_spin_lock(&entry->lock);
+	if (entry->protected_tiers & ANX_TIER_BIT(tier)) {
+		anx_spin_unlock(&entry->lock);
+		return ANX_EBUSY;
+	}
 	entry->tier_mask &= ~ANX_TIER_BIT(tier);
 	anx_spin_unlock(&entry->lock);
 
@@ -276,8 +280,18 @@ void anx_memplane_record_access(struct anx_mem_entry *entry)
 int anx_memplane_forget(struct anx_mem_entry *entry,
 			enum anx_forget_mode mode)
 {
+	uint8_t removed;
 	if (!entry)
 		return ANX_EINVAL;
+	if ((int)mode < 0 || mode > ANX_FORGET_REDERIVE)
+		return ANX_EINVAL;
+	removed = entry->tier_mask;
+	if (mode == ANX_FORGET_ARCHIVE)
+		removed &= ~ANX_TIER_BIT(ANX_MEM_L2);
+	else if (mode == ANX_FORGET_REDERIVE)
+		removed &= ANX_TIER_BIT(ANX_MEM_L0) | ANX_TIER_BIT(ANX_MEM_L1) | ANX_TIER_BIT(ANX_MEM_L3);
+	if (entry->protected_tiers & removed)
+		return ANX_EBUSY;
 
 	switch (mode) {
 	case ANX_FORGET_HARD_DELETE:
