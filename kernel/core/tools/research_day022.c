@@ -8,6 +8,7 @@
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/effect.h>
 
 struct identity_context { struct anx_cell *target; anx_oid_t identity; uint32_t calls; };
 
@@ -99,6 +100,8 @@ int anx_research_day022(void)
 	struct anx_identity_commitment root = {0}, next;
 	struct anx_identity_view initial, widened, revoked, current;
 	struct anx_cell *first = NULL, *replacement = NULL, *child = NULL, *fresh = NULL;
+	struct anx_cell *denied_child = NULL;
+	struct anx_pending_effect *pending = NULL;
 	struct anx_cell_intent intent = {0};
 	struct anx_external_call *call = NULL;
 	struct identity_context context = {0};
@@ -120,6 +123,9 @@ int anx_research_day022(void)
 	rc = -2201;
 	if (anx_identity_create(&root, signature) != ANX_OK ||
 	    anx_identity_get(&root.identity_id, &initial) != ANX_OK)
+		goto out;
+	rc = -2214;
+	if (anx_identity_create(&root, signature) != ANX_EEXIST)
 		goto out;
 	next = root;
 	next.generation = 2;
@@ -190,6 +196,9 @@ int anx_research_day022(void)
 	if (rc != ANX_OK)
 		goto out;
 	child->ext_call = call;
+	rc = anx_effect_prepare(replacement->cid, NULL, NULL, &pending);
+	if (rc != ANX_OK)
+		goto out;
 	rc = -2205;
 	if (anx_uuid_compare(&child->identity_id, &root.identity_id))
 		goto out;
@@ -199,7 +208,11 @@ int anx_research_day022(void)
 	anx_memcpy(next.previous_digest, widened.digest, 32);
 	sign_commitment(&next, key, digest, signature);
 	if (anx_identity_transition(&next, signature) != ANX_OK ||
-	    anx_identity_get(&root.identity_id, &revoked) != ANX_OK ||
+	    anx_identity_get(&root.identity_id, &revoked) != ANX_OK)
+		goto out;
+	if (anx_effect_mark_dispatching(pending) != ANX_EPERM || pending->phase != ANX_EFFECT_PREPARED ||
+	    anx_cell_derive_child(replacement, ANX_CELL_TASK_EXTERNAL_CALL, &intent, &denied_child) != ANX_EPERM ||
+	    denied_child ||
 	    anx_cell_run(child) != ANX_EPERM || anx_cell_run(replacement) != ANX_EPERM || context.calls != 1)
 		goto out;
 	rc = check_identity_trace(child, &revoked.record_oid);
@@ -242,6 +255,10 @@ int anx_research_day022(void)
 		goto out;
 	rc = ANX_OK;
 out:
+	if (pending)
+		anx_effect_destroy(pending);
+	if (denied_child)
+		anx_cell_destroy(denied_child);
 	if (child)
 		anx_cell_destroy(child);
 	if (replacement)

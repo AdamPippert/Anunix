@@ -22,6 +22,7 @@
 #include <anx/string.h>
 #include <anx/external_call.h>
 #include <anx/sched.h>
+#include <anx/identity.h>
 
 /* --- Admission --- */
 
@@ -69,7 +70,8 @@ static bool scope_contains(const struct anx_cell *parent,
 	uint32_t i;
 	bool linked = false;
 
-	if (parent->child_count > ANX_MAX_CHILD_CELLS)
+	if (parent->child_count > ANX_MAX_CHILD_CELLS ||
+	    anx_uuid_compare(&parent->identity_id, &child->identity_id))
 		return false;
 	for (i = 0; i < parent->child_count; i++)
 		if (anx_uuid_compare(&parent->child_cids[i], &child->cid) == 0)
@@ -136,11 +138,21 @@ static int runtime_check_scope(struct anx_cell *cell)
 
 static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 {
+	anx_oid_t identity_record;
 	int ret;
 
 	ret = runtime_check_scope(cell);
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_SCOPE, ret, "delegated scope denied");
+
+	ret = anx_identity_admit(cell, &identity_record);
+	if (!anx_uuid_is_nil(&identity_record)) {
+		char oid[37];
+		anx_uuid_to_string(&identity_record, oid, sizeof(oid));
+		anx_trace_append(trace, ANX_TRACE_IDENTITY_COMMITMENT, oid, ret);
+	}
+	if (ret != ANX_OK)
+		return runtime_deny(trace, ANX_ADMISSION_IDENTITY, ret, "identity authority denied");
 
 	/* The external handler can change another system before commit. */
 	if (cell->cell_type == ANX_CELL_TASK_EXTERNAL_CALL) {
@@ -645,6 +657,9 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	ret = runtime_check_scope(parent);
 	if (ret != ANX_OK)
 		return ret;
+	ret = anx_identity_admit(parent, NULL);
+	if (ret != ANX_OK)
+		return ret;
 
 	anx_spin_lock(&parent->lock);
 	if (anx_cell_status_terminal(parent->status) ||
@@ -667,6 +682,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 
 	/* Wire up lineage */
 	child->parent_cid = parent->cid;
+	child->identity_id = parent->identity_id;
 	child->recursion_depth = parent->recursion_depth + 1;
 
 	/* Inherit stricter policies from parent */

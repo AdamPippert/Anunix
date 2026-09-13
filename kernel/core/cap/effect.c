@@ -9,6 +9,7 @@
 #include <anx/state_object.h>
 #include <anx/alloc.h>
 #include <anx/uuid.h>
+#include <anx/identity.h>
 
 /* One-way transition table — UNKNOWN is a dead end by construction. */
 static const bool effect_transitions[5][5] = {
@@ -58,7 +59,8 @@ static int effect_check_authority(const anx_cid_t *cell_id, struct anx_sink *sin
 	cell = anx_cell_store_lookup(cell_id);
 	if (!cell)
 		return ANX_ENOENT;
-	permitted = cell->execution.allow_side_effects && !anx_cell_status_terminal(cell->status);
+	permitted = cell->execution.allow_side_effects && !anx_cell_status_terminal(cell->status) &&
+		    anx_identity_admit(cell, NULL) == ANX_OK;
 	anx_cell_store_release(cell);
 	if (!permitted)
 		return ANX_EPERM;
