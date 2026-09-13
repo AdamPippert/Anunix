@@ -621,7 +621,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Run a deterministic state-to-output artifact, then reject changed or deleted preconditions before dispatch; check graph drift, read revocation, and sticky failure demotion.
 
-Status: Validated on Jekyll. Tested commit: `85945f0`. Source message: `d31e2d3b-65f3-4bf9-8af5-ce71dc356965`.
+Status: Merged at `c1a6f02` after Jekyll validation. Tested commit: `85945f0`. Source message: `d31e2d3b-65f3-4bf9-8af5-ce71dc356965`.
 
 Detailed comparison and results: [Day 038](day-038.md).
 
@@ -631,13 +631,15 @@ Detailed comparison and results: [Day 038](day-038.md).
 
 Learning: Represent a continuation across semantic history, tokens, model state, tools, and device placement.
 
-Anunix comparison: Workflow continuations preserve workflow progress. They do not alone preserve every model or tool representation.
+Anunix comparison: The baseline keeps progress in memory but only serializes graph text. The candidate seals and unloads a bounded continuation image, checks its graph and dependencies on restore, and prevents replay of a consumed checkpoint.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/include/anx/memory.h](../../kernel/include/anx/memory.h).
 
-Planned acceptance: Resume a workflow from saved progress without repeating a completed effect.
+Planned acceptance: Restore unloaded workflow progress and retain the completed result object without repeating its creation; reject drift, revoked access, and checkpoint replay.
 
-Status: Queued. Source message: `583e07ee-0781-4425-81ed-0a3a942cebd5`.
+Status: Validated on Jekyll. Tested commit: `b98bacc`. Source message: `583e07ee-0781-4425-81ed-0a3a942cebd5`.
+
+Detailed comparison and results: [Day 039](day-039.md).
 
 ## Day 040 — 2026-08-04
 

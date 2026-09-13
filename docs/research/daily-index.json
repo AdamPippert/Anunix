@@ -755,11 +755,12 @@
       ],
       "comparison": "The baseline validates templates but does not pin reuse assumptions. The candidate binds hybrid or deterministic forms to graph and object digests, reevaluates read access, and demotes stale or failed forms before reuse.",
       "acceptance": "Run a deterministic state-to-output artifact, then reject changed or deleted preconditions before dispatch; check graph drift, read revocation, and sticky failure demotion.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-038",
       "comparison_baseline": "533e417",
       "tested_commit": "85945f0",
-      "evidence": "docs/research/evidence/day-038/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-038/uefi-boot.json",
+      "merged_commit": "c1a6f02"
     },
     {
       "day": 39,
@@ -772,10 +773,13 @@
         "kernel/core/anxml/anxml.c",
         "kernel/include/anx/memory.h"
       ],
-      "comparison": "Workflow continuations preserve workflow progress. They do not alone preserve every model or tool representation.",
-      "acceptance": "Resume a workflow from saved progress without repeating a completed effect.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline keeps progress in memory but only serializes graph text. The candidate seals and unloads a bounded continuation image, checks its graph and dependencies on restore, and prevents replay of a consumed checkpoint.",
+      "acceptance": "Restore unloaded workflow progress and retain the completed result object without repeating its creation; reject drift, revoked access, and checkpoint replay.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-039",
+      "comparison_baseline": "c1a6f02",
+      "tested_commit": "b98bacc",
+      "evidence": "docs/research/evidence/day-039/uefi-boot.json"
     },
     {
       "day": 40,
