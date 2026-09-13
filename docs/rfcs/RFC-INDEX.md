@@ -79,4 +79,7 @@ RFC-0002, RFC-0005, RFC-0007, RFC-0021
 RFC-0002, RFC-0014
   └── RFC-0030 (Software RAID) — turns the single-device block layer into
        a device registry, then stripes or mirrors across the members
+RFC-0002, RFC-0030
+  └── RFC-0031 (Partition Layer) — registers GPT partitions as bounded
+       block devices so Anunix installs beside another operating system
 ```

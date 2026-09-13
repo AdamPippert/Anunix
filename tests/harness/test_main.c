@@ -78,6 +78,9 @@ int test_regime_detector(void);
 int test_sched_cognitive_envelope(void);
 int test_cap_measured_null_promotion(void);
 int test_md_raid(void);
+int test_part(void);
+int test_blk_probe(void);
+int test_blk_select(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -140,6 +143,9 @@ static struct test_case tests[] = {
 	{ "sched_cognitive_envelope", test_sched_cognitive_envelope },
 	{ "cap_measured_null_promotion", test_cap_measured_null_promotion },
 	{ "md_raid",                    test_md_raid },
+	{ "part",                       test_part },
+	{ "blk_probe",                  test_blk_probe },
+	{ "blk_select",                 test_blk_select },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))
