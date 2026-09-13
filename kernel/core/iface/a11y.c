@@ -25,6 +25,25 @@ static struct anx_a11y_event event_stream[ANX_A11Y_EVENT_STREAM_MAX];
 static uint32_t              event_head;   /* next write slot */
 static uint32_t              event_count;  /* events available to read */
 
+int anx_a11y_node_update(const struct anx_a11y_node *node)
+{
+	(void)node;
+	return ANX_ENOSYS;
+}
+
+int anx_a11y_observe(uint32_t node_id, struct anx_a11y_observation *out)
+{
+	(void)node_id; (void)out;
+	return ANX_ENOSYS;
+}
+
+int anx_a11y_action_checked(uint32_t node_id, uint64_t generation,
+			    enum anx_a11y_action action, struct anx_a11y_receipt *out)
+{
+	(void)node_id; (void)generation; (void)action; (void)out;
+	return ANX_ENOSYS;
+}
+
 /* ------------------------------------------------------------------ */
 /* Internal helpers                                                     */
 /* ------------------------------------------------------------------ */

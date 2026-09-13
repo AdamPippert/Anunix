@@ -37,6 +37,9 @@ struct anx_a11y_node {
 	anx_oid_t        surf_oid;     /* associated surface (may be NIL)  */
 	bool             focusable;
 	bool             active;
+	bool             visible;
+	bool             enabled;
+	anx_cid_t        action_principal; /* nil denies cell-driven actions */
 };
 
 /* ------------------------------------------------------------------ */
@@ -49,6 +52,25 @@ enum anx_a11y_action {
 	ANX_A11Y_ACTION_SCROLL_UP,
 	ANX_A11Y_ACTION_SCROLL_DOWN,
 };
+
+struct anx_a11y_observation {
+	uint64_t generation;
+	struct anx_a11y_node node;
+};
+
+struct anx_a11y_receipt {
+	uint64_t observation_generation;
+	uint64_t resulting_generation;
+	anx_oid_t focused_surface;
+	bool verified_focus;
+};
+
+/* Trusted descriptor updates invalidate prior observations. */
+int anx_a11y_node_update(const struct anx_a11y_node *node);
+int anx_a11y_observe(uint32_t node_id, struct anx_a11y_observation *out);
+/* Cell-driven focus needs a current observation and an explicit node grant. */
+int anx_a11y_action_checked(uint32_t node_id, uint64_t observation_generation,
+			    enum anx_a11y_action action, struct anx_a11y_receipt *out);
 
 /* ------------------------------------------------------------------ */
 /* Focus-narration event stream                                         */

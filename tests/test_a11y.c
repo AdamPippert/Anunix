@@ -11,6 +11,7 @@
 #include <anx/a11y.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 #define ASSERT(cond, code)    do { if (!(cond)) return (code); } while (0)
 #define ASSERT_EQ(a, b, code) do { if ((a) != (b)) return (code); } while (0)
@@ -201,5 +202,5 @@ int test_a11y(void)
 	rc = test_focus_stream();
 	if (rc) return rc;
 
-	return 0;
+	return anx_research_day023();
 }
