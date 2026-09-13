@@ -669,7 +669,7 @@ Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/sta
 
 Planned acceptance: Reject an observation superseded by a newer state transition.
 
-Status: Validated on Jekyll. Tested commit: `5bf6a37`. Source message: `5eb9115d-a4bb-4478-b033-ef28b0a7dc95`.
+Status: Merged at `2d349b5` after Jekyll validation. Tested commit: `5bf6a37`. Source message: `5eb9115d-a4bb-4478-b033-ef28b0a7dc95`.
 
 Detailed comparison and results: [Day 041](day-041.md).
 
@@ -679,13 +679,15 @@ Detailed comparison and results: [Day 041](day-041.md).
 
 Learning: Schedule agent roles and workflow phases instead of treating an entire campaign as one request.
 
-Anunix comparison: Workflows have node kinds and continuations. Role changes need resource and authority accounting.
+Anunix comparison: Engine leases now support controller-issued role contracts and one active phase per cell. Busy reservations block transitions; stale or excessive requests cannot replace the current lease. Cell lifetime remains pinned until phase closure and detachment.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/route/lease.c](../../kernel/core/route/lease.c).
 
 Planned acceptance: Release a finished phase's lease before starting a phase with different resource needs.
 
-Status: Queued. Source message: `401f482f-a77c-4c64-949e-0fe1fd3af2b7`.
+Status: Validated on Jekyll. Tested commit: `fb3ca11`. Source message: `401f482f-a77c-4c64-949e-0fe1fd3af2b7`.
+
+Detailed comparison and results: [Day 042](day-042.md).
 
 ## Day 043 — 2026-08-07
 
