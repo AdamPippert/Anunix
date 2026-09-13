@@ -541,7 +541,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Permit bounded parameter trials under an inherited grant while rejecting implementation changes, authority expansion, foreign trial acceptance, and revoked grants.
 
-Status: Validated on Jekyll. Tested commit: `18d0b5a`. Source message: `9497f51e-3371-473c-a157-70c6a0b61e6e`.
+Status: Merged at `673125e` after Jekyll validation. Tested commit: `18d0b5a`. Source message: `9497f51e-3371-473c-a157-70c6a0b61e6e`.
 
 Detailed comparison and results: [Day 033](day-033.md).
 
@@ -551,13 +551,15 @@ Detailed comparison and results: [Day 033](day-033.md).
 
 Learning: Speculate about resource preparation while withholding authority for durable effects.
 
-Anunix comparison: Staged object writes and VM Objects exist. Speculative preparation must not grant effect authority.
+Anunix comparison: The baseline stages writes but permits publication without current effect authority or actor checks. Day 34 gates publication and shadow writes while preserving explicit abort.
 
 Evidence: [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/vm/vm_object.c](../../kernel/core/vm/vm_object.c).
 
-Planned acceptance: Abort speculative state without changing the committed object or dispatching an external effect.
+Planned acceptance: Reject staged publication without effect permission or during a hold; abort preserves committed state and prevents external dispatch.
 
-Status: Queued. Source message: `0b7c44cc-1651-400d-828e-5eab296603de`.
+Status: Validated on Jekyll. Tested commit: `2324a14`. Source message: `0b7c44cc-1651-400d-828e-5eab296603de`.
+
+Detailed comparison and results: [Day 034](day-034.md).
 
 ## Day 035 — 2026-07-30
 

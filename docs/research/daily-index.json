@@ -655,11 +655,12 @@
       ],
       "comparison": "The baseline has no revision grant between active-cell denial of tuning and permission to install capabilities. Day 33 adds parameter and implementation ceilings, inherited leases, and trial ownership.",
       "acceptance": "Permit bounded parameter trials under an inherited grant while rejecting implementation changes, authority expansion, foreign trial acceptance, and revoked grants.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-033",
       "comparison_baseline": "e534009",
       "tested_commit": "18d0b5a",
-      "evidence": "docs/research/evidence/day-033/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-033/uefi-boot.json",
+      "merged_commit": "673125e"
     },
     {
       "day": 34,
@@ -672,10 +673,13 @@
         "kernel/core/cap/effect.c",
         "kernel/core/vm/vm_object.c"
       ],
-      "comparison": "Staged object writes and VM Objects exist. Speculative preparation must not grant effect authority.",
-      "acceptance": "Abort speculative state without changing the committed object or dispatching an external effect.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline stages writes but permits publication without current effect authority or actor checks. Day 34 gates publication and shadow writes while preserving explicit abort.",
+      "acceptance": "Reject staged publication without effect permission or during a hold; abort preserves committed state and prevents external dispatch.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-034",
+      "comparison_baseline": "673125e",
+      "tested_commit": "2324a14",
+      "evidence": "docs/research/evidence/day-034/uefi-boot.json"
     },
     {
       "day": 35,
