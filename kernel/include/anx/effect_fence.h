@@ -2,6 +2,7 @@
 #define ANX_EFFECT_FENCE_H
 
 #include <anx/types.h>
+#include <anx/state_object.h>
 
 #define ANX_EFFECT_FENCE_MAX 256U
 
@@ -18,6 +19,9 @@ struct anx_effect_fence_view {
 	uint64_t epoch;
 	uint64_t generation;
 	enum anx_effect_fence_state state;
+	enum anx_sensitivity read_sensitivity;
+	anx_oid_t read_origin;
+	uint64_t read_count;
 };
 
 struct anx_cell;
