@@ -3,6 +3,7 @@
 
 #include <anx/types.h>
 #include <anx/state_object.h>
+#include <anx/cell.h>
 
 #define ANX_EFFECT_FENCE_MAX 256U
 #define ANX_EXECUTION_CHILDREN_MAX 1024U
@@ -41,6 +42,9 @@ int anx_effect_fence_transition(const anx_oid_t *id, uint64_t expected_generatio
 /* Explicit controller decision; finite lifetime child budget and optional deadline. */
 int anx_effect_fence_set_execution_lease(const anx_oid_t *id, uint64_t expected_generation,
 					uint32_t child_limit, anx_time_t expires_at);
+/* Internal allocation gate; derive_child performs scope checks and holds the parent lock. */
+int anx_effect_fence_create_child(const struct anx_cell *parent, enum anx_cell_type type,
+				 const struct anx_cell_intent *intent, struct anx_cell **child_out);
 /* A branch can request a hold or cancellation for its inherited run fence. */
 int anx_effect_fence_hold(struct anx_cell *cell);
 int anx_effect_fence_cancel(struct anx_cell *cell);

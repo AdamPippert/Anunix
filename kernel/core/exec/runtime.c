@@ -667,6 +667,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 			  const struct anx_cell_intent *intent,
 			  struct anx_cell **child_out)
 {
+	const anx_cid_t *active = anx_cell_current_id();
 	struct anx_cell *child;
 	int ret;
 
@@ -675,6 +676,8 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	*child_out = NULL;
 	if (!parent)
 		return ANX_EINVAL;
+	if (active && anx_uuid_compare(active, &parent->cid))
+		return ANX_EPERM;
 	ret = runtime_check_scope(parent);
 	if (ret != ANX_OK)
 		return ret;
@@ -697,7 +700,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 		goto out;
 	}
 
-	ret = anx_cell_create(type, intent, &child);
+	ret = anx_effect_fence_create_child(parent, type, intent, &child);
 	if (ret != ANX_OK)
 		goto out;
 
