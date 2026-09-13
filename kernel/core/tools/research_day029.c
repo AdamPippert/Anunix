@@ -70,6 +70,12 @@ int anx_research_day029(void)
 	if (anx_memplane_evict(&pool[0], 1, ANX_MEM_L0, &victim) != ANX_ENOENT ||
 	    anx_uuid_compare(&victim, &sentinel) || anx_memplane_demote(entries[0], ANX_MEM_L1) != ANX_EBUSY)
 		goto out;
+	ret = -2906;
+	if (anx_wf_object_get(&workflows[0])->cache_live_count != 1 ||
+	    !anx_wf_cache_needed(&pool[0]) || anx_wf_cache_needed(&pool[1]) ||
+	    anx_wf_edge_remove(&workflows[0], 1, 0, 3, 0) != ANX_EBUSY ||
+	    anx_wf_node_remove(&workflows[0], 3) != ANX_EBUSY)
+		goto out;
 	for (int mode = ANX_FORGET_HARD_DELETE; mode <= ANX_FORGET_REDERIVE; mode++) {
 		int result = anx_memplane_forget(entries[0], (enum anx_forget_mode)mode);
 		if (result != ANX_EBUSY) {
@@ -89,6 +95,8 @@ int anx_research_day029(void)
 	if (anx_memplane_evict(&pool[0], 1, ANX_MEM_L0, &victim) != ANX_OK ||
 	    anx_uuid_compare(&victim, &pool[0]) || anx_mem_in_tier(entries[0], ANX_MEM_L0))
 		goto out;
+	ret = anx_wf_edge_remove(&workflows[0], 1, 0, 3, 0);
+	if (ret != ANX_OK) goto out;
 	ret = anx_memplane_promote(entries[0], ANX_MEM_L0);
 	if (ret == ANX_OK)
 		ret = waiting_workflow("research-day-029-review", &pool[0], &pool[1], ANX_WF_NODE_HUMAN_REVIEW, &workflows[2]);
