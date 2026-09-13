@@ -14,16 +14,65 @@
 #include <anx/hashtable.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/cell.h>
 
 #define CAP_STORE_BITS	6	/* 64 buckets */
 
 static struct anx_htable cap_table;
 
+/* Grant state stays outside the mutable candidate declaration. */
+struct capability_entry {
+	struct anx_capability cap;
+	uint32_t root_ceiling;
+	uint32_t installed_authority;
+};
+
+static struct capability_entry *entry_for(struct anx_capability *cap)
+{
+	if (!cap || anx_cap_lookup(&cap->cap_oid) != cap)
+		return NULL;
+	return ANX_CONTAINER_OF(cap, struct capability_entry, cap);
+}
+
 int anx_cap_set_authority_ceiling(struct anx_capability *cap, uint32_t ceiling)
 {
-	(void)cap;
-	(void)ceiling;
-	return ANX_ENOSYS;
+	struct capability_entry *entry = entry_for(cap);
+	if (!entry || (ceiling & ~ANX_CAP_AUTH_ALL))
+		return ANX_EINVAL;
+	if (anx_cell_current_id() || cap->status != ANX_CAP_DRAFT ||
+	    !anx_uuid_is_nil(&cap->supersedes_oid))
+		return ANX_EPERM;
+	entry->root_ceiling = ceiling;
+	return ANX_OK;
+}
+
+static int check_authority(struct anx_capability *cap, uint32_t ceiling)
+{
+	const anx_cid_t *active = anx_cell_current_id();
+	struct anx_cell *caller;
+	uint32_t available = 0;
+	bool may_install;
+
+	if (cap->required_authority & ~ANX_CAP_AUTH_ALL)
+		return ANX_EINVAL;
+	if (cap->required_authority & ~ceiling)
+		return ANX_EPERM;
+	if (!active)
+		return ANX_OK;
+	caller = anx_cell_store_lookup(active);
+	if (!caller)
+		return ANX_EPERM;
+	may_install = caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status);
+	if (caller->execution.allow_network)
+		available |= ANX_CAP_AUTH_NETWORK;
+	if (caller->execution.allow_remote_models)
+		available |= ANX_CAP_AUTH_REMOTE_MODEL;
+	if (caller->execution.allow_recursive_cells)
+		available |= ANX_CAP_AUTH_DERIVE_CELL;
+	if (caller->execution.allow_side_effects)
+		available |= ANX_CAP_AUTH_SIDE_EFFECT;
+	anx_cell_store_release(caller);
+	return may_install && !(cap->required_authority & ~available) ? ANX_OK : ANX_EPERM;
 }
 
 /* Lifecycle transition table */
@@ -71,6 +120,7 @@ int anx_cap_create(const char *name, const char *version,
 		   struct anx_capability **out)
 {
 	struct anx_capability *cap;
+	struct capability_entry *entry;
 	struct anx_state_object *obj;
 	struct anx_so_create_params params;
 	int ret;
@@ -78,9 +128,10 @@ int anx_cap_create(const char *name, const char *version,
 	if (!name || !version || !out)
 		return ANX_EINVAL;
 
-	cap = anx_zalloc(sizeof(*cap));
-	if (!cap)
+	entry = anx_zalloc(sizeof(*entry));
+	if (!entry)
 		return ANX_ENOMEM;
+	cap = &entry->cap;
 
 	/* Create the underlying State Object */
 	anx_memset(&params, 0, sizeof(params));
@@ -90,7 +141,7 @@ int anx_cap_create(const char *name, const char *version,
 
 	ret = anx_so_create(&params, &obj);
 	if (ret != ANX_OK) {
-		anx_free(cap);
+		anx_free(entry);
 		return ret;
 	}
 
@@ -146,10 +197,17 @@ int anx_cap_transition(struct anx_capability *cap,
 	return ANX_OK;
 }
 
-static int do_install(struct anx_capability *cap)
+static int do_install(struct anx_capability *cap, uint32_t ceiling)
 {
+	struct capability_entry *entry = entry_for(cap);
 	struct anx_engine *eng;
 	int ret;
+
+	if (!entry)
+		return ANX_EINVAL;
+	ret = check_authority(cap, ceiling);
+	if (ret != ANX_OK)
+		return ret;
 
 	/* Register as an engine */
 	ret = anx_engine_register(cap->name,
@@ -159,21 +217,22 @@ static int do_install(struct anx_capability *cap)
 	if (ret != ANX_OK)
 		return ret;
 
-	cap->installed_engine_id = eng->eid;
-
 	/* Transition to installed */
 	ret = anx_cap_transition(cap, ANX_CAP_INSTALLED);
 	if (ret != ANX_OK) {
 		anx_engine_unregister(eng);
 		return ret;
 	}
+	cap->installed_engine_id = eng->eid;
+	entry->installed_authority = cap->required_authority;
 
 	return ANX_OK;
 }
 
 int anx_cap_install(struct anx_capability *cap)
 {
-	if (!cap)
+	struct capability_entry *entry = entry_for(cap);
+	if (!entry)
 		return ANX_EINVAL;
 
 	/* Must be validated before installation */
@@ -189,7 +248,7 @@ int anx_cap_install(struct anx_capability *cap)
 	if (!anx_uuid_is_nil(&cap->supersedes_oid))
 		return ANX_EPERM;
 
-	return do_install(cap);
+	return do_install(cap, entry->root_ceiling);
 }
 
 int anx_cap_install_gated(struct anx_capability *cap,
@@ -197,6 +256,7 @@ int anx_cap_install_gated(struct anx_capability *cap,
 			  uint32_t num_candidates_tried)
 {
 	struct anx_capability *incumbent;
+	struct capability_entry *entry;
 	bool promote = false;
 	int ret;
 
@@ -216,6 +276,9 @@ int anx_cap_install_gated(struct anx_capability *cap,
 	    anx_uuid_is_nil(&incumbent->installed_engine_id) ||
 	    !anx_engine_lookup(&incumbent->installed_engine_id))
 		return ANX_EPERM;
+	entry = entry_for(incumbent);
+	if (!entry)
+		return ANX_EINVAL;
 
 	ret = anx_promotion_gate_evaluate(trial, num_candidates_tried, &promote);
 	if (ret != ANX_OK)
@@ -223,7 +286,7 @@ int anx_cap_install_gated(struct anx_capability *cap,
 	if (!promote)
 		return ANX_EPERM;
 
-	return do_install(cap);
+	return do_install(cap, entry->installed_authority);
 }
 
 int anx_cap_uninstall(struct anx_capability *cap)
@@ -270,6 +333,8 @@ int anx_cap_validate(struct anx_capability *cap)
 		return ANX_EINVAL;
 	if (cap->status != ANX_CAP_DRAFT)
 		return ANX_EPERM;
+	if (cap->required_authority & ~ANX_CAP_AUTH_ALL)
+		return ANX_EINVAL;
 
 	ret = anx_cap_transition(cap, ANX_CAP_VALIDATING);
 	if (ret != ANX_OK)
