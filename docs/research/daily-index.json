@@ -335,11 +335,12 @@
       ],
       "comparison": "The baseline bypasses metadata access policies in ICM. Day 17 enforces metadata permissions for views, catalogs, tags, and publication while keeping annotations separate from access authority.",
       "acceptance": "Deny unauthorized ICM projection and mutation. A public authority annotation must not grant access to protected metadata or payload, and authorized sealed-object annotations must remain usable.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-017",
       "comparison_baseline": "becb198",
       "tested_commit": "a356f48",
-      "evidence": "docs/research/evidence/day-017/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-017/uefi-boot.json",
+      "merged_commit": "01c91d6"
     },
     {
       "day": 18,
@@ -352,10 +353,13 @@
         "kernel/core/twin/twin.c",
         "kernel/core/cap/capability.c"
       ],
-      "comparison": "Anunix builds a native kernel through Make. Linux Kconfig search is not an Anunix mechanism.",
-      "acceptance": "Bind a tested configuration profile to its image and reject an incompatible profile.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline records image hashes without a compiled configuration profile. Day 18 binds architecture and research mode to an artifact digest and checks the running guest.",
+      "acceptance": "Bind the compiled architecture and research mode to the tested image; reject incompatible requirements and changed artifacts.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-018",
+      "comparison_baseline": "01c91d6",
+      "tested_commit": "8311951",
+      "evidence": "docs/research/evidence/day-018/uefi-boot.json"
     },
     {
       "day": 19,
