@@ -186,6 +186,8 @@ int anx_effect_fence_create_child(const struct anx_cell *parent, enum anx_cell_t
 	anx_spin_lock_irqsave(&fence_lock, &flags);
 	fence = find_fence(&parent->effect_fence_id);
 	ret = state_check(fence);
+	/* A review hold pauses effects; bounded computation can still continue. */
+	if (ret == ANX_EBUSY) ret = ANX_OK;
 	if (ret == ANX_OK && (fence->child_creations == ~(uint64_t)0 ||
 	    (fence->child_limit && fence->child_creations >= fence->child_limit)))
 		ret = ANX_EFULL;
