@@ -589,7 +589,7 @@ Evidence: [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/
 
 Planned acceptance: Reject a child beyond its parent grant; preserve global accounting across nesting and restore ledger capacity after quiescent subtree revocation.
 
-Status: Validated on Jekyll. Tested commit: `1dafa66`. Source message: `7037ad65-bc52-48dc-a3c7-faa6f20e6f40`.
+Status: Merged at `01512bc` after Jekyll validation. Tested commit: `1dafa66`. Source message: `7037ad65-bc52-48dc-a3c7-faa6f20e6f40`.
 
 Detailed comparison and results: [Day 036](day-036.md).
 
@@ -599,13 +599,15 @@ Detailed comparison and results: [Day 036](day-036.md).
 
 Learning: Treat the agent graph as versioned execution state with bounded structural changes.
 
-Anunix comparison: Workflow graphs and cell dependencies exist. Runtime graph changes need their own validity gate.
+Anunix comparison: The baseline executes workflow graphs but lacks controlled topology revisions. The candidate validates complete edge replacements against frozen nodes, requires sealed evidence from the current revision, and adds bounded rollback.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c).
 
-Planned acceptance: Reject a cycle or invalid graph revision while preserving the runnable original graph.
+Planned acceptance: Reject invalid graph revisions without changing the runnable original; execute the revised and restored orders; deny stale, over-budget, and paused changes.
 
-Status: Queued. Source message: `8ee2a2ac-3033-40ce-9edf-df54b335bf33`.
+Status: Validated on Jekyll. Tested commit: `adf1950`. Source message: `8ee2a2ac-3033-40ce-9edf-df54b335bf33`.
+
+Detailed comparison and results: [Day 037](day-037.md).
 
 ## Day 038 — 2026-08-02
 
