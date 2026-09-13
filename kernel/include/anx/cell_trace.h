@@ -32,6 +32,7 @@ enum anx_trace_event_type {
 	ANX_TRACE_FAILED,
 	ANX_TRACE_COMPLETED,
 	ANX_TRACE_ADMISSION_DENIED,
+	ANX_TRACE_IDENTITY_COMMITMENT,	/* description: signed commitment record OID */
 };
 
 enum anx_admission_gate {
@@ -41,6 +42,7 @@ enum anx_admission_gate {
 	ANX_ADMISSION_AUTHORITY,
 	ANX_ADMISSION_AUDIT_REQUIRED,
 	ANX_ADMISSION_AUDIT_STORAGE,
+	ANX_ADMISSION_IDENTITY,
 };
 
 /* --- Trace event --- */
