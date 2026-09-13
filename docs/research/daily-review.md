@@ -491,7 +491,7 @@ Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/sta
 
 Planned acceptance: Reject an optimization artifact whose target description no longer matches the tested environment.
 
-Status: Validated on Jekyll. Tested commit: `bb5dc0b`. Source message: `de9ffcd8-6113-4a35-8372-3cba1927e61e`.
+Status: Merged at `7af3018` after Jekyll validation. Tested commit: `bb5dc0b`. Source message: `de9ffcd8-6113-4a35-8372-3cba1927e61e`.
 
 Detailed comparison and results: [Day 030](day-030.md).
 
@@ -501,13 +501,15 @@ Detailed comparison and results: [Day 030](day-030.md).
 
 Learning: Trust the evaluation harness to establish correctness and measurement, independently of the generating agent.
 
-Anunix comparison: Anunix has conformance and promotion gates. Candidate-controlled evidence must not become self-authorization.
+Anunix comparison: The baseline accepted caller-authored evaluation payloads after checking target compatibility. Artifact trials now require an issued passing receipt from fixed routing checks, bound to the complete candidate action.
 
 Evidence: [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
 Planned acceptance: Reject missing or mismatched evidence and accept only an independently checked candidate.
 
-Status: Queued. Source message: `2b5bed64-2acb-4d7b-a1a7-0ef932383afd`.
+Status: Validated on Jekyll. Tested commit: `e885c86`. Source message: `2b5bed64-2acb-4d7b-a1a7-0ef932383afd`.
+
+Detailed comparison and results: [Day 031](day-031.md).
 
 ## Day 032 — 2026-07-27
 
