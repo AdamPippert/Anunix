@@ -17,6 +17,7 @@
 #define ANX_EXTERNAL_CALL_H
 
 #include <anx/types.h>
+#include <anx/tool_namespace.h>
 
 #define ANX_EXT_ENDPOINT_MAX	256
 #define ANX_EXT_METHOD_MAX	16
@@ -26,6 +27,7 @@
 struct anx_external_call {
 	char endpoint[ANX_EXT_ENDPOINT_MAX];	/* e.g. "pg://topo/scan?lo=0&hi=1023" */
 	char method[ANX_EXT_METHOD_MAX];	/* "GET", "POST", "QUERY", ... */
+	struct anx_tool_handle tool_handle;	/* mandatory for a bound tool namespace */
 
 	const void *request_body;		/* caller-owned */
 	uint32_t request_size;
