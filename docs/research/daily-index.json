@@ -675,11 +675,12 @@
       ],
       "comparison": "The baseline stages writes but permits publication without current effect authority or actor checks. Day 34 gates publication and shadow writes while preserving explicit abort.",
       "acceptance": "Reject staged publication without effect permission or during a hold; abort preserves committed state and prevents external dispatch.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-034",
       "comparison_baseline": "673125e",
       "tested_commit": "2324a14",
-      "evidence": "docs/research/evidence/day-034/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-034/uefi-boot.json",
+      "merged_commit": "6b5a9e2"
     },
     {
       "day": 35,
@@ -692,10 +693,13 @@
         "kernel/core/sched/scheduler.c",
         "kernel/core/state/provenance.c"
       ],
-      "comparison": "State transfer and scheduler queues exist. Cross-device movement graphs need explicit lowering and checks.",
-      "acceptance": "Preserve transfer permissions and data identity while rejecting an invalid destination.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The baseline matches raw prefixes and skips policy checks at write and commit. Day 35 validates namespace boundaries, rejects truncation, and rechecks destination policy while preserving digest continuity.",
+      "acceptance": "Reject invalid or revoked destinations before more bytes or a committed result; preserve the exact digest across interruption and resume.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-035",
+      "comparison_baseline": "6b5a9e2",
+      "tested_commit": "874665b",
+      "evidence": "docs/research/evidence/day-035/uefi-boot.json"
     },
     {
       "day": 36,
