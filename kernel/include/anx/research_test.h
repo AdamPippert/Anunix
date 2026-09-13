@@ -26,6 +26,7 @@ int anx_research_day020(void);
 int anx_research_day021(void);
 int anx_research_day022(void);
 int anx_research_day023(void);
+int anx_research_day024(void);
 #endif
 
 #ifdef ANX_RESEARCH_TEST

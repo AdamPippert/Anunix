@@ -35,6 +35,8 @@ struct anx_pending_effect {
 	struct anx_sink *sink;		/* NULL if this effect has no Sink (no data leaves) */
 	anx_oid_t object_oid;		/* object whose data is flowing, if any; nil if none */
 	enum anx_effect_phase phase;
+	anx_oid_t fence_id;
+	uint64_t fence_epoch;
 };
 
 /*
