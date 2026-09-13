@@ -151,5 +151,6 @@ int test_capability(void)
 	}
 
 	ret = anx_research_day019();
-	return ret == ANX_OK ? anx_research_day027() : ret;
+	if (ret == ANX_OK) ret = anx_research_day027();
+	return ret == ANX_OK ? anx_research_day033() : ret;
 }

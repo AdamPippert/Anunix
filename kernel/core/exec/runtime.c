@@ -74,7 +74,8 @@ static bool scope_contains(const struct anx_cell *parent,
 	if (parent->child_count > ANX_MAX_CHILD_CELLS ||
 	    anx_uuid_compare(&parent->identity_id, &child->identity_id) ||
 	    anx_uuid_compare(&parent->effect_fence_id, &child->effect_fence_id) ||
-	    anx_uuid_compare(&parent->tool_namespace_id, &child->tool_namespace_id))
+	    anx_uuid_compare(&parent->tool_namespace_id, &child->tool_namespace_id) ||
+	    anx_uuid_compare(&parent->revision_lease_id, &child->revision_lease_id))
 		return false;
 	for (i = 0; i < parent->child_count; i++)
 		if (anx_uuid_compare(&parent->child_cids[i], &child->cid) == 0)
@@ -709,6 +710,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 	child->identity_id = parent->identity_id;
 	child->effect_fence_id = parent->effect_fence_id;
 	child->tool_namespace_id = parent->tool_namespace_id;
+	child->revision_lease_id = parent->revision_lease_id;
 	child->recursion_depth = parent->recursion_depth + 1;
 
 	/* Inherit stricter policies from parent */
