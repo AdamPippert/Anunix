@@ -749,7 +749,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject absent, contradictory, or mismatched image validation; accept the matching source candidate after both VM modes pass the complete regression range.
 
-Status: Validated on Jekyll. Tested commit: `700f28e`. Source message: `e0ca45f5-7a92-4443-8448-b8cd685e712d`.
+Status: Merged at `22bb730` after Jekyll validation. Tested commit: `700f28e`. Source message: `e0ca45f5-7a92-4443-8448-b8cd685e712d`.
 
 Detailed comparison and results: [Day 046](day-046.md).
 
@@ -759,13 +759,15 @@ Detailed comparison and results: [Day 046](day-046.md).
 
 Learning: Apply bounded search to hardware policy while respecting physical capacity.
 
-Anunix comparison: Anunix models engine resources. Hardware prefetch-policy synthesis needs an appropriate simulator or hardware backend.
+Anunix comparison: The native profile compiler now calculates storage and work requirements and rejects declared budgets before allocation or evaluation.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c).
 
-Planned acceptance: Reject a policy exceeding its declared storage or resource budget before adoption.
+Planned acceptance: Reject insufficient artifact, scratch, or simulation budgets without publishing a profile; use an exact-budget candidate after ordinary validation.
 
-Status: Queued. Source message: `25eede96-54b8-4ce0-9fe8-0ff73d6fab3d`.
+Status: Validated on Jekyll. Tested commit: `abeec0d`. Source message: `25eede96-54b8-4ce0-9fe8-0ff73d6fab3d`.
+
+Detailed comparison and results: [Day 047](day-047.md).
 
 ## Day 048 — 2026-08-12
 

@@ -915,11 +915,12 @@
       ],
       "comparison": "Compiled source fingerprints now bind kernel and UEFI artifacts, guest regressions, and host records before a candidate receives a validation record.",
       "acceptance": "Reject absent, contradictory, or mismatched image validation; accept the matching source candidate after both VM modes pass the complete regression range.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-046",
       "comparison_baseline": "c67f82f",
       "tested_commit": "700f28e",
-      "evidence": "docs/research/evidence/day-046/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-046/uefi-boot.json",
+      "merged_commit": "22bb730"
     },
     {
       "day": 47,
@@ -928,13 +929,16 @@
       "title": "AI-First OS Update: Push the Policy Foundry Below the Kernel",
       "learning": "Apply bounded search to hardware policy while respecting physical capacity.",
       "code": [
-        "kernel/core/twin/twin.c",
-        "kernel/core/route/lease.c"
+        "kernel/core/route/profile.c",
+        "kernel/include/anx/route_profile.h"
       ],
-      "comparison": "Anunix models engine resources. Hardware prefetch-policy synthesis needs an appropriate simulator or hardware backend.",
-      "acceptance": "Reject a policy exceeding its declared storage or resource budget before adoption.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The native profile compiler now calculates storage and work requirements and rejects declared budgets before allocation or evaluation.",
+      "acceptance": "Reject insufficient artifact, scratch, or simulation budgets without publishing a profile; use an exact-budget candidate after ordinary validation.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-047",
+      "comparison_baseline": "22bb730",
+      "tested_commit": "abeec0d",
+      "evidence": "docs/research/evidence/day-047/uefi-boot.json"
     },
     {
       "day": 48,
