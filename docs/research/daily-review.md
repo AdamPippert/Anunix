@@ -957,7 +957,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Preserve Cell and model identity across local engine changes; reject stale inputs, unavailable servers, revoked leases, and unauthorized placement.
 
-Status: Validated on Jekyll. Tested commit: `38db6bb`. Source message: `0808d44d-d49e-4e35-a05c-d1ddb54743e5`.
+Status: Merged at `5acf978` after Jekyll validation. Tested commit: `38db6bb`. Source message: `0808d44d-d49e-4e35-a05c-d1ddb54743e5`.
 
 Detailed comparison and results: [Day 059](day-059.md).
 
@@ -967,13 +967,15 @@ Detailed comparison and results: [Day 059](day-059.md).
 
 Learning: Treat model state as a movable resource with identity, validity, and transfer costs.
 
-Anunix comparison: Tensor objects and state transfer exist. A general model-state transport fabric remains a separate integration.
+Anunix comparison: Immutable resource views now move between pools with the same owner. All aliases retain identity, copied bytes are verified before publication, and adapter consumers still reject stale derivation keys.
 
 Evidence: [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/core/state/xfer.c](../../kernel/core/state/xfer.c), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c).
 
-Planned acceptance: Preserve model-state identity and access checks across a transfer.
+Planned acceptance: Move executable adapter state across physical pools; preserve aliases and owner access, reject failed copies, and invalidate stale model generations.
 
-Status: Queued. Source message: `a5ddd2ca-0545-4045-823d-931bd901212f`.
+Status: Validated on Jekyll. Tested commit: `0f2531e`. Source message: `a5ddd2ca-0545-4045-823d-931bd901212f`.
+
+Detailed comparison and results: [Day 060](day-060.md).
 
 ## Day 061 — 2026-08-25
 
@@ -1254,3 +1256,17 @@ Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/co
 Planned acceptance: Abort a speculative branch without dispatching its buffered effects; admit only the validated branch at commit.
 
 Status: Queued. Source message: `8e6b3d50-036a-46c2-b5f4-8c5127cf88f1`.
+
+## Day 081 — 2026-09-14
+
+**AI-first OS update — September 14: compile intelligence into a closed policy space, then let AI select**
+
+Learning: Keep runtime policy selection inside a previously validated, finite action space.
+
+Anunix comparison: Finite routing profiles and typed tuning actions exist. A versioned policy catalog with indexed selection still needs an explicit runtime boundary.
+
+Evidence: [kernel/core/route/profile.c](../../kernel/core/route/profile.c), [kernel/core/route/tuning.c](../../kernel/core/route/tuning.c), [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c).
+
+Planned acceptance: Select only issued policies through a bounded index; prove invalid or stale selections retain the validated fallback.
+
+Status: Queued. Source message: `2b0646b7-8ce0-4118-a447-80e8979d269b`.
