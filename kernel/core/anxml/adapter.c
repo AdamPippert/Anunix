@@ -223,6 +223,7 @@ int anx_adapter_generate(const anx_oid_t *id, uint64_t generation, const struct 
 	if (!id || !generation || !request || !response || !key) return ANX_EINVAL;
 	struct anx_anxml_request input = *request;
 	int ret = request_check(&input);
+	if (ret == ANX_OK) ret = anx_cell_cognitive_limit(input.max_tokens, &input.max_tokens);
 	if (ret != ANX_OK) return ret;
 	struct anx_adapter_image image;
 	struct anx_adapter_cache_key result = {0};
@@ -242,6 +243,7 @@ int anx_adapter_cache_check(const anx_oid_t *id, const struct anx_anxml_request 
 	if (!id || !request || !key) return ANX_EINVAL;
 	struct anx_anxml_request input = *request;
 	int ret = request_check(&input);
+	if (ret == ANX_OK) ret = anx_cell_cognitive_limit(input.max_tokens, &input.max_tokens);
 	if (ret != ANX_OK) return ret;
 	struct anx_adapter_view view;
 	ret = anx_adapter_get(id, &view);

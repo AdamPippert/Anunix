@@ -244,6 +244,8 @@ int anx_cell_set_cognitive_envelope(struct anx_cell *cell,
 {
 	if (!cell)
 		return ANX_EINVAL;
+	if (anx_cell_current_id())
+		return ANX_EPERM;
 	if (cell->status != ANX_CELL_CREATED)
 		return ANX_EBUSY;
 

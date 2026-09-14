@@ -448,10 +448,34 @@ static int runtime_commit(struct anx_cell *cell,
 /* --- Public API --- */
 
 static struct anx_cell *active_cell;
+struct runtime_cognitive_scope {
+	struct anx_cell *cell;
+	struct anx_cognitive_envelope envelope;
+	struct runtime_cognitive_scope *previous;
+};
+static struct runtime_cognitive_scope *active_cognitive;
 
 const anx_cid_t *anx_cell_current_id(void)
 {
 	return active_cell ? &active_cell->cid : NULL;
+}
+
+int anx_cell_cognitive_limit(uint32_t requested, uint32_t *out)
+{
+	if (!requested || !out) return ANX_EINVAL;
+	if (active_cell && (!active_cognitive || active_cognitive->cell != active_cell)) return ANX_EIO;
+	uint32_t limit = requested;
+	for (const struct runtime_cognitive_scope *scope = active_cognitive; scope; scope = scope->previous) {
+		if (scope->cell->status == ANX_CELL_CANCELLED) return ANX_ECANCELED;
+		if (scope->cell->status != ANX_CELL_RUNNING ||
+		    scope->cell->cognitive.max_tokens != scope->envelope.max_tokens ||
+		    scope->cell->cognitive.max_reasoning_depth != scope->envelope.max_reasoning_depth)
+			return ANX_EPERM;
+		if (scope->envelope.max_tokens && scope->envelope.max_tokens < limit)
+			limit = scope->envelope.max_tokens;
+	}
+	*out = limit;
+	return ANX_OK;
 }
 
 static int runtime_run(struct anx_cell *cell)
@@ -530,6 +554,12 @@ static int runtime_run(struct anx_cell *cell)
 		anx_trace_append(trace, ANX_TRACE_STEP_FAILED, "execution contract changed during run", ret);
 		goto fail;
 	}
+	uint32_t limit_check;
+	ret = anx_cell_cognitive_limit(1, &limit_check);
+	if (ret != ANX_OK) {
+		anx_trace_append(trace, ANX_TRACE_STEP_FAILED, "cognitive envelope changed during run", ret);
+		goto fail;
+	}
 
 	/* Validation */
 	ret = runtime_validate(cell, trace);
@@ -586,6 +616,7 @@ fail:
 int anx_cell_run(struct anx_cell *cell)
 {
 	struct anx_cell *previous = active_cell;
+	struct runtime_cognitive_scope scope;
 	int ret;
 
 	if (!cell)
@@ -597,10 +628,15 @@ int anx_cell_run(struct anx_cell *cell)
 	}
 	cell->runtime_active = true;
 	cell->refcount++;
+	scope.cell = cell;
+	scope.envelope = cell->cognitive;
+	scope.previous = active_cognitive;
 	anx_spin_unlock(&cell->lock);
 	active_cell = cell;
+	active_cognitive = &scope;
 	ret = runtime_run(cell);
 	active_cell = previous;
+	active_cognitive = scope.previous;
 	cell->runtime_active = false;
 	anx_cell_store_release(cell);
 	return ret;
