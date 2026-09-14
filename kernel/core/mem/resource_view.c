@@ -6,8 +6,9 @@
 #include <anx/spinlock.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/crypto.h>
 
-struct view_record { anx_oid_t id; uint32_t offset, size, refs; bool used; };
+struct view_record { anx_oid_t id; uint32_t offset, size, refs; bool used; uint8_t digest[32]; };
 struct view_alias { anx_oid_t id; uint32_t record; bool used; };
 struct resource_pool {
 	anx_oid_t id;
@@ -83,6 +84,19 @@ static void copy_in(uintptr_t *pages, uint32_t offset, const void *buffer, uint3
 		anx_memcpy((void *)(pages[offset / ANX_PAGE_SIZE] + at), src, n);
 		src += n; offset += n; size -= n;
 	}
+}
+
+static void record_digest(const uintptr_t *pages, uint32_t offset, uint32_t size, uint8_t out[32])
+{
+	struct anx_sha256_ctx hash;
+	anx_sha256_init(&hash);
+	while (size) {
+		uint32_t at = offset % ANX_PAGE_SIZE, n = ANX_PAGE_SIZE - at;
+		if (n > size) n = size;
+		anx_sha256_update(&hash, (void *)(pages[offset / ANX_PAGE_SIZE] + at), n);
+		offset += n; size -= n;
+	}
+	anx_sha256_final(&hash, out);
 }
 
 int anx_resource_pool_create(const anx_cid_t *owner, uint32_t capacity, anx_oid_t *out)
@@ -167,7 +181,8 @@ int anx_resource_view_insert(const anx_oid_t *id, const void *data, uint32_t siz
 		ret = ANX_ENOMEM; goto done;
 	}
 	copy_in(pool->pages, pool->tail, data, size);
-	pool->records[record] = (struct view_record){ next_id(), pool->tail, size, 1, true };
+	pool->records[record] = (struct view_record){ .id = next_id(), .offset = pool->tail, .size = size, .refs = 1, .used = true };
+	record_digest(pool->pages, pool->tail, size, pool->records[record].digest);
 	pool->aliases[alias] = (struct view_alias){ next_id(), record, true };
 	pool->tail += size; pool->page_count = needed; *out = pool->aliases[alias].id;
 done:
@@ -240,7 +255,12 @@ int anx_resource_view_read(const anx_oid_t *id, uint32_t offset, void *data, uin
 	if (ret == ANX_OK) {
 		struct view_record *r = &pool->records[alias->record];
 		if (offset > r->size || size > r->size - offset) ret = ANX_EINVAL;
-		else { copy_out(pool->pages, r->offset + offset, data, size); ret = (int)size; }
+		else {
+			uint8_t digest[32];
+			record_digest(pool->pages, r->offset, r->size, digest);
+			if (anx_memcmp(digest, r->digest, sizeof(digest))) ret = ANX_EIO;
+			else { copy_out(pool->pages, r->offset + offset, data, size); ret = (int)size; }
+		}
 	}
 	anx_spin_unlock_irqrestore(&view_lock, flags);
 	return ret;
@@ -249,6 +269,73 @@ int anx_resource_view_read(const anx_oid_t *id, uint32_t offset, void *data, uin
 int anx_resource_pool_compact(const anx_oid_t *id, uint32_t minimum_dead_bytes,
 		uint32_t headroom_pages, struct anx_resource_pool_stats *out)
 {
-	(void)id; (void)minimum_dead_bytes; (void)headroom_pages; (void)out;
-	return ANX_ENOTSUP;
+	uintptr_t destination[ANX_RESOURCE_PAGES_MAX] = {0};
+	uint32_t offsets[ANX_RESOURCE_RECORDS_MAX] = {0};
+	struct anx_resource_pool_stats before;
+	uint32_t needed, allocated = 0, cursor = 0;
+	bool flags;
+	int ret = ANX_OK;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !out || headroom_pages > ANX_RESOURCE_PAGES_MAX) return ANX_EINVAL;
+	anx_spin_lock_irqsave(&view_lock, &flags);
+	struct resource_pool *pool = find_pool(id);
+	if (!pool) { ret = ANX_ENOENT; goto done; }
+	stats(pool, &before);
+	needed = (before.live_bytes + ANX_PAGE_SIZE - 1) / ANX_PAGE_SIZE;
+	if (before.dead_bytes < minimum_dead_bytes || needed >= pool->page_count) { ret = ANX_EBUSY; goto done; }
+	if (needed > headroom_pages) { ret = ANX_ENOMEM; goto done; }
+	for (; allocated < needed; allocated++) {
+		destination[allocated] = anx_page_alloc(0);
+		if (!destination[allocated]) { ret = ANX_ENOMEM; goto done; }
+		anx_memset((void *)destination[allocated], 0, ANX_PAGE_SIZE);
+	}
+	for (uint32_t i = 0; i < ANX_RESOURCE_RECORDS_MAX; i++) {
+		const struct view_record *r = &pool->records[i];
+		if (!r->used || !r->refs) continue;
+		offsets[i] = cursor;
+		uint32_t source_offset = r->offset, left = r->size;
+		while (left) {
+			uint32_t from = source_offset % ANX_PAGE_SIZE, to = cursor % ANX_PAGE_SIZE;
+			uint32_t count = ANX_PAGE_SIZE - from;
+			if (count > ANX_PAGE_SIZE - to) count = ANX_PAGE_SIZE - to;
+			if (count > left) count = left;
+			anx_memcpy((void *)(destination[cursor / ANX_PAGE_SIZE] + to),
+				(void *)(pool->pages[source_offset / ANX_PAGE_SIZE] + from), count);
+			source_offset += count; cursor += count; left -= count;
+		}
+		uint8_t digest[32];
+		record_digest(destination, offsets[i], r->size, digest);
+		if (anx_memcmp(digest, r->digest, sizeof(digest))) { ret = ANX_EIO; goto done; }
+	}
+	/* No failure points remain. Readers and alias changes share this lock. */
+	for (uint32_t i = 0; i < pool->page_count; i++) free_page(pool->pages[i]);
+	anx_memset(pool->pages, 0, sizeof(pool->pages));
+	for (uint32_t i = 0; i < needed; i++) pool->pages[i] = destination[i];
+	pool->page_count = needed; pool->tail = before.live_bytes; allocated = 0;
+	for (uint32_t i = 0; i < ANX_RESOURCE_RECORDS_MAX; i++) {
+		if (pool->records[i].refs) pool->records[i].offset = offsets[i];
+		else anx_memset(&pool->records[i], 0, sizeof(pool->records[i]));
+	}
+	stats(pool, out);
+done:
+	for (uint32_t i = 0; i < allocated; i++) free_page(destination[i]);
+	anx_spin_unlock_irqrestore(&view_lock, flags);
+	return ret;
 }
+
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+int anx_resource_view_test_corrupt(const anx_oid_t *id)
+{
+	bool flags;
+	struct resource_pool *pool = NULL;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	anx_spin_lock_irqsave(&view_lock, &flags);
+	struct view_alias *alias = find_alias(id, &pool);
+	if (alias) {
+		uint32_t offset = pool->records[alias->record].offset;
+		*(uint8_t *)(pool->pages[offset / ANX_PAGE_SIZE] + offset % ANX_PAGE_SIZE) ^= 1;
+	}
+	anx_spin_unlock_irqrestore(&view_lock, flags);
+	return alias ? ANX_OK : ANX_ENOENT;
+}
+#endif
