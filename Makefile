@@ -161,6 +161,17 @@ DRIVER_S_OBJ := $(patsubst $(DRIVER_DIR)/%.S,$(BUILD_DIR)/drivers/%.o,$(DRIVER_S
 
 ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(DRIVER_OBJ) $(DRIVER_S_OBJ) $(LIB_OBJ)
 
+# Refresh the fingerprint on every invocation; unchanged content keeps its mtime.
+SOURCE_HEADER := $(BUILD_DIR)/generated/anx_source_identity.h
+.PHONY: source-identity-force
+source-identity-force:
+
+$(SOURCE_HEADER): source-identity-force
+	@python3 tools/source_identity.py --header $@
+
+$(ALL_OBJ): $(SOURCE_HEADER)
+CFLAGS += -I $(BUILD_DIR)/generated
+
 # Rebuild when switching between the normal and research images.
 RESEARCH_MODE_STAMP := $(BUILD_DIR)/.research-mode-$(RESEARCH_TEST)
 $(RESEARCH_MODE_STAMP):
@@ -489,11 +500,14 @@ test:
 	@echo "  Running tests..."
 	@$(TEST_BIN)
 	@python3 tests/test_kernel_profile.py
+	@python3 tests/test_candidate_gate.py
+	@python3 tools/source_identity.py --label ANUNIX_HOST_SOURCE_V1
 
 conformance:
 	@echo "  Running deterministic conformance harness..."
 	@mkdir -p build/conformance
 	@python3 tools/conformance_harness.py --out-dir build/conformance
+	@python3 tools/source_identity.py --label ANUNIX_CONFORMANCE_SOURCE_V1
 
 # --- Python prototype (legacy) ---
 proto-install:

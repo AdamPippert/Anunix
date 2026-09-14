@@ -10,6 +10,7 @@ import subprocess
 import time
 import urllib.request
 from kernel_profile import create_profile, digest, load_profile, validate_guest, validate_profile
+from source_identity import artifact_source, validate_source_guest
 
 
 def main():
@@ -30,6 +31,7 @@ def main():
     try:
         profile = load_profile(args.profile) if args.profile else create_profile(artifact, args.revision)
         validate_profile(profile, artifact, args.revision, "x86_64", 1)
+        source_sha256 = artifact_source(artifact)
     except (OSError, ValueError) as error:
         parser.error(str(error))
     out = args.out_dir.resolve()
@@ -49,6 +51,8 @@ def main():
         command += ["-drive", f"if=pflash,format=raw,readonly=on,file={args.firmware.resolve(strict=True)}",
                     "-drive", f"if=ide,format=raw,snapshot=on,file={artifact}"]
     report = {"revision": args.revision, "artifact": str(artifact),
+              "boot_mode": "kernel" if args.kernel else "uefi",
+              "source_sha256": source_sha256, "source_verified": False,
               "sha256": digest(artifact), "qemu_command": command,
               "qemu_version": subprocess.check_output([command[0], "--version"], text=True).splitlines()[0],
               "kernel_profile": profile, "profile_verified": False,
@@ -78,6 +82,7 @@ def main():
                     time.sleep(0.5)
             report["sysinfo"] = request("/api/v1/exec", {"command": "sysinfo"})
             validate_guest(profile, report["sysinfo"].get("output", ""))
+            validate_source_guest(source_sha256, report["sysinfo"].get("output", ""))
             for name in args.test:
                 response = request("/api/v1/exec", {"command": f"research-test {name}"})
                 marker = f"RESEARCH {name} PASS rc=0"
@@ -92,6 +97,9 @@ def main():
             if process.poll() is not None:
                 raise RuntimeError("guest exited during tests")
             validate_profile(profile, artifact, args.revision, "x86_64", 1)
+            if artifact_source(artifact) != source_sha256:
+                raise ValueError("source fingerprint changed during validation")
+            report["source_verified"] = True
             report["profile_verified"] = True
             report["passed"] = not args.expect_failure
             report["expected_result_observed"] = True
