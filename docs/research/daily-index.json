@@ -1179,11 +1179,12 @@
       ],
       "comparison": "Private model bindings now capture logical declarations and object versions, then recheck readiness and policy before changing engines. Backend equivalence remains a controller claim.",
       "acceptance": "Preserve Cell and model identity across local engine changes; reject stale inputs, unavailable servers, revoked leases, and unauthorized placement.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-059",
       "comparison_baseline": "cd51346",
       "tested_commit": "38db6bb",
-      "evidence": "docs/research/evidence/day-059/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-059/uefi-boot.json",
+      "merged_commit": "5acf978"
     },
     {
       "day": 60,
@@ -1192,14 +1193,17 @@
       "title": "AI-First OS Update: Build a Model-State Fabric, Not Just a Model Scheduler",
       "learning": "Treat model state as a movable resource with identity, validity, and transfer costs.",
       "code": [
-        "kernel/core/anxml/anxml.c",
-        "kernel/core/state/xfer.c",
-        "kernel/core/mem/memplane.c"
+        "kernel/core/mem/resource_view.c",
+        "kernel/include/anx/resource_view.h",
+        "kernel/core/tools/research_day060.c"
       ],
-      "comparison": "Tensor objects and state transfer exist. A general model-state transport fabric remains a separate integration.",
-      "acceptance": "Preserve model-state identity and access checks across a transfer.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Immutable resource views now move between pools with the same owner. All aliases retain identity, copied bytes are verified before publication, and adapter consumers still reject stale derivation keys.",
+      "acceptance": "Move executable adapter state across physical pools; preserve aliases and owner access, reject failed copies, and invalidate stale model generations.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-060",
+      "comparison_baseline": "5acf978",
+      "tested_commit": "0f2531e",
+      "evidence": "docs/research/evidence/day-060/uefi-boot.json"
     },
     {
       "day": 61,
