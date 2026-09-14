@@ -198,17 +198,17 @@ struct anx_retry_policy {
 /*
  * --- Execution contract (RFC-0003 extension: Execution Contracts) ---
  *
- * Declares how strongly this cell's outputs must behave under
- * concurrency and failure, and whether its State Object writes go
- * live immediately or through a staged mutation that only becomes
- * visible on commit. Zero value (BEST_EFFORT / DIRECT) reproduces
- * pre-contract behavior exactly, so existing cells are unaffected.
+ * Declares requested consistency and effect behavior. Declaration is
+ * separate from support: runtime admission currently accepts only
+ * BEST_EFFORT / DIRECT. Semantic, transactional, token-stable, and
+ * automatic staged execution require adapters that do not yet exist.
  */
 
 enum anx_consistency_class {
 	ANX_CONSISTENCY_BEST_EFFORT,
 	ANX_CONSISTENCY_SEMANTIC,
 	ANX_CONSISTENCY_TRANSACTIONAL,
+	ANX_CONSISTENCY_TOKEN_STABLE,
 };
 
 enum anx_effect_mode {
@@ -429,12 +429,15 @@ void anx_cell_clear_topology(struct anx_cell *cell);
  * the run so routing/commit decisions downstream can rely on it.
  * Returns:
  *   ANX_OK      success
- *   ANX_EINVAL  null cell
+ *   ANX_EINVAL  null cell or unknown contract value
+ *   ANX_EPERM   executing Cells cannot change contracts
  *   ANX_EBUSY   cell has already left ANX_CELL_CREATED
  */
 int anx_cell_set_contract(struct anx_cell *cell,
 			  enum anx_consistency_class consistency,
 			  enum anx_effect_mode effect_mode);
+/* EINVAL for malformed contracts; ENOTSUP for valid but unenforced guarantees. */
+int anx_cell_check_contract(const struct anx_cell *cell);
 
 /*
  * Declare the cell's cognitive envelope. Only valid while the cell is

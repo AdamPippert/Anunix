@@ -153,10 +153,13 @@ int anx_external_invoke(struct anx_external_call *call)
 		struct anx_cell *caller = anx_cell_store_lookup(anx_cell_current_id());
 		if (!caller)
 			return ANX_EPERM;
-		ret = ANX_EPERM;
-		if (caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
-		    anx_identity_admit(caller, NULL) == ANX_OK)
-			ret = anx_effect_fence_check(caller, NULL, NULL);
+		ret = anx_cell_check_contract(caller);
+		if (ret == ANX_OK) {
+			ret = ANX_EPERM;
+			if (caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
+			    anx_identity_admit(caller, NULL) == ANX_OK)
+				ret = anx_effect_fence_check(caller, NULL, NULL);
+		}
 		if (ret == ANX_OK)
 			ret = anx_tool_authorize_call(caller, call);
 		anx_cell_store_release(caller);
