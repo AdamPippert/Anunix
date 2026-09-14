@@ -209,15 +209,30 @@ void anx_cell_clear_topology(struct anx_cell *cell)
 	cell->constraints.topology_bk_hi = 0;
 }
 
+static int contract_valid(enum anx_consistency_class consistency, enum anx_effect_mode effect)
+{
+	return consistency < ANX_CONSISTENCY_BEST_EFFORT || consistency > ANX_CONSISTENCY_TOKEN_STABLE ||
+		effect < ANX_EFFECT_DIRECT || effect > ANX_EFFECT_STAGED ? ANX_EINVAL : ANX_OK;
+}
+
+int anx_cell_check_contract(const struct anx_cell *cell)
+{
+	if (!cell) return ANX_EINVAL;
+	int ret = contract_valid(cell->contract.consistency, cell->contract.effect_mode);
+	if (ret != ANX_OK) return ret;
+	return cell->contract.consistency == ANX_CONSISTENCY_BEST_EFFORT &&
+		cell->contract.effect_mode == ANX_EFFECT_DIRECT ? ANX_OK : ANX_ENOTSUP;
+}
+
 int anx_cell_set_contract(struct anx_cell *cell,
 			  enum anx_consistency_class consistency,
 			  enum anx_effect_mode effect_mode)
 {
-	if (!cell)
-		return ANX_EINVAL;
-	if (cell->status != ANX_CELL_CREATED)
-		return ANX_EBUSY;
-
+	if (!cell) return ANX_EINVAL;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (cell->status != ANX_CELL_CREATED) return ANX_EBUSY;
+	int ret = contract_valid(consistency, effect_mode);
+	if (ret != ANX_OK) return ret;
 	cell->contract.consistency = consistency;
 	cell->contract.effect_mode = effect_mode;
 	return ANX_OK;

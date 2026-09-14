@@ -149,6 +149,10 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_SCOPE, ret, "delegated scope denied");
 
+	ret = anx_cell_check_contract(cell);
+	if (ret != ANX_OK)
+		return runtime_deny(trace, ANX_ADMISSION_EXECUTION_CONTRACT, ret, "execution contract unsupported or malformed");
+
 	ret = anx_identity_admit(cell, &identity_record);
 	if (!anx_uuid_is_nil(&identity_record)) {
 		char oid[37];
@@ -459,6 +463,8 @@ static int runtime_run(struct anx_cell *cell)
 	if (!cell)
 		return ANX_EINVAL;
 
+	const struct anx_execution_contract declared = cell->contract;
+
 	/*
 	 * DAG gate: a cell with declared predecessors cannot enter the
 	 * pipeline until all of them have COMPLETED. A failed or
@@ -516,6 +522,12 @@ static int runtime_run(struct anx_cell *cell)
 		goto fail;
 	if (cell->status == ANX_CELL_CANCELLED) {
 		ret = ANX_ECANCELED;
+		goto fail;
+	}
+
+	if (cell->contract.consistency != declared.consistency || cell->contract.effect_mode != declared.effect_mode) {
+		ret = ANX_EPERM;
+		anx_trace_append(trace, ANX_TRACE_STEP_FAILED, "execution contract changed during run", ret);
 		goto fail;
 	}
 
