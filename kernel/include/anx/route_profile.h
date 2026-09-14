@@ -33,6 +33,8 @@ struct anx_route_profile_budget {
 	uint64_t compiler_scratch_bytes;
 	uint32_t simulation_calls;
 };
+/* Allocation-free bound for this compiler's fixed representations and work. */
+int anx_route_profile_requirements(uint32_t count, struct anx_route_profile_budget *out);
 int anx_route_profile_compile_bounded(const struct anx_route_weight_policy *weights,
 		const struct anx_route_profile_case *cases, uint32_t count,
 		const struct anx_route_profile_budget *budget, anx_oid_t *out);

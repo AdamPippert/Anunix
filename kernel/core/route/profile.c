@@ -9,13 +9,26 @@
 
 struct issued_profile { uint32_t state; anx_oid_t oid; uint8_t digest[32]; };
 
-/* Baseline adapter exposes the previous compiler without a resource gate. */
-int anx_route_profile_compile_bounded(const struct anx_route_weight_policy *weights,
-		const struct anx_route_profile_case *cases, uint32_t count,
-		const struct anx_route_profile_budget *budget, anx_oid_t *out)
+int anx_route_profile_requirements(uint32_t count, struct anx_route_profile_budget *out)
 {
-	(void)budget;
-	return anx_route_profile_compile(weights, cases, count, out);
+	if (!out || !count || count > ANX_ROUTE_PROFILE_CASES_MAX) return ANX_EINVAL;
+	struct anx_route_profile_budget needed = {
+		.artifact_payload_bytes = sizeof(struct anx_route_profile),
+		.compiler_scratch_bytes = sizeof(struct anx_route_profile) + sizeof(struct anx_cell) +
+			2 * sizeof(struct anx_resource_twin),
+		.simulation_calls = count * 2,
+	};
+	*out = needed;
+	return ANX_OK;
+}
+
+int anx_route_profile_compile(const struct anx_route_weight_policy *weights,
+		const struct anx_route_profile_case *cases, uint32_t count, anx_oid_t *out)
+{
+	struct anx_route_profile_budget budget;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	int ret = anx_route_profile_requirements(count, &budget);
+	return ret == ANX_OK ? anx_route_profile_compile_bounded(weights, cases, count, &budget, out) : ret;
 }
 static struct issued_profile issued[ANX_ROUTE_PROFILE_MAX];
 static struct anx_spinlock profile_lock = ANX_SPINLOCK_INIT;
@@ -59,9 +72,11 @@ static void case_cell(const struct anx_route_profile_case *c, struct anx_cell *c
 	cell->constraints.topology_bk_lo = c->topology_lo; cell->constraints.topology_bk_hi = c->topology_hi;
 }
 
-int anx_route_profile_compile(const struct anx_route_weight_policy *weights,
-		const struct anx_route_profile_case *cases, uint32_t count, anx_oid_t *out)
+int anx_route_profile_compile_bounded(const struct anx_route_weight_policy *weights,
+		const struct anx_route_profile_case *cases, uint32_t count,
+		const struct anx_route_profile_budget *budget, anx_oid_t *out)
 {
+	struct anx_route_profile_budget required, limits;
 	struct anx_route_profile *profile = NULL;
 	struct anx_resource_twin *twin = NULL, *after = NULL;
 	struct anx_cell *cell = NULL;
@@ -73,8 +88,14 @@ int anx_route_profile_compile(const struct anx_route_weight_policy *weights,
 	bool flags;
 	int ret;
 	if (anx_cell_current_id()) return ANX_EPERM;
-	if (!out || !cases || !count || count > ANX_ROUTE_PROFILE_CASES_MAX ||
-	    anx_route_weight_policy_validate(weights) != ANX_OK) return ANX_EINVAL;
+	if (!out || !cases || !budget || !weights ||
+	    anx_route_profile_requirements(count, &required) != ANX_OK) return ANX_EINVAL;
+	limits = *budget;
+	/* Feasibility precedes allocation, issuance, environment capture, and simulation. */
+	if (limits.artifact_payload_bytes < required.artifact_payload_bytes ||
+	    limits.compiler_scratch_bytes < required.compiler_scratch_bytes) return ANX_ENOMEM;
+	if (limits.simulation_calls < required.simulation_calls) return ANX_EFULL;
+	if (anx_route_weight_policy_validate(weights) != ANX_OK) return ANX_EINVAL;
 	anx_spin_lock_irqsave(&profile_lock, &flags);
 	for (slot = 0; slot < ANX_ROUTE_PROFILE_MAX; slot++) if (!issued[slot].state) break;
 	if (slot < ANX_ROUTE_PROFILE_MAX) issued[slot].state = 1;
