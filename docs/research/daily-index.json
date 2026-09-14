@@ -1220,11 +1220,12 @@
       ],
       "comparison": "Private scheduler domains now bound bootstrap-CPU eligibility, queue classes, priority, and expiry through a Cell hierarchy. Revocation blocks descendants at dequeue and runtime admission; enforcement remains cooperative.",
       "acceptance": "Revoke a child domain and deny its queued and direct descendant work; run a healthy sibling and reject tool dispatch after live expiry.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-061",
       "comparison_baseline": "f39c6d4",
       "tested_commit": "95dd4e1",
-      "evidence": "docs/research/evidence/day-061/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-061/uefi-boot.json",
+      "merged_commit": "7c3a1f5"
     },
     {
       "day": 62,
@@ -1233,13 +1234,19 @@
       "title": "AI-First OS Update: Reasoning Itself Is Becoming a Schedulable Parallel Program",
       "learning": "Distinguish required parallel subtasks from competing trials in the execution graph.",
       "code": [
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/include/anx/cell.h"
+        "kernel/core/workflow/branch_group.c",
+        "kernel/include/anx/branch_group.h",
+        "kernel/core/exec/runtime.c",
+        "kernel/core/cap/effect.c",
+        "kernel/core/state/stage.c"
       ],
-      "comparison": "Workflow graphs and cell dependencies exist. Trial completion and loser cancellation need explicit semantics.",
-      "acceptance": "Complete an OR group with one valid result and fence effects from losing branches.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Native branch groups now distinguish required results from competing trials. They execute bounded toy-model candidates as pure child Cells, verify exact outputs, preserve parent fences, and expose only completed-group results.",
+      "acceptance": "Complete a trial group after a verified winner and cancel its unstarted alternatives; require every AND result, enforce the shared budget, and deny effects from registered branches.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-062",
+      "comparison_baseline": "7c3a1f5",
+      "tested_commit": "b8b8240",
+      "evidence": "docs/research/evidence/day-062/uefi-boot.json"
     },
     {
       "day": 63,

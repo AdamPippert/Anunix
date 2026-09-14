@@ -989,7 +989,7 @@ Evidence: [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), 
 
 Planned acceptance: Revoke a child domain and deny its queued and direct descendant work; run a healthy sibling and reject tool dispatch after live expiry.
 
-Status: Validated on Jekyll. Tested commit: `95dd4e1`. Source message: `e2f849a1-d8d9-4741-9440-50fa333e1238`.
+Status: Merged at `7c3a1f5` after Jekyll validation. Tested commit: `95dd4e1`. Source message: `e2f849a1-d8d9-4741-9440-50fa333e1238`.
 
 Detailed comparison and results: [Day 061](day-061.md).
 
@@ -999,13 +999,15 @@ Detailed comparison and results: [Day 061](day-061.md).
 
 Learning: Distinguish required parallel subtasks from competing trials in the execution graph.
 
-Anunix comparison: Workflow graphs and cell dependencies exist. Trial completion and loser cancellation need explicit semantics.
+Anunix comparison: Native branch groups now distinguish required results from competing trials. They execute bounded toy-model candidates as pure child Cells, verify exact outputs, preserve parent fences, and expose only completed-group results.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Complete an OR group with one valid result and fence effects from losing branches.
+Planned acceptance: Complete a trial group after a verified winner and cancel its unstarted alternatives; require every AND result, enforce the shared budget, and deny effects from registered branches.
 
-Status: Queued. Source message: `274013f7-dc77-40cf-93ee-b33bd4c2fa08`.
+Status: Validated on Jekyll. Tested commit: `b8b8240`. Source message: `274013f7-dc77-40cf-93ee-b33bd4c2fa08`.
+
+Detailed comparison and results: [Day 062](day-062.md).
 
 ## Day 063 — 2026-08-27
 
