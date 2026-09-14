@@ -208,5 +208,6 @@ int test_state_staged_mutation(void)
 	if (ret != ANX_OK)
 		return -41;
 
-	return anx_research_day034();
+	ret = anx_research_day034();
+	return ret == ANX_OK ? anx_research_day045() : ret;
 }
