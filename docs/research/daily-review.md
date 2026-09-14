@@ -845,7 +845,7 @@ Evidence: [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/
 
 Planned acceptance: Release idle reservations, reject reacquisition under competing demand, and restore the saved request after capacity becomes available.
 
-Status: Validated on Jekyll. Tested commit: `482d70f`. Source message: `aba76f45-4f15-42d7-a43b-d5f1d488eb4a`.
+Status: Merged at `07bc005` after Jekyll validation. Tested commit: `482d70f`. Source message: `aba76f45-4f15-42d7-a43b-d5f1d488eb4a`.
 
 Detailed comparison and results: [Day 052](day-052.md).
 
@@ -855,13 +855,15 @@ Detailed comparison and results: [Day 052](day-052.md).
 
 Learning: Declare consistency requirements explicitly and stage effects when stronger guarantees need them.
 
-Anunix comparison: Execution contracts and staged object mutations exist. The cell runtime still contains validation and commit stubs.
+Anunix comparison: Runtime admission now rejects semantic, transactional, token-stable, and automatically staged contracts that lack enforcement. Explicit single-object staging retains visibility, conflict, and abort checks.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
-Planned acceptance: Exercise staged visibility, conflict handling, and abort; reject unsupported transactional claims.
+Planned acceptance: Reject unsupported contracts before handlers run; verify explicit staged visibility, conflict rejection, abort provenance, and successful publication.
 
-Status: Queued. Source message: `c32c6f5c-3fd5-4876-84a4-47e7958510a4`.
+Status: Validated on Jekyll. Tested commit: `79d2ffb`. Source message: `c32c6f5c-3fd5-4876-84a4-47e7958510a4`.
+
+Detailed comparison and results: [Day 053](day-053.md).
 
 ## Day 054 — 2026-08-18
 
