@@ -829,7 +829,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Grow and shrink one phase without changing task identity; reject stale requests, overcommitment, and unsafe shrinkage.
 
-Status: Validated on Jekyll. Tested commit: `233518e`. Source message: `99f0ff6a-48dd-4690-8156-018b950d3c27`.
+Status: Merged at `1e70525` after Jekyll validation. Tested commit: `233518e`. Source message: `99f0ff6a-48dd-4690-8156-018b950d3c27`.
 
 Detailed comparison and results: [Day 051](day-051.md).
 
@@ -839,13 +839,15 @@ Detailed comparison and results: [Day 051](day-051.md).
 
 Learning: Separate resource entitlement from current ownership and allocate physical capacity near use.
 
-Anunix comparison: Anunix already exposes leases and budget profiles. Just-in-time activation needs lifecycle integration.
+Anunix comparison: A controller can park an active phase, releasing its reservation while preserving its private entitlement. Reactivation competes for current capacity and retains task identity.
 
 Evidence: [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c).
 
-Planned acceptance: Release idle capacity while preserving entitlement; revalidate capacity before reacquisition.
+Planned acceptance: Release idle reservations, reject reacquisition under competing demand, and restore the saved request after capacity becomes available.
 
-Status: Queued. Source message: `aba76f45-4f15-42d7-a43b-d5f1d488eb4a`.
+Status: Validated on Jekyll. Tested commit: `482d70f`. Source message: `aba76f45-4f15-42d7-a43b-d5f1d488eb4a`.
+
+Detailed comparison and results: [Day 052](day-052.md).
 
 ## Day 053 — 2026-08-17
 
