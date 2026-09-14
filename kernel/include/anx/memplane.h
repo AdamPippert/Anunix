@@ -135,11 +135,11 @@ struct anx_mem_entry *anx_memplane_lookup(const anx_oid_t *oid);
 /* Release a memory entry reference */
 void anx_memplane_release(struct anx_mem_entry *entry);
 
-/* Promote an entry to a higher tier */
+/* Controller-only placement; L4 accepts only provisional or validated state. */
 int anx_memplane_promote(struct anx_mem_entry *entry,
 			 enum anx_mem_tier target_tier);
 
-/* Demote an entry from a tier */
+/* Controller-only demotion still respects protection and workflow dependencies. */
 int anx_memplane_demote(struct anx_mem_entry *entry,
 			enum anx_mem_tier tier);
 
@@ -153,7 +153,7 @@ int anx_memplane_add_contradiction(struct anx_mem_entry *entry);
 /* Record an access (updates access_count and last_accessed_at) */
 void anx_memplane_record_access(struct anx_mem_entry *entry);
 
-/* Forget a memory entry */
+/* Controller forgetting; active owners may release only their own charged admission. */
 int anx_memplane_forget(struct anx_mem_entry *entry,
 			enum anx_forget_mode mode);
 
