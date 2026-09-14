@@ -16,6 +16,7 @@
 #include <anx/spinlock.h>
 #include <anx/cell.h>
 #include <anx/sched_domain.h>
+#include <anx/branch_group.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
 #include <anx/string.h>
@@ -166,6 +167,7 @@ int anx_external_invoke(struct anx_external_call *call)
 		if (!caller)
 			return ANX_EPERM;
 		ret = anx_cell_check_contract(caller);
+		if (ret == ANX_OK) ret = anx_branch_group_effect_check(&caller->cid);
 		if (ret == ANX_OK) ret = anx_sched_domain_check(caller);
 		if (ret == ANX_OK) {
 			ret = ANX_EPERM;

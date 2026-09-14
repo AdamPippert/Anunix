@@ -23,6 +23,7 @@
 #include <anx/external_call.h>
 #include <anx/sched.h>
 #include <anx/sched_domain.h>
+#include <anx/branch_group.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
 
@@ -153,6 +154,9 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 	ret = anx_sched_domain_check(cell);
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_SCHEDULER_DOMAIN, ret, "scheduler domain denied");
+	ret = anx_branch_group_check(cell);
+	if (ret != ANX_OK)
+		return runtime_deny(trace, ANX_ADMISSION_BRANCH_SCOPE, ret, "branch scope denied");
 
 	ret = anx_cell_check_contract(cell);
 	if (ret != ANX_OK)
@@ -328,6 +332,12 @@ static int runtime_execute(struct anx_cell *cell,
 
 		switch (step->kind) {
 		case ANX_STEP_DIRECT_EXEC:
+			{
+				bool branch = false;
+				ret = anx_branch_group_execute(cell, &branch);
+				if (ret != ANX_OK) return ret;
+				if (branch) break;
+			}
 			/*
 			 * External-call task: dispatch via the scheme
 			 * registry. This is the designated bridge to

@@ -20,6 +20,7 @@
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
 #include <anx/uuid.h>
+#include <anx/branch_group.h>
 
 /* Defined in objstore.c; shared the way anx_lifecycle_transition is. */
 void anx_so_compute_content_hash(struct anx_state_object *obj);
@@ -54,6 +55,7 @@ static int commit_authority(struct anx_state_object *obj)
 	ret = owner->execution.allow_side_effects && !anx_cell_status_terminal(owner->status) ? ANX_OK : ANX_EPERM;
 	if (ret == ANX_OK) ret = anx_identity_admit(owner, NULL);
 	if (ret == ANX_OK) ret = anx_effect_fence_check(owner, NULL, NULL);
+	if (ret == ANX_OK) ret = anx_branch_group_effect_check(actor);
 	anx_cell_store_release(owner);
 	return ret;
 }
