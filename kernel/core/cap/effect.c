@@ -11,6 +11,7 @@
 #include <anx/uuid.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
+#include <anx/branch_group.h>
 
 /* One-way transition table — UNKNOWN is a dead end by construction. */
 static const bool effect_transitions[5][5] = {
@@ -64,6 +65,7 @@ static int effect_check_authority(const anx_cid_t *cell_id, struct anx_sink *sin
 	permitted = cell->execution.allow_side_effects && !anx_cell_status_terminal(cell->status) &&
 		    anx_identity_admit(cell, NULL) == ANX_OK;
 	ret = permitted ? anx_effect_fence_check_sink(cell, sink) : ANX_EPERM;
+	if (ret == ANX_OK) ret = anx_branch_group_effect_check(cell_id);
 	anx_cell_store_release(cell);
 	if (ret != ANX_OK)
 		return ret;
