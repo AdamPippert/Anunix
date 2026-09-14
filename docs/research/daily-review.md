@@ -909,7 +909,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Compare frozen and live routing, then prove memory and accelerator contention can invalidate restoration feasibility.
 
-Status: Validated on Jekyll. Tested commit: `5089793`. Source message: `ddc17c69-af7e-4297-921f-6146b196222e`.
+Status: Merged at `5d84358` after Jekyll validation. Tested commit: `5089793`. Source message: `ddc17c69-af7e-4297-921f-6146b196222e`.
 
 Detailed comparison and results: [Day 056](day-056.md).
 
@@ -919,13 +919,15 @@ Detailed comparison and results: [Day 056](day-056.md).
 
 Learning: Invoke adaptation when deterministic telemetry detects a departure from the validated regime.
 
-Anunix comparison: The regime detector uses an envelope and the promotion gate checks candidate margins.
+Anunix comparison: Bound regions now retain calibrated limits across sustained drift and emit one investigation event per exit. Events grant no policy authority.
 
 Evidence: [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c).
 
-Planned acceptance: Exercise stationary telemetry, a regime exit, rejected adaptation, and return to the baseline.
+Planned acceptance: Exercise stationary telemetry, sustained and repeated departures, stale events, rejected tuning, and return to the calibrated range.
 
-Status: Queued. Source message: `e83e8807-e735-4161-b007-45ecbc8e3ed1`.
+Status: Validated on Jekyll. Tested commit: `f1a6563`. Source message: `e83e8807-e735-4161-b007-45ecbc8e3ed1`.
+
+Detailed comparison and results: [Day 057](day-057.md).
 
 ## Day 058 — 2026-08-22
 
