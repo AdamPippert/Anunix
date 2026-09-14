@@ -1032,11 +1032,12 @@
       ],
       "comparison": "A controller can park an active phase, releasing its reservation while preserving its private entitlement. Reactivation competes for current capacity and retains task identity.",
       "acceptance": "Release idle reservations, reject reacquisition under competing demand, and restore the saved request after capacity becomes available.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-052",
       "comparison_baseline": "1e70525",
       "tested_commit": "482d70f",
-      "evidence": "docs/research/evidence/day-052/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-052/uefi-boot.json",
+      "merged_commit": "07bc005"
     },
     {
       "day": 53,
@@ -1046,13 +1047,18 @@
       "learning": "Declare consistency requirements explicitly and stage effects when stronger guarantees need them.",
       "code": [
         "kernel/include/anx/cell.h",
-        "kernel/core/state/stage.c",
-        "kernel/core/exec/runtime.c"
+        "kernel/core/exec/cell.c",
+        "kernel/core/exec/runtime.c",
+        "kernel/core/exec/external.c",
+        "kernel/core/state/stage.c"
       ],
-      "comparison": "Execution contracts and staged object mutations exist. The cell runtime still contains validation and commit stubs.",
-      "acceptance": "Exercise staged visibility, conflict handling, and abort; reject unsupported transactional claims.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Runtime admission now rejects semantic, transactional, token-stable, and automatically staged contracts that lack enforcement. Explicit single-object staging retains visibility, conflict, and abort checks.",
+      "acceptance": "Reject unsupported contracts before handlers run; verify explicit staged visibility, conflict rejection, abort provenance, and successful publication.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-053",
+      "comparison_baseline": "07bc005",
+      "tested_commit": "79d2ffb",
+      "evidence": "docs/research/evidence/day-053/uefi-boot.json"
     },
     {
       "day": 54,
