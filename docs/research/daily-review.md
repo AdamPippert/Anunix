@@ -941,7 +941,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Run bounded workflow inference, direct and adapter generation, nested ceilings, prompt access denials, cancellation, and stale cache checks.
 
-Status: Validated on Jekyll. Tested commit: `6926c8f`. Source message: `98626b40-d8a8-4dc7-939d-9461ca4b487c`.
+Status: Merged at `cd51346` after Jekyll validation. Tested commit: `6926c8f`. Source message: `98626b40-d8a8-4dc7-939d-9461ca4b487c`.
 
 Detailed comparison and results: [Day 058](day-058.md).
 
@@ -951,13 +951,15 @@ Detailed comparison and results: [Day 058](day-058.md).
 
 Learning: Keep logical identity stable while binding physical representation and execution late.
 
-Anunix comparison: Cells, engine routing, and model representations are separate. Late binding needs version and readiness checks.
+Anunix comparison: Private model bindings now capture logical declarations and object versions, then recheck readiness and policy before changing engines. Backend equivalence remains a controller claim.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Rebind a task to an eligible engine without changing its identity or violating dependencies.
+Planned acceptance: Preserve Cell and model identity across local engine changes; reject stale inputs, unavailable servers, revoked leases, and unauthorized placement.
 
-Status: Queued. Source message: `0808d44d-d49e-4e35-a05c-d1ddb54743e5`.
+Status: Validated on Jekyll. Tested commit: `38db6bb`. Source message: `0808d44d-d49e-4e35-a05c-d1ddb54743e5`.
+
+Detailed comparison and results: [Day 059](day-059.md).
 
 ## Day 060 — 2026-08-24
 
