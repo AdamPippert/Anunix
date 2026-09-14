@@ -376,6 +376,9 @@ int anx_cell_run(struct anx_cell *cell);
 /* Identity of the synchronous runtime's active cell, NULL outside a run. */
 const anx_cid_t *anx_cell_current_id(void);
 
+/* Check the current delegated scope without admitting or executing the Cell. */
+int anx_cell_check_scope(struct anx_cell *cell);
+
 /* Cancel a running or queued cell */
 int anx_cell_cancel(struct anx_cell *cell);
 

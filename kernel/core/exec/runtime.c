@@ -107,8 +107,9 @@ static bool scope_contains(const struct anx_cell *parent,
 	return true;
 }
 
-static int runtime_check_scope(struct anx_cell *cell)
+int anx_cell_check_scope(struct anx_cell *cell)
 {
+	if (!cell) return ANX_EINVAL;
 	struct anx_cell *current = cell;
 	int ret = ANX_OK;
 
@@ -145,7 +146,7 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 	anx_oid_t identity_record;
 	int ret;
 
-	ret = runtime_check_scope(cell);
+	ret = anx_cell_check_scope(cell);
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_SCOPE, ret, "delegated scope denied");
 
@@ -727,7 +728,7 @@ int anx_cell_derive_child(struct anx_cell *parent,
 		return ANX_EINVAL;
 	if (active && anx_uuid_compare(active, &parent->cid))
 		return ANX_EPERM;
-	ret = runtime_check_scope(parent);
+	ret = anx_cell_check_scope(parent);
 	if (ret != ANX_OK)
 		return ret;
 	ret = anx_identity_admit(parent, NULL);
