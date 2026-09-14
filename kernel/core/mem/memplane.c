@@ -181,19 +181,11 @@ void anx_memplane_release(struct anx_mem_entry *entry)
 int anx_memplane_promote(struct anx_mem_entry *entry,
 			 enum anx_mem_tier target_tier)
 {
-	if (!entry)
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!entry || anx_memplane_lookup(&entry->oid) != entry)
 		return ANX_EINVAL;
 	if ((int)target_tier < 0 || target_tier >= ANX_MEM_TIER_COUNT)
 		return ANX_EINVAL;
-
-	/*
-	 * L4 promotion requires at least provisional validation
-	 * (RFC-0004 Section 15.5 Rule 1).
-	 */
-	if (target_tier == ANX_MEM_L4) {
-		if (entry->validation < ANX_MEMVAL_PROVISIONAL)
-			return ANX_EPERM;
-	}
 
 	/*
 	 * L5 promotion requires explicit policy check.
@@ -203,6 +195,12 @@ int anx_memplane_promote(struct anx_mem_entry *entry,
 		return ANX_EPERM;
 
 	anx_spin_lock(&entry->lock);
+	/* Contested, superseded, stale, and quarantined are not higher trust levels. */
+	if (target_tier == ANX_MEM_L4 && entry->validation != ANX_MEMVAL_PROVISIONAL &&
+	    entry->validation != ANX_MEMVAL_VALIDATED) {
+		anx_spin_unlock(&entry->lock);
+		return ANX_EPERM;
+	}
 	entry->tier_mask |= ANX_TIER_BIT(target_tier);
 	anx_spin_unlock(&entry->lock);
 
@@ -212,7 +210,8 @@ int anx_memplane_promote(struct anx_mem_entry *entry,
 int anx_memplane_demote(struct anx_mem_entry *entry,
 			enum anx_mem_tier tier)
 {
-	if (!entry)
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!entry || anx_memplane_lookup(&entry->oid) != entry)
 		return ANX_EINVAL;
 	if ((int)tier < 0 || tier >= ANX_MEM_TIER_COUNT)
 		return ANX_EINVAL;
@@ -296,10 +295,14 @@ int anx_memplane_forget(struct anx_mem_entry *entry,
 			enum anx_forget_mode mode)
 {
 	uint8_t removed;
-	if (!entry)
+	const anx_cid_t *caller = anx_cell_current_id();
+	if (!entry || anx_memplane_lookup(&entry->oid) != entry)
 		return ANX_EINVAL;
 	if ((int)mode < 0 || mode > ANX_FORGET_REDERIVE)
 		return ANX_EINVAL;
+	/* An owner can release its own charged admission, including after revocation. */
+	if (caller && (mode != ANX_FORGET_HARD_DELETE || !entry->admission_owner ||
+	    anx_uuid_compare(caller, &entry->admission_owner->cid))) return ANX_EPERM;
 	removed = entry->tier_mask;
 	if (mode == ANX_FORGET_ARCHIVE)
 		removed &= ~ANX_TIER_BIT(ANX_MEM_L2);
