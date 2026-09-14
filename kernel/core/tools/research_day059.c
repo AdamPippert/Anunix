@@ -63,10 +63,12 @@ int anx_research_day059(void)
 	struct anx_route_binding_spec spec = { .schema = 1, .required_context_tokens = 16,
 		.required_caps = ANX_CAP_SUMMARIZATION, .engine_count = 3 };
 	struct anx_route_binding_view view = {0}, old = {0};
-	struct anx_so_create_params p = { .object_type = ANX_OBJ_STRUCTURED_DATA, .payload = "model-v1", .payload_size = 8 };
+	struct anx_so_create_params p = { .object_type = ANX_OBJ_STRUCTURED_DATA, .payload = "model-v1", .payload_size = 8,
+		.schema_uri = "anx:research/model-definition/v1", .schema_version = "1" };
 	int ret = anx_so_create(&p, &model);
 	if (ret == ANX_OK) ret = anx_so_seal(&model->oid);
 	p.object_type = ANX_OBJ_BYTE_DATA; p.payload = "state-v1"; p.sensitivity = ANX_SENSITIVITY_CONFIDENTIAL;
+	p.schema_uri = p.schema_version = NULL;
 	if (ret == ANX_OK) ret = anx_so_create(&p, &input);
 	if (ret == ANX_OK) ret = anx_so_open(&input->oid, ANX_OPEN_READWRITE, &writer);
 	anx_strlcpy(intent.name, "research-day-059", sizeof(intent.name));
