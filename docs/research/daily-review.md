@@ -781,7 +781,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Keep paused dependency chains resident, reject contested or revalidated evidence under the old manifest, and recover through explicit rebinding.
 
-Status: Validated on Jekyll. Tested commit: `36b6051`. Source message: `a17f5f52-26fe-4618-8c6e-1438b85cd28e`.
+Status: Merged at `cd5fc09` after Jekyll validation. Tested commit: `36b6051`. Source message: `a17f5f52-26fe-4618-8c6e-1438b85cd28e`.
 
 Detailed comparison and results: [Day 048](day-048.md).
 
@@ -791,13 +791,15 @@ Detailed comparison and results: [Day 048](day-048.md).
 
 Learning: Let AI supply advice while deterministic subsystems retain ownership of placement, eviction, and commit.
 
-Anunix comparison: Memory and lease managers own native state. Staged writes separate pending data from publication.
+Anunix comparison: Direct placement is now controller-only, owner cleanup preserves admission accounting, and L4 promotion accepts only provisional or validated state.
 
 Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/state/stage.c](../../kernel/core/state/stage.c).
 
-Planned acceptance: Establish that an advisory hint cannot override a hard memory or authority constraint.
+Planned acceptance: Verify maximum hints cannot override placement authority or memory ceilings, while owners can release charges after permission revocation.
 
-Status: Queued. Source message: `64e753a4-3d01-4979-b642-b5fd448d0c86`.
+Status: Validated on Jekyll. Tested commit: `a0af482`. Source message: `64e753a4-3d01-4979-b642-b5fd448d0c86`.
+
+Detailed comparison and results: [Day 049](day-049.md).
 
 ## Day 050 — 2026-08-14
 
