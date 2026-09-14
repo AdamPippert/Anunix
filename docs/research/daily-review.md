@@ -1003,7 +1003,7 @@ Anunix comparison: Native branch groups now distinguish required results from co
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Complete a trial group after a verified winner and cancel its unstarted alternatives; require every AND result, enforce the shared budget, and deny effects from registered branches.
+Planned acceptance: Accept a verified trial winner and cancel unstarted alternatives. Require every AND result, enforce the shared budget, and deny branch effects.
 
 Status: Validated on Jekyll. Tested commit: `b8b8240`. Source message: `274013f7-dc77-40cf-93ee-b33bd4c2fa08`.
 
