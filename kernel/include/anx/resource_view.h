@@ -29,4 +29,8 @@ int anx_resource_view_clone(const anx_oid_t *handle, anx_oid_t *alias);
 int anx_resource_view_release(const anx_oid_t *handle);
 int anx_resource_view_info(const anx_oid_t *handle, struct anx_resource_view_info *out);
 int anx_resource_view_read(const anx_oid_t *handle, uint32_t offset, void *bytes, uint32_t size);
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+/* Test-only reversible corruption; excluded from production kernels. */
+int anx_resource_view_test_corrupt(const anx_oid_t *handle);
+#endif
 #endif
