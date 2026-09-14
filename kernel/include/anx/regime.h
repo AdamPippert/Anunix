@@ -1,52 +1,42 @@
-/*
- * anx/regime.h — Regime Detector (RFC-0029).
- *
- * A small, deterministic change-point detector that gates *whether* an
- * AI-proposed scheduling/routing policy is even considered. It does not
- * generate or evaluate policy itself — it only decides whether current
- * telemetry has left a validated operating envelope. Escalation is the
- * trigger to run the (separately gated) promotion pipeline; it is not
- * itself a promotion decision.
- *
- * Design: two EWMAs (a slow baseline, a fast tracker) over an arbitrary
- * caller-chosen integer metric. Escalates when the trackers diverge past
- * ANX_REGIME_ESCALATE_THRESHOLD; returns to stable only once they
- * reconverge under the smaller ANX_REGIME_STABLE_THRESHOLD (hysteresis,
- * to avoid flapping at the boundary).
- */
-
+/* Deterministic telemetry tracking and controller-bound policy regions. */
 #ifndef ANX_REGIME_H
 #define ANX_REGIME_H
-
 #include <anx/types.h>
 
-enum anx_regime_state {
-	ANX_REGIME_STABLE,
-	ANX_REGIME_ESCALATED,
+enum anx_regime_state { ANX_REGIME_STABLE, ANX_REGIME_ESCALATED };
+#define ANX_REGIME_ESCALATE_THRESHOLD 200
+#define ANX_REGIME_STABLE_THRESHOLD 50
+#define ANX_REGIME_SLOW_WINDOW 32
+#define ANX_REGIME_FAST_WINDOW 4
+#define ANX_REGIME_MIN_SAMPLES ANX_REGIME_SLOW_WINDOW
+#define ANX_REGIME_RETURN_SAMPLES 3
+
+/* Bounds use the caller's consistent telemetry unit. Calibration is a controller claim. */
+struct anx_regime_region {
+	uint32_t schema;
+	int64_t minimum, maximum;
+	uint64_t policy_generation;
+};
+struct anx_regime_event {
+	uint64_t id, region_id, policy_generation;
+	int64_t sample, minimum, maximum;
+};
+struct anx_regime_status {
+	bool bound, warming_up, event_claimed;
+	enum anx_regime_state state;
+	uint32_t samples, return_samples;
+	uint64_t region_id, event_id;
+	struct anx_regime_region region;
+	int64_t slow_ewma, fast_ewma;
 };
 
-/* Divergence thresholds, in the same units as the observed samples. */
-#define ANX_REGIME_ESCALATE_THRESHOLD	200
-#define ANX_REGIME_STABLE_THRESHOLD	50
-
-/* EWMA smoothing windows (larger = slower to move). */
-#define ANX_REGIME_SLOW_WINDOW		32
-#define ANX_REGIME_FAST_WINDOW		4
-
-/* Minimum samples observed before the detector will report ESCALATED —
- * avoids a false escalation from startup transients before the slow
- * baseline has meaningfully converged. */
-#define ANX_REGIME_MIN_SAMPLES		ANX_REGIME_SLOW_WINDOW
-
+/* Controller-only mutations. Reset removes the binding but preserves ID monotonicity. */
 void anx_regime_init(void);
-
-/* Reset all observed state back to freshly-initialized (test isolation). */
 void anx_regime_reset(void);
-
-/* Feed one telemetry sample (caller picks the metric and its units —
- * e.g. observed_latency_ns from a route feedback record). */
 int anx_regime_observe(int64_t sample);
-
+int anx_regime_bind(const struct anx_regime_region *region, uint64_t *id_out);
+/* One event per exit. An event permits investigation, not policy promotion. */
+int anx_regime_claim(struct anx_regime_event *out);
+int anx_regime_get(struct anx_regime_status *out);
 enum anx_regime_state anx_regime_current(void);
-
-#endif /* ANX_REGIME_H */
+#endif
