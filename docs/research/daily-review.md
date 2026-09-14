@@ -877,7 +877,7 @@ Evidence: [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/
 
 Planned acceptance: Keep the old adapter serving until verified publication; check changed tokens, stale cache rejection, unrelated adapter isolation, and rollback.
 
-Status: Validated on Jekyll. Tested commit: `aa82de4`. Source message: `5cba8a41-798c-4f31-b00b-12653231ce94`.
+Status: Merged at `6e063b6` after Jekyll validation. Tested commit: `aa82de4`. Source message: `5cba8a41-798c-4f31-b00b-12653231ce94`.
 
 Detailed comparison and results: [Day 054](day-054.md).
 
@@ -887,13 +887,15 @@ Detailed comparison and results: [Day 054](day-054.md).
 
 Learning: Check operation authority, information flow, resource admission, and outcome evidence independently.
 
-Anunix comparison: The protected-operation protocol and sensitivity checks exist. Actual boundary dispatch must use them.
+Anunix comparison: Direct calls now enforce fenced-run sensitivity. Explicit protected operations bind copied requests to destinations and retain ambiguous provider outcomes without redispatching the same identifier.
 
 Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/state/access.c](../../kernel/core/state/access.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
-Planned acceptance: Deny disallowed egress despite call authority; retain an unknown outcome without blind retry.
+Planned acceptance: Deny confidential egress without destination permission; verify approved dispatch, source and provider rechecks, and retained UNKNOWN outcomes that block redispatch.
 
-Status: Queued. Source message: `86cfdecb-bae0-4623-9998-6f19c1f1247a`.
+Status: Validated on Jekyll. Tested commit: `5293121`. Source message: `86cfdecb-bae0-4623-9998-6f19c1f1247a`.
+
+Detailed comparison and results: [Day 055](day-055.md).
 
 ## Day 056 — 2026-08-20
 
