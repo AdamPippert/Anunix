@@ -39,5 +39,6 @@ int anx_resource_view_move(const anx_oid_t *handle, const anx_oid_t *destination
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 /* Test-only reversible corruption; excluded from production kernels. */
 int anx_resource_view_test_corrupt(const anx_oid_t *handle);
+int anx_resource_view_test_move_fault(bool enabled);
 #endif
 #endif
