@@ -82,4 +82,13 @@ int anx_lease_release(struct anx_engine_lease *lease);
 int anx_lease_avail_mem(enum anx_mem_tier tier, uint64_t *avail_out);
 int anx_lease_avail_accel(enum anx_accel_type accel, uint32_t *pct_out);
 
+/* One coherent ledger snapshot, independent of physical allocator accounting. */
+struct anx_lease_capacity {
+	uint32_t schema;
+	anx_time_t taken_at;
+	uint64_t total_memory[ANX_MEM_TIER_COUNT], free_memory[ANX_MEM_TIER_COUNT];
+	uint32_t total_accelerator[ANX_ACCEL_COUNT], free_accelerator[ANX_ACCEL_COUNT];
+};
+int anx_lease_snapshot_capacity(struct anx_lease_capacity *out);
+
 #endif /* ANX_ENGINE_LEASE_H */
