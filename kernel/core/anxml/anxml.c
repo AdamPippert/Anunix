@@ -20,6 +20,8 @@
  */
 
 #include <anx/anxml.h>
+#include <anx/adapter.h>
+#include <anx/spinlock.h>
 #include <anx/types.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
@@ -34,6 +36,7 @@
 
 static uint32_t g_bigram[V][V];
 static bool     g_inited;
+static struct anx_spinlock generation_lock = ANX_SPINLOCK_INIT;
 
 /*
  * A small canon of English-ish phrases used to seed the bigram table.
@@ -80,10 +83,13 @@ static uint32_t rng_step(uint32_t *state)
 
 void anx_anxml_init(void)
 {
-	if (g_inited) return;
-	anx_memset(g_bigram, 0, sizeof(g_bigram));
-	seed_corpus();
-	g_inited = true;
+	bool flags;
+	anx_spin_lock_irqsave(&generation_lock, &flags);
+	if (!g_inited) {
+		anx_memset(g_bigram, 0, sizeof(g_bigram));
+		seed_corpus(); g_inited = true;
+	}
+	anx_spin_unlock_irqrestore(&generation_lock, flags);
 }
 
 /* Boost bigrams from the prompt so the toy stays on-topic. */
@@ -130,7 +136,7 @@ static int sample_next(unsigned char prev, uint32_t *rng_state)
 /* Public generate                                                     */
 /* ------------------------------------------------------------------ */
 
-int anx_anxml_generate(const struct anx_anxml_request *req,
+static int generate_image(const struct anx_anxml_request *req, const struct anx_adapter_image *image,
 		       struct anx_anxml_response *resp)
 {
 	uint32_t      max_tokens;
@@ -142,9 +148,12 @@ int anx_anxml_generate(const struct anx_anxml_request *req,
 	uint32_t     *rng_p;
 	bool          had_printable = false;
 
-	if (!req || !resp)
+	if (!req || !resp || req->prompt_len > ANX_ANXML_PROMPT_MAX)
 		return ANX_EINVAL;
-	if (!g_inited) anx_anxml_init();
+	if (image && anx_adapter_image_check(image) != ANX_OK) return ANX_EINVAL;
+	bool flags;
+	anx_spin_lock_irqsave(&generation_lock, &flags);
+	g_inited = true;
 
 	anx_memset(resp, 0, sizeof(*resp));
 	max_tokens = req->max_tokens ? req->max_tokens : ANX_ANXML_DEFAULT_MAX;
@@ -157,6 +166,10 @@ int anx_anxml_generate(const struct anx_anxml_request *req,
 	anx_memset(g_bigram, 0, sizeof(g_bigram));
 	seed_corpus();
 	seed_prompt(req->prompt, req->prompt_len);
+	if (image) for (uint32_t d = 0; d < image->count; d++) {
+		const struct anx_adapter_delta *delta = &image->deltas[d];
+		g_bigram[delta->previous][delta->next] += delta->boost;
+	}
 
 	/* Seed previous-byte from the tail of the prompt (or space). */
 	prev = ' ';
@@ -190,7 +203,19 @@ int anx_anxml_generate(const struct anx_anxml_request *req,
 	resp->output[out_len] = '\0';
 	resp->output_len      = out_len;
 	resp->tokens_generated = tokens;
+	anx_spin_unlock_irqrestore(&generation_lock, flags);
 	return ANX_OK;
+}
+
+int anx_anxml_generate(const struct anx_anxml_request *req, struct anx_anxml_response *resp)
+{
+	return generate_image(req, NULL, resp);
+}
+int anx_anxml_generate_image(const struct anx_anxml_request *req, const struct anx_adapter_image *image,
+		struct anx_anxml_response *resp)
+{
+	if (!image) return ANX_EINVAL;
+	return generate_image(req, image, resp);
 }
 
 /* ------------------------------------------------------------------ */
