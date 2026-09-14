@@ -26,6 +26,7 @@ struct anx_phase_request {
 	uint32_t accelerator_pct;
 };
 struct anx_phase_view {
+	bool parked;
 	anx_cid_t owner;
 	enum anx_phase_role role;
 	enum anx_phase_kind phase;
@@ -47,5 +48,9 @@ int anx_phase_finish(const anx_cid_t *owner, uint64_t epoch);
 /* Controller resizing preserves the Cell, phase, and lease identity. */
 int anx_phase_resize(const anx_cid_t *owner, uint64_t epoch, uint64_t memory_bytes,
 		uint32_t accelerator_pct, struct anx_phase_view *out);
+
+/* Controllers park quiescent phases and reacquire their saved request on demand. */
+int anx_phase_park(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out);
+int anx_phase_resume(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out);
 
 #endif
