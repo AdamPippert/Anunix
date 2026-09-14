@@ -8,6 +8,8 @@ struct phase_record {
 	struct anx_cell *owner;
 	struct anx_engine_lease *lease;
 	struct anx_phase_contract contract;
+	uint64_t parked_bytes;
+	uint32_t parked_pct;
 	struct anx_phase_view view;
 };
 static struct phase_record phases[ANX_PHASE_OWNER_MAX];
@@ -109,7 +111,7 @@ int anx_phase_begin(const anx_cid_t *owner, uint64_t epoch, const struct anx_pha
 	anx_spin_lock_irqsave(&phase_lock, &flags);
 	struct phase_record *p = lookup(owner);
 	if (!p) { ret = ANX_ENOENT; goto out; }
-	if (p->view.epoch != epoch || p->lease) { ret = ANX_EBUSY; goto out; }
+	if (p->view.epoch != epoch || p->view.phase != ANX_PHASE_IDLE || p->lease) { ret = ANX_EBUSY; goto out; }
 	if (anx_cell_status_terminal(p->owner->status)) { ret = ANX_EPERM; goto out; }
 	const struct anx_phase_limit *l = &p->contract.limits[request->phase];
 	if (!l->enabled || request->memory_bytes > l->memory_bytes ||
@@ -166,11 +168,11 @@ int anx_phase_finish(const anx_cid_t *owner, uint64_t epoch)
 	anx_spin_lock_irqsave(&phase_lock, &flags);
 	struct phase_record *p = lookup(owner);
 	if (!p) ret = ANX_ENOENT;
-	else if (p->view.epoch != epoch || !p->lease) ret = ANX_EBUSY;
+	else if (p->view.epoch != epoch || p->view.phase == ANX_PHASE_IDLE) ret = ANX_EBUSY;
 	else {
-		ret = anx_lease_release(p->lease);
+		ret = p->lease ? anx_lease_release(p->lease) : (p->view.parked ? ANX_OK : ANX_EBUSY);
 		if (ret == ANX_OK) {
-			p->lease = NULL;
+			p->lease = NULL; p->parked_bytes = 0; p->parked_pct = 0;
 			anx_memset(&p->view, 0, sizeof(p->view));
 			p->view.owner = *owner; p->view.role = p->contract.role;
 			/* Exhaustion can close leases but cannot authorize any new phase. */
@@ -192,20 +194,65 @@ int anx_phase_detach(const anx_cid_t *owner)
 	anx_spin_lock_irqsave(&phase_lock, &flags);
 	struct phase_record *p = lookup(owner);
 	if (!p) ret = ANX_ENOENT;
-	else if (p->lease) ret = ANX_EBUSY;
+	else if (p->lease || p->view.phase != ANX_PHASE_IDLE) ret = ANX_EBUSY;
 	else { cell = p->owner; anx_memset(p, 0, sizeof(*p)); }
 	anx_spin_unlock_irqrestore(&phase_lock, flags);
 	if (cell) anx_cell_store_release(cell);
 	return ret;
 }
 
+static int capacity_transition(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out, bool resume)
+{
+	bool flags;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	int ret = caller_check(owner);
+	if (ret != ANX_OK) return ret;
+	if (!epoch || !out) return ANX_EINVAL;
+	anx_spin_lock_irqsave(&phase_lock, &flags);
+	struct phase_record *p = lookup(owner);
+	if (!p) { ret = ANX_ENOENT; goto done; }
+	if (p->view.epoch != epoch || p->view.phase == ANX_PHASE_IDLE || p->view.parked != resume) {
+		ret = ANX_EBUSY; goto done;
+	}
+	if (anx_cell_status_terminal(p->owner->status)) { ret = ANX_EPERM; goto done; }
+	if (sequence == ~(uint64_t)0) { ret = ANX_EFULL; goto done; }
+	if (resume) {
+		if (p->lease) { ret = ANX_EBUSY; goto done; }
+		const struct anx_phase_limit *limit = &p->contract.limits[p->view.phase];
+		if (!limit->enabled || p->parked_bytes > limit->memory_bytes || p->parked_pct > limit->accelerator_pct) {
+			ret = ANX_EPERM; goto done;
+		}
+		anx_eid_t id;
+		anx_uuid_generate(&id);
+		ret = anx_lease_grant(&id, limit->tier, p->parked_bytes, limit->accelerator, p->parked_pct, &p->lease);
+		if (ret != ANX_OK) goto done;
+		p->view.lease_id = id;
+		p->view.memory_bytes = p->parked_bytes; p->view.accelerator_pct = p->parked_pct;
+		p->parked_bytes = 0; p->parked_pct = 0;
+	} else {
+		if (!p->lease || anx_lease_lookup(&p->view.lease_id) != p->lease) { ret = ANX_EPERM; goto done; }
+		if (p->lease->mem_reserved_bytes != p->view.memory_bytes || p->lease->accel_pct != p->view.accelerator_pct) {
+			ret = ANX_EBUSY; goto done;
+		}
+		ret = anx_lease_release(p->lease);
+		if (ret != ANX_OK) goto done;
+		p->lease = NULL;
+		p->parked_bytes = p->view.memory_bytes; p->parked_pct = p->view.accelerator_pct;
+		p->view.memory_bytes = 0; p->view.accelerator_pct = 0;
+		anx_memset(&p->view.lease_id, 0, sizeof(p->view.lease_id));
+	}
+	p->view.parked = !resume; p->view.epoch = ++sequence;
+	*out = p->view;
+done:
+	anx_spin_unlock_irqrestore(&phase_lock, flags);
+	return ret;
+}
+
 int anx_phase_park(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out)
 {
-	(void)owner; (void)epoch; (void)out;
-	return ANX_ENOTSUP;
+	return capacity_transition(owner, epoch, out, false);
 }
 int anx_phase_resume(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out)
 {
-	(void)owner; (void)epoch; (void)out;
-	return ANX_ENOTSUP;
+	return capacity_transition(owner, epoch, out, true);
 }
