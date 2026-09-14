@@ -1241,7 +1241,7 @@
         "kernel/core/state/stage.c"
       ],
       "comparison": "Native branch groups now distinguish required results from competing trials. They execute bounded toy-model candidates as pure child Cells, verify exact outputs, preserve parent fences, and expose only completed-group results.",
-      "acceptance": "Complete a trial group after a verified winner and cancel its unstarted alternatives; require every AND result, enforce the shared budget, and deny effects from registered branches.",
+      "acceptance": "Accept a verified trial winner and cancel unstarted alternatives. Require every AND result, enforce the shared budget, and deny branch effects.",
       "status": "validated",
       "branch": "codex/ai-os-day-062",
       "comparison_baseline": "7c3a1f5",
