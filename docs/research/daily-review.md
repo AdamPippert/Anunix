@@ -797,7 +797,7 @@ Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kerne
 
 Planned acceptance: Verify maximum hints cannot override placement authority or memory ceilings, while owners can release charges after permission revocation.
 
-Status: Validated on Jekyll. Tested commit: `a0af482`. Source message: `64e753a4-3d01-4979-b642-b5fd448d0c86`.
+Status: Merged at `f228dae` after Jekyll validation. Tested commit: `a0af482`. Source message: `64e753a4-3d01-4979-b642-b5fd448d0c86`.
 
 Detailed comparison and results: [Day 049](day-049.md).
 
@@ -807,13 +807,15 @@ Detailed comparison and results: [Day 049](day-049.md).
 
 Learning: Separate logical liveness from physical allocation so dead state does not pin an entire allocation.
 
-Anunix comparison: The inference and memory layers provide starting points. Fine-grained KV liveness is not implied by object retention.
+Anunix comparison: Bounded logical views now preserve record identity and aliases while verified compaction reclaims native physical pages.
 
 Evidence: [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c).
 
-Planned acceptance: Reclaim dead logical state without invalidating a surviving reference.
+Planned acceptance: Reclaim dead records from fragmented pages while surviving aliases retain identical bytes and identity; preserve mappings after rejected copies.
 
-Status: Queued. Source message: `880a7069-0965-4314-9d09-048664fc8ba6`.
+Status: Validated on Jekyll. Tested commit: `2906052`. Source message: `880a7069-0965-4314-9d09-048664fc8ba6`.
+
+Detailed comparison and results: [Day 050](day-050.md).
 
 ## Day 051 — 2026-08-15
 
