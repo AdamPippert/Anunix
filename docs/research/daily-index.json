@@ -875,11 +875,12 @@
       ],
       "comparison": "A trusted compiler now seals finite routing cases and measured simulation results against a captured incumbent and engine environment. The live planner selects the issued profile per decision only while that envelope matches; all rejections retain incumbent weights.",
       "acceptance": "Reject a profile outside its validated operating envelope and use the incumbent.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-044",
       "comparison_baseline": "4447733",
       "tested_commit": "3a4537d",
-      "evidence": "docs/research/evidence/day-044/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-044/uefi-boot.json",
+      "merged_commit": "10fcbc7"
     },
     {
       "day": 45,
@@ -892,10 +893,13 @@
         "kernel/core/twin/twin.c",
         "kernel/core/cap/effect.c"
       ],
-      "comparison": "Object staging and hypothetical routing are separate mechanisms. Their composition must preserve authority.",
+      "comparison": "A bounded speculation broker now keeps candidate object replacements private. Publication requires matching action bytes, origin state, deadline, and current staged-write authority. Incorrect, stale, expired, or unauthorized candidates close without publishing their payload or dispatching an external handler.",
       "acceptance": "Discard an incorrect prediction without changing committed state or invoking a handler.",
-      "status": "queued",
-      "branch": null
+      "status": "validated",
+      "branch": "codex/ai-os-day-045",
+      "comparison_baseline": "10fcbc7",
+      "tested_commit": "afdfacf",
+      "evidence": "docs/research/evidence/day-045/uefi-boot.json"
     },
     {
       "day": 46,

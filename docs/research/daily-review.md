@@ -717,7 +717,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject a profile outside its validated operating envelope and use the incumbent.
 
-Status: Validated on Jekyll. Tested commit: `3a4537d`. Source message: `ad4ddc59-952c-4cfe-b496-8bb3ea56f9db`.
+Status: Merged at `10fcbc7` after Jekyll validation. Tested commit: `3a4537d`. Source message: `ad4ddc59-952c-4cfe-b496-8bb3ea56f9db`.
 
 Detailed comparison and results: [Day 044](day-044.md).
 
@@ -727,13 +727,15 @@ Detailed comparison and results: [Day 044](day-044.md).
 
 Learning: Prepare predicted futures cheaply and commit only after deterministic validation.
 
-Anunix comparison: Object staging and hypothetical routing are separate mechanisms. Their composition must preserve authority.
+Anunix comparison: A bounded speculation broker now keeps candidate object replacements private. Publication requires matching action bytes, origin state, deadline, and current staged-write authority. Incorrect, stale, expired, or unauthorized candidates close without publishing their payload or dispatching an external handler.
 
 Evidence: [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c).
 
 Planned acceptance: Discard an incorrect prediction without changing committed state or invoking a handler.
 
-Status: Queued. Source message: `e5c38077-c49b-485a-9a11-b8747064f5a4`.
+Status: Validated on Jekyll. Tested commit: `afdfacf`. Source message: `e5c38077-c49b-485a-9a11-b8747064f5a4`.
+
+Detailed comparison and results: [Day 045](day-045.md).
 
 ## Day 046 — 2026-08-10
 
