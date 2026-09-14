@@ -934,11 +934,12 @@
       ],
       "comparison": "The native profile compiler now calculates storage and work requirements and rejects declared budgets before allocation or evaluation.",
       "acceptance": "Reject insufficient artifact, scratch, or simulation budgets without publishing a profile; use an exact-budget candidate after ordinary validation.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-047",
       "comparison_baseline": "22bb730",
       "tested_commit": "abeec0d",
-      "evidence": "docs/research/evidence/day-047/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-047/uefi-boot.json",
+      "merged_commit": "be47141"
     },
     {
       "day": 48,
@@ -947,14 +948,17 @@
       "title": "AI-First OS Update: Make the Agent Working Set Semantic",
       "learning": "Manage the semantic working set by readiness, utility, reconstruction cost, provenance, and dependencies.",
       "code": [
-        "kernel/core/twin/twin.c",
-        "kernel/core/mem/memplane.c",
-        "kernel/core/state/provenance.c"
+        "kernel/core/workflow/semantic.c",
+        "kernel/core/workflow/workflow_object.c",
+        "kernel/core/mem/memplane.c"
       ],
-      "comparison": "Readiness, memory tiers, and provenance exist in separate modules.",
-      "acceptance": "Preserve useful state with live dependencies and reject reuse after its provenance becomes invalid.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Semantic manifests now protect declared live dependencies and pin controller-issued memory validation generations before reuse or resume.",
+      "acceptance": "Keep paused dependency chains resident, reject contested or revalidated evidence under the old manifest, and recover through explicit rebinding.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-048",
+      "comparison_baseline": "be47141",
+      "tested_commit": "36b6051",
+      "evidence": "docs/research/evidence/day-048/uefi-boot.json"
     },
     {
       "day": 49,
