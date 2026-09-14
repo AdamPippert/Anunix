@@ -925,7 +925,7 @@ Evidence: [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c), [ker
 
 Planned acceptance: Exercise stationary telemetry, sustained and repeated departures, stale events, rejected tuning, and return to the calibrated range.
 
-Status: Validated on Jekyll. Tested commit: `f1a6563`. Source message: `e83e8807-e735-4161-b007-45ecbc8e3ed1`.
+Status: Merged at `e3c41b7` after Jekyll validation. Tested commit: `f1a6563`. Source message: `e83e8807-e735-4161-b007-45ecbc8e3ed1`.
 
 Detailed comparison and results: [Day 057](day-057.md).
 
@@ -935,13 +935,15 @@ Detailed comparison and results: [Day 057](day-057.md).
 
 Learning: Budget model choice, reasoning, skills, and context before physical placement.
 
-Anunix comparison: Cognitive-envelope fields exist. Their header explicitly identifies missing integration with specialized anxml workflow dispatch.
+Anunix comparison: Native Anxml now applies captured per-generation ceilings, including workflow and adapter calls. Effective ceilings also participate in adapter cache identity.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c).
 
-Planned acceptance: Enforce a cognitive budget in the real inference dispatch path.
+Planned acceptance: Run bounded workflow inference, direct and adapter generation, nested ceilings, prompt access denials, cancellation, and stale cache checks.
 
-Status: Queued. Source message: `98626b40-d8a8-4dc7-939d-9461ca4b487c`.
+Status: Validated on Jekyll. Tested commit: `6926c8f`. Source message: `98626b40-d8a8-4dc7-939d-9461ca4b487c`.
+
+Detailed comparison and results: [Day 058](day-058.md).
 
 ## Day 059 — 2026-08-23
 
