@@ -1054,11 +1054,12 @@
       ],
       "comparison": "Runtime admission now rejects semantic, transactional, token-stable, and automatically staged contracts that lack enforcement. Explicit single-object staging retains visibility, conflict, and abort checks.",
       "acceptance": "Reject unsupported contracts before handlers run; verify explicit staged visibility, conflict rejection, abort provenance, and successful publication.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-053",
       "comparison_baseline": "07bc005",
       "tested_commit": "79d2ffb",
-      "evidence": "docs/research/evidence/day-053/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-053/uefi-boot.json",
+      "merged_commit": "7a45ecf"
     },
     {
       "day": 54,
@@ -1067,13 +1068,17 @@
       "title": "AI-First OS Update: Model Updates Need Transaction Semantics",
       "learning": "Publish model adaptations atomically and key caches by the served model version.",
       "code": [
-        "kernel/core/anxml/anxml.c",
-        "kernel/core/state/stage.c"
+        "kernel/include/anx/adapter.h",
+        "kernel/core/anxml/adapter.c",
+        "kernel/core/anxml/anxml.c"
       ],
-      "comparison": "Anxml and object staging exist. JEPA training is distinct from transactional publication of serving adapters.",
-      "acceptance": "Keep an old model version usable until a validated candidate and its cache identity publish together.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Anxml can stage and test private toy adapters before publishing their serving generation and cache identity together. Rollback restores the prior image under a fresh generation.",
+      "acceptance": "Keep the old adapter serving until verified publication; check changed tokens, stale cache rejection, unrelated adapter isolation, and rollback.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-054",
+      "comparison_baseline": "7a45ecf",
+      "tested_commit": "aa82de4",
+      "evidence": "docs/research/evidence/day-054/uefi-boot.json"
     },
     {
       "day": 55,
