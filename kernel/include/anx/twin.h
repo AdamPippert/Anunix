@@ -22,6 +22,7 @@
 #include <anx/engine.h>
 #include <anx/sched.h>
 #include <anx/cell.h>
+#include <anx/engine_lease.h>
 
 #define ANX_TWIN_MAX_ENGINES	32
 #define ANX_ROUTE_WEIGHT_LIMIT	1000
@@ -116,5 +117,20 @@ int anx_twin_simulate(struct anx_resource_twin *twin,
 		      struct anx_cell *cell,
 		      const struct anx_route_weight_policy *policy,
 		      struct anx_twin_simulate_result *result_out);
+
+/* Retained storage is distinct from the peak local working set during restoration. */
+struct anx_twin_restore_request {
+	enum anx_mem_tier tier;
+	uint64_t retained_bytes, resident_bytes, restore_peak_bytes;
+	enum anx_accel_type accelerator;
+	uint32_t accelerator_pct;
+};
+struct anx_twin_restore_result {
+	uint64_t additional_memory_bytes;
+	struct anx_twin_simulate_result route;
+};
+int anx_twin_simulate_restoration(struct anx_resource_twin *twin, struct anx_cell *cell,
+		const struct anx_route_weight_policy *policy, const struct anx_twin_restore_request *request,
+		struct anx_twin_restore_result *out);
 
 #endif /* ANX_TWIN_H */

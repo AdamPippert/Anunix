@@ -275,3 +275,11 @@ int anx_twin_simulate(struct anx_resource_twin *twin,
 
 	return ANX_OK;
 }
+
+int anx_twin_simulate_restoration(struct anx_resource_twin *twin, struct anx_cell *cell,
+		const struct anx_route_weight_policy *policy, const struct anx_twin_restore_request *request,
+		struct anx_twin_restore_result *out)
+{
+	(void)twin; (void)cell; (void)policy; (void)request; (void)out;
+	return ANX_ENOTSUP;
+}
