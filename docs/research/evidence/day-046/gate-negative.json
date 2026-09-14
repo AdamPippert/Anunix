@@ -1,0 +1,20 @@
+{
+  "revision": "700f28e",
+  "cases": [
+    {
+      "case": "missing-vm-evidence",
+      "rejected": true,
+      "reason": "[Errno 2] No such file or directory: '/work/runs/day046-700f28e-missing.json'"
+    },
+    {
+      "case": "contradictory-vm-evidence",
+      "rejected": true,
+      "reason": "regression output contradicts passing result"
+    },
+    {
+      "case": "old-image",
+      "rejected": true,
+      "reason": "profile artifact digest or size mismatch"
+    }
+  ]
+}

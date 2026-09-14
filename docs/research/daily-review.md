@@ -733,7 +733,7 @@ Evidence: [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/
 
 Planned acceptance: Discard an incorrect prediction without changing committed state or invoking a handler.
 
-Status: Validated on Jekyll. Tested commit: `afdfacf`. Source message: `e5c38077-c49b-485a-9a11-b8747064f5a4`.
+Status: Merged at `c67f82f` after Jekyll validation. Tested commit: `afdfacf`. Source message: `e5c38077-c49b-485a-9a11-b8747064f5a4`.
 
 Detailed comparison and results: [Day 045](day-045.md).
 
@@ -743,13 +743,15 @@ Detailed comparison and results: [Day 045](day-045.md).
 
 Learning: Use AI as a policy compiler while a deterministic controller builds, measures, and accepts candidates.
 
-Anunix comparison: Routing simulation and measured promotion already exist. The complete build-and-measure loop needs artifact evidence.
+Anunix comparison: Compiled source fingerprints now bind kernel and UEFI artifacts, guest regressions, and host records before a candidate receives a validation record.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
-Planned acceptance: Bind a candidate to its tested image and reject a candidate with absent validation.
+Planned acceptance: Reject absent, contradictory, or mismatched image validation; accept the matching source candidate after both VM modes pass the complete regression range.
 
-Status: Queued. Source message: `e0ca45f5-7a92-4443-8448-b8cd685e712d`.
+Status: Validated on Jekyll. Tested commit: `700f28e`. Source message: `e0ca45f5-7a92-4443-8448-b8cd685e712d`.
+
+Detailed comparison and results: [Day 046](day-046.md).
 
 ## Day 047 — 2026-08-11
 
