@@ -14,6 +14,13 @@ static struct phase_record phases[ANX_PHASE_OWNER_MAX];
 static struct anx_spinlock phase_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
 
+int anx_phase_resize(const anx_cid_t *owner, uint64_t epoch, uint64_t bytes,
+		uint32_t pct, struct anx_phase_view *out)
+{
+	(void)owner; (void)epoch; (void)bytes; (void)pct; (void)out;
+	return ANX_ENOTSUP;
+}
+
 static struct phase_record *lookup(const anx_cid_t *owner)
 {
 	for (uint32_t i = 0; i < ANX_PHASE_OWNER_MAX; i++)
