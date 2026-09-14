@@ -1012,11 +1012,12 @@
       ],
       "comparison": "Controllers can resize active phase reservations while retaining task and lease identity. Contract ceilings, shared capacity, recorded usage, and child reservations constrain each change.",
       "acceptance": "Grow and shrink one phase without changing task identity; reject stale requests, overcommitment, and unsafe shrinkage.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-051",
       "comparison_baseline": "b04649e",
       "tested_commit": "233518e",
-      "evidence": "docs/research/evidence/day-051/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-051/uefi-boot.json",
+      "merged_commit": "1e70525"
     },
     {
       "day": 52,
@@ -1025,14 +1026,17 @@
       "title": "AI-First OS Update: Capacity Should Be Leased Just in Time",
       "learning": "Separate resource entitlement from current ownership and allocate physical capacity near use.",
       "code": [
-        "kernel/core/route/lease.c",
-        "kernel/core/route/budget.c",
-        "kernel/core/twin/twin.c"
+        "kernel/include/anx/phase.h",
+        "kernel/core/route/phase.c",
+        "kernel/core/route/lease.c"
       ],
-      "comparison": "Anunix already exposes leases and budget profiles. Just-in-time activation needs lifecycle integration.",
-      "acceptance": "Release idle capacity while preserving entitlement; revalidate capacity before reacquisition.",
-      "status": "queued",
-      "branch": null
+      "comparison": "A controller can park an active phase, releasing its reservation while preserving its private entitlement. Reactivation competes for current capacity and retains task identity.",
+      "acceptance": "Release idle reservations, reject reacquisition under competing demand, and restore the saved request after capacity becomes available.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-052",
+      "comparison_baseline": "1e70525",
+      "tested_commit": "482d70f",
+      "evidence": "docs/research/evidence/day-052/uefi-boot.json"
     },
     {
       "day": 53,
