@@ -1095,11 +1095,12 @@
       ],
       "comparison": "Direct calls now enforce fenced-run sensitivity. Explicit protected operations bind copied requests to destinations and retain ambiguous provider outcomes without redispatching the same identifier.",
       "acceptance": "Deny confidential egress without destination permission; verify approved dispatch, source and provider rechecks, and retained UNKNOWN outcomes that block redispatch.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-055",
       "comparison_baseline": "6e063b6",
       "tested_commit": "5293121",
-      "evidence": "docs/research/evidence/day-055/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-055/uefi-boot.json",
+      "merged_commit": "8c237cb"
     },
     {
       "day": 56,
@@ -1108,13 +1109,18 @@
       "title": "AI-First OS Update: Build a Resource Digital Twin Before a Learned Scheduler",
       "learning": "Use a bounded resource model to compare near-term scheduling choices before changing the live system.",
       "code": [
+        "kernel/include/anx/twin.h",
         "kernel/core/twin/twin.c",
+        "kernel/include/anx/engine_lease.h",
         "kernel/core/route/lease.c"
       ],
-      "comparison": "The Twin snapshots engines and queue depths. It simulates weighted routing, not complete execution or restoration.",
-      "acceptance": "Compare frozen simulation with live routing and reject infeasible restoration demand.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The Twin now checks declared restoration demand against frozen logical capacity. Live admission still rechecks reservations before use.",
+      "acceptance": "Compare frozen and live routing, then prove memory and accelerator contention can invalidate restoration feasibility.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-056",
+      "comparison_baseline": "8c237cb",
+      "tested_commit": "5089793",
+      "evidence": "docs/research/evidence/day-056/uefi-boot.json"
     },
     {
       "day": 57,
