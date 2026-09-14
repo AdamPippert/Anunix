@@ -69,6 +69,8 @@ int anx_lease_grant_child(struct anx_engine_lease *parent, const anx_eid_t *engi
 			  uint64_t mem_bytes, uint32_t accel_pct, struct anx_engine_lease **out);
 /* Revoke a quiescent subtree. Physical users must stop before this ledger operation. */
 int anx_lease_revoke(struct anx_engine_lease *lease);
+/* Controller-only resizing preserves identity, tier, accelerator, and ancestry. */
+int anx_lease_resize(struct anx_engine_lease *lease, uint64_t memory_bytes, uint32_t accelerator_pct);
 
 /* Look up the lease for an engine */
 struct anx_engine_lease *anx_lease_lookup(const anx_eid_t *engine_id);

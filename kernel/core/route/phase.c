@@ -14,13 +14,6 @@ static struct phase_record phases[ANX_PHASE_OWNER_MAX];
 static struct anx_spinlock phase_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
 
-int anx_phase_resize(const anx_cid_t *owner, uint64_t epoch, uint64_t bytes,
-		uint32_t pct, struct anx_phase_view *out)
-{
-	(void)owner; (void)epoch; (void)bytes; (void)pct; (void)out;
-	return ANX_ENOTSUP;
-}
-
 static struct phase_record *lookup(const anx_cid_t *owner)
 {
 	for (uint32_t i = 0; i < ANX_PHASE_OWNER_MAX; i++)
@@ -130,6 +123,36 @@ int anx_phase_begin(const anx_cid_t *owner, uint64_t epoch, const struct anx_pha
 	p->view.tier = l->tier; p->view.memory_bytes = request->memory_bytes;
 	p->view.accelerator = l->accelerator; p->view.accelerator_pct = request->accelerator_pct;
 out:
+	anx_spin_unlock_irqrestore(&phase_lock, flags);
+	return ret;
+}
+
+int anx_phase_resize(const anx_cid_t *owner, uint64_t epoch, uint64_t bytes,
+		uint32_t pct, struct anx_phase_view *out)
+{
+	bool flags;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	int ret = caller_check(owner);
+	if (ret != ANX_OK) return ret;
+	if (!epoch || !out || pct > 100) return ANX_EINVAL;
+	anx_spin_lock_irqsave(&phase_lock, &flags);
+	struct phase_record *p = lookup(owner);
+	if (!p) { ret = ANX_ENOENT; goto done; }
+	if (p->view.epoch != epoch || !p->lease) { ret = ANX_EBUSY; goto done; }
+	if (anx_cell_status_terminal(p->owner->status)) { ret = ANX_EPERM; goto done; }
+	const struct anx_phase_limit *limit = &p->contract.limits[p->view.phase];
+	if (bytes > limit->memory_bytes || pct > limit->accelerator_pct) { ret = ANX_EPERM; goto done; }
+	if (anx_lease_lookup(&p->view.lease_id) != p->lease) { ret = ANX_EPERM; goto done; }
+	if (p->lease->mem_reserved_bytes != p->view.memory_bytes || p->lease->accel_pct != p->view.accelerator_pct) {
+		ret = ANX_EBUSY; goto done;
+	}
+	if (sequence == ~(uint64_t)0) { ret = ANX_EFULL; goto done; }
+	ret = anx_lease_resize(p->lease, bytes, pct);
+	if (ret == ANX_OK) {
+		p->view.memory_bytes = bytes; p->view.accelerator_pct = pct; p->view.epoch = ++sequence;
+		*out = p->view;
+	}
+done:
 	anx_spin_unlock_irqrestore(&phase_lock, flags);
 	return ret;
 }

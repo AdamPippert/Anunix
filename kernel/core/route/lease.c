@@ -10,6 +10,7 @@
 #include <anx/alloc.h>
 #include <anx/uuid.h>
 #include <anx/arch.h>
+#include <anx/cell.h>
 
 /* Total capacity (set by hardware probing, defaults for QEMU) */
 static uint64_t total_mem_per_tier[ANX_MEM_TIER_COUNT];
@@ -173,6 +174,56 @@ struct anx_engine_lease *anx_lease_lookup(const anx_eid_t *engine_id)
 
 	anx_spin_unlock(&lease_lock);
 	return NULL;
+}
+
+int anx_lease_resize(struct anx_engine_lease *lease, uint64_t bytes, uint32_t pct)
+{
+	struct anx_list_head *pos;
+	uint64_t available, spare;
+	uint32_t percent, spare_pct;
+	int ret = ANX_OK;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!lease || pct > 100) return ANX_EINVAL;
+	anx_spin_lock(&lease_lock);
+	if (!registered(lease)) { ret = ANX_ENOENT; goto done; }
+	if (lease->revoked) { ret = ANX_EPERM; goto done; }
+	if ((int)lease->mem_tier < 0 || lease->mem_tier >= ANX_MEM_TIER_COUNT ||
+	    (int)lease->accel < 0 || lease->accel >= ANX_ACCEL_COUNT ||
+	    (lease->accel == ANX_ACCEL_NONE && pct)) { ret = ANX_EINVAL; goto done; }
+	/* A shrink cannot consume usage or a child's independent reservation. */
+	if (lease->mem_used_bytes > bytes) { ret = ANX_EBUSY; goto done; }
+	spare = bytes - lease->mem_used_bytes; spare_pct = pct;
+	ANX_LIST_FOR_EACH(pos, &lease_list) {
+		const struct anx_engine_lease *child = ANX_LIST_ENTRY(pos, struct anx_engine_lease, lease_link);
+		if (child->parent != lease || child->revoked) continue;
+		if (child->mem_reserved_bytes > spare || child->accel_pct > spare_pct) { ret = ANX_EBUSY; goto done; }
+		spare -= child->mem_reserved_bytes; spare_pct -= child->accel_pct;
+	}
+	if (lease->parent) {
+		if (!registered(lease->parent) || lease->parent->revoked) { ret = ANX_EPERM; goto done; }
+		available = lease->parent->mem_reserved_bytes; percent = lease->parent->accel_pct;
+		if (lease->parent->mem_used_bytes > available) { ret = ANX_ENOMEM; goto done; }
+		available -= lease->parent->mem_used_bytes;
+	} else {
+		available = total_mem_per_tier[lease->mem_tier]; percent = total_accel_pct[lease->accel];
+	}
+	ANX_LIST_FOR_EACH(pos, &lease_list) {
+		const struct anx_engine_lease *other = ANX_LIST_ENTRY(pos, struct anx_engine_lease, lease_link);
+		if (other == lease || other->revoked || other->parent != lease->parent) continue;
+		if (lease->parent || other->mem_tier == lease->mem_tier) {
+			if (other->mem_reserved_bytes > available) { ret = ANX_ENOMEM; goto done; }
+			available -= other->mem_reserved_bytes;
+		}
+		if (lease->accel != ANX_ACCEL_NONE && (lease->parent || other->accel == lease->accel)) {
+			if (other->accel_pct > percent) { ret = ANX_ENOMEM; goto done; }
+			percent -= other->accel_pct;
+		}
+	}
+	if (bytes > available || pct > percent) { ret = ANX_ENOMEM; goto done; }
+	lease->mem_reserved_bytes = bytes; lease->accel_pct = pct;
+done:
+	anx_spin_unlock(&lease_lock);
+	return ret;
 }
 
 int anx_lease_grant_child(struct anx_engine_lease *parent, const anx_eid_t *engine_id,
