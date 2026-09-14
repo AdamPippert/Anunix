@@ -1074,11 +1074,12 @@
       ],
       "comparison": "Anxml can stage and test private toy adapters before publishing their serving generation and cache identity together. Rollback restores the prior image under a fresh generation.",
       "acceptance": "Keep the old adapter serving until verified publication; check changed tokens, stale cache rejection, unrelated adapter isolation, and rollback.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-054",
       "comparison_baseline": "7a45ecf",
       "tested_commit": "aa82de4",
-      "evidence": "docs/research/evidence/day-054/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-054/uefi-boot.json",
+      "merged_commit": "6e063b6"
     },
     {
       "day": 55,
@@ -1087,14 +1088,18 @@
       "title": "AI-First OS Update: The Runtime Boundary Is Becoming an Authority Kernel",
       "learning": "Check operation authority, information flow, resource admission, and outcome evidence independently.",
       "code": [
+        "kernel/include/anx/external_operation.h",
+        "kernel/core/exec/external.c",
         "kernel/core/cap/effect.c",
-        "kernel/core/state/access.c",
-        "kernel/core/cap/capability.c"
+        "kernel/core/cap/effect_fence.c"
       ],
-      "comparison": "The protected-operation protocol and sensitivity checks exist. Actual boundary dispatch must use them.",
-      "acceptance": "Deny disallowed egress despite call authority; retain an unknown outcome without blind retry.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Direct calls now enforce fenced-run sensitivity. Explicit protected operations bind copied requests to destinations and retain ambiguous provider outcomes without redispatching the same identifier.",
+      "acceptance": "Deny confidential egress without destination permission; verify approved dispatch, source and provider rechecks, and retained UNKNOWN outcomes that block redispatch.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-055",
+      "comparison_baseline": "6e063b6",
+      "tested_commit": "5293121",
+      "evidence": "docs/research/evidence/day-055/uefi-boot.json"
     },
     {
       "day": 56,
