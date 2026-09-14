@@ -861,7 +861,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Reject unsupported contracts before handlers run; verify explicit staged visibility, conflict rejection, abort provenance, and successful publication.
 
-Status: Validated on Jekyll. Tested commit: `79d2ffb`. Source message: `c32c6f5c-3fd5-4876-84a4-47e7958510a4`.
+Status: Merged at `7a45ecf` after Jekyll validation. Tested commit: `79d2ffb`. Source message: `c32c6f5c-3fd5-4876-84a4-47e7958510a4`.
 
 Detailed comparison and results: [Day 053](day-053.md).
 
@@ -871,13 +871,15 @@ Detailed comparison and results: [Day 053](day-053.md).
 
 Learning: Publish model adaptations atomically and key caches by the served model version.
 
-Anunix comparison: Anxml and object staging exist. JEPA training is distinct from transactional publication of serving adapters.
+Anunix comparison: Anxml can stage and test private toy adapters before publishing their serving generation and cache identity together. Rollback restores the prior image under a fresh generation.
 
 Evidence: [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/core/state/stage.c](../../kernel/core/state/stage.c).
 
-Planned acceptance: Keep an old model version usable until a validated candidate and its cache identity publish together.
+Planned acceptance: Keep the old adapter serving until verified publication; check changed tokens, stale cache rejection, unrelated adapter isolation, and rollback.
 
-Status: Queued. Source message: `5cba8a41-798c-4f31-b00b-12653231ce94`.
+Status: Validated on Jekyll. Tested commit: `aa82de4`. Source message: `5cba8a41-798c-4f31-b00b-12653231ce94`.
+
+Detailed comparison and results: [Day 054](day-054.md).
 
 ## Day 055 — 2026-08-19
 
