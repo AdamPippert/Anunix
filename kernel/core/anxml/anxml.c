@@ -27,6 +27,7 @@
 #include <anx/string.h>
 #include <anx/alloc.h>
 #include <anx/kprintf.h>
+#include <anx/cell.h>
 
 /* ------------------------------------------------------------------ */
 /* Bigram table                                                        */
@@ -151,14 +152,15 @@ static int generate_image(const struct anx_anxml_request *req, const struct anx_
 	if (!req || !resp || req->prompt_len > ANX_ANXML_PROMPT_MAX)
 		return ANX_EINVAL;
 	if (image && anx_adapter_image_check(image) != ANX_OK) return ANX_EINVAL;
+	max_tokens = req->max_tokens ? req->max_tokens : ANX_ANXML_DEFAULT_MAX;
+	if (max_tokens > ANX_ANXML_OUTPUT_MAX - 1) max_tokens = ANX_ANXML_OUTPUT_MAX - 1;
+	int admission = anx_cell_cognitive_limit(max_tokens, &max_tokens);
+	if (admission != ANX_OK) return admission;
 	bool flags;
 	anx_spin_lock_irqsave(&generation_lock, &flags);
 	g_inited = true;
 
 	anx_memset(resp, 0, sizeof(*resp));
-	max_tokens = req->max_tokens ? req->max_tokens : ANX_ANXML_DEFAULT_MAX;
-	if (max_tokens > ANX_ANXML_OUTPUT_MAX - 1)
-		max_tokens = ANX_ANXML_OUTPUT_MAX - 1;
 
 	/* Reset the bigram table and re-seed from corpus + prompt every
 	 * call.  Without this reset, prompt boosts accumulate across calls
@@ -226,7 +228,7 @@ int anx_anxml_cell_dispatch(const char *intent,
 			    const anx_oid_t *in_oids, uint32_t in_count,
 			    anx_oid_t *out_oid_out)
 {
-	struct anx_state_object    *prompt_obj;
+	struct anx_object_handle   prompt_handle = {0};
 	struct anx_anxml_request    req;
 	struct anx_anxml_response  *resp;
 	struct anx_so_create_params cp;
@@ -240,27 +242,25 @@ int anx_anxml_cell_dispatch(const char *intent,
 
 	if (anx_strcmp(intent, "anxml-generate") != 0)
 		return ANX_ENOSYS;
-	if (in_count < 1)
+	if (in_count != 1 || !in_oids)
 		return ANX_EINVAL;
 
-	prompt_obj = anx_objstore_lookup(&in_oids[0]);
-	if (!prompt_obj)
-		return ANX_ENOENT;
-	if (!prompt_obj->payload || prompt_obj->payload_size == 0) {
-		anx_objstore_release(prompt_obj);
+	rc = anx_so_open(&in_oids[0], ANX_OPEN_READ, &prompt_handle);
+	if (rc != ANX_OK) return rc;
+	if (!prompt_handle.obj->payload || !prompt_handle.obj->payload_size ||
+	    prompt_handle.obj->payload_size > ANX_ANXML_PROMPT_MAX) {
+		anx_so_close(&prompt_handle);
 		return ANX_EINVAL;
 	}
 
 	anx_memset(&req, 0, sizeof(req));
-	plen = (uint32_t)prompt_obj->payload_size;
-	if (plen >= ANX_ANXML_PROMPT_MAX)
-		plen = ANX_ANXML_PROMPT_MAX - 1;
-	anx_memcpy(req.prompt, prompt_obj->payload, plen);
-	req.prompt[plen] = '\0';
+	plen = (uint32_t)prompt_handle.obj->payload_size;
+	rc = anx_so_read_payload(&prompt_handle, 0, req.prompt, plen);
+	anx_so_close(&prompt_handle);
+	if (rc != (int)plen) return rc < 0 ? rc : ANX_EIO;
 	req.prompt_len = plen;
 	anx_strlcpy(req.model_name, "anx:model/default",
 		    sizeof(req.model_name));
-	anx_objstore_release(prompt_obj);
 
 	resp = (struct anx_anxml_response *)anx_zalloc(sizeof(*resp));
 	if (!resp)
@@ -278,6 +278,9 @@ int anx_anxml_cell_dispatch(const char *intent,
 	cp.schema_version = "1";
 	cp.payload        = resp->output;
 	cp.payload_size   = resp->output_len;
+	cp.parent_oids    = in_oids;
+	cp.parent_count   = 1;
+	if (anx_cell_current_id()) cp.creator_cell = *anx_cell_current_id();
 	rc = anx_so_create(&cp, &out_obj);
 	if (rc == ANX_OK) {
 		*out_oid_out = out_obj->oid;

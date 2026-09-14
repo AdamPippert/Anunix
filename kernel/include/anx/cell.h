@@ -232,11 +232,9 @@ struct anx_execution_contract {
  * convention for max_tokens, so existing cells are unaffected.
  *
  * Model-server requests receive max_tokens through the cell runtime.
- * Wiring this into the live anx_anxml_cell_dispatch() call path is
- * future work: that dispatch function is reached through a function
- * pointer from workflow_exec with no cell context threaded through
- * (intent, in_oids, in_count, out_oid_out only) — see
- * docs/design/regime-gated-scheduling.md.
+ * Anxml generation also applies the active runtime's captured token ceiling.
+ * The ceiling bounds each generation, including specialized workflow calls.
+ * It is not a cumulative token allowance for the whole workflow.
  */
 
 struct anx_cognitive_envelope {
@@ -444,10 +442,15 @@ int anx_cell_check_contract(const struct anx_cell *cell);
  * still ANX_CELL_CREATED. Returns:
  *   ANX_OK      success
  *   ANX_EINVAL  null cell
+ *   ANX_EPERM   active Cell cannot change envelopes
  *   ANX_EBUSY   cell has already left ANX_CELL_CREATED
  */
 int anx_cell_set_cognitive_envelope(struct anx_cell *cell,
 				    uint32_t max_tokens,
 				    uint32_t max_reasoning_depth);
+
+/* Clamp a positive generation limit to the captured active scopes.
+ * Unscoped controller calls retain their requested limit. Errors preserve output. */
+int anx_cell_cognitive_limit(uint32_t requested, uint32_t *out);
 
 #endif /* ANX_CELL_H */

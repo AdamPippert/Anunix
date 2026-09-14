@@ -74,21 +74,16 @@ else) is intentionally left to the caller — `anx_regime_observe()` takes
 a plain `int64_t`, not a live hardware read, specifically so the detector
 itself stays fully unit-testable.
 
-## Why the Cognitive Envelope isn't wired into anxml dispatch
+## Cognitive Envelope enforcement in Anxml
 
-`anx_cell_set_cognitive_envelope()` is real and independently tested —
-default zero means unset, matching RFC-0002 DG-8's minimal-overhead
-discipline and the exact precedent T3's `anx_cell_set_contract()` and the
-pre-existing `anx_cell_set_topology()` set. What it does *not* do yet is
-change what `anx_anxml_cell_dispatch()` actually does, because that
-function is reached through a function-pointer table in
-`workflow_exec.c` with signature `(intent, in_oids, in_count,
-out_oid_out)` — no cell context reaches it. Threading cell (or even just
-the envelope) through every registered cell-dispatch function is a
-broader signature change than this RFC's scope. This mirrors the same
-scope boundary RFC-0028 drew around `anx_external_invoke()`'s dispatch
-path (RFC-0028 §6): build the real, tested primitive; document the
-integration gap; don't fabricate a call site that isn't there.
+`anx_cell_set_cognitive_envelope()` declares a per-generation token ceiling before a Cell starts.
+The synchronous runtime captures that envelope and restores the previous context after nested execution.
+Anxml generation applies the most restrictive active ceiling before computation, including calls through the specialized workflow dispatcher.
+A changed declaration returns `ANX_EPERM`; an unscoped controller call retains its requested limit.
+
+Zero leaves the ceiling unset, so Anxml retains its existing default of 128 tokens per generation.
+The ceiling does not measure reasoning depth or accumulate token usage across multiple calls.
+The [Day 058 regression](../research/day-058.md) records the integration checks and Jekyll evidence.
 
 ## Why the promotion gate is a worst-case min-margin test, not a t-test
 
