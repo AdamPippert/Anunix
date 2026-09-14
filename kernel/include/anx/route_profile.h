@@ -27,6 +27,16 @@ struct anx_route_profile {
 	struct anx_route_profile_case_result results[ANX_ROUTE_PROFILE_CASES_MAX];
 };
 
+/* Payload bytes and compiler-owned scratch, excluding allocator/object overhead. */
+struct anx_route_profile_budget {
+	uint64_t artifact_payload_bytes;
+	uint64_t compiler_scratch_bytes;
+	uint32_t simulation_calls;
+};
+int anx_route_profile_compile_bounded(const struct anx_route_weight_policy *weights,
+		const struct anx_route_profile_case *cases, uint32_t count,
+		const struct anx_route_profile_budget *budget, anx_oid_t *out);
+
 /* The trusted compiler records finite cases and requires incumbent-winner preservation. */
 int anx_route_profile_compile(const struct anx_route_weight_policy *weights,
 		const struct anx_route_profile_case *cases, uint32_t count, anx_oid_t *out);

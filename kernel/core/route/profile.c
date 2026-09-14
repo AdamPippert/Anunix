@@ -8,6 +8,15 @@
 #include <anx/uuid.h>
 
 struct issued_profile { uint32_t state; anx_oid_t oid; uint8_t digest[32]; };
+
+/* Baseline adapter exposes the previous compiler without a resource gate. */
+int anx_route_profile_compile_bounded(const struct anx_route_weight_policy *weights,
+		const struct anx_route_profile_case *cases, uint32_t count,
+		const struct anx_route_profile_budget *budget, anx_oid_t *out)
+{
+	(void)budget;
+	return anx_route_profile_compile(weights, cases, count, out);
+}
 static struct issued_profile issued[ANX_ROUTE_PROFILE_MAX];
 static struct anx_spinlock profile_lock = ANX_SPINLOCK_INIT;
 
