@@ -954,11 +954,12 @@
       ],
       "comparison": "Semantic manifests now protect declared live dependencies and pin controller-issued memory validation generations before reuse or resume.",
       "acceptance": "Keep paused dependency chains resident, reject contested or revalidated evidence under the old manifest, and recover through explicit rebinding.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-048",
       "comparison_baseline": "be47141",
       "tested_commit": "36b6051",
-      "evidence": "docs/research/evidence/day-048/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-048/uefi-boot.json",
+      "merged_commit": "cd5fc09"
     },
     {
       "day": 49,
@@ -971,10 +972,13 @@
         "kernel/core/route/lease.c",
         "kernel/core/state/stage.c"
       ],
-      "comparison": "Memory and lease managers own native state. Staged writes separate pending data from publication.",
-      "acceptance": "Establish that an advisory hint cannot override a hard memory or authority constraint.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Direct placement is now controller-only, owner cleanup preserves admission accounting, and L4 promotion accepts only provisional or validated state.",
+      "acceptance": "Verify maximum hints cannot override placement authority or memory ceilings, while owners can release charges after permission revocation.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-049",
+      "comparison_baseline": "cd5fc09",
+      "tested_commit": "a0af482",
+      "evidence": "docs/research/evidence/day-049/uefi-boot.json"
     },
     {
       "day": 50,
