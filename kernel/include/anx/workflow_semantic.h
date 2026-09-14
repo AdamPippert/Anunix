@@ -34,5 +34,7 @@ int anx_wf_semantic_resolve(const anx_oid_t *workflow, const char *name, anx_oid
 /* Executor and checkpoint hooks preserve state on admission failure. */
 int anx_wf_semantic_check(const struct anx_wf_object *workflow);
 anx_oid_t anx_wf_semantic_id(const struct anx_wf_object *workflow);
+/* Private declared resources and the manifest remain needed throughout a live run. */
+bool anx_wf_semantic_needed(const struct anx_wf_object *workflow, const anx_oid_t *oid);
 
 #endif
