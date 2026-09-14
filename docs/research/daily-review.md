@@ -973,7 +973,7 @@ Evidence: [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/
 
 Planned acceptance: Move executable adapter state across physical pools; preserve aliases and owner access, reject failed copies, and invalidate stale model generations.
 
-Status: Validated on Jekyll. Tested commit: `0f2531e`. Source message: `a5ddd2ca-0545-4045-823d-931bd901212f`.
+Status: Merged at `f39c6d4` after Jekyll validation. Tested commit: `0f2531e`. Source message: `a5ddd2ca-0545-4045-823d-931bd901212f`.
 
 Detailed comparison and results: [Day 060](day-060.md).
 
@@ -983,13 +983,15 @@ Detailed comparison and results: [Day 060](day-060.md).
 
 Learning: Delegate revocable CPU ownership through a scheduler hierarchy.
 
-Anunix comparison: Anunix has flat priority queues and engine leases. Linux sub-scheduler support is a reference, not an available Anunix API.
+Anunix comparison: Private scheduler domains now bound bootstrap-CPU eligibility, queue classes, priority, and expiry through a Cell hierarchy. Revocation blocks descendants at dequeue and runtime admission; enforcement remains cooperative.
 
 Evidence: [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c).
 
-Planned acceptance: Revoke a child grant and establish that no task retains capacity outside its authority.
+Planned acceptance: Revoke a child domain and deny its queued and direct descendant work; run a healthy sibling and reject tool dispatch after live expiry.
 
-Status: Queued. Source message: `e2f849a1-d8d9-4741-9440-50fa333e1238`.
+Status: Validated on Jekyll. Tested commit: `95dd4e1`. Source message: `e2f849a1-d8d9-4741-9440-50fa333e1238`.
+
+Detailed comparison and results: [Day 061](day-061.md).
 
 ## Day 062 — 2026-08-26
 
