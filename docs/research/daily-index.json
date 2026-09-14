@@ -895,11 +895,12 @@
       ],
       "comparison": "A bounded speculation broker now keeps candidate object replacements private. Publication requires matching action bytes, origin state, deadline, and current staged-write authority. Incorrect, stale, expired, or unauthorized candidates close without publishing their payload or dispatching an external handler.",
       "acceptance": "Discard an incorrect prediction without changing committed state or invoking a handler.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-045",
       "comparison_baseline": "10fcbc7",
       "tested_commit": "afdfacf",
-      "evidence": "docs/research/evidence/day-045/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-045/uefi-boot.json",
+      "merged_commit": "c67f82f"
     },
     {
       "day": 46,
@@ -912,10 +913,13 @@
         "kernel/core/cap/promotion.c",
         "kernel/core/cap/capability.c"
       ],
-      "comparison": "Routing simulation and measured promotion already exist. The complete build-and-measure loop needs artifact evidence.",
-      "acceptance": "Bind a candidate to its tested image and reject a candidate with absent validation.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Compiled source fingerprints now bind kernel and UEFI artifacts, guest regressions, and host records before a candidate receives a validation record.",
+      "acceptance": "Reject absent, contradictory, or mismatched image validation; accept the matching source candidate after both VM modes pass the complete regression range.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-046",
+      "comparison_baseline": "c67f82f",
+      "tested_commit": "700f28e",
+      "evidence": "docs/research/evidence/day-046/uefi-boot.json"
     },
     {
       "day": 47,

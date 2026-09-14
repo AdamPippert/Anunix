@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "validated": true,
+  "declared_revision": "700f28e",
+  "source_sha256": "21e7660f41c2dd43803063299ae86637611a0eeee835509464329063492eeabd",
+  "required_tests": [
+    "day-001",
+    "day-002",
+    "day-003",
+    "day-004",
+    "day-005",
+    "day-006",
+    "day-007",
+    "day-008",
+    "day-009",
+    "day-010",
+    "day-011",
+    "day-012",
+    "day-013",
+    "day-014",
+    "day-015",
+    "day-016",
+    "day-017",
+    "day-018",
+    "day-019",
+    "day-020",
+    "day-021",
+    "day-022",
+    "day-023",
+    "day-024",
+    "day-025",
+    "day-026",
+    "day-027",
+    "day-028",
+    "day-029",
+    "day-030",
+    "day-031",
+    "day-032",
+    "day-033",
+    "day-034",
+    "day-035",
+    "day-036",
+    "day-037",
+    "day-038",
+    "day-039",
+    "day-040",
+    "day-041",
+    "day-042",
+    "day-043",
+    "day-044",
+    "day-045",
+    "day-046",
+    "day-046"
+  ],
+  "artifacts": {
+    "kernel": {
+      "sha256": "8798cf582a9a5d9d9eb5d7f2c862834c6bcedf3368439d8ef2cc91bca3b5899a",
+      "bytes": 3089424
+    },
+    "uefi": {
+      "sha256": "a8cd0314ab2537c924821b29fec9dddeace198bea00e74df0ecf843f1c46f43b",
+      "bytes": 136314880
+    }
+  },
+  "evidence_sha256": {
+    "kernel": "90a4ee7734ef33158f93f549010872311b38722879b4320d6099b0c24d1bb51d",
+    "uefi": "12adefe502ff54ded1850898bb6a9258acfb1beb69f975f7b529d5bb1e681adf",
+    "host": "1d9cf4b1682c305e9e2094b89963faddeb51a1d69486f3e52a36a81c137cc8f9",
+    "conformance": "b4c5b0aa1b80c99b930b79349cc9307e3179238a2b5a41ad4dabcfc602b2e0be"
+  }
+}
