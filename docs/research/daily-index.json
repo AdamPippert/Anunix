@@ -1116,11 +1116,12 @@
       ],
       "comparison": "The Twin now checks declared restoration demand against frozen logical capacity. Live admission still rechecks reservations before use.",
       "acceptance": "Compare frozen and live routing, then prove memory and accelerator contention can invalidate restoration feasibility.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-056",
       "comparison_baseline": "8c237cb",
       "tested_commit": "5089793",
-      "evidence": "docs/research/evidence/day-056/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-056/uefi-boot.json",
+      "merged_commit": "5d84358"
     },
     {
       "day": 57,
@@ -1129,14 +1130,17 @@
       "title": "AI-First OS Update: AI Should Be the Regime-Change Controller, Not the Default Scheduler",
       "learning": "Invoke adaptation when deterministic telemetry detects a departure from the validated regime.",
       "code": [
+        "kernel/include/anx/regime.h",
         "kernel/core/regime/regime.c",
-        "kernel/core/twin/twin.c",
-        "kernel/core/cap/promotion.c"
+        "kernel/core/route/tuning.c"
       ],
-      "comparison": "The regime detector uses an envelope and the promotion gate checks candidate margins.",
-      "acceptance": "Exercise stationary telemetry, a regime exit, rejected adaptation, and return to the baseline.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Bound regions now retain calibrated limits across sustained drift and emit one investigation event per exit. Events grant no policy authority.",
+      "acceptance": "Exercise stationary telemetry, sustained and repeated departures, stale events, rejected tuning, and return to the calibrated range.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-057",
+      "comparison_baseline": "5d84358",
+      "tested_commit": "f1a6563",
+      "evidence": "docs/research/evidence/day-057/uefi-boot.json"
     },
     {
       "day": 58,
