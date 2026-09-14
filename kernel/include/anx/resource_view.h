@@ -16,6 +16,10 @@ struct anx_resource_view_info {
 	anx_cid_t owner;
 	uint32_t bytes;
 };
+struct anx_resource_move_result {
+	anx_oid_t source_pool, destination_pool;
+	uint32_t bytes_moved, physical_pages_added;
+};
 
 /* The controller owns pool capacity and physical reclamation. */
 int anx_resource_pool_create(const anx_cid_t *owner, uint32_t capacity_pages, anx_oid_t *pool);
@@ -29,6 +33,9 @@ int anx_resource_view_clone(const anx_oid_t *handle, anx_oid_t *alias);
 int anx_resource_view_release(const anx_oid_t *handle);
 int anx_resource_view_info(const anx_oid_t *handle, struct anx_resource_view_info *out);
 int anx_resource_view_read(const anx_oid_t *handle, uint32_t offset, void *bytes, uint32_t size);
+/* Controller-only physical relocation. All aliases and the owner remain fixed. */
+int anx_resource_view_move(const anx_oid_t *handle, const anx_oid_t *destination_pool,
+		uint32_t headroom_pages, struct anx_resource_move_result *out);
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 /* Test-only reversible corruption; excluded from production kernels. */
 int anx_resource_view_test_corrupt(const anx_oid_t *handle);

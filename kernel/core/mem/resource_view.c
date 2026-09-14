@@ -323,6 +323,13 @@ done:
 	return ret;
 }
 
+int anx_resource_view_move(const anx_oid_t *handle, const anx_oid_t *destination_pool,
+		uint32_t headroom_pages, struct anx_resource_move_result *out)
+{
+	(void)handle; (void)destination_pool; (void)headroom_pages; (void)out;
+	return ANX_ENOTSUP;
+}
+
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 int anx_resource_view_test_corrupt(const anx_oid_t *id)
 {
