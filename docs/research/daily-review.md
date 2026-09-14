@@ -893,7 +893,7 @@ Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/co
 
 Planned acceptance: Deny confidential egress without destination permission; verify approved dispatch, source and provider rechecks, and retained UNKNOWN outcomes that block redispatch.
 
-Status: Validated on Jekyll. Tested commit: `5293121`. Source message: `86cfdecb-bae0-4623-9998-6f19c1f1247a`.
+Status: Merged at `8c237cb` after Jekyll validation. Tested commit: `5293121`. Source message: `86cfdecb-bae0-4623-9998-6f19c1f1247a`.
 
 Detailed comparison and results: [Day 055](day-055.md).
 
@@ -903,13 +903,15 @@ Detailed comparison and results: [Day 055](day-055.md).
 
 Learning: Use a bounded resource model to compare near-term scheduling choices before changing the live system.
 
-Anunix comparison: The Twin snapshots engines and queue depths. It simulates weighted routing, not complete execution or restoration.
+Anunix comparison: The Twin now checks declared restoration demand against frozen logical capacity. Live admission still rechecks reservations before use.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c).
 
-Planned acceptance: Compare frozen simulation with live routing and reject infeasible restoration demand.
+Planned acceptance: Compare frozen and live routing, then prove memory and accelerator contention can invalidate restoration feasibility.
 
-Status: Queued. Source message: `ddc17c69-af7e-4297-921f-6146b196222e`.
+Status: Validated on Jekyll. Tested commit: `5089793`. Source message: `ddc17c69-af7e-4297-921f-6146b196222e`.
+
+Detailed comparison and results: [Day 056](day-056.md).
 
 ## Day 057 — 2026-08-21
 
