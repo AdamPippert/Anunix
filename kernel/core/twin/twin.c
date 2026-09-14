@@ -137,6 +137,8 @@ int anx_twin_snapshot(struct anx_resource_twin **out)
 		twin->queue_depth[queue_idx] =
 			anx_sched_queue_depth((enum anx_queue_class)queue_idx);
 
+	int capacity = anx_lease_snapshot_capacity(&twin->capacity);
+	if (capacity != ANX_OK && capacity != ANX_ENODEV) { anx_free(twin); return capacity; }
 	twin->taken_at = arch_time_now();
 
 	*out = twin;
@@ -280,6 +282,25 @@ int anx_twin_simulate_restoration(struct anx_resource_twin *twin, struct anx_cel
 		const struct anx_route_weight_policy *policy, const struct anx_twin_restore_request *request,
 		struct anx_twin_restore_result *out)
 {
-	(void)twin; (void)cell; (void)policy; (void)request; (void)out;
-	return ANX_ENOTSUP;
+	if (!twin || !cell || !policy || !request || !out) return ANX_EINVAL;
+	if (anx_route_weight_policy_validate(policy) != ANX_OK || validate_simulation(twin, cell) != ANX_OK ||
+	    (uint32_t)request->tier >= ANX_MEM_TIER_COUNT || (uint32_t)request->accelerator >= ANX_ACCEL_COUNT ||
+	    request->accelerator_pct > 100 || (request->accelerator == ANX_ACCEL_NONE && request->accelerator_pct) ||
+	    !request->retained_bytes || !request->restore_peak_bytes || request->resident_bytes > request->retained_bytes ||
+	    request->restore_peak_bytes < request->resident_bytes) return ANX_EINVAL;
+	if (!twin->capacity.schema) return ANX_ENOTSUP;
+	if (twin->capacity.schema != 1) return ANX_EINVAL;
+	for (uint32_t i = 0; i < ANX_MEM_TIER_COUNT; i++)
+		if (twin->capacity.free_memory[i] > twin->capacity.total_memory[i]) return ANX_EINVAL;
+	for (uint32_t i = 0; i < ANX_ACCEL_COUNT; i++)
+		if (twin->capacity.total_accelerator[i] > 100 ||
+		    twin->capacity.free_accelerator[i] > twin->capacity.total_accelerator[i]) return ANX_EINVAL;
+	struct anx_twin_restore_result result;
+	anx_memset(&result, 0, sizeof(result));
+	result.additional_memory_bytes = request->restore_peak_bytes - request->resident_bytes;
+	if (result.additional_memory_bytes > twin->capacity.free_memory[request->tier] ||
+	    request->accelerator_pct > twin->capacity.free_accelerator[request->accelerator]) return ANX_ENOMEM;
+	int ret = anx_twin_simulate(twin, cell, policy, &result.route);
+	if (ret == ANX_OK) *out = result;
+	return ret;
 }

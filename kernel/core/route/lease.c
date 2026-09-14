@@ -19,6 +19,7 @@ static uint32_t total_accel_pct[ANX_ACCEL_COUNT];
 /* Active leases */
 static struct anx_list_head lease_list;
 static struct anx_spinlock lease_lock;
+static bool lease_initialized;
 
 void anx_lease_init(void)
 {
@@ -32,6 +33,7 @@ void anx_lease_init(void)
 		total_mem_per_tier[i] = 16ULL * 1024 * 1024 * 1024;
 	for (i = 0; i < ANX_ACCEL_COUNT; i++)
 		total_accel_pct[i] = 100;
+	lease_initialized = true;
 }
 
 /* Sum reserved memory for a tier across all active leases */
@@ -334,4 +336,29 @@ int anx_lease_avail_accel(enum anx_accel_type accel, uint32_t *pct_out)
 	anx_spin_unlock(&lease_lock);
 
 	return ANX_OK;
+}
+
+int anx_lease_snapshot_capacity(struct anx_lease_capacity *out)
+{
+	if (!out) return ANX_EINVAL;
+	if (!lease_initialized) return ANX_ENODEV;
+	struct anx_lease_capacity result = { .schema = 1 };
+	struct anx_list_head *pos;
+	int ret = ANX_OK;
+	anx_spin_lock(&lease_lock);
+	for (uint32_t i = 0; i < ANX_MEM_TIER_COUNT; i++) result.total_memory[i] = result.free_memory[i] = total_mem_per_tier[i];
+	for (uint32_t i = 0; i < ANX_ACCEL_COUNT; i++) result.total_accelerator[i] = result.free_accelerator[i] = total_accel_pct[i];
+	ANX_LIST_FOR_EACH(pos, &lease_list) {
+		const struct anx_engine_lease *lease = ANX_LIST_ENTRY(pos, struct anx_engine_lease, lease_link);
+		if (lease->parent || lease->revoked) continue;
+		if ((uint32_t)lease->mem_tier >= ANX_MEM_TIER_COUNT || (uint32_t)lease->accel >= ANX_ACCEL_COUNT ||
+		    lease->mem_reserved_bytes > result.free_memory[lease->mem_tier] ||
+		    lease->accel_pct > result.free_accelerator[lease->accel]) { ret = ANX_EIO; break; }
+		result.free_memory[lease->mem_tier] -= lease->mem_reserved_bytes;
+		result.free_accelerator[lease->accel] -= lease->accel_pct;
+	}
+	result.taken_at = arch_time_now();
+	anx_spin_unlock(&lease_lock);
+	if (ret == ANX_OK) *out = result;
+	return ret;
 }

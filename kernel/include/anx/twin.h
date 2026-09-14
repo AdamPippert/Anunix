@@ -60,6 +60,7 @@ struct anx_twin_engine_snapshot {
 /* --- Resource Twin --- */
 
 struct anx_resource_twin {
+	struct anx_lease_capacity capacity;
 	struct anx_twin_engine_snapshot engines[ANX_TWIN_MAX_ENGINES];
 	uint32_t engine_count;
 	uint32_t queue_depth[ANX_QUEUE_CLASS_COUNT];
@@ -129,6 +130,7 @@ struct anx_twin_restore_result {
 	uint64_t additional_memory_bytes;
 	struct anx_twin_simulate_result route;
 };
+/* ENOTSUP without a capacity snapshot; ENOMEM when frozen capacity cannot fit. */
 int anx_twin_simulate_restoration(struct anx_resource_twin *twin, struct anx_cell *cell,
 		const struct anx_route_weight_policy *policy, const struct anx_twin_restore_request *request,
 		struct anx_twin_restore_result *out);
