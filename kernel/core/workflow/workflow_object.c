@@ -13,6 +13,7 @@
 #include <anx/kprintf.h>
 #include <anx/hwprobe.h>
 #include <anx/engine_lease.h>
+#include <anx/workflow_semantic.h>
 
 static struct anx_wf_object	wf_table[ANX_WF_MAX_WFS];
 static uint32_t			wf_count;
@@ -49,6 +50,8 @@ bool anx_wf_cache_needed(const anx_oid_t *oid)
 		const struct anx_wf_object *wf = &wf_table[i];
 		if (!wf->in_use || !wf_live(wf))
 			continue;
+		if (anx_wf_semantic_needed(wf, oid))
+			return true;
 		if (wf->cache_liveness_unknown || wf->cache_live_count > ANX_WF_MAX_EDGES)
 			return true;
 		for (uint32_t j = 0; j < wf->cache_live_count; j++)

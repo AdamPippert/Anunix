@@ -94,6 +94,7 @@ struct anx_mem_entry {
 	uint32_t confidence_pct;		/* 0-100 */
 	uint32_t contradiction_count;
 	anx_time_t last_validated_at;
+	uint64_t validation_generation; /* controller validation identity; zero means never validated */
 	anx_time_t last_accessed_at;
 
 	/* Decay scoring (higher = more likely to be demoted/forgotten) */
@@ -142,7 +143,7 @@ int anx_memplane_promote(struct anx_mem_entry *entry,
 int anx_memplane_demote(struct anx_mem_entry *entry,
 			enum anx_mem_tier tier);
 
-/* Update validation state */
+/* Controller-only validation; each update issues a fresh, non-reused generation. */
 int anx_memplane_set_validation(struct anx_mem_entry *entry,
 				enum anx_mem_validation_state state);
 

@@ -5,10 +5,13 @@
 #include <anx/crypto.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
+#include <anx/memplane.h>
 
 struct semantic_ref {
 	enum anx_object_type type;
 	enum anx_sensitivity sensitivity;
+	bool memory_tracked;
+	uint64_t validation_generation;
 	uint8_t digest[32];
 };
 struct semantic_image {
@@ -17,7 +20,12 @@ struct semantic_image {
 	struct semantic_ref refs[ANX_SEMANTIC_RESOURCES_MAX];
 	uint8_t graph[32];
 };
-struct anx_wf_semantic_guard { anx_oid_t oid; uint8_t digest[32]; };
+struct anx_wf_semantic_guard {
+	anx_oid_t oid;
+	uint8_t digest[32];
+	uint32_t resource_count;
+	anx_oid_t resources[ANX_SEMANTIC_RESOURCES_MAX];
+};
 
 static bool valid_name(const char *name)
 {
@@ -53,6 +61,16 @@ static int capture(const struct anx_semantic_resource *resource, struct semantic
 	}
 	anx_spin_unlock(&obj->lock);
 	anx_so_close(&h);
+	if (ret == ANX_OK) {
+		struct anx_mem_entry *entry = anx_memplane_lookup(&resource->oid);
+		if (entry) {
+			anx_spin_lock(&entry->lock);
+			if (entry->validation != ANX_MEMVAL_VALIDATED || !entry->validation_generation) ret = ANX_EPERM;
+			else { ref.memory_tracked = true; ref.validation_generation = entry->validation_generation; }
+			anx_spin_unlock(&entry->lock);
+			anx_memplane_release(entry);
+		}
+	}
 	if (ret == ANX_OK) *out = ref;
 	return ret;
 }
@@ -115,9 +133,11 @@ int anx_wf_semantic_bind(const anx_oid_t *oid, const struct anx_semantic_spec *s
 	image = anx_zalloc(sizeof(*image)); guard = anx_zalloc(sizeof(*guard));
 	ret = ANX_ENOMEM;
 	if (!image || !guard) goto done;
-	image->schema = 1; image->spec.resource_count = spec->resource_count; image->spec.requires_count = spec->requires_count;
+	image->schema = 2; image->spec.resource_count = spec->resource_count; image->spec.requires_count = spec->requires_count;
+	guard->resource_count = spec->resource_count;
 	for (uint32_t i = 0; i < spec->resource_count; i++) {
 		image->spec.resources[i] = spec->resources[i];
+		guard->resources[i] = spec->resources[i].oid;
 		ret = capture(&spec->resources[i], &image->refs[i]);
 		if (ret != ANX_OK) goto done;
 		if (image->refs[i].sensitivity > p.sensitivity) p.sensitivity = image->refs[i].sensitivity;
@@ -125,7 +145,7 @@ int anx_wf_semantic_bind(const anx_oid_t *oid, const struct anx_semantic_spec *s
 	for (uint32_t i = 0; i < spec->requires_count; i++) image->spec.requires[i] = spec->requires[i];
 	graph_digest(wf, image->graph);
 	anx_sha256(image, sizeof(*image), guard->digest);
-	p.object_type = ANX_OBJ_STRUCTURED_DATA; p.schema_uri = "anx:workflow/semantic-manifest/v1"; p.schema_version = "1";
+	p.object_type = ANX_OBJ_STRUCTURED_DATA; p.schema_uri = "anx:workflow/semantic-manifest/v2"; p.schema_version = "2";
 	p.payload = image; p.payload_size = sizeof(*image);
 	ret = anx_so_create(&p, &obj);
 	if (ret == ANX_OK) ret = anx_so_seal(&obj->oid);
@@ -156,7 +176,7 @@ static int load_checked(const struct anx_wf_object *wf, struct semantic_image *i
 	anx_so_close(&h);
 	if (ret != ANX_OK) return ret;
 	anx_sha256(image, sizeof(*image), digest);
-	if (anx_memcmp(digest, wf->semantic->digest, sizeof(digest)) || image->schema != 1) return ANX_EPERM;
+	if (anx_memcmp(digest, wf->semantic->digest, sizeof(digest)) || image->schema != 2) return ANX_EPERM;
 	ret = validate_spec(&image->spec);
 	if (ret != ANX_OK) return ret;
 	if (!wf->nodes || !wf->edges) return ANX_EINVAL;
@@ -168,6 +188,7 @@ static int load_checked(const struct anx_wf_object *wf, struct semantic_image *i
 		ret = capture(&image->spec.resources[i], &current);
 		if (ret != ANX_OK) return ret;
 		if (current.type != ref->type || current.sensitivity != ref->sensitivity ||
+		    current.memory_tracked != ref->memory_tracked || current.validation_generation != ref->validation_generation ||
 		    anx_memcmp(current.digest, ref->digest, sizeof(ref->digest))) return ANX_EBUSY;
 	}
 	return ANX_OK;
@@ -187,6 +208,18 @@ int anx_wf_semantic_check(const struct anx_wf_object *wf)
 anx_oid_t anx_wf_semantic_id(const struct anx_wf_object *wf)
 {
 	return wf && wf->semantic ? wf->semantic->oid : ANX_UUID_NIL;
+}
+
+bool anx_wf_semantic_needed(const struct anx_wf_object *wf, const anx_oid_t *oid)
+{
+	if (!wf || !wf->semantic || !oid) return false;
+	const struct anx_wf_semantic_guard *guard = wf->semantic;
+	if (!anx_uuid_compare(oid, &guard->oid)) return true;
+	/* Keep the original private set even after public evidence becomes invalid. */
+	if (guard->resource_count > ANX_SEMANTIC_RESOURCES_MAX) return true;
+	for (uint32_t i = 0; i < guard->resource_count; i++)
+		if (!anx_uuid_compare(oid, &guard->resources[i])) return true;
+	return false;
 }
 
 int anx_wf_semantic_resolve(const anx_oid_t *oid, const char *name, anx_oid_t *out)

@@ -20,6 +20,8 @@
 
 /* Non-static: decay.c needs access via extern */
 struct anx_htable mem_table;
+static struct anx_spinlock validation_lock = ANX_SPINLOCK_INIT;
+static uint64_t validation_sequence;
 
 void anx_memplane_init(void)
 {
@@ -231,10 +233,20 @@ int anx_memplane_demote(struct anx_mem_entry *entry,
 int anx_memplane_set_validation(struct anx_mem_entry *entry,
 				enum anx_mem_validation_state state)
 {
-	if (!entry)
+	bool flags;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!entry || (int)state < 0 || state > ANX_MEMVAL_QUARANTINED || anx_memplane_lookup(&entry->oid) != entry)
 		return ANX_EINVAL;
 
 	anx_spin_lock(&entry->lock);
+	anx_spin_lock_irqsave(&validation_lock, &flags);
+	if (validation_sequence == ~(uint64_t)0) {
+		anx_spin_unlock_irqrestore(&validation_lock, flags);
+		anx_spin_unlock(&entry->lock);
+		return ANX_EFULL;
+	}
+	entry->validation_generation = ++validation_sequence;
+	anx_spin_unlock_irqrestore(&validation_lock, flags);
 	entry->validation = state;
 	entry->last_validated_at = arch_time_now();
 	anx_spin_unlock(&entry->lock);
