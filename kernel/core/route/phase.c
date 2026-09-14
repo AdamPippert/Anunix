@@ -198,3 +198,14 @@ int anx_phase_detach(const anx_cid_t *owner)
 	if (cell) anx_cell_store_release(cell);
 	return ret;
 }
+
+int anx_phase_park(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out)
+{
+	(void)owner; (void)epoch; (void)out;
+	return ANX_ENOTSUP;
+}
+int anx_phase_resume(const anx_cid_t *owner, uint64_t epoch, struct anx_phase_view *out)
+{
+	(void)owner; (void)epoch; (void)out;
+	return ANX_ENOTSUP;
+}
