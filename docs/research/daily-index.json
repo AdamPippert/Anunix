@@ -1136,11 +1136,12 @@
       ],
       "comparison": "Bound regions now retain calibrated limits across sustained drift and emit one investigation event per exit. Events grant no policy authority.",
       "acceptance": "Exercise stationary telemetry, sustained and repeated departures, stale events, rejected tuning, and return to the calibrated range.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-057",
       "comparison_baseline": "5d84358",
       "tested_commit": "f1a6563",
-      "evidence": "docs/research/evidence/day-057/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-057/uefi-boot.json",
+      "merged_commit": "e3c41b7"
     },
     {
       "day": 58,
@@ -1150,13 +1151,18 @@
       "learning": "Budget model choice, reasoning, skills, and context before physical placement.",
       "code": [
         "kernel/include/anx/cell.h",
+        "kernel/core/exec/runtime.c",
+        "kernel/core/exec/cell.c",
         "kernel/core/anxml/anxml.c",
-        "kernel/core/route/budget.c"
+        "kernel/core/anxml/adapter.c"
       ],
-      "comparison": "Cognitive-envelope fields exist. Their header explicitly identifies missing integration with specialized anxml workflow dispatch.",
-      "acceptance": "Enforce a cognitive budget in the real inference dispatch path.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Native Anxml now applies captured per-generation ceilings, including workflow and adapter calls. Effective ceilings also participate in adapter cache identity.",
+      "acceptance": "Run bounded workflow inference, direct and adapter generation, nested ceilings, prompt access denials, cancellation, and stale cache checks.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-058",
+      "comparison_baseline": "e3c41b7",
+      "tested_commit": "6926c8f",
+      "evidence": "docs/research/evidence/day-058/uefi-boot.json"
     },
     {
       "day": 59,
