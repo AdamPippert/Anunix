@@ -813,7 +813,7 @@ Evidence: [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/
 
 Planned acceptance: Reclaim dead records from fragmented pages while surviving aliases retain identical bytes and identity; preserve mappings after rejected copies.
 
-Status: Validated on Jekyll. Tested commit: `2906052`. Source message: `880a7069-0965-4314-9d09-048664fc8ba6`.
+Status: Merged at `b04649e` after Jekyll validation. Tested commit: `2906052`. Source message: `880a7069-0965-4314-9d09-048664fc8ba6`.
 
 Detailed comparison and results: [Day 050](day-050.md).
 
@@ -823,13 +823,15 @@ Detailed comparison and results: [Day 050](day-050.md).
 
 Learning: Use different units for identity, isolation, scaling, scheduling, and failure.
 
-Anunix comparison: Cells, model execution, and engine leases are distinct. Operator-level scaling needs explicit resource boundaries.
+Anunix comparison: Controllers can resize active phase reservations while retaining task and lease identity. Contract ceilings, shared capacity, recorded usage, and child reservations constrain each change.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c).
 
-Planned acceptance: Resize a resource allocation without changing the logical task identity.
+Planned acceptance: Grow and shrink one phase without changing task identity; reject stale requests, overcommitment, and unsafe shrinkage.
 
-Status: Queued. Source message: `99f0ff6a-48dd-4690-8156-018b950d3c27`.
+Status: Validated on Jekyll. Tested commit: `233518e`. Source message: `99f0ff6a-48dd-4690-8156-018b950d3c27`.
+
+Detailed comparison and results: [Day 051](day-051.md).
 
 ## Day 052 — 2026-08-16
 

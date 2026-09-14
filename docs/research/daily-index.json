@@ -992,11 +992,12 @@
       ],
       "comparison": "Bounded logical views now preserve record identity and aliases while verified compaction reclaims native physical pages.",
       "acceptance": "Reclaim dead records from fragmented pages while surviving aliases retain identical bytes and identity; preserve mappings after rejected copies.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-050",
       "comparison_baseline": "f228dae",
       "tested_commit": "2906052",
-      "evidence": "docs/research/evidence/day-050/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-050/uefi-boot.json",
+      "merged_commit": "b04649e"
     },
     {
       "day": 51,
@@ -1005,14 +1006,17 @@
       "title": "AI-First OS Update: Decouple the Scaling Unit from the Agent",
       "learning": "Use different units for identity, isolation, scaling, scheduling, and failure.",
       "code": [
-        "kernel/include/anx/cell.h",
-        "kernel/core/anxml/anxml.c",
+        "kernel/include/anx/phase.h",
+        "kernel/core/route/phase.c",
         "kernel/core/route/lease.c"
       ],
-      "comparison": "Cells, model execution, and engine leases are distinct. Operator-level scaling needs explicit resource boundaries.",
-      "acceptance": "Resize a resource allocation without changing the logical task identity.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Controllers can resize active phase reservations while retaining task and lease identity. Contract ceilings, shared capacity, recorded usage, and child reservations constrain each change.",
+      "acceptance": "Grow and shrink one phase without changing task identity; reject stale requests, overcommitment, and unsafe shrinkage.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-051",
+      "comparison_baseline": "b04649e",
+      "tested_commit": "233518e",
+      "evidence": "docs/research/evidence/day-051/uefi-boot.json"
     },
     {
       "day": 52,
