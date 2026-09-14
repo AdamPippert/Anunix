@@ -12,7 +12,8 @@ int anx_research_day059(void)
 	struct anx_cell_intent intent = {0};
 	struct anx_route_binding_spec spec = { .schema = 1, .required_context_tokens = 16, .engine_count = 1 };
 	struct anx_route_binding_view view = {0};
-	struct anx_so_create_params p = { .object_type = ANX_OBJ_STRUCTURED_DATA, .payload = "model-v1", .payload_size = 8 };
+	struct anx_so_create_params p = { .object_type = ANX_OBJ_STRUCTURED_DATA, .payload = "model-v1", .payload_size = 8,
+		.schema_uri = "anx:research/model-definition/v1", .schema_version = "1" };
 	int ret = anx_so_create(&p, &model);
 	if (ret == ANX_OK) ret = anx_so_seal(&model->oid);
 	if (ret == ANX_OK) ret = anx_engine_register("research-day-059", ANX_ENGINE_LOCAL_MODEL, 0, &engine);
