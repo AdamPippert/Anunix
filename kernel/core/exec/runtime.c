@@ -22,6 +22,7 @@
 #include <anx/string.h>
 #include <anx/external_call.h>
 #include <anx/sched.h>
+#include <anx/sched_domain.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
 
@@ -149,6 +150,9 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 	ret = anx_cell_check_scope(cell);
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_SCOPE, ret, "delegated scope denied");
+	ret = anx_sched_domain_check(cell);
+	if (ret != ANX_OK)
+		return runtime_deny(trace, ANX_ADMISSION_SCHEDULER_DOMAIN, ret, "scheduler domain denied");
 
 	ret = anx_cell_check_contract(cell);
 	if (ret != ANX_OK)
@@ -468,6 +472,8 @@ int anx_cell_cognitive_limit(uint32_t requested, uint32_t *out)
 	uint32_t limit = requested;
 	for (const struct runtime_cognitive_scope *scope = active_cognitive; scope; scope = scope->previous) {
 		if (scope->cell->status == ANX_CELL_CANCELLED) return ANX_ECANCELED;
+		int allowed = anx_sched_domain_check(scope->cell);
+		if (allowed != ANX_OK) return allowed;
 		if (scope->cell->status != ANX_CELL_RUNNING ||
 		    scope->cell->cognitive.max_tokens != scope->envelope.max_tokens ||
 		    scope->cell->cognitive.max_reasoning_depth != scope->envelope.max_reasoning_depth)
@@ -558,7 +564,7 @@ static int runtime_run(struct anx_cell *cell)
 	uint32_t limit_check;
 	ret = anx_cell_cognitive_limit(1, &limit_check);
 	if (ret != ANX_OK) {
-		anx_trace_append(trace, ANX_TRACE_STEP_FAILED, "cognitive envelope changed during run", ret);
+		anx_trace_append(trace, ANX_TRACE_STEP_FAILED, "execution scope or cognitive envelope denied", ret);
 		goto fail;
 	}
 

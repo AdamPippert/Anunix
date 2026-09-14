@@ -15,6 +15,7 @@
 #include <anx/uuid.h>
 #include <anx/spinlock.h>
 #include <anx/cell.h>
+#include <anx/sched_domain.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
 #include <anx/string.h>
@@ -165,6 +166,7 @@ int anx_external_invoke(struct anx_external_call *call)
 		if (!caller)
 			return ANX_EPERM;
 		ret = anx_cell_check_contract(caller);
+		if (ret == ANX_OK) ret = anx_sched_domain_check(caller);
 		if (ret == ANX_OK) {
 			ret = ANX_EPERM;
 			if (caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
@@ -311,6 +313,7 @@ int anx_external_operation_dispatch(const anx_oid_t *id, struct anx_external_cal
 		    provider->generation != op->provider_generation) ret = ANX_EBUSY;
 	}
 	if (ret == ANX_OK) ret = anx_cell_check_contract(op->owner);
+	if (ret == ANX_OK) ret = anx_sched_domain_check(op->owner);
 	if (ret == ANX_OK) ret = anx_tool_authorize_call(op->owner, &op->call);
 	if (ret == ANX_OK) ret = operation_source(op, false);
 	if (ret == ANX_OK && op->view.sink_name[0] && anx_sink_lookup(op->view.sink_name) != op->effect->sink) ret = ANX_EPERM;
