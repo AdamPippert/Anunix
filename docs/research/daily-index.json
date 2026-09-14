@@ -1158,11 +1158,12 @@
       ],
       "comparison": "Native Anxml now applies captured per-generation ceilings, including workflow and adapter calls. Effective ceilings also participate in adapter cache identity.",
       "acceptance": "Run bounded workflow inference, direct and adapter generation, nested ceilings, prompt access denials, cancellation, and stale cache checks.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-058",
       "comparison_baseline": "e3c41b7",
       "tested_commit": "6926c8f",
-      "evidence": "docs/research/evidence/day-058/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-058/uefi-boot.json",
+      "merged_commit": "cd51346"
     },
     {
       "day": 59,
@@ -1171,14 +1172,18 @@
       "title": "AI-First OS Update: Late Binding May Be the Core Model-Native OS Abstraction",
       "learning": "Keep logical identity stable while binding physical representation and execution late.",
       "code": [
-        "kernel/include/anx/cell.h",
-        "kernel/core/twin/twin.c",
-        "kernel/core/anxml/anxml.c"
+        "kernel/include/anx/route_binding.h",
+        "kernel/core/route/binding.c",
+        "kernel/core/exec/runtime.c",
+        "kernel/core/route/session.c"
       ],
-      "comparison": "Cells, engine routing, and model representations are separate. Late binding needs version and readiness checks.",
-      "acceptance": "Rebind a task to an eligible engine without changing its identity or violating dependencies.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Private model bindings now capture logical declarations and object versions, then recheck readiness and policy before changing engines. Backend equivalence remains a controller claim.",
+      "acceptance": "Preserve Cell and model identity across local engine changes; reject stale inputs, unavailable servers, revoked leases, and unauthorized placement.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-059",
+      "comparison_baseline": "cd51346",
+      "tested_commit": "38db6bb",
+      "evidence": "docs/research/evidence/day-059/uefi-boot.json"
     },
     {
       "day": 60,
@@ -1520,8 +1525,25 @@
       "status": "queued",
       "branch": null,
       "comparison_baseline": "4c0bc25"
+    },
+    {
+      "day": 81,
+      "date": "2026-09-14",
+      "message_id": "2b0646b7-8ce0-4118-a447-80e8979d269b",
+      "title": "AI-first OS update \u2014 September 14: compile intelligence into a closed policy space, then let AI select",
+      "learning": "Keep runtime policy selection inside a previously validated, finite action space.",
+      "code": [
+        "kernel/core/route/profile.c",
+        "kernel/core/route/tuning.c",
+        "kernel/core/regime/regime.c"
+      ],
+      "comparison": "Finite routing profiles and typed tuning actions exist. A versioned policy catalog with indexed selection still needs an explicit runtime boundary.",
+      "acceptance": "Select only issued policies through a bounded index; prove invalid or stale selections retain the validated fallback.",
+      "status": "queued",
+      "branch": null,
+      "comparison_baseline": "38db6bb"
     }
   ],
   "scope": "Include later daily briefings before final release preparation.",
-  "last_source_check": "2026-09-13"
+  "last_source_check": "2026-09-14"
 }

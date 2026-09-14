@@ -4,7 +4,7 @@ Forgejo stores each daily sequence while the daily research program proceeds.
 GitHub publication waits until every day is complete, the release notes are ready, and final testing passes.
 The user's publication instruction governs this sequence.
 The user extended the scope to later briefings on September 13, 2026.
-The current queue contains 80 days through September 13.
+The current queue contains 81 days through September 14.
 Final release preparation includes another source check and completion of any later days.
 
 ## Daily publication
