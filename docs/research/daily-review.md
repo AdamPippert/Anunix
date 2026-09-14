@@ -765,7 +765,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject insufficient artifact, scratch, or simulation budgets without publishing a profile; use an exact-budget candidate after ordinary validation.
 
-Status: Validated on Jekyll. Tested commit: `abeec0d`. Source message: `25eede96-54b8-4ce0-9fe8-0ff73d6fab3d`.
+Status: Merged at `be47141` after Jekyll validation. Tested commit: `abeec0d`. Source message: `25eede96-54b8-4ce0-9fe8-0ff73d6fab3d`.
 
 Detailed comparison and results: [Day 047](day-047.md).
 
@@ -775,13 +775,15 @@ Detailed comparison and results: [Day 047](day-047.md).
 
 Learning: Manage the semantic working set by readiness, utility, reconstruction cost, provenance, and dependencies.
 
-Anunix comparison: Readiness, memory tiers, and provenance exist in separate modules.
+Anunix comparison: Semantic manifests now protect declared live dependencies and pin controller-issued memory validation generations before reuse or resume.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c).
 
-Planned acceptance: Preserve useful state with live dependencies and reject reuse after its provenance becomes invalid.
+Planned acceptance: Keep paused dependency chains resident, reject contested or revalidated evidence under the old manifest, and recover through explicit rebinding.
 
-Status: Queued. Source message: `a17f5f52-26fe-4618-8c6e-1438b85cd28e`.
+Status: Validated on Jekyll. Tested commit: `36b6051`. Source message: `a17f5f52-26fe-4618-8c6e-1438b85cd28e`.
+
+Detailed comparison and results: [Day 048](day-048.md).
 
 ## Day 049 — 2026-08-13
 
