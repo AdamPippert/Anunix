@@ -3,6 +3,7 @@
 #include <anx/cell.h>
 #include <anx/external_call.h>
 #include <anx/adapter.h>
+#include <anx/resource_view.h>
 #define ANX_CONTINUATION_MAX 16U
 #define ANX_CONTINUATION_CAPABILITIES 4U
 #define ANX_CONTINUATION_OPERATIONS 8U
@@ -56,10 +57,12 @@ int anx_continuation_suspend_configure(uint64_t id, uint64_t epoch, uint64_t pha
 int anx_continuation_pause(uint64_t id, uint64_t epoch, enum anx_suspension_reason reason, struct anx_continuation_view *out);
 int anx_continuation_hibernate(uint64_t id, uint64_t epoch, struct anx_continuation_view *out);
 int anx_continuation_resume(uint64_t id, uint64_t epoch, struct anx_continuation_view *out);
+int anx_continuation_cache_stats(uint64_t id, struct anx_resource_pool_stats *out);
 int anx_continuation_acceleration_read(uint64_t id, uint64_t epoch, uint64_t generation, struct anx_adapter_image *out);
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 /* Drop one completion reply after sealing its result; production builds omit this hook. */
 int anx_continuation_test_drop_reply(bool enabled);
 int anx_continuation_test_cache_corrupt(uint64_t id);
+int anx_continuation_test_restore_fault(bool enabled);
 #endif
 #endif
