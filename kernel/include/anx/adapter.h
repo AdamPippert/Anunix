@@ -25,4 +25,10 @@ int anx_adapter_cache_check(const anx_oid_t *id, const struct anx_anxml_request 
 int anx_adapter_image_check(const struct anx_adapter_image *image);
 int anx_anxml_generate_image(const struct anx_anxml_request *request, const struct anx_adapter_image *image,
 		struct anx_anxml_response *response);
+/* Verify the private execution copy immediately before populating the CPU model table. */
+int anx_anxml_generate_verified(const struct anx_anxml_request *request, const struct anx_adapter_image *image,
+		const uint8_t digest[32], struct anx_anxml_response *response);
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+int anx_anxml_test_image_fault(bool enabled);
+#endif
 #endif
