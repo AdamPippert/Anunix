@@ -1447,11 +1447,12 @@
       ],
       "comparison": "Staged writes now bind reviewer approvals to current evidence ancestry and enforce a minimum structural cut before ordinary commit.",
       "acceptance": "Reject shared and mixed evidence roots, exclude corrupted dependencies, and commit only with two surviving independent approvals.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-072",
       "comparison_baseline": "627ecc0",
       "tested_commit": "bd16f88",
-      "evidence": "docs/research/evidence/day-072/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-072/uefi-boot.json",
+      "merged_commit": "0d13e09"
     },
     {
       "day": 73,
@@ -1460,14 +1461,17 @@
       "title": "AI-First OS Update: Make the Adaptive Kernel Proof-Carrying",
       "learning": "Attach independently checked evidence to adaptive policy and enforce context privilege monotonicity.",
       "code": [
-        "kernel/core/cap/promotion.c",
-        "kernel/core/icm/icm.c",
-        "kernel/core/state/access.c"
+        "kernel/include/anx/context.h",
+        "kernel/core/state/context.c",
+        "kernel/core/tools/research_day073.c"
       ],
-      "comparison": "Promotion gates and object metadata exist. They do not constitute formal kernel proofs or a context privilege boundary.",
-      "acceptance": "Reject missing policy evidence and unauthorized context role or scope promotion.",
-      "status": "queued",
-      "branch": null
+      "comparison": "The context compiler binds source ancestry to role and scope ceilings. Existing policy gates check evidence rather than formal proofs.",
+      "acceptance": "Reject role and scope escalation through summaries, stale ancestors, foreign access, and partial output on failed context assembly.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-073",
+      "comparison_baseline": "0d13e09",
+      "tested_commit": "98e5d23",
+      "evidence": "docs/research/evidence/day-073/uefi-boot.json"
     },
     {
       "learning": "Separate stable logical state from a versioned resource shape and recheck placement after reconfiguration.",
