@@ -1,5 +1,6 @@
 #include <anx/execution_shape.h>
 #include <anx/physical_plan.h>
+#include <anx/resource_shape.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
@@ -281,10 +282,14 @@ static int plan_phase(struct physical_record *p, bool capture)
 		    lease->accel != phase.accelerator || lease->accel_pct != phase.accelerator_pct) ret = ANX_EBUSY;
 	}
 	if (ret == ANX_OK && capture) p->phase = phase;
+	if (ret == ANX_OK && !capture && p->view.resource_shape)
+		ret = anx_resource_shape_check(p->view.resource_shape, p->view.resource_epoch, p->view.replica,
+			&p->graph->view.owner, &p->graph->uses[p->view.node].image);
 	return ret;
 }
-int anx_physical_plan_compile(uint64_t graph, uint64_t logical_epoch, uint64_t phase_epoch,
-		enum anx_physical_mode preference, struct anx_physical_plan_view *out)
+static int physical_compile(uint64_t graph, uint64_t logical_epoch, uint64_t phase_epoch,
+		enum anx_physical_mode preference, uint64_t resource_shape, uint64_t resource_epoch, uint32_t replica,
+		struct anx_physical_plan_view *out)
 {
 	if (anx_cell_current_id()) return ANX_EPERM;
 	if (!graph || !logical_epoch || !phase_epoch || !out || preference < ANX_PHYSICAL_DIRECT || preference > ANX_PHYSICAL_REUSE) return ANX_EINVAL;
@@ -303,6 +308,7 @@ int anx_physical_plan_compile(uint64_t graph, uint64_t logical_epoch, uint64_t p
 	if (ret == ANX_OK) {
 		p->graph = s; p->view.logical_graph = graph; p->view.logical_epoch = logical_epoch; p->view.phase_epoch = phase_epoch;
 		p->view.node = p->view.source_node = node;
+		p->view.resource_shape = resource_shape; p->view.resource_epoch = resource_epoch; p->view.replica = replica;
 		ret = plan_phase(p, true);
 	}
 	if (ret == ANX_OK && preference == ANX_PHYSICAL_REUSE && !s->uses[node].seed) {
@@ -317,11 +323,24 @@ int anx_physical_plan_compile(uint64_t graph, uint64_t logical_epoch, uint64_t p
 		uint32_t slot;
 		for (slot = 0; slot < ANX_PHYSICAL_PLAN_MAX; slot++) if (!plans[slot]) break;
 		if (slot == ANX_PHYSICAL_PLAN_MAX || plan_sequence == ~(uint64_t)0) ret = ANX_EFULL;
-		else { p->view.id = ++plan_sequence; plans[slot] = p; s->plan_refs++; *out = p->view; }
+		else {
+			if (resource_shape) ret = anx_resource_shape_bind(resource_shape, resource_epoch, replica, &s->view.owner, &s->uses[node].image);
+			if (ret == ANX_OK) { p->view.id = ++plan_sequence; plans[slot] = p; s->plan_refs++; *out = p->view; }
+		}
 	}
 	anx_spin_unlock_irqrestore(&shape_lock, flags);
 	if (ret != ANX_OK) anx_free(p);
 	return ret;
+}
+int anx_physical_plan_compile(uint64_t graph, uint64_t logical_epoch, uint64_t phase_epoch,
+		enum anx_physical_mode preference, struct anx_physical_plan_view *out)
+{ return physical_compile(graph, logical_epoch, phase_epoch, preference, 0, 0, 0, out); }
+int anx_physical_plan_compile_shaped(uint64_t graph, uint64_t logical_epoch, uint64_t phase_epoch,
+		uint64_t resource_shape, uint64_t resource_epoch, uint32_t replica, struct anx_physical_plan_view *out)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!resource_shape || !resource_epoch) return ANX_EINVAL;
+	return physical_compile(graph, logical_epoch, phase_epoch, ANX_PHYSICAL_DIRECT, resource_shape, resource_epoch, replica, out);
 }
 int anx_physical_plan_commit(uint64_t id, struct anx_anxml_response *response, struct anx_logical_graph_view *out)
 {
@@ -345,6 +364,9 @@ int anx_physical_plan_commit(uint64_t id, struct anx_anxml_response *response, s
 	struct anx_model_use_view use;
 	if (p->view.mode == ANX_PHYSICAL_REUSE)
 		ret = anx_model_use_reuse(s->uses[node].id, s->uses[node].epoch, s->uses[p->view.source_node].id, result, &use);
+	else if (p->view.resource_shape)
+		ret = anx_resource_shape_execute(p->view.resource_shape, p->view.resource_epoch, p->view.replica,
+			s->uses[node].id, s->uses[node].epoch, result, &use);
 	else ret = anx_model_use_execute(s->uses[node].id, s->uses[node].epoch, result, &use);
 	bool produced = ret == ANX_OK;
 	if (ret == ANX_OK) ret = owner_check(s);
@@ -380,6 +402,7 @@ int anx_physical_plan_destroy(uint64_t id)
 	bool flags; anx_spin_lock_irqsave(&shape_lock, &flags);
 	struct physical_record *p = plan_find(id);
 	int ret = !p ? ANX_ENOENT : p->view.state == ANX_PHYSICAL_RUNNING ? ANX_EBUSY : ANX_OK;
+	if (ret == ANX_OK && p->view.resource_shape) ret = anx_resource_shape_unbind(p->view.resource_shape);
 	if (ret == ANX_OK) {
 		for (uint32_t i = 0; i < ANX_PHYSICAL_PLAN_MAX; i++) if (plans[i] == p) plans[i] = NULL;
 		p->graph->plan_refs--; anx_memset(p, 0, sizeof(*p)); anx_free(p);
