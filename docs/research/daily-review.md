@@ -1197,7 +1197,7 @@ Evidence: [kernel/include/anx/engine.h](../../kernel/include/anx/engine.h), [ker
 
 Planned acceptance: Resize actual replica pages, reject stale shape and phase placements, and preserve completed results and logical identity.
 
-Status: Validated on Jekyll. Tested commit: `258fb85`. Source message: `a3296827-dc83-4a98-ab4d-a033c2db25f9`.
+Status: Merged at `d495c83` after Jekyll validation. Tested commit: `258fb85`. Source message: `a3296827-dc83-4a98-ab4d-a033c2db25f9`.
 
 Detailed comparison and results: [Day 074](day-074.md).
 
@@ -1207,13 +1207,15 @@ Detailed comparison and results: [Day 074](day-074.md).
 
 Learning: Give planners explicit execution constraints and versioned compatibility contracts for memory, models, coordination, and quality.
 
-Anunix comparison: Cells expose execution constraints, and optimization artifacts bind a target. Memory compatibility across model changes needs a declared contract.
+Anunix comparison: Memory indices bind reader and embedding descriptors to exact source snapshots and reject incompatible reuse after contract replacement.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/include/anx/memplane.h](../../kernel/include/anx/memplane.h), [kernel/core/route/optimization.c](../../kernel/core/route/optimization.c).
 
-Planned acceptance: Reject incompatible memory reuse after an executor change; permit reuse under a matching declared contract.
+Planned acceptance: Reject equal-dimension space and reader replacements, rebuild from canonical evidence, and allow queries only under matching contracts.
 
-Status: Queued. Source message: `1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee`.
+Status: Validated on Jekyll. Tested commit: `f7e7a0f`. Source message: `1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee`.
+
+Detailed comparison and results: [Day 075](day-075.md).
 
 ## Day 076 — 2026-09-09
 
