@@ -1047,15 +1047,15 @@ Detailed comparison and results: [Day 064](day-064.md).
 
 Learning: Optimize execution shape before placement and measure the complete workflow.
 
-Anunix comparison: Baseline 2a46190 has prepared inference records. The candidate compiles bounded reuse plans and passes a focused VM comparison; full validation awaits Jekyll availability.
+Anunix comparison: Baseline 2a46190 has prepared inference records. This step compiles bounded reuse plans, preserves dependency and authority boundaries, and completes equivalent logical outputs with fewer CPU generations.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
 Planned acceptance: Match all logical outputs while reducing completed CPU generations from three to two. Preserve dependency and authority boundaries and reject stale plans.
 
-Status: In progress at `a389634`; full VM validation is pending while Jekyll is offline. Source message: `c4abc0ce-78d5-4add-ac3f-58e82e776015`.
+Status: Validated on Jekyll. Tested commit: `a389634`. Source message: `c4abc0ce-78d5-4add-ac3f-58e82e776015`.
 
-Detailed comparison and pending checks: [Day 065](day-065.md).
+Detailed comparison and results: [Day 065](day-065.md).
 
 ## Day 066 — 2026-08-30
 
