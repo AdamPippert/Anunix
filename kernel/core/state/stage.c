@@ -21,6 +21,7 @@
 #include <anx/effect_fence.h>
 #include <anx/uuid.h>
 #include <anx/branch_group.h>
+#include <anx/epistemic.h>
 
 /* Defined in objstore.c; shared the way anx_lifecycle_transition is. */
 void anx_so_compute_content_hash(struct anx_state_object *obj);
@@ -144,6 +145,7 @@ int anx_object_commit(struct anx_object_handle *handle)
 	    obj->state == ANX_OBJ_TOMBSTONE)) ret = ANX_EPERM;
 	if (ret == ANX_OK && obj->version != stage->base_version) ret = ANX_EBUSY;
 	if (ret == ANX_OK && obj->version == ~(uint64_t)0) ret = ANX_EFULL;
+	if (ret == ANX_OK) ret = anx_epistemic_stage_check(obj);
 	if (ret != ANX_OK) {
 		anx_spin_unlock(&obj->lock);
 		return ret;
@@ -162,6 +164,7 @@ int anx_object_commit(struct anx_object_handle *handle)
 	ev.actor_cell = stage->staging_cell;
 	anx_prov_log_append(obj->provenance, &ev);
 
+	anx_epistemic_stage_resolve(obj, true);
 	anx_free(stage);
 	obj->staged = NULL;
 
@@ -194,6 +197,7 @@ int anx_object_abort(struct anx_object_handle *handle)
 		return ret;
 	}
 
+	anx_epistemic_stage_resolve(obj, false);
 	if (stage->shadow_payload)
 		anx_free(stage->shadow_payload);
 

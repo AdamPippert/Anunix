@@ -94,6 +94,7 @@ struct anx_staged_mutation {
 	uint64_t shadow_size;
 	anx_cid_t staging_cell;
 	uint64_t base_version;
+	uint64_t epistemic_id;
 };
 
 /* --- The State Object --- */
