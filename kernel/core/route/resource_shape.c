@@ -23,8 +23,6 @@ struct resource_shape {
 static struct resource_shape *records[ANX_RESOURCE_SHAPE_MAX];
 static struct anx_spinlock geometry_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
-int anx_resource_shape_share(uint64_t id, uint64_t epoch, const struct anx_memory_lower_contract *contract, struct anx_resource_shape_view *out)
-{ (void)id; (void)epoch; (void)contract; (void)out; return ANX_ENOSYS; }
 static struct resource_shape *find(uint64_t id)
 {
 	for (uint32_t i = 0; i < ANX_RESOURCE_SHAPE_MAX; i++) if (records[i] && records[i]->view.id == id) return records[i];
@@ -94,10 +92,14 @@ static int inspect(struct resource_shape *r, struct anx_resource_shape_view *out
 	struct anx_resource_shape_view view = r->view;
 	view.resident_replicas = view.physical_pages = view.resident_bytes = 0;
 	for (uint32_t i = 0; i < r->view.replicas; i++) if (!anx_uuid_is_nil(&r->pools[i])) {
+		view.resident_replicas++;
+		bool counted = false;
+		for (uint32_t j = 0; j < i; j++) if (!anx_uuid_compare(&r->pools[i], &r->pools[j])) counted = true;
+		if (counted) continue;
 		struct anx_resource_pool_stats stats;
 		int ret = anx_resource_pool_stats(&r->pools[i], &stats);
 		if (ret != ANX_OK) return ret;
-		view.resident_replicas++; view.physical_pages += stats.physical_pages; view.resident_bytes += stats.live_bytes;
+		view.physical_pages += stats.physical_pages; view.resident_bytes += stats.live_bytes;
 	}
 	*out = view; return ANX_OK;
 }
@@ -105,7 +107,10 @@ static int drop(struct resource_shape *r, uint32_t i)
 {
 	if (anx_uuid_is_nil(&r->pools[i])) return ANX_OK;
 	int ret = anx_resource_view_release(&r->caches[i]);
-	if (ret == ANX_OK) ret = anx_resource_pool_destroy(&r->pools[i]);
+	bool retained = false;
+	for (uint32_t j = 0; j < ANX_RESOURCE_SHAPE_REPLICAS; j++)
+		if (j != i && !anx_uuid_compare(&r->pools[i], &r->pools[j])) retained = true;
+	if (ret == ANX_OK && !retained) ret = anx_resource_pool_destroy(&r->pools[i]);
 	if (ret == ANX_OK) r->pools[i] = r->caches[i] = ANX_UUID_NIL;
 	return ret;
 }
@@ -168,12 +173,20 @@ int anx_resource_shape_bind(uint64_t id, uint64_t epoch, uint32_t replica, const
 	struct resource_shape *r = find(id); int ret = check(r, epoch, replica, owner, source);
 	if (ret == ANX_OK && r->references == ~(uint32_t)0) ret = ANX_EFULL;
 	if (ret == ANX_OK && anx_uuid_is_nil(&r->pools[replica])) {
+		uint32_t shared = r->view.replicas;
+		if (r->view.geometry == ANX_MEMORY_SHARED_READONLY)
+			for (uint32_t i = 0; i < r->view.replicas; i++) if (!anx_uuid_is_nil(&r->caches[i])) { shared = i; break; }
 		struct anx_adapter_image image; anx_oid_t pool = ANX_UUID_NIL, cache = ANX_UUID_NIL;
 		ret = source_read(r, false, &image);
-		if (ret == ANX_OK) ret = anx_resource_pool_create(&r->view.owner, 1, &pool);
-		if (ret == ANX_OK) ret = anx_resource_view_insert(&pool, &image, sizeof(image), &cache);
+		if (ret == ANX_OK && shared < r->view.replicas) {
+			ret = anx_resource_view_clone(&r->caches[shared], &cache);
+			if (ret == ANX_OK) pool = r->pools[shared];
+		} else if (ret == ANX_OK) {
+			ret = anx_resource_pool_create(&r->view.owner, 1, &pool);
+			if (ret == ANX_OK) ret = anx_resource_view_insert(&pool, &image, sizeof(image), &cache);
+		}
 		if (ret == ANX_OK) { r->pools[replica] = pool; r->caches[replica] = cache; }
-		else if (!anx_uuid_is_nil(&pool)) anx_resource_pool_destroy(&pool);
+		else if (shared == r->view.replicas && !anx_uuid_is_nil(&pool)) anx_resource_pool_destroy(&pool);
 	}
 	if (ret == ANX_OK) r->references++;
 	anx_spin_unlock_irqrestore(&geometry_lock, flags); return ret;
@@ -238,5 +251,51 @@ int anx_resource_shape_destroy(uint64_t id)
 			anx_cell_store_release(r->owner); anx_memset(r, 0, sizeof(*r)); anx_free(r);
 		}
 	}
+	anx_spin_unlock_irqrestore(&geometry_lock, flags); return ret;
+}
+int anx_resource_shape_share(uint64_t id, uint64_t epoch, const struct anx_memory_lower_contract *contract, struct anx_resource_shape_view *out)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !epoch || !contract || !out) return ANX_EINVAL;
+	struct anx_memory_lower_contract input = *contract;
+	if ((uint32_t)input.topology > ANX_MEMORY_SEPARATE_DEVICE || input.minimum_page_saving_pct > 100) return ANX_EINVAL;
+	if (input.topology != ANX_MEMORY_COHERENT_CPU || !input.read_only_consumers || input.copy_orders_writes) return ANX_ENOTSUP;
+	bool flags; anx_spin_lock_irqsave(&geometry_lock, &flags);
+	struct resource_shape *r = find(id); int ret = access(r);
+	if (ret == ANX_OK && (r->busy || r->view.epoch != epoch || r->view.epoch == ~(uint64_t)0)) ret = ANX_EBUSY;
+	if (ret == ANX_OK && r->view.geometry != ANX_MEMORY_COPIES) ret = ANX_EEXIST;
+	if (ret == ANX_OK) ret = owner_current(r, false);
+	if (ret == ANX_OK) ret = capacity(r, r->view.replicas);
+	struct anx_adapter_image image, copy;
+	if (ret == ANX_OK) ret = source_read(r, false, &image);
+	struct anx_resource_shape_view before;
+	if (ret == ANX_OK) ret = inspect(r, &before);
+	if (ret == ANX_OK && (!before.physical_pages ||
+	    (before.physical_pages - 1) * 100 < before.physical_pages * input.minimum_page_saving_pct)) ret = ANX_EBUSY;
+	uint32_t base = ANX_RESOURCE_SHAPE_REPLICAS;
+	anx_oid_t aliases[ANX_RESOURCE_SHAPE_REPLICAS] = {0};
+	for (uint32_t i = 0; ret == ANX_OK && i < r->view.replicas; i++) if (!anx_uuid_is_nil(&r->pools[i])) {
+		struct anx_resource_pool_stats stats;
+		ret = anx_resource_pool_stats(&r->pools[i], &stats);
+		if (ret == ANX_OK && (stats.physical_pages != 1 || stats.live_records != 1 || stats.live_aliases != 1 || stats.live_bytes != sizeof(image))) ret = ANX_EBUSY;
+		if (ret == ANX_OK) {
+			ret = anx_resource_view_read(&r->caches[i], 0, &copy, sizeof(copy));
+			if (ret == sizeof(copy)) ret = anx_memcmp(&copy, &image, sizeof(image)) ? ANX_EBUSY : ANX_OK;
+			else if (ret >= 0) ret = ANX_EIO;
+		}
+		if (ret == ANX_OK && base == ANX_RESOURCE_SHAPE_REPLICAS) base = i;
+	}
+	for (uint32_t i = 0; ret == ANX_OK && i < r->view.replicas; i++)
+		if (i != base && !anx_uuid_is_nil(&r->pools[i])) ret = anx_resource_view_clone(&r->caches[base], &aliases[i]);
+	if (ret == ANX_OK) {
+		/* All allocations and byte checks precede replacement of the private copies. */
+		r->view.epoch++;
+		for (uint32_t i = 0; ret == ANX_OK && i < r->view.replicas; i++) if (!anx_uuid_is_nil(&aliases[i])) {
+			ret = drop(r, i);
+			if (ret == ANX_OK) { r->pools[i] = r->pools[base]; r->caches[i] = aliases[i]; aliases[i] = ANX_UUID_NIL; }
+		}
+		if (ret == ANX_OK) { r->view.geometry = ANX_MEMORY_SHARED_READONLY; ret = inspect(r, out); }
+	}
+	for (uint32_t i = 0; i < ANX_RESOURCE_SHAPE_REPLICAS; i++) if (!anx_uuid_is_nil(&aliases[i])) anx_resource_view_release(&aliases[i]);
 	anx_spin_unlock_irqrestore(&geometry_lock, flags); return ret;
 }
