@@ -1,9 +1,9 @@
 # Daily AI-first OS research review
 
-The review covers 80 briefings from June 26 through September 13, 2026.
+The review covers 82 briefings from June 26 through September 15, 2026.
 The user confirmed one briefing per day in this sequence.
 The user extended the scope to include later briefings before final release preparation.
-Days 074 through 080 have an initial comparison against `4c0bc25`; each day receives an updated comparison before implementation.
+Later briefings receive an updated comparison against the preceding merged result before implementation.
 
 Source: [AI-first OS research and Project Solara updates](https://chatgpt.com/c/6a3eabf4-cb88-83ea-942e-a601dd12b392).
 Each entry retains the source message identifier.
