@@ -1488,28 +1488,31 @@
       "date": "2026-09-07",
       "message_id": "a3296827-dc83-4a98-ab4d-a033c2db25f9",
       "title": "AI-First OS Update: Make Resource Shape a Schedulable Object",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-074",
       "comparison_baseline": "4fe4bb0",
       "tested_commit": "258fb85",
-      "evidence": "docs/research/evidence/day-074/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-074/uefi-boot.json",
+      "merged_commit": "d495c83"
     },
     {
       "learning": "Give planners explicit execution constraints and versioned compatibility contracts for memory, models, coordination, and quality.",
       "code": [
-        "kernel/include/anx/cell.h",
-        "kernel/include/anx/memplane.h",
-        "kernel/core/route/optimization.c"
+        "kernel/include/anx/memory_abi.h",
+        "kernel/core/mem/memory_abi.c",
+        "kernel/core/tools/research_day075.c"
       ],
-      "comparison": "Cells expose execution constraints, and optimization artifacts bind a target. Memory compatibility across model changes needs a declared contract.",
-      "acceptance": "Reject incompatible memory reuse after an executor change; permit reuse under a matching declared contract.",
+      "comparison": "Memory indices bind reader and embedding descriptors to exact source snapshots and reject incompatible reuse after contract replacement.",
+      "acceptance": "Reject equal-dimension space and reader replacements, rebuild from canonical evidence, and allow queries only under matching contracts.",
       "day": 75,
       "date": "2026-09-08",
       "message_id": "1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee",
       "title": "AI-First OS Update: Define Semantic ABIs Between Models, Memory, Teams, and Hardware",
-      "status": "queued",
-      "branch": null,
-      "comparison_baseline": "4c0bc25"
+      "status": "validated",
+      "branch": "codex/ai-os-day-075",
+      "comparison_baseline": "d495c83",
+      "tested_commit": "f7e7a0f",
+      "evidence": "docs/research/evidence/day-075/uefi-boot.json"
     },
     {
       "learning": "Expose logical memory objects and their consumers, then choose physical representations according to topology and measured benefit.",
