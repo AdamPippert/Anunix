@@ -4,11 +4,12 @@
 #define ANX_PROCEDURE_MAX 16U
 #define ANX_PROCEDURE_SCHEMA "anx:procedure/recipe/v1"
 #define ANX_PROCEDURE_EVIDENCE_SCHEMA "anx:procedure/evidence/v1"
+#define ANX_PROCEDURE_VALIDATION_SCHEMA "anx:procedure/validation/v1"
 enum anx_procedure_state { ANX_PROCEDURE_DRAFT, ANX_PROCEDURE_VALIDATED };
 struct anx_procedure_view {
 	uint64_t id, epoch, version, predecessor;
 	anx_cid_t owner;
-	anx_oid_t artifact, evidence, knowledge;
+	anx_oid_t artifact, evidence, validation_evidence, knowledge;
 	enum anx_procedure_state state;
 };
 /* Compile/promotion are controller operations; the recipe itself grants no authority. */
