@@ -28,6 +28,7 @@
 #include <anx/alloc.h>
 #include <anx/kprintf.h>
 #include <anx/cell.h>
+#include <anx/crypto.h>
 
 /* ------------------------------------------------------------------ */
 /* Bigram table                                                        */
@@ -38,6 +39,18 @@
 static uint32_t g_bigram[V][V];
 static bool     g_inited;
 static struct anx_spinlock generation_lock = ANX_SPINLOCK_INIT;
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+static bool image_fault;
+int anx_anxml_test_image_fault(bool enabled)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	bool flags;
+	anx_spin_lock_irqsave(&generation_lock, &flags);
+	image_fault = enabled;
+	anx_spin_unlock_irqrestore(&generation_lock, flags);
+	return ANX_OK;
+}
+#endif
 
 /*
  * A small canon of English-ish phrases used to seed the bigram table.
@@ -138,7 +151,7 @@ static int sample_next(unsigned char prev, uint32_t *rng_state)
 /* ------------------------------------------------------------------ */
 
 static int generate_image(const struct anx_anxml_request *req, const struct anx_adapter_image *image,
-		       struct anx_anxml_response *resp)
+		       const uint8_t *expected_digest, struct anx_anxml_response *resp)
 {
 	uint32_t      max_tokens;
 	unsigned char prev;
@@ -149,15 +162,33 @@ static int generate_image(const struct anx_anxml_request *req, const struct anx_
 	uint32_t     *rng_p;
 	bool          had_printable = false;
 
-	if (!req || !resp || req->prompt_len > ANX_ANXML_PROMPT_MAX)
+	if (!req || !resp)
 		return ANX_EINVAL;
-	if (image && anx_adapter_image_check(image) != ANX_OK) return ANX_EINVAL;
+	struct anx_anxml_request request_copy = *req;
+	req = &request_copy;
+	if (req->prompt_len > ANX_ANXML_PROMPT_MAX || (expected_digest && req->model_name[0])) return ANX_EINVAL;
 	max_tokens = req->max_tokens ? req->max_tokens : ANX_ANXML_DEFAULT_MAX;
 	if (max_tokens > ANX_ANXML_OUTPUT_MAX - 1) max_tokens = ANX_ANXML_OUTPUT_MAX - 1;
 	int admission = anx_cell_cognitive_limit(max_tokens, &max_tokens);
 	if (admission != ANX_OK) return admission;
+	if (expected_digest && max_tokens != req->max_tokens) return ANX_EPERM;
 	bool flags;
 	anx_spin_lock_irqsave(&generation_lock, &flags);
+	struct anx_adapter_image image_copy;
+	int integrity = ANX_OK;
+	if (image) {
+		image_copy = *image; image = &image_copy;
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+		if (expected_digest && image_fault) { image_fault = false; image_copy.deltas[0].next ^= 1; }
+#endif
+		integrity = anx_adapter_image_check(image);
+		if (integrity == ANX_OK && expected_digest) {
+			uint8_t digest[32];
+			anx_sha256(image, sizeof(*image), digest);
+			if (anx_memcmp(digest, expected_digest, 32)) integrity = ANX_EIO;
+		}
+	}
+	if (integrity != ANX_OK) { anx_spin_unlock_irqrestore(&generation_lock, flags); return integrity; }
 	g_inited = true;
 
 	anx_memset(resp, 0, sizeof(*resp));
@@ -211,13 +242,19 @@ static int generate_image(const struct anx_anxml_request *req, const struct anx_
 
 int anx_anxml_generate(const struct anx_anxml_request *req, struct anx_anxml_response *resp)
 {
-	return generate_image(req, NULL, resp);
+	return generate_image(req, NULL, NULL, resp);
 }
 int anx_anxml_generate_image(const struct anx_anxml_request *req, const struct anx_adapter_image *image,
 		struct anx_anxml_response *resp)
 {
 	if (!image) return ANX_EINVAL;
-	return generate_image(req, image, resp);
+	return generate_image(req, image, NULL, resp);
+}
+int anx_anxml_generate_verified(const struct anx_anxml_request *req, const struct anx_adapter_image *image,
+		const uint8_t digest[32], struct anx_anxml_response *resp)
+{
+	if (!image || !digest) return ANX_EINVAL;
+	return generate_image(req, image, digest, resp);
 }
 
 /* ------------------------------------------------------------------ */
