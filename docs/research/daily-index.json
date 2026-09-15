@@ -1283,11 +1283,12 @@
       ],
       "comparison": "Baseline 4ae6479 validates source dependencies but has no prepared inference receipt. This step binds sources and identity, verifies the CPU execution copy, and records consumed-image evidence.",
       "acceptance": "Reject changed sources, identity commitments, and corrupted execution copies. Execute fresh records and verify their source, consumed-image, and output digests.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-064",
       "comparison_baseline": "4ae6479",
       "tested_commit": "fb7fb0e",
-      "evidence": "docs/research/evidence/day-064/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-064/uefi-boot.json",
+      "merged_commit": "2a46190"
     },
     {
       "day": 65,
@@ -1296,14 +1297,17 @@
       "title": "AI-First OS Update: Optimize Execution Shape Before Scheduling It",
       "learning": "Optimize execution shape before placement and measure the complete workflow.",
       "code": [
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/core/twin/twin.c",
-        "kernel/core/anxml/anxml.c"
+        "kernel/core/workflow/execution_shape.c",
+        "kernel/core/anxml/model_use.c",
+        "kernel/core/tools/research_day065.c"
       ],
-      "comparison": "Workflows express logical steps and the Twin models placement. Physical fusion is not part of that snapshot.",
-      "acceptance": "Compare equivalent execution plans while preserving dependencies and authority boundaries.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Baseline 2a46190 has prepared inference records. The candidate compiles bounded reuse plans and passes a focused VM comparison; full validation awaits Jekyll availability.",
+      "acceptance": "Match all logical outputs while reducing completed CPU generations from three to two. Preserve dependency and authority boundaries and reject stale plans.",
+      "status": "in_progress",
+      "branch": "codex/ai-os-day-065",
+      "candidate_commit": "a389634",
+      "comparison_baseline": "2a46190",
+      "pending": "The first full kernel run timed out after Day 037. A focused Day 038 and Day 065 boot passed. Jekyll went offline before the full repeat and UEFI run."
     },
     {
       "day": 66,
@@ -1568,8 +1572,25 @@
       "status": "queued",
       "branch": null,
       "comparison_baseline": "38db6bb"
+    },
+    {
+      "day": 82,
+      "date": "2026-09-15",
+      "message_id": "4fbd6461-2755-46a8-b94e-832520d9f3b2",
+      "title": "AI-first OS update \u2014 September 15: schedule the continuation, not the process",
+      "learning": "Keep resource entitlement with a continuation while deterministic gates constrain handoffs, authority sources, and policy rules.",
+      "code": [
+        "kernel/core/sched/domain.c",
+        "kernel/core/sched/scheduler.c",
+        "kernel/core/route/phase.c",
+        "kernel/core/exec/runtime.c"
+      ],
+      "comparison": "Cells, scheduler domains, and phase leases constrain individual execution. Shared continuation entitlement and explicit holder handoff need a common runtime boundary.",
+      "acceptance": "Transfer a bounded continuation entitlement between authorized members without duplicating capacity. Reject foreign, stale, or revoked handoffs.",
+      "status": "queued",
+      "branch": null
     }
   ],
   "scope": "Include later daily briefings before final release preparation.",
-  "last_source_check": "2026-09-14"
+  "last_source_check": "2026-09-15"
 }

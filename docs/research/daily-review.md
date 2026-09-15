@@ -1037,7 +1037,7 @@ Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/co
 
 Planned acceptance: Reject changed sources, identity commitments, and corrupted execution copies. Execute fresh records and verify their source, consumed-image, and output digests.
 
-Status: Validated on Jekyll. Tested commit: `fb7fb0e`. Source message: `76e08520-047b-4b16-ac49-9d6162e4dd1e`.
+Status: Merged at `2a46190` after Jekyll validation. Tested commit: `fb7fb0e`. Source message: `76e08520-047b-4b16-ac49-9d6162e4dd1e`.
 
 Detailed comparison and results: [Day 064](day-064.md).
 
@@ -1047,13 +1047,15 @@ Detailed comparison and results: [Day 064](day-064.md).
 
 Learning: Optimize execution shape before placement and measure the complete workflow.
 
-Anunix comparison: Workflows express logical steps and the Twin models placement. Physical fusion is not part of that snapshot.
+Anunix comparison: Baseline 2a46190 has prepared inference records. The candidate compiles bounded reuse plans and passes a focused VM comparison; full validation awaits Jekyll availability.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Compare equivalent execution plans while preserving dependencies and authority boundaries.
+Planned acceptance: Match all logical outputs while reducing completed CPU generations from three to two. Preserve dependency and authority boundaries and reject stale plans.
 
-Status: Queued. Source message: `c4abc0ce-78d5-4add-ac3f-58e82e776015`.
+Status: In progress at `a389634`; full VM validation is pending while Jekyll is offline. Source message: `c4abc0ce-78d5-4add-ac3f-58e82e776015`.
+
+Detailed comparison and pending checks: [Day 065](day-065.md).
 
 ## Day 066 — 2026-08-30
 
@@ -1278,3 +1280,17 @@ Evidence: [kernel/core/route/profile.c](../../kernel/core/route/profile.c), [ker
 Planned acceptance: Select only issued policies through a bounded index; prove invalid or stale selections retain the validated fallback.
 
 Status: Queued. Source message: `2b0646b7-8ce0-4118-a447-80e8979d269b`.
+
+## Day 082 — 2026-09-15
+
+**AI-first OS update — September 15: schedule the continuation, not the process**
+
+Learning: Keep resource entitlement with a continuation while deterministic gates constrain handoffs, authority sources, and policy rules.
+
+Anunix comparison: Cells, scheduler domains, and phase leases constrain individual execution. Shared continuation entitlement and explicit holder handoff need a common runtime boundary.
+
+Evidence: [kernel/core/sched/domain.c](../../kernel/core/sched/domain.c), [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/route/phase.c](../../kernel/core/route/phase.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
+
+Planned acceptance: Transfer a bounded continuation entitlement between authorized members without duplicating capacity. Reject foreign, stale, or revoked handoffs.
+
+Status: Queued. Source message: `4fbd6461-2755-46a8-b94e-832520d9f3b2`.
