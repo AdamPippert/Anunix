@@ -1364,11 +1364,12 @@
       ],
       "comparison": "Day 067 retains semantic continuation records, and Day 052 parks phase leases. Day 068 coordinates short waits, long suspensions, and physical model-cache reclamation with guarded reconstruction.",
       "acceptance": "Preserve completions through suspension, reclaim the model cache, reject invalid restoration, and execute the reconstructed image.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-068",
       "comparison_baseline": "aa6714c",
       "tested_commit": "022a77d",
-      "evidence": "docs/research/evidence/day-068/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-068/uefi-boot.json",
+      "merged_commit": "6eb8078"
     },
     {
       "day": 69,
@@ -1377,14 +1378,18 @@
       "title": "AI-First OS Update: Resume from a Frontier, Not from a Fully Restored Image",
       "learning": "Resume from the minimum usable state frontier while restoring later dependencies incrementally.",
       "code": [
-        "kernel/core/twin/twin.c",
-        "kernel/core/mem/memplane.c",
-        "kernel/core/workflow/workflow_exec.c"
+        "kernel/include/anx/frontier.h",
+        "kernel/core/mem/frontier.c",
+        "kernel/core/anxml/model_use.c",
+        "kernel/core/tools/research_day069.c"
       ],
-      "comparison": "Readiness classes and workflow dependencies exist. The Twin does not model incremental state materialization.",
-      "acceptance": "Run only a ready frontier and reject execution whose immediate dependencies remain unavailable.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Day 068 restores one continuation cache. Day 069 coordinates ordered model-image readiness, checks phase ownership, and executes from the next restored image.",
+      "acceptance": "Execute from a ready frontier, reject missing or stale state, and preserve output equivalence with complete restoration.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-069",
+      "comparison_baseline": "6eb8078",
+      "tested_commit": "4a53ed6",
+      "evidence": "docs/research/evidence/day-069/uefi-boot.json"
     },
     {
       "day": 70,

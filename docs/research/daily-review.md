@@ -1101,7 +1101,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Preserve completions through suspension, reclaim the model cache, reject invalid restoration, and execute the reconstructed image.
 
-Status: Validated on Jekyll. Tested commit: `022a77d`. Source message: `77557664-206e-4b62-b50b-b5960f80d9ce`.
+Status: Merged at `6eb8078` after Jekyll validation. Tested commit: `022a77d`. Source message: `77557664-206e-4b62-b50b-b5960f80d9ce`.
 
 Detailed comparison and results: [Day 068](day-068.md).
 
@@ -1111,13 +1111,15 @@ Detailed comparison and results: [Day 068](day-068.md).
 
 Learning: Resume from the minimum usable state frontier while restoring later dependencies incrementally.
 
-Anunix comparison: Readiness classes and workflow dependencies exist. The Twin does not model incremental state materialization.
+Anunix comparison: Day 068 restores one continuation cache. Day 069 coordinates ordered model-image readiness, checks phase ownership, and executes from the next restored image.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c).
 
-Planned acceptance: Run only a ready frontier and reject execution whose immediate dependencies remain unavailable.
+Planned acceptance: Execute from a ready frontier, reject missing or stale state, and preserve output equivalence with complete restoration.
 
-Status: Queued. Source message: `1afdd52b-e9ef-42cc-b612-97e2606d48d0`.
+Status: Validated on Jekyll. Tested commit: `4a53ed6`. Source message: `1afdd52b-e9ef-42cc-b612-97e2606d48d0`.
+
+Detailed comparison and results: [Day 069](day-069.md).
 
 ## Day 070 — 2026-09-03
 
