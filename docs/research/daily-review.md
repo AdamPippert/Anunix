@@ -1099,7 +1099,7 @@ Anunix comparison: Day 067 retains semantic continuation records, and Day 052 pa
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Preserve sealed completions through suspension and hibernation; release reserved capacity, reclaim the model page, reject stale or unauthorized restoration, and execute the reconstructed image.
+Planned acceptance: Preserve completions through suspension, reclaim the model cache, reject invalid restoration, and execute the reconstructed image.
 
 Status: Validated on Jekyll. Tested commit: `022a77d`. Source message: `77557664-206e-4b62-b50b-b5960f80d9ce`.
 
