@@ -1021,7 +1021,7 @@ Evidence: [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundl
 
 Planned acceptance: Reject malformed images and stale epochs before execution. Recover from one failed model group, return the verified second result, and preserve both outcomes.
 
-Status: Validated on Jekyll. Tested commit: `178b3e8`. Source message: `ae5c3fd3-12f2-4b93-9152-5c30860468dd`.
+Status: Merged at `4ae6479` after Jekyll validation. Tested commit: `178b3e8`. Source message: `ae5c3fd3-12f2-4b93-9152-5c30860468dd`.
 
 Detailed comparison and results: [Day 063](day-063.md).
 
@@ -1031,13 +1031,15 @@ Detailed comparison and results: [Day 063](day-063.md).
 
 Learning: Bind intent, delegation, effects, and the bytes used at execution time into one causal chain.
 
-Anunix comparison: Effects reference cells and objects; provenance records lineage. Validation can become stale before physical use.
+Anunix comparison: Baseline 4ae6479 validates source dependencies but has no prepared inference receipt. This step binds sources and identity, verifies the CPU execution copy, and records consumed-image evidence.
 
 Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Reject execution after an authorized object's version changes between preparation and dispatch.
+Planned acceptance: Reject changed sources, identity commitments, and corrupted execution copies. Execute fresh records and verify their source, consumed-image, and output digests.
 
-Status: Queued. Source message: `76e08520-047b-4b16-ac49-9d6162e4dd1e`.
+Status: Validated on Jekyll. Tested commit: `fb7fb0e`. Source message: `76e08520-047b-4b16-ac49-9d6162e4dd1e`.
+
+Detailed comparison and results: [Day 064](day-064.md).
 
 ## Day 065 — 2026-08-29
 
