@@ -369,3 +369,9 @@ int anx_continuation_destroy(uint64_t id)
 	}
 	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
 }
+
+int anx_continuation_suspend_configure(uint64_t id, uint64_t epoch, uint64_t phase_epoch,
+		const anx_oid_t *model, struct anx_continuation_view *out)
+{
+	(void)id; (void)epoch; (void)phase_epoch; (void)model; (void)out; return ANX_ENOSYS;
+}
