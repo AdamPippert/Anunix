@@ -31,6 +31,29 @@ static int denied076(struct fixture076 *f, uint32_t plan, int expected)
 	return ret == ANX_OK && current.epoch == f->graph.epoch && current.completed == f->graph.completed &&
 		!anx_memcmp(current.program_digest, f->program, 32) ? ANX_OK : -7403;
 }
+static int lowering076(struct fixture076 *f, struct anx_memory_lower_contract *lower, int expected)
+{
+	struct anx_resource_shape_view current, saved;
+	anx_memset(&f->shape_out, 0x55, sizeof(f->shape_out)); saved = f->shape_out;
+	int ret = anx_resource_shape_share(f->shape.id, f->shape.epoch, lower, &f->shape_out);
+	if (ret != expected || anx_memcmp(&f->shape_out, &saved, sizeof(saved))) return -7602;
+	ret = anx_resource_shape_get(f->shape.id, &current);
+	return ret == ANX_OK && current.epoch == f->shape.epoch && current.physical_pages == 2 &&
+		current.geometry == ANX_MEMORY_COPIES ? ANX_OK : -7603;
+}
+static int active076(struct anx_external_call *call, void *arg)
+{
+	(void)call; struct fixture076 *f = arg;
+	struct anx_memory_lower_contract lower = {ANX_MEMORY_COHERENT_CPU,true,false,0};
+	if (anx_resource_shape_share(f->shape.id, f->shape.epoch, &lower, &f->shape_out) != ANX_EPERM ||
+	    anx_resource_shape_resize(f->shape.id, f->shape.epoch, 1, &f->shape_out) != ANX_EPERM) return -7604;
+	if (f->foreign) return anx_physical_plan_commit(f->plans[3].id, &f->response, &f->graph_out) == ANX_EPERM ? ANX_OK : -7605;
+	int ret = anx_physical_plan_commit(f->plans[3].id, &f->response, &f->graph);
+	if (ret != ANX_OK || f->graph.completed != 3 || f->graph.physical_operations != 2 ||
+	    f->response.output_len != 4 || anx_memcmp(f->response.output,"AAAA",4) ||
+	    anx_memcmp(f->program, f->graph.program_digest, 32)) return -7606;
+	return anx_logical_graph_read(f->graph.id, 0, &f->response) == ANX_OK && !anx_memcmp(f->response.output,"AAAA",4) ? ANX_OK : -7606;
+}
 int anx_research_day076(void)
 {
 	struct fixture076 *f = anx_zalloc(sizeof(*f));
@@ -53,7 +76,7 @@ int anx_research_day076(void)
 	if (ret == ANX_OK) ret = anx_cell_create(ANX_CELL_TASK_EXTERNAL_CALL, &intent, &foreign);
 	if (ret == ANX_OK) ret = anx_so_create(&p, &image);
 	if (ret == ANX_OK) ret = anx_so_seal(&image->oid);
-	contract.limits[ANX_PHASE_INFERENCE] = (struct anx_phase_limit){true,ANX_MEM_L1,8192,ANX_ACCEL_NONE,0};
+	contract.limits[ANX_PHASE_INFERENCE] = (struct anx_phase_limit){true,ANX_MEM_L1,12288,ANX_ACCEL_NONE,0};
 	if (ret == ANX_OK) { ret = anx_phase_attach(&owner->cid, &contract); attached = ret == ANX_OK; }
 	if (ret == ANX_OK) ret = anx_phase_get(&owner->cid, &phase);
 	if (ret == ANX_OK) ret = anx_phase_begin(&owner->cid, phase.epoch, &request);
@@ -91,8 +114,45 @@ int anx_research_day076(void)
 	if (ret == ANX_OK) ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 1, &f->plans[1]);
 	if (ret == ANX_OK) ret = anx_resource_shape_get(f->shape.id, &f->shape);
 	if (ret != ANX_OK || f->shape.physical_pages != 2 || f->shape.resident_bytes != 2 * sizeof(adapter)) { ret = -7411; goto out; }
-	struct anx_memory_lower_contract lower = {ANX_MEMORY_COHERENT_CPU, true, false, 50};
-	ret = anx_resource_shape_share(f->shape.id, f->shape.epoch, &lower, &f->shape_out) == ANX_OK ? ANX_OK : -7601;
+	struct anx_memory_lower_contract lower = {ANX_MEMORY_COHERENT_CPU, true, false, 51};
+	ret = lowering076(f, &lower, ANX_EBUSY);
+	if (ret != ANX_OK) goto out;
+	lower.minimum_page_saving_pct = 50; lower.topology = ANX_MEMORY_SEPARATE_DEVICE;
+	ret = lowering076(f, &lower, ANX_ENOTSUP);
+	if (ret != ANX_OK) goto out;
+	lower.topology = ANX_MEMORY_COHERENT_CPU; lower.read_only_consumers = false;
+	ret = lowering076(f, &lower, ANX_ENOTSUP);
+	if (ret != ANX_OK) goto out;
+	lower.read_only_consumers = true; lower.copy_orders_writes = true;
+	ret = lowering076(f, &lower, ANX_ENOTSUP);
+	if (ret != ANX_OK) goto out;
+	lower.copy_orders_writes = false;
+	((uint8_t *)image->payload)[0] ^= 1; ret = lowering076(f, &lower, ANX_EBUSY); ((uint8_t *)image->payload)[0] ^= 1;
+	if (ret != ANX_OK) goto out;
+	ret = anx_physical_plan_commit(f->plans[1].id, &f->response, &f->graph);
+	if (ret != ANX_OK || f->graph.completed != 1 || anx_memcmp(f->response.output,"AAAA",4)) { ret = -7607; goto out; }
+	ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 1, &f->plans[2]);
+	uint64_t copy_epoch = f->shape.epoch;
+	if (ret == ANX_OK) ret = anx_resource_shape_share(f->shape.id, f->shape.epoch, &lower, &f->shape);
+	if (ret != ANX_OK || f->shape.epoch != copy_epoch + 1 || f->shape.geometry != ANX_MEMORY_SHARED_READONLY ||
+	    f->shape.resident_replicas != 2 || f->shape.physical_pages != 1 || f->shape.resident_bytes != sizeof(adapter) ||
+	    anx_uuid_compare(&f->shape.source.oid,&image->oid)) { ret = -7608; goto out; }
+	ret = denied076(f, 2, ANX_EBUSY);
+	if (ret == ANX_OK) ret = anx_phase_resize(&owner->cid, phase.epoch, 12288, 0, &phase);
+	if (ret == ANX_OK) ret = anx_resource_shape_resize(f->shape.id, f->shape.epoch, 3, &f->shape);
+	if (ret == ANX_OK) ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 2, &f->plans[3]);
+	if (ret == ANX_OK) ret = anx_resource_shape_get(f->shape.id, &f->shape);
+	if (ret != ANX_OK || f->shape.resident_replicas != 3 || f->shape.physical_pages != 1 || f->shape.resident_bytes != sizeof(adapter)) { ret = -7609; goto out; }
+	ret = anx_external_register_handler("anxresearch076", active076, f);
+	if (ret != ANX_OK) goto out;
+	anx_strlcpy(f->call.endpoint,"anxresearch076://execute",sizeof(f->call.endpoint));
+	owner->execution.allow_side_effects = foreign->execution.allow_side_effects = true;
+	owner->ext_call = foreign->ext_call = &f->call;
+	f->foreign = true; ret = anx_cell_run(foreign);
+	if (ret == ANX_OK) { f->foreign = false; ret = anx_cell_run(owner); }
+	if (ret == ANX_OK) ret = anx_resource_shape_resize(f->shape.id, f->shape.epoch, 1, &f->shape);
+	if (ret != ANX_OK || f->shape.resident_replicas != 1 || f->shape.physical_pages != 1) { ret = -7610; goto out; }
+	if (ret == ANX_OK) kprintf("day076 copy_pages=2 shared_pages=1 shared_consumers=3 rejected_plans=unchanged outputs=equal\n");
 
 out:
 	anx_external_unregister_handler("anxresearch076");
