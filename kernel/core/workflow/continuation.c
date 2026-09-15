@@ -9,6 +9,9 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 #include <anx/spinlock.h>
+#include <anx/model_use.h>
+#include <anx/phase.h>
+#include <anx/resource_view.h>
 
 struct continuation_ref { anx_oid_t oid; uint64_t version; uint32_t size, sensitivity; uint8_t digest[32]; };
 struct continuation_policy {
@@ -34,6 +37,9 @@ struct continuation_record {
 	struct anx_external_call *response;
 	uint32_t active_operation;
 	bool busy;
+	struct continuation_ref model;
+	struct anx_phase_view phase;
+	anx_oid_t cache_pool, cache_handle;
 };
 static struct continuation_record *records[ANX_CONTINUATION_MAX];
 static struct anx_spinlock continuation_lock = ANX_SPINLOCK_INIT;
@@ -131,7 +137,7 @@ static int journal_check(struct continuation_record *r)
 	}
 	return ANX_OK;
 }
-static int append(struct continuation_record *r, struct anx_continuation_event *event)
+static int event_prepare(struct continuation_record *r, struct anx_continuation_event *event, struct continuation_ref *ref)
 {
 	if (r->view.events == ANX_CONTINUATION_EVENTS || r->view.epoch == ~(uint64_t)0) return ANX_EFULL;
 	event->continuation = r->view.id; event->epoch = r->view.epoch + 1; event->previous = r->view.head;
@@ -140,14 +146,23 @@ static int append(struct continuation_record *r, struct anx_continuation_event *
 	if (!anx_uuid_is_nil(&event->previous)) parents[count++] = event->previous;
 	if (!anx_uuid_is_nil(&event->result_object)) parents[count++] = event->result_object;
 	else if (!anx_uuid_is_nil(&event->source)) parents[count++] = event->source;
+	return store_object(r, ANX_CONTINUATION_SCHEMA, event, sizeof(*event), parents, count, ref);
+}
+static void event_publish(struct continuation_record *r, const struct anx_continuation_event *event, const struct continuation_ref *ref)
+{
+	r->events[r->view.events] = *event; r->journal[r->view.events++] = *ref;
+	r->view.head = ref->oid; r->view.epoch = event->epoch;
+	if (event->kind == ANX_CONT_COMMITTED) r->view.semantic_checkpoint = ref->oid;
+}
+static int append(struct continuation_record *r, struct anx_continuation_event *event)
+{
 	struct continuation_ref ref = {0};
-	int ret = store_object(r, ANX_CONTINUATION_SCHEMA, event, sizeof(*event), parents, count, &ref);
-	if (ret == ANX_OK) {
-		r->events[r->view.events] = *event; r->journal[r->view.events++] = ref;
-		r->view.head = ref.oid; r->view.epoch = event->epoch;
-	}
+	int ret = event_prepare(r, event, &ref);
+	if (ret == ANX_OK) event_publish(r, event, &ref);
 	return ret;
 }
+static int resource_dispatch_check(struct continuation_record *r);
+static int cache_drop(struct continuation_record *r);
 static int worker_check(struct continuation_record *r, struct anx_cell *worker)
 {
 	if (!worker) return ANX_ENOENT;
@@ -193,6 +208,7 @@ int anx_continuation_bind(uint64_t id, uint64_t epoch, uint32_t slot, const anx_
 	struct continuation_record *r = find(id);
 	int ret = access(r);
 	if (ret == ANX_OK && r->view.epoch != epoch) ret = ANX_EBUSY;
+	if (ret == ANX_OK) ret = resource_dispatch_check(r);
 	if (ret == ANX_OK) ret = journal_check(r);
 	struct anx_cell *next = NULL;
 	if (ret == ANX_OK) { next = anx_cell_store_lookup(worker); ret = worker_check(r, next); }
@@ -251,6 +267,7 @@ int anx_continuation_dispatch(uint64_t id, uint64_t epoch, uint32_t slot, uint64
 	struct continuation_record *r = find(id);
 	int ret = access(r);
 	if (ret == ANX_OK && r->view.epoch != epoch) ret = ANX_EBUSY;
+	if (ret == ANX_OK) ret = resource_dispatch_check(r);
 	if (ret == ANX_OK) for (uint32_t i = 0; i < r->view.operations; i++) if (r->operations[i].key == key) ret = ANX_EEXIST;
 	if (ret == ANX_OK && (r->view.operations == ANX_CONTINUATION_OPERATIONS || r->view.events > ANX_CONTINUATION_EVENTS - 2 ||
 	    r->view.epoch > ~(uint64_t)0 - 2)) ret = ANX_EFULL;
@@ -362,6 +379,7 @@ int anx_continuation_destroy(uint64_t id)
 	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
 	struct continuation_record *r = find(id);
 	int ret = !r ? ANX_ENOENT : r->busy || r->view.uncertain ? ANX_EBUSY : ANX_OK;
+	if (ret == ANX_OK) ret = cache_drop(r);
 	if (ret == ANX_OK) {
 		for (uint32_t i = 0; i < ANX_CONTINUATION_MAX; i++) if (records[i] == r) records[i] = NULL;
 		for (uint32_t i = 0; i < ANX_CONTINUATION_CAPABILITIES; i++) if (r->workers[i]) anx_cell_store_release(r->workers[i]);
@@ -370,8 +388,197 @@ int anx_continuation_destroy(uint64_t id)
 	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
 }
 
+static int phase_current(struct continuation_record *r)
+{
+	struct anx_phase_view now;
+	int ret = anx_phase_get(&r->view.owner, &now);
+	if (ret != ANX_OK) return ret;
+	const struct anx_phase_view *old = &r->phase;
+	return now.epoch != old->epoch || now.parked != old->parked || now.phase != old->phase || now.role != old->role ||
+		now.tier != old->tier || now.memory_bytes != old->memory_bytes || now.accelerator != old->accelerator ||
+		now.accelerator_pct != old->accelerator_pct || anx_uuid_compare(&now.lease_id, &old->lease_id) ? ANX_EBUSY : ANX_OK;
+}
+static int resource_dispatch_check(struct continuation_record *r)
+{
+	if (r->view.resource_state != ANX_CONT_RUNNABLE) return ANX_EBUSY;
+	if (anx_uuid_is_nil(&r->model.oid)) return ANX_OK;
+	int ret = phase_current(r);
+	if (ret == ANX_OK) ret = object_read(r, &r->model, ANX_MODEL_USE_SCHEMA, NULL, sizeof(struct anx_adapter_image), false);
+	return ret;
+}
+static int cache_build(struct continuation_record *r, struct continuation_ref *model)
+{
+	struct anx_adapter_image image;
+	int ret = object_read(r, model, ANX_MODEL_USE_SCHEMA, &image, sizeof(image), false);
+	if (ret == ANX_OK) ret = anx_adapter_image_check(&image);
+	if (ret == ANX_OK) ret = anx_resource_pool_create(&r->view.owner, 1, &r->cache_pool);
+	if (ret == ANX_OK) ret = anx_resource_view_insert(&r->cache_pool, &image, sizeof(image), &r->cache_handle);
+	if (ret != ANX_OK && !anx_uuid_is_nil(&r->cache_pool)) {
+		anx_resource_pool_destroy(&r->cache_pool); r->cache_pool = ANX_UUID_NIL;
+	}
+	anx_memset(&image, 0, sizeof(image));
+	return ret;
+}
+static int cache_read(struct continuation_record *r, struct anx_adapter_image *image)
+{
+	int ret = anx_resource_view_read(&r->cache_handle, 0, image, sizeof(*image));
+	if (ret != sizeof(*image)) return ret < 0 ? ret : ANX_EIO;
+	uint8_t digest[32]; anx_sha256(image, sizeof(*image), digest);
+	return anx_memcmp(digest, r->model.digest, 32) ? ANX_EIO : ANX_OK;
+}
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+int anx_continuation_test_cache_corrupt(uint64_t id)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = !r ? ANX_ENOENT : r->busy ? ANX_EBUSY : anx_resource_view_test_corrupt(&r->cache_handle);
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
+}
+#endif
+static int cache_drop(struct continuation_record *r)
+{
+	if (anx_uuid_is_nil(&r->cache_pool)) return ANX_OK;
+	struct anx_resource_pool_stats stats;
+	int ret = anx_resource_pool_stats(&r->cache_pool, &stats);
+	if (ret == ANX_OK && (stats.live_aliases != 1 || stats.live_records != 1 || stats.physical_pages != 1 ||
+	    stats.live_bytes != sizeof(struct anx_adapter_image))) ret = ANX_EBUSY;
+	if (ret == ANX_OK) ret = anx_resource_view_release(&r->cache_handle);
+	if (ret == ANX_OK) ret = anx_resource_pool_destroy(&r->cache_pool);
+	if (ret == ANX_OK) r->cache_pool = r->cache_handle = ANX_UUID_NIL;
+	return ret;
+}
+static int semantic_current(struct continuation_record *r)
+{
+	int ret = journal_check(r);
+	for (uint32_t i = 0; ret == ANX_OK && i < r->view.operations; i++) {
+		struct continuation_operation *op = &r->operations[i];
+		if (op->kind != ANX_CONT_COMMITTED) continue;
+		ret = object_read(r, &op->source, NULL, NULL, op->source.size, false);
+		if (ret == ANX_OK) ret = object_read(r, &op->result, ANX_CONTINUATION_RESULT_SCHEMA, NULL, sizeof(struct anx_continuation_result), false);
+	}
+	return ret;
+}
+static int suspension_check(struct continuation_record *r, uint64_t epoch)
+{
+	int ret = access(r);
+	if (ret == ANX_OK && (r->view.epoch != epoch || r->owner->runtime_active || r->view.uncertain)) ret = ANX_EBUSY;
+	if (ret == ANX_OK && anx_uuid_is_nil(&r->model.oid)) ret = ANX_ENOENT;
+	if (ret == ANX_OK) ret = phase_current(r);
+	if (ret == ANX_OK) ret = semantic_current(r);
+	return ret;
+}
 int anx_continuation_suspend_configure(uint64_t id, uint64_t epoch, uint64_t phase_epoch,
 		const anx_oid_t *model, struct anx_continuation_view *out)
 {
-	(void)id; (void)epoch; (void)phase_epoch; (void)model; (void)out; return ANX_ENOSYS;
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !epoch || !phase_epoch || !model || !out) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = access(r);
+	if (ret == ANX_OK && (r->view.epoch != epoch || !anx_uuid_is_nil(&r->model.oid) || r->owner->runtime_active || r->view.uncertain)) ret = ANX_EBUSY;
+	struct anx_phase_view phase;
+	if (ret == ANX_OK) ret = anx_phase_get(&r->view.owner, &phase);
+	if (ret == ANX_OK && (phase.epoch != phase_epoch || phase.parked || phase.phase == ANX_PHASE_IDLE)) ret = ANX_EBUSY;
+	/* A phase reservation belongs to one configured continuation. */
+	if (ret == ANX_OK) for (uint32_t i = 0; i < ANX_CONTINUATION_MAX; i++)
+		if (records[i] && !anx_uuid_is_nil(&records[i]->model.oid) && !anx_uuid_compare(&records[i]->view.owner, &r->view.owner)) ret = ANX_EEXIST;
+	struct continuation_ref ref = { .oid = *model }, event_ref = {0};
+	struct anx_continuation_event event = { .kind = ANX_CONT_RESOURCE_CONFIG, .source = *model, .generation = 1 };
+	if (ret == ANX_OK) ret = semantic_current(r);
+	if (ret == ANX_OK) ret = object_read(r, &ref, ANX_MODEL_USE_SCHEMA, NULL, sizeof(struct anx_adapter_image), true);
+	if (ret == ANX_OK) ret = event_prepare(r, &event, &event_ref);
+	if (ret == ANX_OK) ret = cache_build(r, &ref);
+	if (ret == ANX_OK) {
+		r->model = ref; r->phase = phase;
+		r->view.model_source = *model; r->view.phase_epoch = phase.epoch;
+		r->view.cache_generation = 1; r->view.physical_pages = 1;
+		event_publish(r, &event, &event_ref); *out = r->view;
+	} else if (!anx_uuid_is_nil(&event_ref.oid)) anx_so_delete(&event_ref.oid, false);
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
+}
+int anx_continuation_pause(uint64_t id, uint64_t epoch, enum anx_suspension_reason reason, struct anx_continuation_view *out)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !epoch || !out || (reason != ANX_SUSPEND_TOOL_WAIT && reason != ANX_SUSPEND_HUMAN_APPROVAL)) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = suspension_check(r, epoch);
+	if (ret == ANX_OK && r->view.resource_state != ANX_CONT_RUNNABLE &&
+	    !(r->view.resource_state == ANX_CONT_SHORT_WAIT && reason == ANX_SUSPEND_HUMAN_APPROVAL)) ret = ANX_EBUSY;
+	struct continuation_ref ref = {0};
+	struct anx_continuation_event event = { .kind = reason == ANX_SUSPEND_TOOL_WAIT ? ANX_CONT_WAIT_EVENT : ANX_CONT_SUSPEND_EVENT };
+	if (ret == ANX_OK) ret = event_prepare(r, &event, &ref);
+	struct anx_phase_view parked;
+	if (ret == ANX_OK && reason == ANX_SUSPEND_HUMAN_APPROVAL) ret = anx_phase_park(&r->view.owner, r->phase.epoch, &parked);
+	if (ret == ANX_OK) {
+		if (reason == ANX_SUSPEND_HUMAN_APPROVAL) { r->phase = parked; r->view.phase_epoch = parked.epoch; }
+		r->view.resource_state = reason == ANX_SUSPEND_TOOL_WAIT ? ANX_CONT_SHORT_WAIT : ANX_CONT_SUSPENDED;
+		r->view.suspension_reason = reason; event_publish(r, &event, &ref); *out = r->view;
+	} else if (!anx_uuid_is_nil(&ref.oid)) anx_so_delete(&ref.oid, false);
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
+}
+int anx_continuation_hibernate(uint64_t id, uint64_t epoch, struct anx_continuation_view *out)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !epoch || !out) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = suspension_check(r, epoch);
+	if (ret == ANX_OK && r->view.resource_state != ANX_CONT_SUSPENDED) ret = ANX_EBUSY;
+	struct continuation_ref ref = {0};
+	struct anx_continuation_event event = { .kind = ANX_CONT_HIBERNATE_EVENT };
+	if (ret == ANX_OK) ret = event_prepare(r, &event, &ref);
+	if (ret == ANX_OK) ret = cache_drop(r);
+	if (ret == ANX_OK) {
+		r->view.resource_state = ANX_CONT_HIBERNATED; r->view.physical_pages = 0;
+		event_publish(r, &event, &ref); *out = r->view;
+	} else if (!anx_uuid_is_nil(&ref.oid)) anx_so_delete(&ref.oid, false);
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
+}
+int anx_continuation_resume(uint64_t id, uint64_t epoch, struct anx_continuation_view *out)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !epoch || !out) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = suspension_check(r, epoch);
+	if (ret == ANX_OK && r->view.resource_state == ANX_CONT_RUNNABLE) ret = ANX_EBUSY;
+	bool rebuild = ret == ANX_OK && r->view.resource_state == ANX_CONT_HIBERNATED;
+	if (ret == ANX_OK && rebuild && r->view.cache_generation == ~(uint64_t)0) ret = ANX_EFULL;
+	if (ret == ANX_OK) ret = object_read(r, &r->model, ANX_MODEL_USE_SCHEMA, NULL, sizeof(struct anx_adapter_image), false);
+	struct continuation_ref ref = {0};
+	struct anx_continuation_event event = { .kind = ANX_CONT_RESUME_EVENT };
+	if (ret == ANX_OK) ret = event_prepare(r, &event, &ref);
+	if (ret == ANX_OK && rebuild) ret = cache_build(r, &r->model);
+	struct anx_adapter_image image;
+	if (ret == ANX_OK) ret = cache_read(r, &image);
+	anx_memset(&image, 0, sizeof(image));
+	struct anx_phase_view phase;
+	if (ret == ANX_OK && r->view.resource_state != ANX_CONT_SHORT_WAIT) ret = anx_phase_resume(&r->view.owner, r->phase.epoch, &phase);
+	if (ret == ANX_OK) {
+		if (r->view.resource_state != ANX_CONT_SHORT_WAIT) { r->phase = phase; r->view.phase_epoch = phase.epoch; }
+		if (rebuild) r->view.cache_generation++;
+		r->view.physical_pages = 1; r->view.resource_state = ANX_CONT_RUNNABLE; r->view.suspension_reason = ANX_SUSPEND_NONE;
+		event_publish(r, &event, &ref); *out = r->view;
+	} else {
+		if (rebuild && !anx_uuid_is_nil(&r->cache_pool)) cache_drop(r);
+		if (!anx_uuid_is_nil(&ref.oid)) anx_so_delete(&ref.oid, false);
+	}
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
+}
+int anx_continuation_acceleration_read(uint64_t id, uint64_t epoch, uint64_t generation, struct anx_adapter_image *out)
+{
+	if (!id || !epoch || !generation || !out) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = access(r);
+	if (ret == ANX_OK && (r->view.epoch != epoch || r->view.cache_generation != generation)) ret = ANX_EBUSY;
+	if (ret == ANX_OK && anx_uuid_is_nil(&r->model.oid)) ret = ANX_ENOENT;
+	if (ret == ANX_OK) ret = resource_dispatch_check(r);
+	struct anx_adapter_image image;
+	if (ret == ANX_OK) ret = cache_read(r, &image);
+	if (ret == ANX_OK) *out = image;
+	anx_memset(&image, 0, sizeof(image));
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
 }
