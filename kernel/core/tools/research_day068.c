@@ -46,6 +46,7 @@ static int active068(struct anx_external_call *call, void *arg)
 	    anx_continuation_resume(f->view.id, f->view.epoch, &f->output) != ANX_EPERM ||
 	    anx_continuation_suspend_configure(f->view.id, f->view.epoch, f->view.phase_epoch, &f->source, &f->output) != ANX_EPERM ||
 	    anx_continuation_test_cache_corrupt(f->view.id) != ANX_EPERM ||
+	    anx_continuation_test_restore_fault(true) != ANX_EPERM ||
 	    anx_memcmp(&f->output, &f->sentinel, sizeof(f->output))) return -6804;
 	if (f->foreign) return anx_continuation_acceleration_read(f->view.id, f->view.epoch, f->view.cache_generation, &f->image) == ANX_EPERM ? ANX_OK : -6805;
 	return anx_continuation_read(f->view.id, 1, &f->result) == ANX_OK && f->result.size == 4 &&
@@ -55,17 +56,29 @@ static int denied068(struct fixture068 *f, int expected)
 {
 	struct anx_continuation_view current;
 	struct anx_phase_view before, after;
+	struct anx_resource_pool_stats cache_before, cache_after;
 	uint64_t total, free_before, free_after;
 	anx_memset(&f->output, 0x55, sizeof(f->output)); f->sentinel = f->output;
 	int ret = anx_phase_get(&f->view.owner, &before);
+	if (ret != ANX_OK) return ret;
+	ret = anx_continuation_cache_stats(f->view.id, &cache_before);
 	if (ret != ANX_OK) return ret;
 	anx_page_stats(&total, &free_before);
 	ret = anx_continuation_resume(f->view.id, f->view.epoch, &f->output);
 	anx_page_stats(&total, &free_after);
 	if (ret != expected) { kprintf("day068 resume expected=%d actual=%d\n", expected, ret); return -6806; }
-	return anx_continuation_get(f->view.id, &current) == ANX_OK && !anx_memcmp(&current, &f->view, sizeof(current)) &&
-		anx_phase_get(&f->view.owner, &after) == ANX_OK && !anx_memcmp(&before, &after, sizeof(before)) &&
-		free_after == free_before && !anx_memcmp(&f->output, &f->sentinel, sizeof(f->output)) ? ANX_OK : -6807;
+	int view_ret = anx_continuation_get(f->view.id, &current), phase_ret = anx_phase_get(&f->view.owner, &after);
+	bool view_same = view_ret == ANX_OK && !anx_memcmp(&current, &f->view, sizeof(current));
+	bool phase_same = phase_ret == ANX_OK && !anx_memcmp(&before, &after, sizeof(before));
+	bool cache_same = anx_continuation_cache_stats(f->view.id, &cache_after) == ANX_OK && !anx_memcmp(&cache_before, &cache_after, sizeof(cache_before));
+	bool output_same = !anx_memcmp(&f->output, &f->sentinel, sizeof(f->output));
+	if (!view_same || !phase_same || !cache_same || free_after != free_before || !output_same) {
+		kprintf("day068 unchanged expected=%d state=%u view_ret=%d view_same=%u phase_ret=%d phase_same=%u pages_before=%llu pages_after=%llu output_same=%u\n",
+			expected, (uint32_t)f->view.resource_state, view_ret, view_same, phase_ret, phase_same,
+			(unsigned long long)free_before, (unsigned long long)free_after, output_same);
+		return -6807;
+	}
+	return ANX_OK;
 }
 static int dispatch068(struct fixture068 *f, uint64_t key, struct anx_continuation_view *out)
 {
@@ -77,6 +90,7 @@ int anx_research_day068(void)
 	struct anx_cell *owner = NULL, *foreign = NULL, *workers[2] = {0};
 	struct anx_cell_intent intent = {0};
 	struct anx_phase_view phase, initial;
+	struct anx_resource_pool_stats cache;
 	struct anx_phase_contract contract = { .role = ANX_ROLE_RUNNER };
 	struct anx_phase_request request = { ANX_PHASE_INFERENCE, 4096, 25 };
 	struct anx_state_object *model = NULL, *source = NULL, *result_object = NULL;
@@ -135,7 +149,8 @@ int anx_research_day068(void)
 	ret = -6801;
 	if (anx_continuation_suspend_configure(f->view.id, f->view.epoch, phase.epoch, &model->oid, &f->view) != ANX_OK) goto out;
 	ret = -6808;
-	if (f->view.physical_pages != 1 || f->view.cache_generation != 1 || anx_uuid_compare(&semantic, &f->view.semantic_checkpoint)) goto out;
+	if (anx_continuation_cache_stats(f->view.id, &cache) != ANX_OK || cache.physical_pages != 1 || cache.live_records != 1 || cache.live_bytes != sizeof(f->original) ||
+	    f->view.physical_pages != 1 || f->view.cache_generation != 1 || anx_uuid_compare(&semantic, &f->view.semantic_checkpoint)) goto out;
 	ret = materialize068(f);
 	if (ret == ANX_OK) ret = anx_continuation_pause(f->view.id, f->view.epoch, ANX_SUSPEND_TOOL_WAIT, &f->view);
 	if (ret != ANX_OK) goto out;
@@ -171,9 +186,17 @@ int anx_research_day068(void)
 	anx_page_stats(&total, &free_after);
 	if (ret != ANX_OK) goto out;
 	ret = -6813;
-	if (f->view.resource_state != ANX_CONT_HIBERNATED || f->view.physical_pages || free_after != free_before + 1 ||
+	int cache_ret = anx_continuation_cache_stats(f->view.id, &cache);
+	int result_ret = anx_continuation_read(f->view.id, 1, &f->result);
+	kprintf("day068 hibernate state=%u pages=%u free_before=%llu free_after=%llu cache_ret=%d cache_pages=%u records=%u bytes=%llu checkpoint_same=%u completed=%u result_ret=%d result_same=%u\n",
+		(uint32_t)f->view.resource_state, f->view.physical_pages, (unsigned long long)free_before, (unsigned long long)free_after,
+		cache_ret, cache.physical_pages, cache.live_records, (unsigned long long)cache.live_bytes,
+		!anx_uuid_compare(&semantic, &f->view.semantic_checkpoint), f->view.completed, result_ret, !anx_memcmp(f->result.bytes, "kept", 4));
+	/* The sealed transition event has separate object-store allocations. */
+	if (f->view.resource_state != ANX_CONT_HIBERNATED || f->view.physical_pages ||
+	    cache_ret != ANX_OK || cache.physical_pages || cache.live_records || cache.live_bytes ||
 	    anx_uuid_compare(&semantic, &f->view.semantic_checkpoint) || f->view.completed != 1 ||
-	    anx_continuation_read(f->view.id, 1, &f->result) != ANX_OK || anx_memcmp(f->result.bytes, "kept", 4)) goto out;
+	    result_ret != ANX_OK || anx_memcmp(f->result.bytes, "kept", 4)) goto out;
 	model->version++; ret = denied068(f, ANX_EBUSY); model->version--;
 	if (ret != ANX_OK) goto out;
 	((uint8_t *)model->payload)[0] ^= 1; ret = denied068(f, ANX_EBUSY); ((uint8_t *)model->payload)[0] ^= 1;
@@ -205,6 +228,9 @@ int anx_research_day068(void)
 	if (ret == ANX_OK) ret = denied068(f, ANX_ENOMEM);
 	if (rival) { anx_lease_release(rival); rival = NULL; }
 	if (ret != ANX_OK) goto out;
+	ret = anx_continuation_test_restore_fault(true);
+	if (ret == ANX_OK) ret = denied068(f, ANX_EIO);
+	if (ret != ANX_OK) goto out;
 	ret = anx_continuation_resume(f->view.id, f->view.epoch, &f->view);
 	if (ret == ANX_OK) ret = anx_phase_get(&owner->cid, &phase);
 	if (ret != ANX_OK) goto out;
@@ -233,6 +259,7 @@ int anx_research_day068(void)
 	owner->ext_call = &f->call; f->foreign = false;
 	ret = anx_cell_run(owner);
 out:
+	anx_continuation_test_restore_fault(false);
 	if (lease) lease->mem_used_bytes = 0;
 	if (rival) anx_lease_release(rival);
 	anx_external_unregister_handler("anxresearch068"); anx_external_unregister_handler("anxresearch068active");
