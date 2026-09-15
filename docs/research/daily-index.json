@@ -1426,11 +1426,12 @@
       ],
       "comparison": "Day 065 compiles and runs a complete execution shape. Day 071 separates immutable logical inputs from one-step physical plans bound to logical and resource epochs.",
       "acceptance": "Reject stale physical plans while preserving logical progress, then recompile a valid prefix and retain equivalent results.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-071",
       "comparison_baseline": "aeea340",
       "tested_commit": "8b0beb5",
-      "evidence": "docs/research/evidence/day-071/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-071/uefi-boot.json",
+      "merged_commit": "627ecc0"
     },
     {
       "day": 72,
@@ -1439,14 +1440,18 @@
       "title": "AI-First OS Update: Schedule Evidence and Intent, Not Just Compute",
       "learning": "Allocate independent evidence paths and durable future intentions alongside physical resources.",
       "code": [
-        "kernel/core/state/provenance.c",
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/core/icm/icm.c"
+        "kernel/include/anx/epistemic.h",
+        "kernel/core/state/epistemic.c",
+        "kernel/core/state/stage.c",
+        "kernel/core/tools/research_day072.c"
       ],
-      "comparison": "Provenance and workflows provide records. Evidence independence and durable intention triggers need explicit policies.",
-      "acceptance": "Reject duplicated evidence presented as independent and retain a pending intention through suspension.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Staged writes now bind reviewer approvals to current evidence ancestry and enforce a minimum structural cut before ordinary commit.",
+      "acceptance": "Reject shared and mixed evidence roots, exclude corrupted dependencies, and commit only with two surviving independent approvals.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-072",
+      "comparison_baseline": "627ecc0",
+      "tested_commit": "bd16f88",
+      "evidence": "docs/research/evidence/day-072/uefi-boot.json"
     },
     {
       "day": 73,

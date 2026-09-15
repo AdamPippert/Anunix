@@ -1149,7 +1149,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Reject stale physical plans while preserving logical progress, then recompile a valid prefix and retain equivalent results.
 
-Status: Validated on Jekyll. Tested commit: `8b0beb5`. Source message: `86fbcab7-8cf4-40a0-a928-8253e648b2b8`.
+Status: Merged at `627ecc0` after Jekyll validation. Tested commit: `8b0beb5`. Source message: `86fbcab7-8cf4-40a0-a928-8253e648b2b8`.
 
 Detailed comparison and results: [Day 071](day-071.md).
 
@@ -1159,13 +1159,15 @@ Detailed comparison and results: [Day 071](day-071.md).
 
 Learning: Allocate independent evidence paths and durable future intentions alongside physical resources.
 
-Anunix comparison: Provenance and workflows provide records. Evidence independence and durable intention triggers need explicit policies.
+Anunix comparison: Staged writes now bind reviewer approvals to current evidence ancestry and enforce a minimum structural cut before ordinary commit.
 
 Evidence: [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c), [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c).
 
-Planned acceptance: Reject duplicated evidence presented as independent and retain a pending intention through suspension.
+Planned acceptance: Reject shared and mixed evidence roots, exclude corrupted dependencies, and commit only with two surviving independent approvals.
 
-Status: Queued. Source message: `1ddbc849-f8fc-464b-a905-d204e865fa77`.
+Status: Validated on Jekyll. Tested commit: `bd16f88`. Source message: `1ddbc849-f8fc-464b-a905-d204e865fa77`.
+
+Detailed comparison and results: [Day 072](day-072.md).
 
 ## Day 073 — 2026-09-06
 
