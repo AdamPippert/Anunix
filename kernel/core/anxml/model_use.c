@@ -7,6 +7,7 @@
 #include <anx/spinlock.h>
 #include <anx/identity.h>
 #include <anx/sched_domain.h>
+#include <anx/resource_view.h>
 
 struct model_use {
 	struct anx_model_use_view view;
@@ -156,7 +157,8 @@ int anx_model_use_get(uint64_t id, struct anx_model_use_view *out)
 	anx_spin_unlock_irqrestore(&use_lock, flags);
 	return ret;
 }
-int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response *response, struct anx_model_use_view *out)
+static int execute(uint64_t id, uint64_t epoch, const anx_oid_t *image_view,
+		struct anx_anxml_response *response, struct anx_model_use_view *out)
 {
 	if (!id || !epoch || !response || !out) return ANX_EINVAL;
 	bool flags;
@@ -170,6 +172,16 @@ int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response
 	if (ret != ANX_OK) return ret;
 	struct materialization *m = anx_zalloc(sizeof(*m));
 	ret = m ? materialize(u, m, false) : ANX_ENOMEM;
+	if (ret == ANX_OK && image_view) {
+		struct anx_resource_view_info info;
+		ret = anx_resource_view_info(image_view, &info);
+		if (ret == ANX_OK && (anx_uuid_compare(&info.owner, &u->view.owner) || info.bytes != sizeof(m->image))) ret = ANX_EPERM;
+		if (ret == ANX_OK) {
+			ret = anx_resource_view_read(image_view, 0, &m->image, sizeof(m->image));
+			if (ret == sizeof(m->image)) ret = ANX_OK;
+			else if (ret >= 0) ret = ANX_EIO;
+		}
+	}
 	if (ret == ANX_OK) ret = anx_anxml_generate_verified(&m->request, &m->image, u->view.image.digest, &m->response);
 	/* No bytes are exposed until the source and owner still match at completion. */
 	if (ret == ANX_OK) ret = owner_check(u, false);
@@ -186,6 +198,15 @@ int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response
 	anx_spin_unlock_irqrestore(&use_lock, flags);
 	if (m) { anx_memset(m, 0, sizeof(*m)); anx_free(m); }
 	return ret;
+}
+int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response *response, struct anx_model_use_view *out)
+{ return execute(id, epoch, NULL, response, out); }
+int anx_model_use_execute_view(uint64_t id, uint64_t epoch, const anx_oid_t *image_view,
+		struct anx_anxml_response *response, struct anx_model_use_view *out)
+{
+	if (!image_view || anx_uuid_is_nil(image_view)) return ANX_EINVAL;
+	anx_oid_t copy = *image_view;
+	return execute(id, epoch, &copy, response, out);
 }
 int anx_model_use_destroy(uint64_t id)
 {
