@@ -1229,7 +1229,7 @@ Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kerne
 
 Planned acceptance: Reject incompatible or unprofitable sharing without changing copies; reduce two pages to one and preserve verified outputs through fresh plans.
 
-Status: Validated on Jekyll. Tested commit: `deadd3a`. Source message: `b6df868e-dc4e-4388-b987-eb9f2591d320`.
+Status: Merged at `eeb5047` after Jekyll validation. Tested commit: `deadd3a`. Source message: `b6df868e-dc4e-4388-b987-eb9f2591d320`.
 
 Detailed comparison and results: [Day 076](day-076.md).
 
@@ -1239,13 +1239,15 @@ Detailed comparison and results: [Day 076](day-076.md).
 
 Learning: Control computation depth, speculation, and parallelism within explicit quality and resource limits, with deterministic enforcement.
 
-Anunix comparison: Routing scores and cognitive budgets exist. Joint execution-shape changes need explicit quality bounds and admission checks.
+Anunix comparison: Workload candidates now pass a frozen output check before selection within an explicit token limit.
 
 Evidence: [kernel/core/route/planner.c](../../kernel/core/route/planner.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Reject an execution-shape proposal outside its quality or resource contract before changing the active plan.
+Planned acceptance: Reject candidates outside the quality or token bounds and preserve the current selection after failed admission.
 
-Status: Queued. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
+Status: Local checks pass at `0ab932e`; Jekyll VM validation is pending. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
+
+Detailed comparison and pending checks: [Day 077](day-077.md).
 
 ## Day 078 — 2026-09-11
 
