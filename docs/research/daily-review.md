@@ -1069,7 +1069,7 @@ Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/wor
 
 Planned acceptance: Reject missing evidence, changed dependencies, incompatible requests, and forged catalog grants. Require separate replays and execute both recipe versions without widening permissions.
 
-Status: Validated on Jekyll. Tested commit: `d12f1fd`. Source message: `dcdb3512-f8d3-4508-ba3b-f80e5a105b0f`.
+Status: Merged at `efe64c7` after Jekyll validation. Tested commit: `d12f1fd`. Source message: `dcdb3512-f8d3-4508-ba3b-f80e5a105b0f`.
 
 Detailed comparison and results: [Day 066](day-066.md).
 
@@ -1079,13 +1079,15 @@ Detailed comparison and results: [Day 066](day-066.md).
 
 Learning: Keep durable continuation identity while composing replaceable execution processes.
 
-Anunix comparison: Workflow continuations and cell identities exist. A runtime-independent persistent agent is a broader lifecycle object.
+Anunix comparison: Workflow checkpoints and protected operations exist. The continuation registry now retains a logical owner, versioned worker bindings, sealed results, and duplicate-call protection across worker replacement.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/credential.c](../../kernel/core/credential.c).
 
-Planned acceptance: Replace an execution binding while preserving the continuation's authority and completed effects.
+Planned acceptance: Replace workers after completion or failure. Preserve the logical owner and recorded result; block duplicate keys, stale bindings, changed evidence, and foreign access.
 
-Status: Queued. Source message: `26a8ff69-2235-4a97-9c44-c1ba8d2f559f`.
+Status: Validated on Jekyll. Tested commit: `77caee2`. Source message: `26a8ff69-2235-4a97-9c44-c1ba8d2f559f`.
+
+Detailed comparison and results: [Day 067](day-067.md).
 
 ## Day 068 — 2026-09-01
 

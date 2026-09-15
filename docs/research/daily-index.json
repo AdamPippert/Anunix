@@ -1323,11 +1323,12 @@
       ],
       "comparison": "ICM and provenance classify stored artifacts; verified model-use receipts identify actual computation. The procedure registry now preserves source evidence, binds exact dependencies, and requires a separate replay before execution.",
       "acceptance": "Reject missing evidence, changed dependencies, incompatible requests, and forged catalog grants. Require separate replays and execute both recipe versions without widening permissions.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-066",
       "comparison_baseline": "a7d5c05",
       "tested_commit": "d12f1fd",
-      "evidence": "docs/research/evidence/day-066/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-066/uefi-boot.json",
+      "merged_commit": "efe64c7"
     },
     {
       "day": 67,
@@ -1336,14 +1337,18 @@
       "title": "AI-First OS Update: The Agent Runtime Should Be a Process Graph, Not a Monolithic Harness",
       "learning": "Keep durable continuation identity while composing replaceable execution processes.",
       "code": [
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/include/anx/cell.h",
-        "kernel/core/credential.c"
+        "kernel/core/workflow/continuation.c",
+        "kernel/include/anx/continuation.h",
+        "kernel/core/exec/external.c",
+        "kernel/core/tools/research_day067.c"
       ],
-      "comparison": "Workflow continuations and cell identities exist. A runtime-independent persistent agent is a broader lifecycle object.",
-      "acceptance": "Replace an execution binding while preserving the continuation's authority and completed effects.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Workflow checkpoints and protected operations exist. The continuation registry now retains a logical owner, versioned worker bindings, sealed results, and duplicate-call protection across worker replacement.",
+      "acceptance": "Replace workers after completion or failure. Preserve the logical owner and recorded result; block duplicate keys, stale bindings, changed evidence, and foreign access.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-067",
+      "comparison_baseline": "efe64c7",
+      "tested_commit": "77caee2",
+      "evidence": "docs/research/evidence/day-067/uefi-boot.json"
     },
     {
       "day": 68,
