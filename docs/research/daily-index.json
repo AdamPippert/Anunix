@@ -1406,11 +1406,12 @@
       ],
       "comparison": "Protected operations preserve committed and uncertain outcomes. Day 070 reserves controller-assigned exposure across a shared hierarchy and keeps uncertain charges after revocation.",
       "acceptance": "Reject shared budget overdrafts before dispatch; preserve uncertain charges and distinguish revoked authority from unresolved operations.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-070",
       "comparison_baseline": "8a0261e",
       "tested_commit": "d839e3a",
-      "evidence": "docs/research/evidence/day-070/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-070/uefi-boot.json",
+      "merged_commit": "aeea340"
     },
     {
       "day": 71,
@@ -1419,14 +1420,17 @@
       "title": "AI-First OS Update: Separate the Logical Program from the Physical Machine Plan",
       "learning": "Preserve an authoritative logical graph while deriving a replaceable physical execution plan.",
       "code": [
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/core/twin/twin.c",
-        "kernel/include/anx/cell.h"
+        "kernel/include/anx/physical_plan.h",
+        "kernel/core/workflow/execution_shape.c",
+        "kernel/core/tools/research_day071.c"
       ],
-      "comparison": "Workflow nodes and cell plans are distinct. Dynamic physical recompilation needs semantic equivalence checks.",
-      "acceptance": "Change placement while preserving logical dependencies, outputs, and effect order.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Day 065 compiles and runs a complete execution shape. Day 071 separates immutable logical inputs from one-step physical plans bound to logical and resource epochs.",
+      "acceptance": "Reject stale physical plans while preserving logical progress, then recompile a valid prefix and retain equivalent results.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-071",
+      "comparison_baseline": "aeea340",
+      "tested_commit": "8b0beb5",
+      "evidence": "docs/research/evidence/day-071/uefi-boot.json"
     },
     {
       "day": 72,

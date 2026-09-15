@@ -1133,7 +1133,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Reject shared budget overdrafts before dispatch; preserve uncertain charges and distinguish revoked authority from unresolved operations.
 
-Status: Validated on Jekyll. Tested commit: `d839e3a`. Source message: `d1a26ace-fae8-4748-ba29-81c5edc427bd`.
+Status: Merged at `aeea340` after Jekyll validation. Tested commit: `d839e3a`. Source message: `d1a26ace-fae8-4748-ba29-81c5edc427bd`.
 
 Detailed comparison and results: [Day 070](day-070.md).
 
@@ -1143,13 +1143,15 @@ Detailed comparison and results: [Day 070](day-070.md).
 
 Learning: Preserve an authoritative logical graph while deriving a replaceable physical execution plan.
 
-Anunix comparison: Workflow nodes and cell plans are distinct. Dynamic physical recompilation needs semantic equivalence checks.
+Anunix comparison: Day 065 compiles and runs a complete execution shape. Day 071 separates immutable logical inputs from one-step physical plans bound to logical and resource epochs.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Change placement while preserving logical dependencies, outputs, and effect order.
+Planned acceptance: Reject stale physical plans while preserving logical progress, then recompile a valid prefix and retain equivalent results.
 
-Status: Queued. Source message: `86fbcab7-8cf4-40a0-a928-8253e648b2b8`.
+Status: Validated on Jekyll. Tested commit: `8b0beb5`. Source message: `86fbcab7-8cf4-40a0-a928-8253e648b2b8`.
+
+Detailed comparison and results: [Day 071](day-071.md).
 
 ## Day 072 — 2026-09-05
 
