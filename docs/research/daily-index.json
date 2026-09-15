@@ -1303,11 +1303,12 @@
       ],
       "comparison": "Baseline 2a46190 has prepared inference records. This step compiles bounded reuse plans, preserves dependency and authority boundaries, and completes equivalent logical outputs with fewer CPU generations.",
       "acceptance": "Match all logical outputs while reducing completed CPU generations from three to two. Preserve dependency and authority boundaries and reject stale plans.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-065",
       "comparison_baseline": "2a46190",
       "tested_commit": "a389634",
-      "evidence": "docs/research/evidence/day-065/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-065/uefi-boot.json",
+      "merged_commit": "a7d5c05"
     },
     {
       "day": 66,
@@ -1316,14 +1317,17 @@
       "title": "AI-First OS Update: Compile Experience into Versioned Procedural Artifacts",
       "learning": "Compile experience into versioned procedural artifacts with traceable evidence.",
       "code": [
-        "kernel/core/icm/icm.c",
-        "kernel/core/workflow/wf_bundle.c",
-        "kernel/core/state/provenance.c"
+        "kernel/core/workflow/procedure.c",
+        "kernel/include/anx/procedure.h",
+        "kernel/core/tools/research_day066.c"
       ],
-      "comparison": "ICM, workflow bundles, and provenance provide artifact storage. Automatic experience compilation needs independent validation.",
-      "acceptance": "Reject a procedural artifact with missing source evidence or an invalid dependency version.",
-      "status": "queued",
-      "branch": null
+      "comparison": "ICM and provenance classify stored artifacts; verified model-use receipts identify actual computation. The procedure registry now preserves source evidence, binds exact dependencies, and requires a separate replay before execution.",
+      "acceptance": "Reject missing evidence, changed dependencies, incompatible requests, and forged catalog grants. Require separate replays and execute both recipe versions without widening permissions.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-066",
+      "comparison_baseline": "a7d5c05",
+      "tested_commit": "d12f1fd",
+      "evidence": "docs/research/evidence/day-066/uefi-boot.json"
     },
     {
       "day": 67,

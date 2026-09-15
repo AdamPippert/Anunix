@@ -1053,7 +1053,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Match all logical outputs while reducing completed CPU generations from three to two. Preserve dependency and authority boundaries and reject stale plans.
 
-Status: Validated on Jekyll. Tested commit: `a389634`. Source message: `c4abc0ce-78d5-4add-ac3f-58e82e776015`.
+Status: Merged at `a7d5c05` after Jekyll validation. Tested commit: `a389634`. Source message: `c4abc0ce-78d5-4add-ac3f-58e82e776015`.
 
 Detailed comparison and results: [Day 065](day-065.md).
 
@@ -1063,13 +1063,15 @@ Detailed comparison and results: [Day 065](day-065.md).
 
 Learning: Compile experience into versioned procedural artifacts with traceable evidence.
 
-Anunix comparison: ICM, workflow bundles, and provenance provide artifact storage. Automatic experience compilation needs independent validation.
+Anunix comparison: ICM and provenance classify stored artifacts; verified model-use receipts identify actual computation. The procedure registry now preserves source evidence, binds exact dependencies, and requires a separate replay before execution.
 
 Evidence: [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundle.c), [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c).
 
-Planned acceptance: Reject a procedural artifact with missing source evidence or an invalid dependency version.
+Planned acceptance: Reject missing evidence, changed dependencies, incompatible requests, and forged catalog grants. Require separate replays and execute both recipe versions without widening permissions.
 
-Status: Queued. Source message: `dcdb3512-f8d3-4508-ba3b-f80e5a105b0f`.
+Status: Validated on Jekyll. Tested commit: `d12f1fd`. Source message: `dcdb3512-f8d3-4508-ba3b-f80e5a105b0f`.
+
+Detailed comparison and results: [Day 066](day-066.md).
 
 ## Day 067 — 2026-08-31
 
