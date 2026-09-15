@@ -51,7 +51,7 @@ int anx_research_day069(void)
 		.schema_version = "1", .payload = &adapter, .payload_size = sizeof(adapter) };
 	struct anx_model_use_spec use = { .maximum_tokens = 4 };
 	struct anx_phase_contract contract = { .role = ANX_ROLE_RUNNER };
-	struct anx_phase_request request = { ANX_PHASE_INFERENCE, 4096, 0 };
+	struct anx_phase_request request = { ANX_PHASE_INFERENCE, 12288, 0 };
 	struct anx_phase_view phase;
 	uint64_t total, before, after;
 	bool attached = false;
@@ -77,7 +77,7 @@ int anx_research_day069(void)
 		ret = anx_model_use_prepare(&owner->cid, &use, &f->uses[i]);
 		if (ret != ANX_OK) goto out;
 	}
-	contract.limits[ANX_PHASE_INFERENCE] = (struct anx_phase_limit){ true, ANX_MEM_L1, 4096, ANX_ACCEL_NONE, 0 };
+	contract.limits[ANX_PHASE_INFERENCE] = (struct anx_phase_limit){ true, ANX_MEM_L1, 12288, ANX_ACCEL_NONE, 0 };
 	ret = anx_phase_attach(&owner->cid, &contract); attached = ret == ANX_OK;
 	if (ret == ANX_OK) ret = anx_phase_get(&owner->cid, &phase);
 	if (ret == ANX_OK) ret = anx_phase_begin(&owner->cid, phase.epoch, &request);
@@ -95,7 +95,7 @@ int anx_research_day069(void)
 	anx_page_stats(&total, &after);
 	if (ret != ANX_OK || after <= before || f->probe.resident != 1 || f->probe.physical_pages != 1 ||
 	    anx_frontier_reclaim(f->probe.id, f->probe.epoch, &f->output) != ANX_EBUSY) { ret = -6904; goto out; }
-	ret = anx_phase_resize(&owner->cid, phase.epoch, 2048, 0, &phase);
+	ret = anx_phase_resize(&owner->cid, phase.epoch, 8192, 0, &phase);
 	if (ret != ANX_OK) goto out;
 	ret = denied069(f, &f->probe, ANX_EBUSY);
 	if (ret != ANX_OK) goto out;
@@ -116,10 +116,14 @@ int anx_research_day069(void)
 	ret = anx_frontier_restore(f->full.id, f->full.epoch, &f->full);
 	if (ret == ANX_OK) ret = denied069(f, &f->full, ANX_EBUSY);
 	if (ret == ANX_OK) ret = anx_frontier_restore(f->full.id, f->full.epoch, &f->full);
+	if (ret == ANX_OK && (anx_frontier_restore(f->frontier.id, f->frontier.epoch, &f->output) != ANX_ENOMEM ||
+	    anx_memcmp(&f->output, &f->sentinel, sizeof(f->output)))) ret = -6905;
 	for (uint32_t i = 0; ret == ANX_OK && i < 2; i++) {
 		ret = anx_frontier_step(f->full.id, f->full.epoch, &f->response, &f->full);
 		if (ret == ANX_OK && (f->response.output_len != 4 || anx_memcmp(f->response.output, i ? "BBBB" : "AAAA", 4))) ret = -6906;
 	}
+	if (ret != ANX_OK) goto out;
+	ret = anx_frontier_destroy(f->full.id); f->full.id = 0;
 	if (ret != ANX_OK) goto out;
 	ret = anx_frontier_restore(f->frontier.id, f->frontier.epoch, &f->frontier);
 	if (ret == ANX_OK) ret = anx_frontier_test_corrupt(f->frontier.id, 0);

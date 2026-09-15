@@ -20,6 +20,9 @@ struct anx_model_use_view {
 int anx_model_use_prepare(const anx_cid_t *owner, const struct anx_model_use_spec *spec, struct anx_model_use_view *out);
 int anx_model_use_get(uint64_t id, struct anx_model_use_view *out);
 int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response *response, struct anx_model_use_view *out);
+/* Consume an owner-bound resource view after checking the original sealed sources. */
+int anx_model_use_execute_view(uint64_t id, uint64_t epoch, const anx_oid_t *image_view,
+		struct anx_anxml_response *response, struct anx_model_use_view *out);
 /* This predicate compares copied metadata; it does not grant execution authority. */
 bool anx_model_use_same_request(const struct anx_model_use_view *left, const struct anx_model_use_view *right);
 int anx_model_use_reuse(uint64_t id, uint64_t epoch, uint64_t source, struct anx_anxml_response *response, struct anx_model_use_view *out);
