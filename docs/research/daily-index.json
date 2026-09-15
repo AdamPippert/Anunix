@@ -1301,13 +1301,13 @@
         "kernel/core/anxml/model_use.c",
         "kernel/core/tools/research_day065.c"
       ],
-      "comparison": "Baseline 2a46190 has prepared inference records. The candidate compiles bounded reuse plans and passes a focused VM comparison; full validation awaits Jekyll availability.",
+      "comparison": "Baseline 2a46190 has prepared inference records. This step compiles bounded reuse plans, preserves dependency and authority boundaries, and completes equivalent logical outputs with fewer CPU generations.",
       "acceptance": "Match all logical outputs while reducing completed CPU generations from three to two. Preserve dependency and authority boundaries and reject stale plans.",
-      "status": "in_progress",
+      "status": "validated",
       "branch": "codex/ai-os-day-065",
-      "candidate_commit": "a389634",
       "comparison_baseline": "2a46190",
-      "pending": "The first full kernel run timed out after Day 037. A focused Day 038 and Day 065 boot passed. Jekyll went offline before the full repeat and UEFI run."
+      "tested_commit": "a389634",
+      "evidence": "docs/research/evidence/day-065/uefi-boot.json"
     },
     {
       "day": 66,
