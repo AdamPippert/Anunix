@@ -1385,11 +1385,12 @@
       ],
       "comparison": "Day 068 restores one continuation cache. Day 069 coordinates ordered model-image readiness, checks phase ownership, and executes from the next restored image.",
       "acceptance": "Execute from a ready frontier, reject missing or stale state, and preserve output equivalence with complete restoration.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-069",
       "comparison_baseline": "6eb8078",
       "tested_commit": "4a53ed6",
-      "evidence": "docs/research/evidence/day-069/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-069/uefi-boot.json",
+      "merged_commit": "8a0261e"
     },
     {
       "day": 70,
@@ -1398,14 +1399,18 @@
       "title": "AI-First OS Update: Schedule Externalities, Not Just Resource Consumption",
       "learning": "Account for interference imposed on other workloads and exposure from external effects.",
       "code": [
-        "kernel/core/twin/twin.c",
-        "kernel/core/route/budget.c",
-        "kernel/core/cap/effect.c"
+        "kernel/include/anx/exposure.h",
+        "kernel/include/anx/external_operation.h",
+        "kernel/core/exec/external.c",
+        "kernel/core/tools/research_day070.c"
       ],
-      "comparison": "Routing costs and effect phases exist. They do not measure general interference or irreversible exposure.",
-      "acceptance": "Reject a placement or effect that exceeds an explicit externality budget.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Protected operations preserve committed and uncertain outcomes. Day 070 reserves controller-assigned exposure across a shared hierarchy and keeps uncertain charges after revocation.",
+      "acceptance": "Reject shared budget overdrafts before dispatch; preserve uncertain charges and distinguish revoked authority from unresolved operations.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-070",
+      "comparison_baseline": "8a0261e",
+      "tested_commit": "d839e3a",
+      "evidence": "docs/research/evidence/day-070/uefi-boot.json"
     },
     {
       "day": 71,

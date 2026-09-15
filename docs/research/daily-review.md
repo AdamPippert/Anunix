@@ -1117,7 +1117,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Execute from a ready frontier, reject missing or stale state, and preserve output equivalence with complete restoration.
 
-Status: Validated on Jekyll. Tested commit: `4a53ed6`. Source message: `1afdd52b-e9ef-42cc-b612-97e2606d48d0`.
+Status: Merged at `8a0261e` after Jekyll validation. Tested commit: `4a53ed6`. Source message: `1afdd52b-e9ef-42cc-b612-97e2606d48d0`.
 
 Detailed comparison and results: [Day 069](day-069.md).
 
@@ -1127,13 +1127,15 @@ Detailed comparison and results: [Day 069](day-069.md).
 
 Learning: Account for interference imposed on other workloads and exposure from external effects.
 
-Anunix comparison: Routing costs and effect phases exist. They do not measure general interference or irreversible exposure.
+Anunix comparison: Protected operations preserve committed and uncertain outcomes. Day 070 reserves controller-assigned exposure across a shared hierarchy and keeps uncertain charges after revocation.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c).
 
-Planned acceptance: Reject a placement or effect that exceeds an explicit externality budget.
+Planned acceptance: Reject shared budget overdrafts before dispatch; preserve uncertain charges and distinguish revoked authority from unresolved operations.
 
-Status: Queued. Source message: `d1a26ace-fae8-4748-ba29-81c5edc427bd`.
+Status: Validated on Jekyll. Tested commit: `d839e3a`. Source message: `d1a26ace-fae8-4748-ba29-81c5edc427bd`.
+
+Detailed comparison and results: [Day 070](day-070.md).
 
 ## Day 071 — 2026-09-04
 
