@@ -1,0 +1,5 @@
+  Running deterministic conformance harness...
+conformance latest: build/conformance/latest.json
+conformance drift: build/conformance/drift.json
+threshold gate: PASS
+ANUNIX_CONFORMANCE_SOURCE_V1 sha256=111c743407846d40a0ba072e5b8c22c3432a57f03b6c7c647861e32174943189
