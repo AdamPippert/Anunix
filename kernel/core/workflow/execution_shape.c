@@ -1,4 +1,5 @@
 #include <anx/execution_shape.h>
+#include <anx/physical_plan.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/uuid.h>
@@ -14,6 +15,24 @@ struct shape_record {
 static struct shape_record *records[ANX_SHAPE_MAX];
 static struct anx_spinlock shape_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
+
+int anx_logical_graph_create(const anx_cid_t *owner, const struct anx_logical_graph_spec *spec, struct anx_logical_graph_view *out)
+{ (void)owner; (void)spec; (void)out; return ANX_ENOSYS; }
+int anx_logical_graph_get(uint64_t id, struct anx_logical_graph_view *out)
+{ (void)id; (void)out; return ANX_ENOSYS; }
+int anx_logical_graph_read(uint64_t id, uint32_t node, struct anx_anxml_response *out)
+{ (void)id; (void)node; (void)out; return ANX_ENOSYS; }
+int anx_logical_graph_destroy(uint64_t id)
+{ (void)id; return ANX_ENOSYS; }
+int anx_physical_plan_compile(uint64_t graph, uint64_t logical_epoch, uint64_t phase_epoch,
+		enum anx_physical_mode preference, struct anx_physical_plan_view *out)
+{ (void)graph; (void)logical_epoch; (void)phase_epoch; (void)preference; (void)out; return ANX_ENOSYS; }
+int anx_physical_plan_commit(uint64_t id, struct anx_anxml_response *response, struct anx_logical_graph_view *out)
+{ (void)id; (void)response; (void)out; return ANX_ENOSYS; }
+int anx_physical_plan_get(uint64_t id, struct anx_physical_plan_view *out)
+{ (void)id; (void)out; return ANX_ENOSYS; }
+int anx_physical_plan_destroy(uint64_t id)
+{ (void)id; return ANX_ENOSYS; }
 static struct shape_record *find(uint64_t id)
 {
 	for (uint32_t i = 0; i < ANX_SHAPE_MAX; i++) if (records[i] && records[i]->view.id == id) return records[i];
