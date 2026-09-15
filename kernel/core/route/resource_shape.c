@@ -23,6 +23,8 @@ struct resource_shape {
 static struct resource_shape *records[ANX_RESOURCE_SHAPE_MAX];
 static struct anx_spinlock geometry_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
+int anx_resource_shape_share(uint64_t id, uint64_t epoch, const struct anx_memory_lower_contract *contract, struct anx_resource_shape_view *out)
+{ (void)id; (void)epoch; (void)contract; (void)out; return ANX_ENOSYS; }
 static struct resource_shape *find(uint64_t id)
 {
 	for (uint32_t i = 0; i < ANX_RESOURCE_SHAPE_MAX; i++) if (records[i] && records[i]->view.id == id) return records[i];
