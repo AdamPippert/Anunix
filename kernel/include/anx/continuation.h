@@ -41,4 +41,8 @@ int anx_continuation_get(uint64_t id, struct anx_continuation_view *out);
 int anx_continuation_event_get(uint64_t id, uint32_t index, struct anx_continuation_event *out);
 int anx_continuation_read(uint64_t id, uint64_t key, struct anx_continuation_result *out);
 int anx_continuation_destroy(uint64_t id);
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+/* Drop one completion reply after sealing its result; production builds omit this hook. */
+int anx_continuation_test_drop_reply(bool enabled);
+#endif
 #endif
