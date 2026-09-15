@@ -1181,7 +1181,7 @@ Evidence: [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c), [ker
 
 Planned acceptance: Reject role and scope escalation through summaries, stale ancestors, foreign access, and partial output on failed context assembly.
 
-Status: Validated on Jekyll. Tested commit: `98e5d23`. Source message: `3693656d-55cf-4075-85be-4d4e1312fb62`.
+Status: Merged at `4fe4bb0` after Jekyll validation. Tested commit: `98e5d23`. Source message: `3693656d-55cf-4075-85be-4d4e1312fb62`.
 
 Detailed comparison and results: [Day 073](day-073.md).
 
@@ -1191,13 +1191,15 @@ Detailed comparison and results: [Day 073](day-073.md).
 
 Learning: Separate stable logical state from a versioned resource shape and recheck placement after reconfiguration.
 
-Anunix comparison: Engine topology hints and routing target fingerprints exist. Worker reshaping and shared resource-shape epochs need explicit control.
+Anunix comparison: Physical plans now capture a separate resource-shape epoch and consume private model replicas while preserving the logical program.
 
 Evidence: [kernel/include/anx/engine.h](../../kernel/include/anx/engine.h), [kernel/core/route/planner.c](../../kernel/core/route/planner.c), [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c).
 
-Planned acceptance: Reject placement against a stale resource shape; preserve logical identity after an authorized shape revision.
+Planned acceptance: Resize actual replica pages, reject stale shape and phase placements, and preserve completed results and logical identity.
 
-Status: Queued. Source message: `a3296827-dc83-4a98-ab4d-a033c2db25f9`.
+Status: Validated on Jekyll. Tested commit: `258fb85`. Source message: `a3296827-dc83-4a98-ab4d-a033c2db25f9`.
+
+Detailed comparison and results: [Day 074](day-074.md).
 
 ## Day 075 — 2026-09-08
 
