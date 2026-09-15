@@ -1165,7 +1165,7 @@ Evidence: [kernel/core/state/provenance.c](../../kernel/core/state/provenance.c)
 
 Planned acceptance: Reject shared and mixed evidence roots, exclude corrupted dependencies, and commit only with two surviving independent approvals.
 
-Status: Validated on Jekyll. Tested commit: `bd16f88`. Source message: `1ddbc849-f8fc-464b-a905-d204e865fa77`.
+Status: Merged at `0d13e09` after Jekyll validation. Tested commit: `bd16f88`. Source message: `1ddbc849-f8fc-464b-a905-d204e865fa77`.
 
 Detailed comparison and results: [Day 072](day-072.md).
 
@@ -1175,13 +1175,15 @@ Detailed comparison and results: [Day 072](day-072.md).
 
 Learning: Attach independently checked evidence to adaptive policy and enforce context privilege monotonicity.
 
-Anunix comparison: Promotion gates and object metadata exist. They do not constitute formal kernel proofs or a context privilege boundary.
+Anunix comparison: The context compiler binds source ancestry to role and scope ceilings. Existing policy gates check evidence rather than formal proofs.
 
 Evidence: [kernel/core/cap/promotion.c](../../kernel/core/cap/promotion.c), [kernel/core/icm/icm.c](../../kernel/core/icm/icm.c), [kernel/core/state/access.c](../../kernel/core/state/access.c).
 
-Planned acceptance: Reject missing policy evidence and unauthorized context role or scope promotion.
+Planned acceptance: Reject role and scope escalation through summaries, stale ancestors, foreign access, and partial output on failed context assembly.
 
-Status: Queued. Source message: `3693656d-55cf-4075-85be-4d4e1312fb62`.
+Status: Validated on Jekyll. Tested commit: `98e5d23`. Source message: `3693656d-55cf-4075-85be-4d4e1312fb62`.
+
+Detailed comparison and results: [Day 073](day-073.md).
 
 ## Day 074 — 2026-09-07
 
