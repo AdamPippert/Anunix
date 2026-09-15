@@ -31,21 +31,6 @@ static int denied076(struct fixture076 *f, uint32_t plan, int expected)
 	return ret == ANX_OK && current.epoch == f->graph.epoch && current.completed == f->graph.completed &&
 		!anx_memcmp(current.program_digest, f->program, 32) ? ANX_OK : -7403;
 }
-static int active076(struct anx_external_call *call, void *arg)
-{
-	(void)call; struct fixture076 *f = arg;
-	if (anx_resource_shape_resize(f->shape.id, f->shape.epoch, 2, &f->shape_out) != ANX_EPERM ||
-	    anx_resource_shape_destroy(f->shape.id) != ANX_EPERM ||
-	    anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, f->plans[4].phase_epoch,
-		f->shape.id, f->shape.epoch, 0, &f->plan_out) != ANX_EPERM) return -7404;
-	if (f->foreign) return anx_resource_shape_get(f->shape.id, &f->shape_out) == ANX_EPERM &&
-		anx_physical_plan_commit(f->plans[4].id, &f->response, &f->graph_out) == ANX_EPERM ? ANX_OK : -7405;
-	int ret = anx_physical_plan_commit(f->plans[4].id, &f->response, &f->graph);
-	if (ret != ANX_OK || f->response.output_len != 4 || anx_memcmp(f->response.output, "AAAA", 4) ||
-	    f->graph.completed != 3 || f->graph.physical_operations != 2 || f->graph.state != ANX_SHAPE_COMPLETED ||
-	    anx_memcmp(f->program, f->graph.program_digest, 32)) return -7406;
-	return anx_logical_graph_read(f->graph.id, 0, &f->response) == ANX_OK && !anx_memcmp(f->response.output, "AAAA", 4) ? ANX_OK : -7406;
-}
 int anx_research_day076(void)
 {
 	struct fixture076 *f = anx_zalloc(sizeof(*f));
