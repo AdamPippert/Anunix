@@ -196,26 +196,160 @@ struct protected_operation {
 	anx_external_handler_fn provider;
 	void *provider_context;
 	uint64_t provider_generation;
+	struct exposure_ledger *budget;
 };
 static struct protected_operation *operations[ANX_EXT_OPERATION_MAX];
 static struct anx_spinlock operation_lock = ANX_SPINLOCK_INIT;
 static uint64_t operation_sequence;
 
+struct exposure_ledger {
+	struct anx_exposure_view view;
+	struct exposure_ledger *parent;
+	struct anx_cell *owner;
+	uint32_t operations;
+};
+static struct exposure_ledger *budgets[ANX_EXPOSURE_MAX];
+static uint64_t budget_sequence;
+static struct exposure_ledger *budget_find(uint64_t id)
+{
+	for (uint32_t i = 0; i < ANX_EXPOSURE_MAX; i++) if (budgets[i] && budgets[i]->view.id == id) return budgets[i];
+	return NULL;
+}
+static bool budget_revoked(struct exposure_ledger *b)
+{
+	for (; b; b = b->parent) if (b->view.revoked) return true;
+	return false;
+}
+static void budget_view(struct exposure_ledger *b, struct anx_exposure_view *out)
+{
+	*out = b->view; out->revoked = budget_revoked(b);
+	out->closed = out->revoked && !out->reserved && !out->uncertain && !out->in_flight;
+}
+static bool budget_descendant(struct anx_cell *cell, const anx_cid_t *ancestor)
+{
+	struct anx_cell *walk = cell;
+	bool found = false;
+	for (uint32_t i = 0; walk && i < ANX_EXPOSURE_DEPTH; i++) {
+		if (!anx_uuid_compare(&walk->cid, ancestor)) { found = true; break; }
+		struct anx_cell *next = anx_uuid_is_nil(&walk->parent_cid) ? NULL : anx_cell_store_lookup(&walk->parent_cid);
+		if (walk != cell) anx_cell_store_release(walk);
+		walk = next;
+	}
+	if (walk && walk != cell) anx_cell_store_release(walk);
+	return found;
+}
 int anx_exposure_create(const anx_cid_t *owner, uint64_t parent, uint64_t limit, struct anx_exposure_view *out)
-{ (void)owner; (void)parent; (void)limit; (void)out; return ANX_ENOSYS; }
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!owner || !limit || !out) return ANX_EINVAL;
+	struct exposure_ledger *b = anx_zalloc(sizeof(*b));
+	if (!b) return ANX_ENOMEM;
+	b->owner = anx_cell_store_lookup(owner);
+	int ret = !b->owner ? ANX_ENOENT : anx_cell_status_terminal(b->owner->status) ? ANX_EPERM : anx_cell_check_scope(b->owner);
+	bool flags; anx_spin_lock_irqsave(&operation_lock, &flags);
+	if (ret == ANX_OK && parent) {
+		b->parent = budget_find(parent);
+		if (!b->parent) ret = ANX_ENOENT;
+		else if (budget_revoked(b->parent) || !budget_descendant(b->owner, &b->parent->view.owner)) ret = ANX_EPERM;
+		else if (b->parent->view.depth + 1 >= ANX_EXPOSURE_DEPTH || limit > b->parent->view.limit) ret = ANX_EINVAL;
+	}
+	if (ret == ANX_OK) {
+		uint32_t slot;
+		for (slot = 0; slot < ANX_EXPOSURE_MAX; slot++) if (!budgets[slot]) break;
+		if (slot == ANX_EXPOSURE_MAX || budget_sequence == ~(uint64_t)0) ret = ANX_EFULL;
+		else {
+			b->view.id = ++budget_sequence; b->view.parent = parent; b->view.owner = *owner; b->view.limit = limit;
+			if (b->parent) { b->view.depth = b->parent->view.depth + 1; b->parent->view.children++; }
+			budgets[slot] = b; budget_view(b, out);
+		}
+	}
+	anx_spin_unlock_irqrestore(&operation_lock, flags);
+	if (ret != ANX_OK) { if (b->owner) anx_cell_store_release(b->owner); anx_free(b); }
+	return ret;
+}
 int anx_exposure_get(uint64_t id, struct anx_exposure_view *out)
-{ (void)id; (void)out; return ANX_ENOSYS; }
+{
+	if (!id || !out) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&operation_lock, &flags);
+	struct exposure_ledger *b = budget_find(id);
+	const anx_cid_t *caller = anx_cell_current_id();
+	int ret = !b ? ANX_ENOENT : caller && anx_uuid_compare(caller, &b->view.owner) ? ANX_EPERM : ANX_OK;
+	if (ret == ANX_OK) budget_view(b, out);
+	anx_spin_unlock_irqrestore(&operation_lock, flags); return ret;
+}
 int anx_exposure_revoke(uint64_t id, struct anx_exposure_view *out)
-{ (void)id; (void)out; return ANX_ENOSYS; }
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !out) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&operation_lock, &flags);
+	struct exposure_ledger *b = budget_find(id);
+	int ret = b ? ANX_OK : ANX_ENOENT;
+	if (ret == ANX_OK) { b->view.revoked = true; budget_view(b, out); }
+	anx_spin_unlock_irqrestore(&operation_lock, flags); return ret;
+}
 int anx_exposure_destroy(uint64_t id)
-{ (void)id; return ANX_ENOSYS; }
-int anx_external_operation_prepare_budgeted(const anx_cid_t *owner, const struct anx_external_call *call,
-		const char *sink_name, const anx_oid_t *source, uint64_t ledger, uint64_t units, anx_oid_t *id)
-{ (void)owner; (void)call; (void)sink_name; (void)source; (void)ledger; (void)units; (void)id; return ANX_ENOSYS; }
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&operation_lock, &flags);
+	struct exposure_ledger *b = budget_find(id);
+	int ret = !b ? ANX_ENOENT : !budget_revoked(b) || b->view.children || b->operations ||
+		b->view.reserved || b->view.uncertain || b->view.in_flight ? ANX_EBUSY : ANX_OK;
+	if (ret == ANX_OK) {
+		for (uint32_t i = 0; i < ANX_EXPOSURE_MAX; i++) if (budgets[i] == b) budgets[i] = NULL;
+		if (b->parent) b->parent->view.children--;
+		anx_cell_store_release(b->owner); anx_memset(b, 0, sizeof(*b)); anx_free(b);
+	}
+	anx_spin_unlock_irqrestore(&operation_lock, flags); return ret;
+}
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+static uint64_t revoke_on_dispatch;
 int anx_exposure_test_revoke_on_dispatch(uint64_t id)
-{ (void)id; return ANX_ENOSYS; }
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	bool flags; anx_spin_lock_irqsave(&operation_lock, &flags);
+	int ret = id && !budget_find(id) ? ANX_ENOENT : ANX_OK;
+	if (ret == ANX_OK) revoke_on_dispatch = id;
+	anx_spin_unlock_irqrestore(&operation_lock, flags); return ret;
+}
 #endif
+/* All ancestors share one reservation boundary with the protected-operation registry. */
+static int budget_reserve(struct protected_operation *op, uint64_t id, uint64_t units)
+{
+	if (!id) return ANX_OK;
+	struct exposure_ledger *leaf = budget_find(id);
+	if (!leaf) return ANX_ENOENT;
+	if (anx_uuid_compare(&leaf->view.owner, &op->view.owner) || budget_revoked(leaf)) return ANX_EPERM;
+	for (struct exposure_ledger *b = leaf; b; b = b->parent)
+		if (units > b->view.limit - b->view.reserved - b->view.committed - b->view.uncertain) return ANX_EFULL;
+	for (struct exposure_ledger *b = leaf; b; b = b->parent) b->view.reserved += units;
+	leaf->operations++; op->budget = leaf; op->view.exposure_ledger = id; op->view.exposure_units = units;
+	return ANX_OK;
+}
+static void budget_enter(struct protected_operation *op)
+{
+	for (struct exposure_ledger *b = op->budget; b; b = b->parent) {
+		b->view.in_flight++;
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+		if (b->view.id == revoke_on_dispatch) { b->view.revoked = true; revoke_on_dispatch = 0; }
+#endif
+	}
+}
+static void budget_settle(struct protected_operation *op, bool confirmed)
+{
+	for (struct exposure_ledger *b = op->budget; b; b = b->parent) {
+		b->view.reserved -= op->view.exposure_units; b->view.in_flight--;
+		if (confirmed) b->view.committed += op->view.exposure_units;
+		else b->view.uncertain += op->view.exposure_units;
+	}
+}
+static void budget_discard(struct protected_operation *op)
+{
+	if (!op->budget) return;
+	if (op->view.phase == ANX_EFFECT_PREPARED)
+		for (struct exposure_ledger *b = op->budget; b; b = b->parent) b->view.reserved -= op->view.exposure_units;
+	op->budget->operations--;
+}
 
 static struct protected_operation *operation_find(const anx_oid_t *id, uint32_t *index)
 {
@@ -247,8 +381,8 @@ static bool operation_string(const char *text, uint32_t bound)
 	for (uint32_t i = 0; i < bound; i++) if (!text[i]) return true;
 	return false;
 }
-int anx_external_operation_prepare(const anx_cid_t *owner, const struct anx_external_call *call,
-		const char *sink_name, const anx_oid_t *source, anx_oid_t *id)
+static int operation_prepare(const anx_cid_t *owner, const struct anx_external_call *call,
+		const char *sink_name, const anx_oid_t *source, uint64_t ledger, uint64_t units, anx_oid_t *id)
 {
 	if (anx_cell_current_id()) return ANX_EPERM;
 	if (!owner || anx_uuid_is_nil(owner) || !call || !id || call->request_size > ANX_EXT_OPERATION_BODY_MAX ||
@@ -291,6 +425,8 @@ int anx_external_operation_prepare(const anx_cid_t *owner, const struct anx_exte
 	ret = ANX_EFULL;
 	anx_spin_lock_irqsave(&operation_lock, &flags);
 	for (uint32_t i = 0; operation_sequence != ~(uint64_t)0 && i < ANX_EXT_OPERATION_MAX; i++) if (!operations[i]) {
+		ret = budget_reserve(op, ledger, units);
+		if (ret != ANX_OK) break;
 		op->view.id = (anx_oid_t){ .hi = 0x414e584558544f50ULL, .lo = ++operation_sequence };
 		operations[i] = op; *id = op->view.id; ret = ANX_OK; break;
 	}
@@ -300,6 +436,16 @@ fail:
 	if (op->owner) anx_cell_store_release(op->owner);
 	anx_effect_destroy(op->effect); anx_free(op);
 	return ret;
+}
+int anx_external_operation_prepare(const anx_cid_t *owner, const struct anx_external_call *call,
+		const char *sink_name, const anx_oid_t *source, anx_oid_t *id)
+{ return operation_prepare(owner, call, sink_name, source, 0, 0, id); }
+int anx_external_operation_prepare_budgeted(const anx_cid_t *owner, const struct anx_external_call *call,
+		const char *sink_name, const anx_oid_t *source, uint64_t ledger, uint64_t units, anx_oid_t *id)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!ledger || !units) return ANX_EINVAL;
+	return operation_prepare(owner, call, sink_name, source, ledger, units, id);
 }
 int anx_external_operation_get(const anx_oid_t *id, struct anx_external_operation_view *out)
 {
@@ -335,8 +481,9 @@ int anx_external_operation_dispatch(const anx_oid_t *id, struct anx_external_cal
 	if (ret == ANX_OK) ret = anx_tool_authorize_call(op->owner, &op->call);
 	if (ret == ANX_OK) ret = operation_source(op, false);
 	if (ret == ANX_OK && op->view.sink_name[0] && anx_sink_lookup(op->view.sink_name) != op->effect->sink) ret = ANX_EPERM;
+	if (ret == ANX_OK && budget_revoked(op->budget)) ret = ANX_EPERM;
 	if (ret == ANX_OK) ret = anx_effect_mark_dispatching(op->effect);
-	if (ret == ANX_OK) op->view.phase = ANX_EFFECT_DISPATCHING;
+	if (ret == ANX_OK) { op->view.phase = ANX_EFFECT_DISPATCHING; budget_enter(op); }
 	anx_spin_unlock_irqrestore(&operation_lock, flags);
 	if (ret != ANX_OK) return ret;
 	/* Registry state blocks reentry and cleanup while the actual provider is running. */
@@ -346,6 +493,7 @@ int anx_external_operation_dispatch(const anx_oid_t *id, struct anx_external_cal
 	op->view.transport_result = ret;
 	if (ret == ANX_OK) anx_effect_commit(op->effect);
 	else anx_effect_mark_unknown(op->effect);
+	budget_settle(op, ret == ANX_OK);
 	op->view.phase = op->effect->phase;
 	response->response_size = op->call.response_size <= ANX_EXT_RESPONSE_MAX ? op->call.response_size : 0;
 	response->status_code = op->call.status_code;
@@ -365,7 +513,7 @@ int anx_external_operation_discard(const anx_oid_t *id)
 	struct protected_operation *op = operation_find(id, &index);
 	int ret = op ? ANX_OK : ANX_ENOENT;
 	if (ret == ANX_OK && op->view.phase != ANX_EFFECT_PREPARED && op->view.phase != ANX_EFFECT_COMMITTED) ret = ANX_EBUSY;
-	if (ret == ANX_OK) operations[index] = NULL;
+	if (ret == ANX_OK) { budget_discard(op); operations[index] = NULL; }
 	anx_spin_unlock_irqrestore(&operation_lock, flags);
 	if (ret == ANX_OK) {
 		if (op->owner) anx_cell_store_release(op->owner);
