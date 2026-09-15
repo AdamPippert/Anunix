@@ -9,7 +9,8 @@
 #define ANX_CONTINUATION_EVENTS 32U
 #define ANX_CONTINUATION_SCHEMA "anx:continuation/event/v1"
 #define ANX_CONTINUATION_RESULT_SCHEMA "anx:continuation/result/v1"
-enum anx_continuation_event_kind { ANX_CONT_BIND, ANX_CONT_INTENT, ANX_CONT_COMMITTED, ANX_CONT_UNCERTAIN, ANX_CONT_REJECTED };
+enum anx_continuation_event_kind { ANX_CONT_BIND, ANX_CONT_INTENT, ANX_CONT_COMMITTED, ANX_CONT_UNCERTAIN, ANX_CONT_REJECTED,
+	ANX_CONT_RESOURCE_CONFIG, ANX_CONT_WAIT_EVENT, ANX_CONT_SUSPEND_EVENT, ANX_CONT_HIBERNATE_EVENT, ANX_CONT_RESUME_EVENT };
 enum anx_continuation_resource_state { ANX_CONT_RUNNABLE, ANX_CONT_SHORT_WAIT, ANX_CONT_SUSPENDED, ANX_CONT_HIBERNATED };
 enum anx_suspension_reason { ANX_SUSPEND_NONE, ANX_SUSPEND_TOOL_WAIT, ANX_SUSPEND_HUMAN_APPROVAL };
 struct anx_continuation_view {
@@ -59,5 +60,6 @@ int anx_continuation_acceleration_read(uint64_t id, uint64_t epoch, uint64_t gen
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 /* Drop one completion reply after sealing its result; production builds omit this hook. */
 int anx_continuation_test_drop_reply(bool enabled);
+int anx_continuation_test_cache_corrupt(uint64_t id);
 #endif
 #endif
