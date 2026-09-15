@@ -1363,7 +1363,7 @@
         "kernel/core/tools/research_day068.c"
       ],
       "comparison": "Day 067 retains semantic continuation records, and Day 052 parks phase leases. Day 068 coordinates short waits, long suspensions, and physical model-cache reclamation with guarded reconstruction.",
-      "acceptance": "Preserve sealed completions through suspension and hibernation; release reserved capacity, reclaim the model page, reject stale or unauthorized restoration, and execute the reconstructed image.",
+      "acceptance": "Preserve completions through suspension, reclaim the model cache, reject invalid restoration, and execute the reconstructed image.",
       "status": "validated",
       "branch": "codex/ai-os-day-068",
       "comparison_baseline": "aa6714c",
