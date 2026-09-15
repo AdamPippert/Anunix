@@ -201,6 +201,22 @@ static struct protected_operation *operations[ANX_EXT_OPERATION_MAX];
 static struct anx_spinlock operation_lock = ANX_SPINLOCK_INIT;
 static uint64_t operation_sequence;
 
+int anx_exposure_create(const anx_cid_t *owner, uint64_t parent, uint64_t limit, struct anx_exposure_view *out)
+{ (void)owner; (void)parent; (void)limit; (void)out; return ANX_ENOSYS; }
+int anx_exposure_get(uint64_t id, struct anx_exposure_view *out)
+{ (void)id; (void)out; return ANX_ENOSYS; }
+int anx_exposure_revoke(uint64_t id, struct anx_exposure_view *out)
+{ (void)id; (void)out; return ANX_ENOSYS; }
+int anx_exposure_destroy(uint64_t id)
+{ (void)id; return ANX_ENOSYS; }
+int anx_external_operation_prepare_budgeted(const anx_cid_t *owner, const struct anx_external_call *call,
+		const char *sink_name, const anx_oid_t *source, uint64_t ledger, uint64_t units, anx_oid_t *id)
+{ (void)owner; (void)call; (void)sink_name; (void)source; (void)ledger; (void)units; (void)id; return ANX_ENOSYS; }
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+int anx_exposure_test_revoke_on_dispatch(uint64_t id)
+{ (void)id; return ANX_ENOSYS; }
+#endif
+
 static struct protected_operation *operation_find(const anx_oid_t *id, uint32_t *index)
 {
 	for (uint32_t i = 0; id && i < ANX_EXT_OPERATION_MAX; i++)
