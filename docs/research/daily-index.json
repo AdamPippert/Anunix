@@ -1528,28 +1528,31 @@
       "date": "2026-09-09",
       "message_id": "b6df868e-dc4e-4388-b987-eb9f2591d320",
       "title": "AI-First OS Update: The Memory Scheduler Is Becoming as Important as the CPU Scheduler",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-076",
       "comparison_baseline": "7c67532",
       "tested_commit": "deadd3a",
-      "evidence": "docs/research/evidence/day-076/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-076/uefi-boot.json",
+      "merged_commit": "eeb5047"
     },
     {
       "learning": "Control computation depth, speculation, and parallelism within explicit quality and resource limits, with deterministic enforcement.",
       "code": [
-        "kernel/core/route/planner.c",
-        "kernel/core/route/budget.c",
-        "kernel/include/anx/cell.h"
+        "kernel/include/anx/workload.h",
+        "kernel/core/route/workload.c",
+        "kernel/core/tools/research_day077.c"
       ],
-      "comparison": "Routing scores and cognitive budgets exist. Joint execution-shape changes need explicit quality bounds and admission checks.",
-      "acceptance": "Reject an execution-shape proposal outside its quality or resource contract before changing the active plan.",
+      "comparison": "Workload candidates now pass a frozen output check before selection within an explicit token limit.",
+      "acceptance": "Reject candidates outside the quality or token bounds and preserve the current selection after failed admission.",
       "day": 77,
       "date": "2026-09-10",
       "message_id": "598f8149-e0fb-47a4-a0bb-975e0b26d183",
       "title": "AI-first OS update \u2014 September 10: schedule the amount of computation, not only where it runs",
-      "status": "queued",
-      "branch": null,
-      "comparison_baseline": "4c0bc25"
+      "status": "awaiting_vm",
+      "branch": "codex/ai-os-day-077",
+      "comparison_baseline": "eeb5047",
+      "candidate_commit": "0ab932e",
+      "pending": "Jekyll offline during upload; complete both candidate boots and artifact verification before integration."
     },
     {
       "learning": "Use agent phases, idle intervals, lineage, and shared origins to schedule state movement while preserving capacity and correctness.",
