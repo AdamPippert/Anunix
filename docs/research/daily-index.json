@@ -1508,28 +1508,31 @@
       "date": "2026-09-08",
       "message_id": "1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee",
       "title": "AI-First OS Update: Define Semantic ABIs Between Models, Memory, Teams, and Hardware",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-075",
       "comparison_baseline": "d495c83",
       "tested_commit": "f7e7a0f",
-      "evidence": "docs/research/evidence/day-075/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-075/uefi-boot.json",
+      "merged_commit": "7c67532"
     },
     {
       "learning": "Expose logical memory objects and their consumers, then choose physical representations according to topology and measured benefit.",
       "code": [
-        "kernel/core/mem/memplane.c",
-        "kernel/include/anx/memplane.h",
-        "kernel/core/workflow/workflow_exec.c"
+        "kernel/include/anx/resource_shape.h",
+        "kernel/core/route/resource_shape.c",
+        "kernel/core/tools/research_day076.c"
       ],
-      "comparison": "Memory tiers and workflow liveness exist. Topology-specific sharing or copying needs a checked representation plan.",
-      "acceptance": "Reject an inapplicable memory transformation and retain the original object representation; admit a compatible plan.",
+      "comparison": "Resource shapes can now coalesce verified immutable replicas under an explicit access contract and a physical page-saving threshold.",
+      "acceptance": "Reject incompatible or unprofitable sharing without changing copies; reduce two pages to one and preserve verified outputs through fresh plans.",
       "day": 76,
       "date": "2026-09-09",
       "message_id": "b6df868e-dc4e-4388-b987-eb9f2591d320",
       "title": "AI-First OS Update: The Memory Scheduler Is Becoming as Important as the CPU Scheduler",
-      "status": "queued",
-      "branch": null,
-      "comparison_baseline": "4c0bc25"
+      "status": "validated",
+      "branch": "codex/ai-os-day-076",
+      "comparison_baseline": "7c67532",
+      "tested_commit": "deadd3a",
+      "evidence": "docs/research/evidence/day-076/uefi-boot.json"
     },
     {
       "learning": "Control computation depth, speculation, and parallelism within explicit quality and resource limits, with deterministic enforcement.",

@@ -1213,7 +1213,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Reject equal-dimension space and reader replacements, rebuild from canonical evidence, and allow queries only under matching contracts.
 
-Status: Validated on Jekyll. Tested commit: `f7e7a0f`. Source message: `1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee`.
+Status: Merged at `7c67532` after Jekyll validation. Tested commit: `f7e7a0f`. Source message: `1596f5f2-799b-44ea-9b3e-36b9d0f0c6ee`.
 
 Detailed comparison and results: [Day 075](day-075.md).
 
@@ -1223,13 +1223,15 @@ Detailed comparison and results: [Day 075](day-075.md).
 
 Learning: Expose logical memory objects and their consumers, then choose physical representations according to topology and measured benefit.
 
-Anunix comparison: Memory tiers and workflow liveness exist. Topology-specific sharing or copying needs a checked representation plan.
+Anunix comparison: Resource shapes can now coalesce verified immutable replicas under an explicit access contract and a physical page-saving threshold.
 
 Evidence: [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/include/anx/memplane.h](../../kernel/include/anx/memplane.h), [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c).
 
-Planned acceptance: Reject an inapplicable memory transformation and retain the original object representation; admit a compatible plan.
+Planned acceptance: Reject incompatible or unprofitable sharing without changing copies; reduce two pages to one and preserve verified outputs through fresh plans.
 
-Status: Queued. Source message: `b6df868e-dc4e-4388-b987-eb9f2591d320`.
+Status: Validated on Jekyll. Tested commit: `deadd3a`. Source message: `b6df868e-dc4e-4388-b987-eb9f2591d320`.
+
+Detailed comparison and results: [Day 076](day-076.md).
 
 ## Day 077 — 2026-09-10
 
