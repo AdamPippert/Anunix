@@ -1,34 +1,144 @@
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 #include <anx/research_test.h>
 #include <anx/resource_shape.h>
+#include <anx/physical_plan.h>
 #include <anx/phase.h>
 #include <anx/state_object.h>
+#include <anx/external_call.h>
+#include <anx/alloc.h>
 #include <anx/string.h>
+#include <anx/uuid.h>
+#include <anx/kprintf.h>
+struct fixture074 {
+	struct anx_resource_shape_view shape, shape_out;
+	struct anx_logical_graph_view graph, graph_out, graph_saved;
+	struct anx_physical_plan_view plans[5], plan_out;
+	struct anx_model_use_view uses[2];
+	struct anx_anxml_response response, saved;
+	struct anx_external_call call;
+	uint8_t program[32];
+	bool foreign;
+};
+static int denied074(struct fixture074 *f, uint32_t plan, int expected)
+{
+	anx_memset(&f->response, 0x55, sizeof(f->response)); f->saved = f->response;
+	anx_memset(&f->graph_out, 0x55, sizeof(f->graph_out)); f->graph_saved = f->graph_out;
+	int ret = anx_physical_plan_commit(f->plans[plan].id, &f->response, &f->graph_out);
+	struct anx_logical_graph_view current;
+	if (ret != expected || anx_memcmp(&f->response, &f->saved, sizeof(f->response)) ||
+	    anx_memcmp(&f->graph_out, &f->graph_saved, sizeof(f->graph_out))) return -7402;
+	ret = anx_logical_graph_get(f->graph.id, &current);
+	return ret == ANX_OK && current.epoch == f->graph.epoch && current.completed == f->graph.completed &&
+		!anx_memcmp(current.program_digest, f->program, 32) ? ANX_OK : -7403;
+}
+static int active074(struct anx_external_call *call, void *arg)
+{
+	(void)call; struct fixture074 *f = arg;
+	if (anx_resource_shape_resize(f->shape.id, f->shape.epoch, 2, &f->shape_out) != ANX_EPERM ||
+	    anx_resource_shape_destroy(f->shape.id) != ANX_EPERM ||
+	    anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, f->plans[4].phase_epoch,
+		f->shape.id, f->shape.epoch, 0, &f->plan_out) != ANX_EPERM) return -7404;
+	if (f->foreign) return anx_resource_shape_get(f->shape.id, &f->shape_out) == ANX_EPERM &&
+		anx_physical_plan_commit(f->plans[4].id, &f->response, &f->graph_out) == ANX_EPERM ? ANX_OK : -7405;
+	int ret = anx_physical_plan_commit(f->plans[4].id, &f->response, &f->graph);
+	if (ret != ANX_OK || f->response.output_len != 4 || anx_memcmp(f->response.output, "AAAA", 4) ||
+	    f->graph.completed != 3 || f->graph.physical_operations != 2 || f->graph.state != ANX_SHAPE_COMPLETED ||
+	    anx_memcmp(f->program, f->graph.program_digest, 32)) return -7406;
+	return anx_logical_graph_read(f->graph.id, 0, &f->response) == ANX_OK && !anx_memcmp(f->response.output, "AAAA", 4) ? ANX_OK : -7406;
+}
 int anx_research_day074(void)
 {
-	struct anx_cell *owner = NULL;
+	struct fixture074 *f = anx_zalloc(sizeof(*f));
+	struct anx_cell *owner = NULL, *foreign = NULL;
 	struct anx_cell_intent intent = {0};
-	struct anx_state_object *image = NULL;
+	struct anx_state_object *image = NULL, *prompt = NULL;
 	struct anx_adapter_image adapter = { .format = 1, .count = 2, .deltas = {{'~','A',4096},{'A','A',4096}} };
 	struct anx_so_create_params p = { .object_type = ANX_OBJ_STRUCTURED_DATA, .schema_uri = ANX_MODEL_USE_SCHEMA,
 		.schema_version = "1", .payload = &adapter, .payload_size = sizeof(adapter) };
 	struct anx_phase_contract contract = { .role = ANX_ROLE_RUNNER };
 	struct anx_phase_request request = { ANX_PHASE_INFERENCE, 8192, 0 };
 	struct anx_phase_view phase;
-	struct anx_resource_shape_view view;
+	struct anx_model_use_spec use = { .maximum_tokens = 4 };
+	struct anx_logical_graph_spec graph = { .count = 2 };
 	bool attached = false;
+	int ret = ANX_ENOMEM;
+	if (!f) return ret;
 	anx_strlcpy(intent.name, "research-day-074", sizeof(intent.name));
-	int ret = anx_cell_create(ANX_CELL_TASK_EXTERNAL_CALL, &intent, &owner);
+	ret = anx_cell_create(ANX_CELL_TASK_EXTERNAL_CALL, &intent, &owner);
+	if (ret == ANX_OK) ret = anx_cell_create(ANX_CELL_TASK_EXTERNAL_CALL, &intent, &foreign);
 	if (ret == ANX_OK) ret = anx_so_create(&p, &image);
 	if (ret == ANX_OK) ret = anx_so_seal(&image->oid);
 	contract.limits[ANX_PHASE_INFERENCE] = (struct anx_phase_limit){true,ANX_MEM_L1,8192,ANX_ACCEL_NONE,0};
 	if (ret == ANX_OK) { ret = anx_phase_attach(&owner->cid, &contract); attached = ret == ANX_OK; }
 	if (ret == ANX_OK) ret = anx_phase_get(&owner->cid, &phase);
 	if (ret == ANX_OK) ret = anx_phase_begin(&owner->cid, phase.epoch, &request);
-	if (ret == ANX_OK && anx_resource_shape_create(&owner->cid, &image->oid, 1, &view) != ANX_OK) ret = -7401;
+	if (ret == ANX_OK) ret = anx_phase_get(&owner->cid, &phase);
+	if (ret != ANX_OK) goto out;
+	ret = -7401;
+	if (anx_resource_shape_create(&owner->cid, &image->oid, 1, &f->shape) != ANX_OK) goto out;
+	if (f->shape.resident_replicas || f->shape.physical_pages ||
+	    anx_resource_shape_create(&owner->cid, &image->oid, 1, &f->shape_out) != ANX_EEXIST) { ret = -7407; goto out; }
+	p = (struct anx_so_create_params){ .object_type = ANX_OBJ_BYTE_DATA, .payload = "~", .payload_size = 1 };
+	ret = anx_so_create(&p, &prompt);
+	if (ret == ANX_OK) ret = anx_so_seal(&prompt->oid);
+	if (ret != ANX_OK) goto out;
+	use.image = image->oid; use.prompt = prompt->oid;
+	for (uint32_t i = 0; i < 2; i++) {
+		ret = anx_model_use_prepare(&owner->cid, &use, &f->uses[i]);
+		if (ret != ANX_OK) goto out;
+		graph.nodes[i] = (struct anx_shape_node){f->uses[i].id, i ? 1U : 0U, ANX_SHAPE_INFER};
+	}
+	ret = anx_logical_graph_create(&owner->cid, &graph, &f->graph);
+	if (ret != ANX_OK) goto out;
+	anx_memcpy(f->program, f->graph.program_digest, 32);
+	ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 0, &f->plans[0]);
+	if (ret == ANX_OK) ret = anx_resource_shape_get(f->shape.id, &f->shape);
+	if (ret != ANX_OK || f->shape.physical_pages != 1 || f->shape.resident_bytes != sizeof(adapter) ||
+	    anx_resource_shape_destroy(f->shape.id) != ANX_EBUSY) { ret = -7408; goto out; }
+	uint64_t first_epoch = f->shape.epoch;
+	ret = anx_resource_shape_resize(f->shape.id, f->shape.epoch, 2, &f->shape);
+	if (ret != ANX_OK || f->shape.epoch != first_epoch + 1 || f->shape.replicas != 2 || f->shape.physical_pages != 1 ||
+	    anx_uuid_compare(&f->shape.source.oid, &image->oid) || anx_memcmp(f->shape.source.digest, f->uses[0].image.digest, 32)) { ret = -7409; goto out; }
+	if (anx_resource_shape_resize(f->shape.id, f->shape.epoch, 3, &f->shape_out) != ANX_ENOMEM ||
+	    anx_resource_shape_resize(f->shape.id, first_epoch, 1, &f->shape_out) != ANX_EBUSY) { ret = -7410; goto out; }
+	f->plans[0].resource_epoch = f->shape.epoch; f->plans[0].replica = 1;
+	ret = denied074(f, 0, ANX_EBUSY);
+	if (ret == ANX_OK) ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 1, &f->plans[1]);
+	if (ret == ANX_OK) ret = anx_resource_shape_get(f->shape.id, &f->shape);
+	if (ret != ANX_OK || f->shape.physical_pages != 2 || f->shape.resident_bytes != 2 * sizeof(adapter)) { ret = -7411; goto out; }
+	ret = anx_physical_plan_commit(f->plans[1].id, &f->response, &f->graph);
+	if (ret != ANX_OK || f->graph.completed != 1 || anx_memcmp(f->response.output, "AAAA", 4)) { ret = -7412; goto out; }
+	ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 1, &f->plans[2]);
+	if (ret == ANX_OK) ret = anx_resource_shape_resize(f->shape.id, f->shape.epoch, 1, &f->shape);
+	if (ret != ANX_OK || f->shape.physical_pages != 1 || f->shape.resident_replicas != 1 || f->shape.resident_bytes != sizeof(adapter)) { ret = -7413; goto out; }
+	ret = denied074(f, 2, ANX_EBUSY);
+	if (ret == ANX_OK) ret = anx_logical_graph_read(f->graph.id, 0, &f->response);
+	if (ret == ANX_OK) ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 0, &f->plans[3]);
+	if (ret != ANX_OK) goto out;
+	((uint8_t *)image->payload)[0] ^= 1; ret = denied074(f, 3, ANX_EBUSY); ((uint8_t *)image->payload)[0] ^= 1;
+	if (ret == ANX_OK) ret = anx_phase_resize(&owner->cid, phase.epoch, 4096, 0, &phase);
+	if (ret == ANX_OK) ret = denied074(f, 3, ANX_EBUSY);
+	if (ret == ANX_OK) ret = anx_physical_plan_compile_shaped(f->graph.id, f->graph.epoch, phase.epoch, f->shape.id, f->shape.epoch, 0, &f->plans[4]);
+	if (ret == ANX_OK) ret = anx_external_register_handler("anxresearch074", active074, f);
+	if (ret != ANX_OK) goto out;
+	anx_strlcpy(f->call.endpoint, "anxresearch074://execute", sizeof(f->call.endpoint));
+	owner->execution.allow_side_effects = foreign->execution.allow_side_effects = true;
+	foreign->ext_call = owner->ext_call = &f->call;
+	f->foreign = true; ret = anx_cell_run(foreign);
+	if (ret == ANX_OK) { f->foreign = false; ret = anx_cell_run(owner); }
+	if (ret == ANX_OK) kprintf("day074 replica_pages=1,2,1 stale_placements=rejected logical_digest=unchanged outputs=AAAA,AAAA\n");
+out:
+	anx_external_unregister_handler("anxresearch074");
+	for (uint32_t i = 0; i < 5; i++) if (f->plans[i].id && anx_physical_plan_destroy(f->plans[i].id) != ANX_OK && ret == ANX_OK) ret = -7414;
+	if (f->graph.id && anx_logical_graph_destroy(f->graph.id) != ANX_OK && ret == ANX_OK) ret = -7414;
+	if (f->shape.id && anx_resource_shape_destroy(f->shape.id) != ANX_OK && ret == ANX_OK) ret = -7414;
+	for (uint32_t i = 0; i < 2; i++) if (f->uses[i].id) anx_model_use_destroy(f->uses[i].id);
 	if (attached) { anx_phase_get(&owner->cid, &phase); anx_phase_finish(&owner->cid, phase.epoch); anx_phase_detach(&owner->cid); }
+	if (prompt) { anx_so_delete(&prompt->oid, false); anx_objstore_release(prompt); }
 	if (image) { anx_so_delete(&image->oid, false); anx_objstore_release(image); }
-	if (owner) anx_cell_destroy(owner);
-	return ret;
+	if (foreign && anx_cell_destroy(foreign) != ANX_OK && ret == ANX_OK) ret = -7415;
+	if (owner && anx_cell_destroy(owner) != ANX_OK && ret == ANX_OK) ret = -7415;
+	if (ret != ANX_OK) kprintf("day074 native failure rc=%d\n", ret);
+	anx_free(f); return ret;
 }
 #endif
