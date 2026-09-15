@@ -1467,28 +1467,32 @@
       ],
       "comparison": "The context compiler binds source ancestry to role and scope ceilings. Existing policy gates check evidence rather than formal proofs.",
       "acceptance": "Reject role and scope escalation through summaries, stale ancestors, foreign access, and partial output on failed context assembly.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-073",
       "comparison_baseline": "0d13e09",
       "tested_commit": "98e5d23",
-      "evidence": "docs/research/evidence/day-073/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-073/uefi-boot.json",
+      "merged_commit": "4fe4bb0"
     },
     {
       "learning": "Separate stable logical state from a versioned resource shape and recheck placement after reconfiguration.",
       "code": [
-        "kernel/include/anx/engine.h",
-        "kernel/core/route/planner.c",
-        "kernel/core/twin/twin.c"
+        "kernel/include/anx/resource_shape.h",
+        "kernel/core/route/resource_shape.c",
+        "kernel/core/workflow/execution_shape.c",
+        "kernel/core/tools/research_day074.c"
       ],
-      "comparison": "Engine topology hints and routing target fingerprints exist. Worker reshaping and shared resource-shape epochs need explicit control.",
-      "acceptance": "Reject placement against a stale resource shape; preserve logical identity after an authorized shape revision.",
+      "comparison": "Physical plans now capture a separate resource-shape epoch and consume private model replicas while preserving the logical program.",
+      "acceptance": "Resize actual replica pages, reject stale shape and phase placements, and preserve completed results and logical identity.",
       "day": 74,
       "date": "2026-09-07",
       "message_id": "a3296827-dc83-4a98-ab4d-a033c2db25f9",
       "title": "AI-First OS Update: Make Resource Shape a Schedulable Object",
-      "status": "queued",
-      "branch": null,
-      "comparison_baseline": "4c0bc25"
+      "status": "validated",
+      "branch": "codex/ai-os-day-074",
+      "comparison_baseline": "4fe4bb0",
+      "tested_commit": "258fb85",
+      "evidence": "docs/research/evidence/day-074/uefi-boot.json"
     },
     {
       "learning": "Give planners explicit execution constraints and versioned compatibility contracts for memory, models, coordination, and quality.",
