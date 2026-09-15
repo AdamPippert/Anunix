@@ -12,6 +12,7 @@ struct model_use {
 	struct anx_model_use_view view;
 	struct anx_cell *owner;
 	anx_cid_t parent;
+	struct anx_anxml_response response;
 };
 struct materialization {
 	struct anx_adapter_image image;
@@ -179,6 +180,7 @@ int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response
 		u->view.output_size = m->response.output_len; u->view.tokens_generated = m->response.tokens_generated;
 		anx_memcpy(u->view.consumed_image_digest, u->view.image.digest, 32);
 		anx_sha256(m->response.output, m->response.output_len, u->view.output_digest);
+		u->response = m->response;
 		*response = m->response; *out = u->view;
 	} else u->view.state = ANX_MODEL_USE_READY;
 	anx_spin_unlock_irqrestore(&use_lock, flags);
@@ -198,5 +200,74 @@ int anx_model_use_destroy(uint64_t id)
 		anx_cell_store_release(u->owner); anx_memset(u, 0, sizeof(*u)); anx_free(u);
 	}
 	anx_spin_unlock_irqrestore(&use_lock, flags);
+	return ret;
+}
+
+static bool same_source(const struct anx_model_use_source *a, const struct anx_model_use_source *b)
+{
+	return !anx_uuid_compare(&a->oid, &b->oid) && a->version == b->version && a->size == b->size &&
+		a->sensitivity == b->sensitivity && !anx_memcmp(a->digest, b->digest, 32);
+}
+bool anx_model_use_same_request(const struct anx_model_use_view *a, const struct anx_model_use_view *b)
+{
+	return a && b && !anx_uuid_compare(&a->owner, &b->owner) && !anx_uuid_compare(&a->identity_record, &b->identity_record) &&
+		a->maximum_tokens == b->maximum_tokens && a->seed == b->seed &&
+		same_source(&a->image, &b->image) && same_source(&a->prompt, &b->prompt) &&
+		!anx_memcmp(a->request_digest, b->request_digest, 32);
+}
+static int response_check(struct model_use *u)
+{
+	uint8_t digest[32];
+	if (!u->response.output_len || u->response.output_len >= ANX_ANXML_OUTPUT_MAX ||
+	    u->response.output_len != u->view.output_size) return ANX_EIO;
+	anx_sha256(u->response.output, u->response.output_len, digest);
+	return anx_memcmp(digest, u->view.output_digest, 32) ? ANX_EIO : ANX_OK;
+}
+int anx_model_use_reuse(uint64_t id, uint64_t epoch, uint64_t source, struct anx_anxml_response *response, struct anx_model_use_view *out)
+{
+	if (!id || !epoch || !source || id == source || !response || !out) return ANX_EINVAL;
+	bool flags;
+	anx_spin_lock_irqsave(&use_lock, &flags);
+	struct model_use *u = find(id), *s = find(source);
+	int ret = access(u);
+	if (ret == ANX_OK) ret = access(s);
+	if (ret == ANX_OK && (u->view.epoch != epoch || u->view.state != ANX_MODEL_USE_READY || s->view.state != ANX_MODEL_USE_COMPLETED)) ret = ANX_EBUSY;
+	if (ret == ANX_OK && !anx_model_use_same_request(&u->view, &s->view)) ret = ANX_EPERM;
+	/* Explicitly seeded randomness remains an execution request, even if its toy output is reproducible. */
+	if (ret == ANX_OK && u->view.seed) ret = ANX_ENOTSUP;
+	if (ret == ANX_OK) ret = owner_check(u, false);
+	if (ret == ANX_OK) ret = owner_check(s, false);
+	if (ret == ANX_OK) ret = response_check(s);
+	struct materialization *m = NULL;
+	if (ret == ANX_OK) { m = anx_zalloc(sizeof(*m)); ret = m ? materialize(u, m, false) : ANX_ENOMEM; }
+	if (ret == ANX_OK) {
+		u->response = s->response; u->response.tokens_generated = 0;
+		u->view.state = ANX_MODEL_USE_COMPLETED; u->view.epoch++; u->view.reused_from = source;
+		u->view.output_size = s->view.output_size; u->view.tokens_generated = 0;
+		anx_memcpy(u->view.consumed_image_digest, s->view.consumed_image_digest, 32);
+		anx_memcpy(u->view.output_digest, s->view.output_digest, 32);
+		*response = u->response; *out = u->view;
+	}
+	anx_spin_unlock_irqrestore(&use_lock, flags);
+	if (m) { anx_memset(m, 0, sizeof(*m)); anx_free(m); }
+	return ret;
+}
+int anx_model_use_read(uint64_t id, struct anx_anxml_response *response)
+{
+	if (!id || !response) return ANX_EINVAL;
+	bool flags;
+	anx_spin_lock_irqsave(&use_lock, &flags);
+	struct model_use *u = find(id);
+	int ret = access(u);
+	if (ret == ANX_OK && u->view.state != ANX_MODEL_USE_COMPLETED) ret = ANX_EPERM;
+	if (ret == ANX_OK) ret = response_check(u);
+	struct materialization *m = NULL;
+	anx_oid_t identity;
+	if (ret == ANX_OK) ret = anx_identity_admit(u->owner, &identity);
+	if (ret == ANX_OK && anx_uuid_compare(&identity, &u->view.identity_record)) ret = ANX_EBUSY;
+	if (ret == ANX_OK) { m = anx_zalloc(sizeof(*m)); ret = m ? materialize(u, m, false) : ANX_ENOMEM; }
+	if (ret == ANX_OK) *response = u->response;
+	anx_spin_unlock_irqrestore(&use_lock, flags);
+	if (m) { anx_memset(m, 0, sizeof(*m)); anx_free(m); }
 	return ret;
 }

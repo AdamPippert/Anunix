@@ -8,7 +8,7 @@ enum anx_model_use_state { ANX_MODEL_USE_READY, ANX_MODEL_USE_BUSY, ANX_MODEL_US
 struct anx_model_use_spec { anx_oid_t image, prompt; uint32_t maximum_tokens, seed; };
 struct anx_model_use_source { anx_oid_t oid; uint64_t version; uint32_t size, sensitivity; uint8_t digest[32]; };
 struct anx_model_use_view {
-	uint64_t id, epoch;
+	uint64_t id, epoch, reused_from;
 	anx_cid_t owner;
 	anx_oid_t identity_record;
 	struct anx_model_use_source image, prompt;
@@ -20,5 +20,9 @@ struct anx_model_use_view {
 int anx_model_use_prepare(const anx_cid_t *owner, const struct anx_model_use_spec *spec, struct anx_model_use_view *out);
 int anx_model_use_get(uint64_t id, struct anx_model_use_view *out);
 int anx_model_use_execute(uint64_t id, uint64_t epoch, struct anx_anxml_response *response, struct anx_model_use_view *out);
+/* This predicate compares copied metadata; it does not grant execution authority. */
+bool anx_model_use_same_request(const struct anx_model_use_view *left, const struct anx_model_use_view *right);
+int anx_model_use_reuse(uint64_t id, uint64_t epoch, uint64_t source, struct anx_anxml_response *response, struct anx_model_use_view *out);
+int anx_model_use_read(uint64_t id, struct anx_anxml_response *response);
 int anx_model_use_destroy(uint64_t id);
 #endif
