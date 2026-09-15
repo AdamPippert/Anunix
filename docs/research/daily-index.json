@@ -1242,11 +1242,12 @@
       ],
       "comparison": "Native branch groups now distinguish required results from competing trials. They execute bounded toy-model candidates as pure child Cells, verify exact outputs, preserve parent fences, and expose only completed-group results.",
       "acceptance": "Accept a verified trial winner and cancel unstarted alternatives. Require every AND result, enforce the shared budget, and deny branch effects.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-062",
       "comparison_baseline": "7c3a1f5",
       "tested_commit": "b8b8240",
-      "evidence": "docs/research/evidence/day-062/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-062/uefi-boot.json",
+      "merged_commit": "0bf1fce"
     },
     {
       "day": 63,
@@ -1255,14 +1256,17 @@
       "title": "AI-First OS Update: The Harness Is Becoming a JIT-Compiled Control Image",
       "learning": "Treat a generated harness as a bounded control program validated against a stable interface.",
       "code": [
-        "kernel/core/workflow/wf_bundle.c",
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/core/cap/capability.c"
+        "kernel/core/workflow/control_image.c",
+        "kernel/include/anx/control_image.h",
+        "kernel/core/tools/research_day063.c"
       ],
-      "comparison": "Workflow bundles provide an executable structure. Capability validation must remain outside the generated program.",
-      "acceptance": "Reject a generated control artifact with an invalid transition or undeclared operation.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Baseline 0bf1fce has workflows and verified model groups. This step adds a bounded control-image ABI, validation, private authority grants, and execution with immutable event history.",
+      "acceptance": "Reject malformed images and stale epochs before execution. Recover from one failed model group, return the verified second result, and preserve both outcomes.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-063",
+      "comparison_baseline": "0bf1fce",
+      "tested_commit": "178b3e8",
+      "evidence": "docs/research/evidence/day-063/uefi-boot.json"
     },
     {
       "day": 64,

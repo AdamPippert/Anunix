@@ -1005,7 +1005,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Accept a verified trial winner and cancel unstarted alternatives. Require every AND result, enforce the shared budget, and deny branch effects.
 
-Status: Validated on Jekyll. Tested commit: `b8b8240`. Source message: `274013f7-dc77-40cf-93ee-b33bd4c2fa08`.
+Status: Merged at `0bf1fce` after Jekyll validation. Tested commit: `b8b8240`. Source message: `274013f7-dc77-40cf-93ee-b33bd4c2fa08`.
 
 Detailed comparison and results: [Day 062](day-062.md).
 
@@ -1015,13 +1015,15 @@ Detailed comparison and results: [Day 062](day-062.md).
 
 Learning: Treat a generated harness as a bounded control program validated against a stable interface.
 
-Anunix comparison: Workflow bundles provide an executable structure. Capability validation must remain outside the generated program.
+Anunix comparison: Baseline 0bf1fce has workflows and verified model groups. This step adds a bounded control-image ABI, validation, private authority grants, and execution with immutable event history.
 
 Evidence: [kernel/core/workflow/wf_bundle.c](../../kernel/core/workflow/wf_bundle.c), [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/cap/capability.c](../../kernel/core/cap/capability.c).
 
-Planned acceptance: Reject a generated control artifact with an invalid transition or undeclared operation.
+Planned acceptance: Reject malformed images and stale epochs before execution. Recover from one failed model group, return the verified second result, and preserve both outcomes.
 
-Status: Queued. Source message: `ae5c3fd3-12f2-4b93-9152-5c30860468dd`.
+Status: Validated on Jekyll. Tested commit: `178b3e8`. Source message: `ae5c3fd3-12f2-4b93-9152-5c30860468dd`.
+
+Detailed comparison and results: [Day 063](day-063.md).
 
 ## Day 064 — 2026-08-28
 
