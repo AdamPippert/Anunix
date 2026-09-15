@@ -1085,7 +1085,7 @@ Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/work
 
 Planned acceptance: Replace workers after completion or failure. Preserve the logical owner and recorded result; block duplicate keys, stale bindings, changed evidence, and foreign access.
 
-Status: Validated on Jekyll. Tested commit: `77caee2`. Source message: `26a8ff69-2235-4a97-9c44-c1ba8d2f559f`.
+Status: Merged at `aa6714c` after Jekyll validation. Tested commit: `77caee2`. Source message: `26a8ff69-2235-4a97-9c44-c1ba8d2f559f`.
 
 Detailed comparison and results: [Day 067](day-067.md).
 
@@ -1095,13 +1095,15 @@ Detailed comparison and results: [Day 067](day-067.md).
 
 Learning: Distinguish long suspension from short I/O waits and reclaim expensive idle state.
 
-Anunix comparison: Workflow suspension exists. Engine leases and model residency need a coordinated suspension policy.
+Anunix comparison: Day 067 retains semantic continuation records, and Day 052 parks phase leases. Day 068 coordinates short waits, long suspensions, and physical model-cache reclamation with guarded reconstruction.
 
 Evidence: [kernel/core/workflow/workflow_exec.c](../../kernel/core/workflow/workflow_exec.c), [kernel/core/route/lease.c](../../kernel/core/route/lease.c), [kernel/core/anxml/anxml.c](../../kernel/core/anxml/anxml.c).
 
-Planned acceptance: Release reclaimable resources during suspension and revalidate authority before resume.
+Planned acceptance: Preserve sealed completions through suspension and hibernation; release reserved capacity, reclaim the model page, reject stale or unauthorized restoration, and execute the reconstructed image.
 
-Status: Queued. Source message: `77557664-206e-4b62-b50b-b5960f80d9ce`.
+Status: Validated on Jekyll. Tested commit: `022a77d`. Source message: `77557664-206e-4b62-b50b-b5960f80d9ce`.
+
+Detailed comparison and results: [Day 068](day-068.md).
 
 ## Day 069 — 2026-09-02
 
