@@ -1344,11 +1344,12 @@
       ],
       "comparison": "Workflow checkpoints and protected operations exist. The continuation registry now retains a logical owner, versioned worker bindings, sealed results, and duplicate-call protection across worker replacement.",
       "acceptance": "Replace workers after completion or failure. Preserve the logical owner and recorded result; block duplicate keys, stale bindings, changed evidence, and foreign access.",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-067",
       "comparison_baseline": "efe64c7",
       "tested_commit": "77caee2",
-      "evidence": "docs/research/evidence/day-067/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-067/uefi-boot.json",
+      "merged_commit": "aa6714c"
     },
     {
       "day": 68,
@@ -1357,14 +1358,17 @@
       "title": "AI-First OS Update: Suspension Needs to Become a First-Class OS State",
       "learning": "Distinguish long suspension from short I/O waits and reclaim expensive idle state.",
       "code": [
-        "kernel/core/workflow/workflow_exec.c",
-        "kernel/core/route/lease.c",
-        "kernel/core/anxml/anxml.c"
+        "kernel/include/anx/continuation.h",
+        "kernel/core/workflow/continuation.c",
+        "kernel/core/tools/research_day068.c"
       ],
-      "comparison": "Workflow suspension exists. Engine leases and model residency need a coordinated suspension policy.",
-      "acceptance": "Release reclaimable resources during suspension and revalidate authority before resume.",
-      "status": "queued",
-      "branch": null
+      "comparison": "Day 067 retains semantic continuation records, and Day 052 parks phase leases. Day 068 coordinates short waits, long suspensions, and physical model-cache reclamation with guarded reconstruction.",
+      "acceptance": "Preserve sealed completions through suspension and hibernation; release reserved capacity, reclaim the model page, reject stale or unauthorized restoration, and execute the reconstructed image.",
+      "status": "validated",
+      "branch": "codex/ai-os-day-068",
+      "comparison_baseline": "aa6714c",
+      "tested_commit": "022a77d",
+      "evidence": "docs/research/evidence/day-068/uefi-boot.json"
     },
     {
       "day": 69,
