@@ -1245,7 +1245,7 @@ Evidence: [kernel/core/route/planner.c](../../kernel/core/route/planner.c), [ker
 
 Planned acceptance: Reject candidates that violate the frozen prefix, length, or token bounds. Execute accepted eight-token and four-token choices with fresh receipts and unchanged quality requirements.
 
-Status: Validated on Jekyll. Tested commit: `0ab932e`. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
+Status: Merged at `aa1f9ac` after Jekyll validation. Tested commit: `0ab932e`. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
 
 Detailed comparison and pending checks: [Day 077](day-077.md).
 
@@ -1257,13 +1257,15 @@ Detailed comparison and results: [Day 077](day-077.md).
 
 Learning: Use agent phases, idle intervals, lineage, and shared origins to schedule state movement while preserving capacity and correctness.
 
-Anunix comparison: Cell lineage and memory tiers exist. State movement does not yet combine idle phases with lineage-aware eligibility.
+Anunix comparison: Continuation hibernation already preserves semantic state. Model waits now admit lineage-bound cache reclamation while retaining the existing phase reservation.
 
 Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/core/mem/memplane.c](../../kernel/core/mem/memplane.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
-Planned acceptance: Permit eligible state movement during a declared idle phase and reject a stale or incompatible phase assumption.
+Planned acceptance: Reclaim sibling caches only during current model waits, reject stale or incompatible requests, and restore verified CPU output without changing the retained reservation.
 
-Status: Queued. Source message: `04ea316e-9606-4726-8f4f-cf54680e81c2`.
+Status: Validated on Jekyll. Tested commit: `07cd519`. Source message: `04ea316e-9606-4726-8f4f-cf54680e81c2`.
+
+Detailed comparison and results: [Day 078](day-078.md).
 
 ## Day 079 — 2026-09-12
 
