@@ -23,6 +23,7 @@
 #include <anx/kprintf.h>
 #include <anx/list.h>
 #include <anx/io.h>
+#include <anx/perf.h>
 
 /* PCI class identifiers for NVMe */
 #define NVME_PCI_CLASS		0x01
@@ -60,12 +61,17 @@
 #define NVME_IOQ_SIZE		64	/* I/O queue depth */
 
 /*
- * Completion poll budget, in loop iterations. The loop reads memory the
- * controller writes by DMA, so an iteration is cheap. The budget has to
- * cover a command that reaches the physical medium, not just the cache:
- * a bulk copy such as a RAID 1 rebuild misses on every sector.
+ * Completion timeout, measured on the TSC. The budget has to cover a
+ * command that reaches the physical medium, not just the cache: a bulk
+ * copy such as a RAID 1 rebuild misses on every sector, and a DRAM-less
+ * drive waking from a low-power state is slower still. The TSC is not
+ * calibrated here, so the budget assumes the fastest plausible rate: at
+ * up to 6 GHz it allows at least NVME_POLL_SECONDS, and proportionally
+ * longer on a slower clock.
  */
-#define NVME_POLL_ITERS		20000000u
+#define NVME_POLL_SECONDS	10ULL
+#define NVME_TSC_HZ_MAX		6000000000ULL
+#define NVME_POLL_TSC_BUDGET	(NVME_POLL_SECONDS * NVME_TSC_HZ_MAX)
 
 /* NVMe admin command opcodes */
 #define NVME_ADM_DELETE_SQ	0x00
@@ -131,6 +137,7 @@ struct nvme_ctrl {
 	struct nvme_queue adm;		/* admin queue pair */
 	struct nvme_queue ioq;		/* I/O queue pair (QID=1) */
 	uint64_t ns_sectors;		/* NSZE from identify namespace */
+	uint8_t *dma;			/* bounce page for data transfers */
 	uint16_t next_cid;		/* rolling command ID */
 	bool ready;
 };
@@ -223,28 +230,37 @@ static uint16_t nvme_submit(struct nvme_ctrl *c, struct nvme_queue *q,
 }
 
 /*
- * Poll the CQ until the next completion appears, then consume it.
+ * Poll the CQ for the completion of cid, consuming entries as they appear.
  * Returns 0 on success (SC=0), negative on error.
- * Rings the CQ doorbell after consuming the entry.
+ * Rings the CQ doorbell after consuming each entry.
  *
- * The driver keeps one command outstanding, so the entry at cq_head is
- * always the completion for cid. A different CID there means the queue
- * lost sync with the controller, which a previous timeout can cause. The
- * entry is consumed either way: leaving it in place would stall every
- * later command on this queue behind a completion nobody claims.
+ * The driver keeps one command outstanding, so a completion with another
+ * CID belongs to a command that timed out earlier and finished late. It is
+ * consumed and skipped. Failing the current command instead turned one
+ * slow read into a run of errors, which hid the GPT on a slow drive.
  */
 static int nvme_poll(struct nvme_queue *q, uint16_t cid)
 {
-	uint32_t iters = NVME_POLL_ITERS;
+	uint64_t start = anx_rdtsc();
+	uint32_t spins = 0;
 
-	while (iters--) {
+	for (;;) {
 		volatile struct nvme_cqe *cqe = &q->cq[q->cq_head];
 		uint16_t status = cqe->status;
 		uint16_t got;
 
 		/* Phase bit is in bit 0 of the status word */
-		if ((status & 1u) != q->phase)
-			continue;	/* not yet valid */
+		if ((status & 1u) != q->phase) {
+			/* Not yet valid. Reading the TSC costs more than
+			 * the status word, so check the clock periodically. */
+			if ((++spins & 0xFFFu) == 0 &&
+			    anx_rdtsc() - start > NVME_POLL_TSC_BUDGET) {
+				kprintf("nvme: command %u timed out\n",
+					(uint32_t)cid);
+				return ANX_ETIMEDOUT;
+			}
+			continue;
+		}
 
 		got = cqe->cid;
 
@@ -256,15 +272,17 @@ static int nvme_poll(struct nvme_queue *q, uint16_t cid)
 		/* Ring CQ doorbell */
 		*q->cq_db = q->cq_head;
 
-		if (got != cid)
-			return ANX_EIO;
+		if (got != cid) {
+			kprintf("nvme: discarded late completion %u\n",
+				(uint32_t)got);
+			continue;
+		}
 
 		/* Check status: bits [8:1] = SC, [11:9] = SCT */
 		if ((status >> 1) & 0x7FF)
 			return ANX_EIO;
 		return ANX_OK;
 	}
-	return ANX_ETIMEDOUT;
 }
 
 /* Send a single command and wait for completion */
@@ -324,24 +342,38 @@ static int nvme_create_iosq(struct nvme_ctrl *c)
 
 /* --- I/O commands ---------------------------------------------------- */
 
+/*
+ * One-sector I/O through the controller's bounce page.
+ *
+ * The controller DMAs only into memory this driver owns. A command that
+ * outlives its timeout still completes, and pointing PRP1 at the caller's
+ * buffer let that late write land in memory the caller had already freed.
+ * The page also starts on a page boundary, so PRP1 alone covers the
+ * sector; a heap buffer that straddled one needed a PRP2, and PRP2 = 0
+ * sent the tail of the sector to physical address 0.
+ */
 static int nvme_io(struct nvme_ctrl *c, uint32_t opc, uint64_t lba,
-		   uint32_t count, void *buf)
+		   void *buf)
 {
 	struct nvme_sqe sqe;
+	int ret;
+
+	if (opc == NVME_IO_WRITE)
+		anx_memcpy(c->dma, buf, 512);
 
 	anx_memset(&sqe, 0, sizeof(sqe));
 	sqe.cdw0  = opc;
 	sqe.nsid  = 1;
-	sqe.prp1  = (uint64_t)(uintptr_t)buf;
-	/* PRP2 only needed if transfer crosses a page boundary;
-	 * for ≤4KB single-sector ops it is always 0. Multi-sector
-	 * callers must ensure buf is page-aligned and ≤4KB per call.
-	 * The disk_store layer issues 512B sector ops so this is fine. */
+	sqe.prp1  = (uint64_t)(uintptr_t)c->dma;
 	sqe.prp2  = 0;
 	sqe.cdw10 = (uint32_t)(lba & 0xFFFFFFFFu);
 	sqe.cdw11 = (uint32_t)(lba >> 32);
-	sqe.cdw12 = (count - 1) & 0xFFFF;	/* NLB field (0-based) */
-	return nvme_exec(c, &c->ioq, &sqe);
+	sqe.cdw12 = 0;				/* NLB (0-based): one sector */
+	ret = nvme_exec(c, &c->ioq, &sqe);
+
+	if (ret == ANX_OK && opc == NVME_IO_READ)
+		anx_memcpy(buf, c->dma, 512);
+	return ret;
 }
 
 /* --- Block ops callbacks --------------------------------------------- */
@@ -354,7 +386,7 @@ static int nvme_blk_read(struct anx_blk_dev *dev, uint64_t lba,
 
 	/* Issue one sector at a time to stay within the single-PRP limit */
 	for (i = 0; i < count; i++) {
-		int ret = nvme_io(c, NVME_IO_READ, lba + i, 1,
+		int ret = nvme_io(c, NVME_IO_READ, lba + i,
 				  (uint8_t *)buf + (uint64_t)i * 512);
 		if (ret != ANX_OK)
 			return ret;
@@ -369,7 +401,7 @@ static int nvme_blk_write(struct anx_blk_dev *dev, uint64_t lba,
 	uint32_t i;
 
 	for (i = 0; i < count; i++) {
-		int ret = nvme_io(c, NVME_IO_WRITE, lba + i, 1,
+		int ret = nvme_io(c, NVME_IO_WRITE, lba + i,
 				  (uint8_t *)(uintptr_t)buf + (uint64_t)i * 512);
 		if (ret != ANX_OK)
 			return ret;
@@ -537,6 +569,11 @@ static int nvme_init_ctrl(struct nvme_ctrl *nvme, struct anx_pci_device *pci)
 	if (!ioq_cq_mem)
 		return ANX_ENOMEM;
 	anx_memset(ioq_cq_mem, 0, ANX_PAGE_SIZE);
+
+	/* Bounce page for data transfers; see nvme_io(). */
+	nvme->dma = (uint8_t *)(uintptr_t)anx_page_alloc(0);
+	if (!nvme->dma)
+		return ANX_ENOMEM;
 
 	nvme->ioq.sq    = (struct nvme_sqe *)ioq_mem;
 	nvme->ioq.cq    = (struct nvme_cqe *)ioq_cq_mem;
