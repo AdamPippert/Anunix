@@ -91,4 +91,56 @@ struct anx_bootlog_index {
 	struct anx_bootlog_idx_entry entries[ANX_BOOTLOG_MAX_SESSIONS];
 } __attribute__((packed));
 
+/* ── rolling ring in the OS partition ───────────────────────────────────── */
+
+/*
+ * A fixed ring of slots in the last megabytes of the partition, written
+ * straight through anx_blk_write(). It depends on nothing but the block
+ * device, so it survives the object store failing to mount -- which is
+ * exactly when a boot log is most wanted.
+ *
+ * The ring never moves and has no superblock: the newest slot is whichever
+ * carries the highest sequence number.
+ */
+#define ANX_BLOG_RING_MAGIC     0x424C4752u   /* 'BLGR' */
+/*
+ * Eight slots of 520 sectors: one header sector plus 519 for text, which is
+ * 265728 bytes and so holds the whole 256 KiB in-memory ring with room to
+ * spare. The ring is 4160 sectors, about 2 MiB, which is nothing against the
+ * partition and small enough to fit a modest test device.
+ */
+#define ANX_BLOG_RING_SLOTS     8u
+#define ANX_BLOG_SLOT_SECTORS   520u
+#define ANX_BLOG_RING_SECTORS   (ANX_BLOG_RING_SLOTS * ANX_BLOG_SLOT_SECTORS)
+#define ANX_BLOG_SLOT_PRUNED    (1u << 0)
+
+struct anx_blog_ring_entry {
+	uint32_t slot;
+	uint64_t seq;
+	uint32_t log_bytes;
+	bool     pruned;
+	char     kver[32];
+};
+
+/*
+ * Claim this boot's slot. Call after the block device is up. Refuses unless
+ * sector 0 of the active device carries the Anunix superblock magic, so a
+ * machine that failed to find its store cannot write into another disk.
+ */
+int anx_bootlog_ring_init(void);
+
+/*
+ * Write the log captured so far into this boot's slot, replacing whatever
+ * the slot held. Safe to call repeatedly; call it at milestones so a hang
+ * later in boot still leaves the earlier output on disk.
+ */
+int anx_bootlog_ring_flush(void);
+
+/* Mark a session pruned. The text stays until the ring wraps onto it. */
+int anx_bootlog_ring_prune(uint64_t seq);
+
+/* List the sessions currently in the ring. */
+int anx_bootlog_ring_list(struct anx_blog_ring_entry *out, uint32_t max,
+			  uint32_t *count);
+
 #endif /* ANX_BOOTLOG_H */
