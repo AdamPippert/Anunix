@@ -13,6 +13,11 @@
 #include <anx/irq.h>
 #include <anx/kprintf.h>
 #include <anx/string.h>
+#include <anx/bootlog.h>
+
+/* Kernel image bounds, for picking code addresses out of a faulting stack. */
+#define KERNEL_TEXT_START	0x100000ULL
+extern char _bss_start[];
 
 /* --- IDT --- */
 
@@ -361,14 +366,83 @@ void anx_exception_dispatch(uint64_t vector, uint64_t error_code,
 	kprintf("\n*** EXCEPTION %u: %s ***\n",
 		(uint32_t)vector,
 		vector < 22 ? exception_names[vector] : "Unknown");
-	kprintf("  Error code: 0x%x\n", (uint32_t)error_code);
-	/* Dump RIP for debugging.  frame points to saved GP regs (15 qwords),
-	 * then vector (8), error code (8), then CPU-pushed RIP/CS/RFLAGS/... */
-	{
-		uint64_t *stack = (uint64_t *)frame;
-		uint64_t rip = stack[17];
 
-		kprintf("  RIP:  0x%x\n", (uint32_t)rip);
+	/*
+	 * frame points to the saved GP regs, pushed rax first, so frame[0]
+	 * is r15 and frame[14] is rax. Then vector (15), error code (16),
+	 * and the CPU frame: RIP (17), CS (18), RFLAGS (19), RSP (20), SS (21).
+	 */
+	{
+		static bool reporting;
+		const uint64_t *f = (const uint64_t *)frame;
+		uint64_t rip = f[17], cs = f[18], rflags = f[19], rsp = f[20];
+		uint64_t cr2, cr3;
+		uint32_t i, n;
+
+		if (reporting) {
+			kprintf("  nested exception while reporting, RIP 0x%llx\n",
+				(unsigned long long)rip);
+			kprintf("Halting.\n");
+			arch_halt();
+		}
+		reporting = true;
+
+		__asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+		__asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
+
+		kprintf("  Error code: 0x%llx  ring %llu\n",
+			(unsigned long long)error_code,
+			(unsigned long long)(cs & 3));
+		kprintf("  RIP 0x%llx  CS 0x%llx  RFLAGS 0x%llx\n",
+			(unsigned long long)rip, (unsigned long long)cs,
+			(unsigned long long)rflags);
+		kprintf("  RSP 0x%llx  CR2 0x%llx  CR3 0x%llx\n",
+			(unsigned long long)rsp, (unsigned long long)cr2,
+			(unsigned long long)cr3);
+		kprintf("  RAX %llx RBX %llx RCX %llx RDX %llx\n",
+			(unsigned long long)f[14], (unsigned long long)f[13],
+			(unsigned long long)f[12], (unsigned long long)f[11]);
+		kprintf("  RSI %llx RDI %llx RBP %llx\n",
+			(unsigned long long)f[10], (unsigned long long)f[9],
+			(unsigned long long)f[8]);
+		kprintf("  R8 %llx R9 %llx R10 %llx R11 %llx\n",
+			(unsigned long long)f[7], (unsigned long long)f[6],
+			(unsigned long long)f[5], (unsigned long long)f[4]);
+		kprintf("  R12 %llx R13 %llx R14 %llx R15 %llx\n",
+			(unsigned long long)f[3], (unsigned long long)f[2],
+			(unsigned long long)f[1], (unsigned long long)f[0]);
+
+		/* Memory below 4 GiB is always identity-mapped by the loader. */
+		if (rip >= 0x1000 && rip + 16 < (1ULL << 32)) {
+			const uint8_t *b = (const uint8_t *)(uintptr_t)rip;
+
+			kprintf("  bytes at RIP:");
+			for (i = 0; i < 16; i++)
+				kprintf(" %02x", (unsigned int)b[i]);
+			kprintf("\n");
+		}
+
+		/* Kernel code addresses on the interrupted stack, newest first.
+		 * Resolve with: llvm-symbolizer --obj=build/x86_64/anunix.elf */
+		if (rsp >= 0x1000 && rsp + 256 * 8 < (1ULL << 32)) {
+			const uint64_t *s = (const uint64_t *)(uintptr_t)rsp;
+
+			kprintf("  stack code addresses:");
+			for (i = 0, n = 0; i < 256 && n < 16; i++) {
+				if (s[i] < KERNEL_TEXT_START ||
+				    s[i] >= (uint64_t)(uintptr_t)_bss_start)
+					continue;
+				kprintf("%s%llx", (n % 4) ? " " : "\n    ",
+					(unsigned long long)s[i]);
+				n++;
+			}
+			kprintf("\n");
+		}
+
+		/* Screen output is complete; saving may hang if the fault
+		 * left the disk path locked. */
+		kprintf("  saving boot log...\n");
+		anx_bootlog_shutdown();
 	}
 	kprintf("Halting.\n");
 	arch_halt();
