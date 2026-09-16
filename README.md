@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.9.4-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.9.15-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-60%20suites-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-64%20suites-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/RFCs-30-blueviolet" alt="RFCs">
 </p>
 
@@ -55,9 +55,54 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 
 ---
 
-## Release: 2026.8.30
+## Release: 2026.9.15
 
-### Milestone: Prism support
+### Milestone: Anunix has a keyboard and a mouse of its own
+
+The Framework Laptop 16 keyboard is a USB device behind an internal hub.
+Anunix had no USB input stack, so the machine lost its keyboard the moment
+it left the firmware console. This release adds one.
+
+It also fixes the defect that stopped the kernel booting on real UEFI
+hardware at all. The EFI stub links at `0x140000000` and carries no
+`.reloc` section, so firmware loads it near 5 GiB. The stub then switched
+`CR3` to a map that covered 0 to 4 GiB, and the next instruction fetch
+faulted.
+
+**What is new in 2026.9.15**
+
+- **The UEFI loader maps the whole image before it leaves boot services.**
+  `build_identity_map()` in `kernel/boot/efi/efi_stub.c` maps 1 GiB pages
+  up to the higher of the memory map top and the framebuffer end.
+  `make test-uefi-highmem` boots the ISO at 1 GiB and at 4 GiB and fails
+  if firmware placed `ANUNIX.EFI` below 4 GiB.
+- **A polled xHCI driver and a HID boot-protocol keyboard and mouse.**
+  `kernel/drivers/usb/xhci.c` takes the controller from firmware, resets
+  it, enumerates the root ports and hubs, and feeds
+  `kernel/drivers/input/hid_boot.c`.
+- **HID over I2C, with ACPI and AML behind it.** The loader hands the RSDP
+  to the kernel, `kernel/lib/aml_res.c` walks the DSDT for `PNP0C50`
+  devices, and `kernel/drivers/i2c/dw_i2c.c` drives the DesignWare master.
+- **The power button asks first.** Clicking the menu bar power icon used to
+  halt the machine with no warning. It now opens a modal dialog offering
+  Restart, Halt and Cancel, with Cancel selected.
+- **Omarchy-style hotkeys**, including `Meta+Escape` and `Ctrl+Alt+Delete`
+  for the power dialog, and focus by direction on `Meta`+arrows or
+  `Meta+HJKL`.
+- **NVMe owns its DMA buffer** and times out on the TSC rather than on a
+  loop count.
+- **Research days 001 to 082 are merged into `main`**, together with four
+  new tests that cover the seams between days 077 and 082.
+- **64 host-native suites pass, 0 fail.**
+
+See [`RELEASE-2026.9.15.md`](RELEASE-2026.9.15.md) for the full account,
+including what has never run on real hardware.
+
+---
+
+## Earlier releases
+
+### 2026.8.30 — Prism support
 
 Real code from `UOR-Foundation/prism` — the standard-library layer
 `Hologram-Technologies/hologram` builds on — now runs on Anunix
@@ -90,10 +135,6 @@ exec: exit_status=0
 See [`RELEASE-2026.8.30.md`](RELEASE-2026.8.30.md) for the full
 register-corruption story and its relationship to the Hologram work
 below.
-
----
-
-## Earlier releases
 
 ### 2026.8.28-1 — Real ELF execution
 
@@ -220,8 +261,8 @@ See [`RELEASE-2026.4.16.md`](RELEASE-2026.4.16.md).
 | Audio | `hda` (Intel HD Audio), `apple_audio` |
 | Accel | `xdna` (AMD Ryzen AI NPU) |
 | Display | `fb`, `fbcon`, `gui`, UEFI GOP |
-| Input | `usb_mouse` (HID boot protocol), PS/2 keyboard |
-| Bus | `pci`, `acpi`, `virtio` |
+| Input | `usb/xhci` (polled xHCI), `input/hid_boot` (USB HID boot protocol), `input/i2c_hid` (HID over I2C), `input/i2c_input` (PNP0C50 touchpads), `usb_mouse`, PS/2 keyboard |
+| Bus | `pci`, `acpi`, `virtio`, `i2c/dw_i2c` (DesignWare master), `i2c/amd_fch` (AMD FCH power and GPIO) |
 | Browser | `browser/` — HTML, CSS, JS VM, layout, paint, JPEG/PNG/WebP, forms, PII filter, WebSocket |
 
 ### Userland shell (`ansh`)
@@ -236,7 +277,7 @@ Built-in commands in `kernel/core/tools/`: `appendb64`, `bootlog`, `browser`, `c
 |----------|-------------|--------|
 | QEMU x86_64 (BIOS + UEFI) | x86_64 | All subsystems |
 | QEMU virt | ARM64 | Boots, all subsystems |
-| AMD Ryzen 9 HX 370 (Framework Laptop 16) | x86_64 | Boots, USB ISO, framebuffer, NVMe, e1000, WiFi |
+| AMD Ryzen 9 HX 370 (Framework Laptop 16) | x86_64 | Boots, USB ISO, framebuffer, NVMe, e1000, WiFi. USB and I2C input are written and pass in QEMU; neither has run on this machine yet |
 | Framework Desktop | x86_64 | Brought up via GLI KVM, in active testing |
 | Apple Silicon (M1/M2/M3) | ARM64 | Build only; native boot in progress (AGX driver, RFC-0022) |
 
@@ -353,7 +394,7 @@ kernel/
   include/anx/        Public kernel headers
   lib/                kprintf, alloc, json, font, hashtable, jpeg, crypto/
 distd/                Anunix distribution server (formerly superrouter)
-tests/                Host-native unit tests (60 suites)
+tests/                Host-native unit tests (64 suites)
 tools/                Build scripts, ISO builder, QEMU helpers, screenshot
 docs/
   CONCEPTS.md         60-second primer on Anunix primitives
