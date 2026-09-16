@@ -64,7 +64,12 @@ jobs:
 
       - name: Build ISO
         run: |
-          make iso ARCH=x86_64 2>&1 | tail -10 || echo "ISO build skipped (missing deps)"
+          # The ISO needs isolinux and the GRUB EFI modules under tools/grub,
+          # which no runner has on a fresh checkout. Fetch them, then build.
+          # Without this the step printed "ISO build skipped (missing deps)"
+          # and the release shipped no bootable image.
+          make iso-deps 2>&1 | tail -5 || echo "iso-deps failed"
+          make iso ARCH=x86_64 2>&1 | tail -10 || echo "ISO build failed"
 
       - name: Draft release notes (agent)
         env:
@@ -123,9 +128,18 @@ jobs:
         id: forgejo_release
         env:
           FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          # FORGEJO_API was referenced twice below and defined nowhere, so the
+          # curl URL had no scheme or host and this step failed on every tag.
+          FORGEJO_API: ${{ github.server_url }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           NOTES_FILE="RELEASE-${VERSION}.md"
+
+          if [ -z "$FORGEJO_TOKEN" ]; then
+            echo "FORGEJO_TOKEN is not set on this repository."
+            echo "Skipping release creation; the tag and its artifacts stand."
+            exit 0
+          fi
 
           # Read release notes if they exist
           if [ -f "$NOTES_FILE" ]; then
