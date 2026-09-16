@@ -489,6 +489,18 @@ int anx_disk_store_init(void)
 			return ret;
 	}
 
+	/*
+	 * The index is the truth; the superblock count is a cache of it.
+	 * Repair a count left wrong by the delete bug fixed above.
+	 */
+	if (super.obj_count != index_count) {
+		kprintf("disk: object count %llu disagrees with index (%u), "
+			"repairing\n", (unsigned long long)super.obj_count,
+			index_count);
+		super.obj_count = index_count;
+		(void)write_super();
+	}
+
 	mounted = true;
 	kprintf("disk: mounted '%s' (%u objects)\n",
 		super.label, (uint32_t)super.obj_count);
@@ -698,8 +710,18 @@ int anx_disk_delete_obj(const anx_oid_t *oid)
 	if (!entry)
 		return ANX_ENOENT;
 
-	entry->flags = 0;	/* mark inactive */
-	super.obj_count--;
+	/*
+	 * Drop the entry from the cache, not just its active flag. Leaving an
+	 * inactive entry behind meant find_index_entry() still returned it:
+	 * a deleted object still existed and still read back until the next
+	 * mount, and rewriting the same OID reused the entry without counting
+	 * it, so every delete-and-rewrite -- the credential store does one on
+	 * every save -- leaked one from obj_count. On jekyll the count went
+	 * 8, 6, 2, 0 and then wrapped below zero.
+	 */
+	remove_index_entry_at((uint32_t)(entry - index_cache));
+	if (super.obj_count > 0)
+		super.obj_count--;
 
 	ret = flush_index();
 	if (ret != ANX_OK)

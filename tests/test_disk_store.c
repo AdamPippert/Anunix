@@ -158,6 +158,40 @@ int test_disk_store(void)
 			return -32;
 	}
 
+	/*
+	 * Delete and rewrite the same OID, the way the credential store saves.
+	 * Before the fix each cycle leaked one from the object count and the
+	 * deleted object still existed until the next mount.
+	 */
+	{
+		anx_oid_t cred = { .hi = 7, .lo = 7 };
+		uint64_t before, after, n;
+		int cycle;
+
+		if (anx_disk_stats(&before, NULL, NULL) != ANX_OK)
+			return -60;
+		if (anx_disk_write_obj(&cred, 1, "v0", 2) != ANX_OK)
+			return -61;
+		for (cycle = 0; cycle < 5; cycle++) {
+			if (anx_disk_delete_obj(&cred) != ANX_OK)
+				return -62;
+			if (anx_disk_obj_exists(&cred))
+				return -63;	/* deleted object still visible */
+			if (anx_disk_write_obj(&cred, 1, "v1", 2) != ANX_OK)
+				return -64;
+		}
+		if (anx_disk_stats(&after, NULL, NULL) != ANX_OK)
+			return -65;
+		if (after != before + 1)
+			return -66;	/* count drifted */
+
+		/* A remount must agree with the live count. */
+		if (anx_disk_store_init() != ANX_OK)
+			return -67;
+		if (anx_disk_stats(&n, NULL, NULL) != ANX_OK || n != after)
+			return -68;
+	}
+
 	test_mock_blk_teardown();
 	return 0;
 }
