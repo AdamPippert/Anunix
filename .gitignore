@@ -51,3 +51,7 @@ tools/grub/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local boot secrets — never commit (see config/boot-secrets.conf.example)
+config/boot-secrets.conf
+*.boot-secrets.conf
