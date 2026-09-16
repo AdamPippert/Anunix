@@ -11,6 +11,7 @@
 #include <anx/hwprobe.h>
 #include <anx/input.h>
 #include <anx/usb_mouse.h>
+#include <anx/acpi.h>
 
 /* Boot block GOP mode list layout (mirrors efi_stub.c anx_boot_info) */
 #define MB1_GOP_COUNT_ADDR	0x1040
@@ -118,6 +119,34 @@ void arch_probe_hw(struct anx_hw_inventory *inv)
 	inv->ram_bytes = 512ULL * 1024 * 1024;
 	inv->accel_count = 0;
 	/* TODO: parse ACPI/CPUID for real hardware */
+}
+
+/*
+ * Restart the machine. Firmware paths come first: the ACPI reset register,
+ * then the PCI reset control port. Many laptops have no working keyboard
+ * controller, so port 0x64 is only a fallback and a triple fault is the last
+ * resort. Never returns.
+ */
+void arch_reboot(void)
+{
+	struct { uint16_t limit; uint64_t base; } __attribute__((packed))
+		null_idt = { 0, 0 };
+	uint32_t spin;
+
+	anx_acpi_reset();
+
+	anx_outb(0x06, 0xCF9);		/* PCI reset control: full reset */
+	for (spin = 0; spin < 2000000u; spin++)
+		__asm__ volatile("pause");
+
+	anx_outb(0xFE, 0x64);		/* keyboard controller pulse */
+	for (spin = 0; spin < 2000000u; spin++)
+		__asm__ volatile("pause");
+
+	/* Fault with no handlers installed: the CPU resets. */
+	__asm__ volatile("lidt %0" : : "m"(null_idt));
+	__asm__ volatile("int3");
+	arch_halt();
 }
 
 void arch_halt(void)

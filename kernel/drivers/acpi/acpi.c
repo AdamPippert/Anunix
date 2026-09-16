@@ -10,6 +10,7 @@
 #include <anx/acpi.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/io.h>
 
 /* --- ACPI table structures --- */
 
@@ -76,6 +77,14 @@ struct madt_io_apic {
 #define BOOT_INFO_ADDR		0x1000
 #define BOOT_INFO_MAGIC		0x414E5846	/* "ANXF" */
 #define BOOT_INFO_RSDP		0x1028
+
+/* FADT reset support: flags bit, reset register, and its value */
+#define FADT_FLAGS_OFF		112
+#define FADT_FLAG_RESET_REG	(1u << 10)
+#define FADT_RESET_REG_OFF	116
+#define FADT_RESET_VALUE_OFF	128
+#define GAS_SPACE_SYSTEM_MEMORY	0
+#define GAS_SPACE_SYSTEM_IO	1
 
 /* FADT fields holding the DSDT address */
 #define FADT_DSDT_OFF		40
@@ -325,6 +334,41 @@ int anx_acpi_init(void)
 
 	acpi_info.valid = true;
 	return ANX_OK;
+}
+
+int anx_acpi_reset(void)
+{
+	const uint8_t *fadt;
+	uint32_t flags, len = 0;
+	uint64_t addr = 0;
+	uint8_t space, value;
+
+	fadt = anx_acpi_find_table("FACP", 0, &len);
+	if (!fadt || len < FADT_RESET_VALUE_OFF + 1)
+		return ANX_ENOENT;
+
+	anx_memcpy(&flags, fadt + FADT_FLAGS_OFF, sizeof(flags));
+	if (!(flags & FADT_FLAG_RESET_REG))
+		return ANX_ENOTSUP;
+
+	/* Generic address: space id, width, offset, access size, address. */
+	space = fadt[FADT_RESET_REG_OFF];
+	anx_memcpy(&addr, fadt + FADT_RESET_REG_OFF + 4, sizeof(addr));
+	value = fadt[FADT_RESET_VALUE_OFF];
+	if (addr == 0)
+		return ANX_ENOTSUP;
+
+#if defined(__x86_64__)
+	if (space == GAS_SPACE_SYSTEM_IO) {
+		anx_outb(value, (uint16_t)addr);
+		return ANX_OK;
+	}
+#endif
+	if (space == GAS_SPACE_SYSTEM_MEMORY) {
+		*(volatile uint8_t *)(uintptr_t)addr = value;
+		return ANX_OK;
+	}
+	return ANX_ENOTSUP;
 }
 
 const struct anx_acpi_info *anx_acpi_get_info(void)

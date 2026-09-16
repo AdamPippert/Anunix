@@ -94,6 +94,10 @@ int  anx_wm_window_tile_right(struct anx_surface *surf);
 /* Restore a tiled surface to its pre-tile floating bounds. */
 int  anx_wm_window_float(struct anx_surface *surf);
 
+/* Focus the nearest window in a direction: (-1,0) left, (1,0) right,
+ * (0,-1) up, (0,1) down. */
+int  anx_wm_window_focus_dir(int32_t dx, int32_t dy);
+
 /* Move a surface to a different workspace (1-based). */
 int  anx_wm_window_send_to_workspace(struct anx_surface *surf, uint32_t ws_id);
 
@@ -111,7 +115,15 @@ bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key);
 bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode);
 
 /* ---- Menu bar ---- */
-void anx_wm_menubar_refresh(void);	/* Redraw and commit menu bar */
+void anx_wm_menubar_refresh(void);
+
+/* Power dialog: confirms restart or halt before anything happens. */
+void anx_wm_power_open(void);
+void anx_wm_power_close(void);
+bool anx_wm_power_active(void);
+bool anx_wm_power_key(uint32_t key);
+bool anx_wm_power_pointer(int32_t x, int32_t y, uint32_t buttons,
+			  bool move_only);	/* Redraw and commit menu bar */
 
 /* ---- Taskbar (minimized window dock, bottom strip) ---- */
 int  anx_wm_taskbar_create(void);

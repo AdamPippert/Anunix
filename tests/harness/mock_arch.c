@@ -51,6 +51,8 @@ void arch_init(void)
 	anx_page_init(start, end);
 }
 
+void arch_reboot(void) { for (;;) { } }
+
 void arch_halt(void)
 {
 	/* Declared noreturn — spin forever in test builds */

@@ -60,6 +60,12 @@ void arch_init(void)
 		tile_configure(t, 0x0101); /* enable=0x01, dtype=BF16(0x01) */
 }
 
+/* No reset path on this architecture yet; stop instead. */
+void arch_reboot(void)
+{
+	arch_halt();
+}
+
 void arch_halt(void)
 {
 	for (;;)

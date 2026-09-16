@@ -33,6 +33,13 @@ const struct anx_acpi_info *anx_acpi_get_info(void);
  * FADT and accepts only index 0. Returns the table, header included, or
  * NULL. Valid after anx_acpi_init().
  */
+/*
+ * Restart the machine through the FADT reset register.
+ * Returns ANX_ENOTSUP when firmware does not offer one; on success the
+ * machine resets and this never returns.
+ */
+int anx_acpi_reset(void);
+
 const uint8_t *anx_acpi_find_table(const char *sig, uint32_t index,
 				   uint32_t *length);
 

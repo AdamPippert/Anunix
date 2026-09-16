@@ -117,6 +117,12 @@ void arch_probe_hw(struct anx_hw_inventory *inv)
 	/* TODO: parse device tree for real hardware */
 }
 
+/* No reset path on this architecture yet; stop instead. */
+void arch_reboot(void)
+{
+	arch_halt();
+}
+
 void arch_halt(void)
 {
 	for (;;)
