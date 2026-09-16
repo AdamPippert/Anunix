@@ -1311,7 +1311,7 @@ Evidence: [kernel/core/route/profile.c](../../kernel/core/route/profile.c), [ker
 
 Planned acceptance: Three compiled profiles produce expected routing scores. Invalid, stale, altered, revoked, or foreign selections use incumbent weights; the global policy remains unchanged.
 
-Status: Validated on Jekyll. Tested commit: `72219d6`. Source message: `2b0646b7-8ce0-4118-a447-80e8979d269b`.
+Status: Merged at `07ee2eb` after Jekyll validation. Tested commit: `72219d6`. Source message: `2b0646b7-8ce0-4118-a447-80e8979d269b`.
 
 Detailed comparison and results: [Day 081](day-081.md).
 
@@ -1321,10 +1321,12 @@ Detailed comparison and results: [Day 081](day-081.md).
 
 Learning: Keep resource entitlement with a continuation while deterministic gates constrain handoffs, authority sources, and policy rules.
 
-Anunix comparison: Cells, scheduler domains, and phase leases constrain individual execution. Shared continuation entitlement and explicit holder handoff need a common runtime boundary.
+Anunix comparison: Scheduler domains and phase leases constrain separate Cells. A continuation group adds one execution holder and a shared scratch reservation across explicit members.
 
 Evidence: [kernel/core/sched/domain.c](../../kernel/core/sched/domain.c), [kernel/core/sched/scheduler.c](../../kernel/core/sched/scheduler.c), [kernel/core/route/phase.c](../../kernel/core/route/phase.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
-Planned acceptance: Transfer a bounded continuation entitlement between authorized members without duplicating capacity. Reject foreign, stale, or revoked handoffs.
+Planned acceptance: Two members exchange data through one 8192-byte reservation without changing its lease identity. Stale or foreign handoffs reject; revocation releases two pages and blocks dispatch.
 
-Status: Queued. Source message: `4fbd6461-2755-46a8-b94e-832520d9f3b2`.
+Status: Validated on Jekyll. Tested commit: `f4e4790`. Source message: `4fbd6461-2755-46a8-b94e-832520d9f3b2`.
+
+Detailed comparison and results: [Day 082](day-082.md).
