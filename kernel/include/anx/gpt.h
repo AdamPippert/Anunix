@@ -26,6 +26,7 @@ struct anx_gpt_partition {
 	uint64_t end_lba;		/* inclusive */
 	uint64_t attributes;
 	char name[72];			/* UTF-16LE in GPT, ASCII here */
+	uint32_t index;			/* 1-based GPT entry index */
 };
 
 struct anx_gpt_table {
@@ -34,8 +35,14 @@ struct anx_gpt_table {
 	struct anx_gpt_partition partitions[ANX_GPT_MAX_PARTS];
 };
 
-/* Read the GPT from the block device */
+/* Read the GPT from the active block device */
 int anx_gpt_read(struct anx_gpt_table *table);
+
+/* Read the GPT from a specific block device. Validates the header
+ * signature and CRC-32, falls back to the backup header at the last
+ * sector, and rejects entries that fall outside the device. */
+struct anx_blk_dev;
+int anx_gpt_read_dev(struct anx_blk_dev *dev, struct anx_gpt_table *table);
 
 /* Write a GPT to the block device (protective MBR + primary + backup) */
 int anx_gpt_write(const struct anx_gpt_table *table);
