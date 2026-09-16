@@ -3,9 +3,9 @@
  *
  * 1. Enumerates ALL GOP handles — activates eDP + HDMI + any expansion cards
  * 2. Finds ACPI RSDP from EFI configuration table
- * 3. Gets memory map, exits boot services (robust retry)
- * 4. Sets up 4 GiB identity-mapped page tables
- * 5. Copies embedded kernel to 0x100000 and jumps to it
+ * 3. Gets memory map, builds identity-mapped page tables covering all of it
+ * 4. Exits boot services (robust retry)
+ * 5. Copies embedded kernel to 0x100000, loads CR3, and jumps to it
  *
  * Boot info is passed at physical address 0x1000 (ANXF magic).
  */
@@ -51,13 +51,92 @@ extern UINT8 _kernel_start[];
 extern UINT8 _kernel_end[];
 
 #define KERNEL_LOAD_ADDR	0x100000
-#define PML4_ADDR		0x70000
-#define PDPT_ADDR		0x71000
+
+#define PT_GIB			(1ULL << 30)
+#define PT_PDPT_MAX		16		/* 16 x 512 GiB = 8 TiB */
+#define PT_LARGE_RW		0x83ULL		/* present, writable, 1 GiB page */
+#define PT_TABLE_RW		0x03ULL		/* present, writable */
 
 static void conout(EFI_SYSTEM_TABLE *ST, const CHAR16 *s)
 {
 	if (ST->ConOut)
 		ST->ConOut->OutputString(ST->ConOut, (CHAR16 *)s);
+}
+
+/*
+ * Build an identity map from 0 to the highest address the kernel can touch
+ * at handoff: the end of every memory map descriptor and of the primary
+ * framebuffer, and never less than 4 GiB.
+ *
+ * A fixed 4 GiB map is not enough. This stub links at ImageBase
+ * 0x140000000 without relocations, so firmware loads it at 5 GiB whenever
+ * RAM exists there, and the instruction after the CR3 load faults. GPUs
+ * also place framebuffer BARs far above 4 GiB (0x6210000000 on Framework
+ * Laptop 16), and fb.c writes to the framebuffer through this map.
+ *
+ * Entries are 1 GiB pages, present and writable, without NX. The tables
+ * come from AllocatePages below 4 GiB, so ExitBootServices leaves them in
+ * place and mmio.c can extend them later through the identity view.
+ */
+static EFI_STATUS build_identity_map(EFI_SYSTEM_TABLE *ST,
+				     EFI_MEMORY_DESCRIPTOR *mmap,
+				     UINTN map_size, UINTN desc_size,
+				     const struct anx_boot_info *info,
+				     UINT64 *pml4_out)
+{
+	EFI_PHYSICAL_ADDRESS tables = 0xFFFFFFFFULL;
+	EFI_STATUS status;
+	UINT64 top = 4 * PT_GIB;
+	UINT64 gib_count, pdpt_count, g;
+	UINT64 *pml4;
+	UINTN off;
+
+	for (off = 0; off + desc_size <= map_size; off += desc_size) {
+		EFI_MEMORY_DESCRIPTOR *d =
+			(EFI_MEMORY_DESCRIPTOR *)((UINT8 *)mmap + off);
+		UINT64 end = d->PhysicalStart + d->NumberOfPages * 4096;
+
+		if (end > top)
+			top = end;
+	}
+
+	if (info->framebuffer_addr) {
+		UINT64 end = info->framebuffer_addr +
+			     (UINT64)info->framebuffer_pitch *
+			     info->framebuffer_height;
+
+		if (end > top)
+			top = end;
+	}
+
+	gib_count  = (top + PT_GIB - 1) / PT_GIB;
+	pdpt_count = (gib_count + 511) / 512;
+	if (pdpt_count > PT_PDPT_MAX) {
+		conout(ST, (CHAR16 *)L"  PageTables: address space above 8 TiB left unmapped\r\n");
+		pdpt_count = PT_PDPT_MAX;
+		gib_count  = PT_PDPT_MAX * 512;
+	}
+
+	status = ST->BootServices->AllocatePages(AllocateMaxAddress,
+						 2 /* EfiLoaderData */,
+						 1 + pdpt_count, &tables);
+	if (status != EFI_SUCCESS)
+		return status;
+
+	pml4 = (UINT64 *)(UINTN)tables;
+	for (g = 0; g < (1 + pdpt_count) * 512; g++)
+		pml4[g] = 0;
+
+	for (g = 0; g < gib_count; g++) {
+		UINT64 *pdpt = pml4 + 512 * (1 + g / 512);
+
+		if (g % 512 == 0)
+			pml4[g / 512] = (UINT64)(UINTN)pdpt | PT_TABLE_RW;
+		pdpt[g % 512] = (g << 30) | PT_LARGE_RW;
+	}
+
+	*pml4_out = tables;
+	return EFI_SUCCESS;
 }
 
 /*
@@ -145,6 +224,7 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle,
 	UINT32 desc_version;
 	EFI_MEMORY_DESCRIPTOR *mmap;
 	VOID *mmap_buf;
+	UINT64 pml4_addr;
 	UINTN i;
 
 	/* Clear boot info block */
@@ -211,8 +291,30 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle,
 	map_size = 0;
 	BS->GetMemoryMap(&map_size, NULL, &map_key, &desc_size, &desc_version);
 	map_alloc = map_size + 8 * desc_size;	/* generous slack */
-	BS->AllocatePool(2 /* EfiLoaderData */, map_alloc, &mmap_buf);
+	status = BS->AllocatePool(2 /* EfiLoaderData */, map_alloc, &mmap_buf);
+	if (status != EFI_SUCCESS) {
+		conout(SystemTable, (CHAR16 *)L"MemMap: allocation failed!\r\n");
+		return status;
+	}
 	mmap = (EFI_MEMORY_DESCRIPTOR *)mmap_buf;
+
+	/*
+	 * --- Page tables ---
+	 * Sized from this map. The allocation below adds descriptors but
+	 * never raises the top address, so the tables stay valid for the
+	 * final map fetched at ExitBootServices.
+	 */
+	conout(SystemTable, (CHAR16 *)L"  PageTables: building...\r\n");
+	map_size = map_alloc;
+	status = BS->GetMemoryMap(&map_size, mmap, &map_key,
+				  &desc_size, &desc_version);
+	if (status == EFI_SUCCESS)
+		status = build_identity_map(SystemTable, mmap, map_size,
+					    desc_size, info, &pml4_addr);
+	if (status != EFI_SUCCESS) {
+		conout(SystemTable, (CHAR16 *)L"PageTables: build failed!\r\n");
+		return status;
+	}
 
 	/* --- Exit boot services (up to 3 attempts) --- */
 	conout(SystemTable, (CHAR16 *)L"  ExitBootServices...\r\n");
@@ -267,27 +369,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle,
 			dst[i] = src[i];
 	}
 
-	/*
-	 * Identity-mapped page tables (4 GiB).
-	 * PML4[0] → PDPT; PDPT[0..3] → four 1-GiB pages.
-	 */
-	{
-		UINT64 *pml4 = (UINT64 *)PML4_ADDR;
-		UINT64 *pdpt = (UINT64 *)PDPT_ADDR;
-
-		for (i = 0; i < 512; i++) {
-			pml4[i] = 0;
-			pdpt[i] = 0;
-		}
-
-		pml4[0] = PDPT_ADDR | 0x3;
-		pdpt[0] = 0x0000000000000083ULL;
-		pdpt[1] = 0x0000000040000083ULL;
-		pdpt[2] = 0x0000000080000083ULL;
-		pdpt[3] = 0x00000000C0000083ULL;
-
-		__asm__ volatile("mov %0, %%cr3" : : "r"((UINT64)PML4_ADDR));
-	}
+	/* Switch to the identity map built before ExitBootServices. */
+	__asm__ volatile("mov %0, %%cr3" : : "r"(pml4_addr));
 
 	/* Jump to kernel */
 	{
