@@ -20,7 +20,7 @@ BUILD_TMP="${GRUB_DIR}/build-tmp"
 NJOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 # Debian package versions (bookworm/stable)
-GRUB_VER="2.06-13+deb12u1"
+GRUB_VER="2.06-13+deb12u2"
 GRUB_PC_DEB="grub-pc-bin_${GRUB_VER}_amd64.deb"
 GRUB_EFI_DEB="grub-efi-amd64-bin_${GRUB_VER}_amd64.deb"
 DEBIAN_MIRROR="https://deb.debian.org/debian/pool/main/g/grub2"
