@@ -41,6 +41,7 @@
 #include <anx/gui.h>
 #include <anx/interface_plane.h>
 #include <anx/usb_mouse.h>
+#include <anx/i2c_input.h>
 #include <anx/shell.h>
 #include <anx/vm.h>
 #include <anx/wm.h>
@@ -280,6 +281,12 @@ void kernel_main(void)
 	/* 10. Driver probe — storage, network, accelerators */
 	PERF_BEGIN("drivers_probe");
 	anx_drivers_probe();
+	PERF_END();
+
+	/* 10a. HID-over-I2C input (touchpads). ACPI describes these, not
+	 * PCI, so the driver table cannot probe them. Non-fatal. */
+	PERF_BEGIN("i2c_input_init");
+	anx_i2c_input_init();
 	PERF_END();
 
 	/* 10b. Audio subsystem — initializes the mixer and probes hardware

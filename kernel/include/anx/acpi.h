@@ -27,4 +27,13 @@ int anx_acpi_init(void);
 /* Get parsed ACPI info */
 const struct anx_acpi_info *anx_acpi_get_info(void);
 
+/*
+ * Find a checksummed ACPI table by signature, for example "SSDT". index
+ * selects among tables that share a signature. "DSDT" is found through the
+ * FADT and accepts only index 0. Returns the table, header included, or
+ * NULL. Valid after anx_acpi_init().
+ */
+const uint8_t *anx_acpi_find_table(const char *sig, uint32_t index,
+				   uint32_t *length);
+
 #endif /* ANX_ACPI_H */

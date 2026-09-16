@@ -45,6 +45,7 @@
 #include <anx/httpd.h>
 #include <anx/sshd.h>
 #include <anx/xhci.h>
+#include <anx/i2c_input.h>
 #include <anx/crypto.h>
 #include <anx/base64.h>
 #include <anx/e1000.h>
@@ -220,6 +221,7 @@ static int kgetline(char *buf, size_t size)
 			anx_gui_update_time();
 			anx_iface_compositor_repaint();
 			anx_xhci_poll();
+			anx_i2c_input_poll();
 			anx_net_poll();
 			anx_httpd_poll();
 			anx_sshd_poll();
