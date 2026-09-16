@@ -45,6 +45,8 @@ This directory contains the formal Request for Comments (RFC) documents for the 
 | [0028](RFC-0028-protected-operation-abi.md) | Protected Operation ABI — Information-Flow Labels and the Prepare/Dispatch/Settle Effect Protocol | Draft | Adam Pippert | 0002, 0003, 0007, 0008 |
 | [0029](RFC-0029-resource-twin-regime-gated-scheduling.md) | Resource Twin and Regime-Gated Scheduling Policy | Draft | Adam Pippert | 0002, 0005, 0007, 0021 |
 | [0030](RFC-0030-software-raid.md) | Software RAID — Striped and Mirrored Block Devices | Draft | Adam Pippert | 0002, 0014 |
+| [0032](RFC-0032-usb-hid-input.md) | USB Input — Polled xHCI and the HID Boot Protocol | Draft | Adam Pippert | 0012, 0014 |
+| [0033](RFC-0033-acpi-i2c-hid.md) | ACPI Discovery, AML Resources and HID over I2C | Draft | Adam Pippert | 0014, 0032 |
 
 ## Dependency Graph
 
@@ -79,4 +81,12 @@ RFC-0002, RFC-0005, RFC-0007, RFC-0021
 RFC-0002, RFC-0014
   └── RFC-0030 (Software RAID) — turns the single-device block layer into
        a device registry, then stripes or mirrors across the members
+RFC-0012, RFC-0014
+  └── RFC-0032 (USB Input) — polled xHCI host controller, then HID
+       boot-protocol translation into the Interface Plane
+       └── RFC-0033 (ACPI, AML and HID over I2C) — reaches the same input
+            path for devices firmware describes in AML, not on PCI
 ```
+
+RFC-0031 (Partition Layer) is numbered and drafted on the branch
+`rfc-0031-partition-layer`. It is not merged, so it is not listed above.

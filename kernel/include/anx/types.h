@@ -89,6 +89,6 @@ typedef uint64_t anx_time_t;
 #define ANX_EAUDIT	-17   /* execution completed, audit finalization failed */
 
 /* Kernel version string — YYYY.M.D */
-#define ANX_VERSION	"2026.9.4"
+#define ANX_VERSION	"2026.9.15"
 
 #endif /* ANX_TYPES_H */
