@@ -69,17 +69,34 @@ uint32_t anx_fbcon_cursor_y(void)
 }
 
 /*
- * Scrolling a framebuffer console costs one full-screen move per scroll,
- * and on a high-resolution panel that move is the single most expensive
- * thing the boot path does. Scrolling one text row at a time means paying
- * it once per line of output.
+ * Reaching the bottom of a framebuffer console can be handled two ways, and
+ * on a high-resolution panel they cost wildly different amounts.
  *
- * Scroll a batch of rows instead. The console gives up FBCON_SCROLL_ROWS
- * rows of history each time it reaches the bottom and pays the full-screen
- * move once per batch, so boot output costs a fraction of the moves it used
- * to. The cursor lands below the last live row, so nothing is overwritten.
+ * Scrolling moves the visible framebuffer up. That is a read followed by a
+ * write of nearly the whole screen -- about 16 MiB each way on a 2560x1600
+ * panel -- and the read side comes back from video memory, which is far
+ * slower than main memory. Every line of boot output paid for one.
+ *
+ * Paging throws the screen away and starts again at the top. It never reads
+ * the framebuffer at all: one linear write per screenful, and writes to a
+ * write-combining framebuffer are the fast direction. A screen of output
+ * costs one clear instead of dozens of moves.
+ *
+ * Boot output is paged. Nothing above the current screen is being read by
+ * anyone mid-boot, and the serial log and the persisted boot log both keep
+ * the full text, so the history is not lost -- only the pixels are.
+ *
+ * anx_fbcon_set_paging() exists so an interactive console can choose
+ * scrolling, where losing the screen above the cursor would matter.
  */
 #define FBCON_SCROLL_ROWS	12
+
+static bool con_paging = true;
+
+void anx_fbcon_set_paging(bool paging)
+{
+	con_paging = paging;
+}
 
 static void fbcon_scroll_rows(uint32_t rows)
 {
@@ -94,7 +111,13 @@ static void fbcon_newline(void)
 {
 	cur_x = 0;
 	cur_y++;
-	if (cur_y >= con_rows) {
+	if (cur_y < con_rows)
+		return;
+
+	if (con_paging) {
+		anx_fb_clear(FBCON_BG);
+		cur_y = 0;
+	} else {
 		uint32_t rows = FBCON_SCROLL_ROWS;
 
 		if (rows >= con_rows)

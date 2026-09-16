@@ -38,4 +38,12 @@ uint32_t anx_fbcon_rows(void);
 uint32_t anx_fbcon_cursor_x(void);
 uint32_t anx_fbcon_cursor_y(void);
 
+/*
+ * Choose what happens at the bottom of the screen. Paging clears and starts
+ * again at the top, which never reads the framebuffer; scrolling preserves
+ * the text above the cursor but pays a full-screen read and write. Boot
+ * output pages by default.
+ */
+void anx_fbcon_set_paging(bool paging);
+
 #endif /* ANX_FBCON_H */
