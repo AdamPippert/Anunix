@@ -1588,28 +1588,31 @@
       "date": "2026-09-12",
       "message_id": "01591a3b-c89f-42b3-bdfb-2c93786e2f23",
       "title": "AI-first OS update \u2014 September 12: schedule phases, progress, and state versions",
-      "status": "validated",
+      "status": "merged",
       "branch": "codex/ai-os-day-079",
       "comparison_baseline": "e82c2f0",
       "tested_commit": "e731ce9",
-      "evidence": "docs/research/evidence/day-079/uefi-boot.json"
+      "evidence": "docs/research/evidence/day-079/uefi-boot.json",
+      "merged_commit": "9fd11f0"
     },
     {
       "learning": "Treat speculation as a bounded transaction with isolated mutable state, buffered external effects, and explicit commit or abort.",
       "code": [
-        "kernel/core/cap/effect.c",
+        "kernel/include/anx/state_object.h",
         "kernel/core/state/stage.c",
-        "kernel/core/exec/runtime.c"
+        "kernel/core/tools/research_day080.c"
       ],
-      "comparison": "Staged mutations, pending effects, and run fences exist. A shared speculation domain must coordinate state and external-effect admission.",
-      "acceptance": "Abort a speculative branch without dispatching its buffered effects; admit only the validated branch at commit.",
+      "comparison": "Existing stages publish or abort one object per call. Batch resolution validates up to four objects before any payload changes.",
+      "acceptance": "Four staged payloads abort without changing live data. Invalid authority, versions, handles, or review evidence reject every change; the owner commits all four exactly once.",
       "day": 80,
       "date": "2026-09-13",
       "message_id": "8e6b3d50-036a-46c2-b5f4-8c5127cf88f1",
       "title": "AI-first OS update \u2014 September 13: reversible execution is becoming a kernel primitive",
-      "status": "queued",
-      "branch": null,
-      "comparison_baseline": "4c0bc25"
+      "status": "validated",
+      "branch": "codex/ai-os-day-080",
+      "comparison_baseline": "9fd11f0",
+      "tested_commit": "f1e1fc2",
+      "evidence": "docs/research/evidence/day-080/uefi-boot.json"
     },
     {
       "day": 81,
