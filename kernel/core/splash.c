@@ -106,7 +106,6 @@ static void splash_graphical(void)
 	const struct anx_fb_info *info;
 	struct anx_jpeg_image img;
 	uint32_t jpg_size;
-	uint64_t start;
 	int ret;
 
 	info = anx_fb_get_info();
@@ -148,10 +147,13 @@ static void splash_graphical(void)
 	}
 	anx_jpeg_free(&img);
 
-	/* Hold the splash for 5 seconds */
-	start = arch_timer_ticks();
-	while (arch_timer_ticks() - start < 500)
-		;
+	/*
+	 * No hold. This used to spin for five seconds so the logo could be
+	 * admired, which made the splash the most expensive step in the whole
+	 * boot -- longer than every driver probe put together. The logo still
+	 * appears; boot output simply replaces it as soon as there is output
+	 * to show.
+	 */
 
 	/* Clear framebuffer for text output */
 	anx_fb_clear(0x00000000);

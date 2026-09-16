@@ -415,9 +415,12 @@ void kernel_main(void)
 			anx_arp_init();
 			anx_udp_init();
 
+			bool leased;
+
 			PERF_BEGIN("dhcp_discover");
 			kprintf("dhcp: discovering...\n");
-			if (anx_dhcp_discover(&net_cfg) != ANX_OK) {
+			leased = anx_dhcp_discover(&net_cfg) == ANX_OK;
+			if (!leased) {
 				net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
 				net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
 				net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
@@ -429,11 +432,22 @@ void kernel_main(void)
 			anx_net_stack_init(&net_cfg);
 			PERF_END();
 
-			/* Auto-sync time from NTP (pool.ntp.org via DNS) */
-			{
+			/*
+			 * Only reach for the network when a lease says there
+			 * is one. Without this, a machine with no DHCP server
+			 * went on to spend a DNS timeout, and then an NTP
+			 * timeout, talking to a gateway invented two lines
+			 * above -- all of it during boot.
+			 */
+			if (leased) {
 				uint32_t ntp_ip;
+
+				PERF_BEGIN("time_sync");
 				if (anx_dns_resolve("pool.ntp.org", &ntp_ip) == ANX_OK)
 					anx_ntp_sync(ntp_ip);
+				PERF_END();
+			} else {
+				kprintf("net: no lease; skipping DNS and NTP\n");
 			}
 		}
 	}
