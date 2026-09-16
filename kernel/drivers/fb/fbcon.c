@@ -96,6 +96,7 @@ static bool con_paging = true;
 void anx_fbcon_set_paging(bool paging)
 {
 	con_paging = paging;
+	anx_gui_set_paging(paging);	/* the GUI panel is the same console */
 }
 
 static void fbcon_scroll_rows(uint32_t rows)
