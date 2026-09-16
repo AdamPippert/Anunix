@@ -1279,7 +1279,7 @@ Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core
 
 Planned acceptance: Seven stale observations reject without changing resource geometry or caller output. A fresh private decision commits two replicas, preserves completed work, and completes both CPU operations.
 
-Status: Validated on Jekyll. Tested commit: `e731ce9`. Source message: `01591a3b-c89f-42b3-bdfb-2c93786e2f23`.
+Status: Merged at `9fd11f0` after Jekyll validation. Tested commit: `e731ce9`. Source message: `01591a3b-c89f-42b3-bdfb-2c93786e2f23`.
 
 Detailed comparison and results: [Day 079](day-079.md).
 
@@ -1289,13 +1289,15 @@ Detailed comparison and results: [Day 079](day-079.md).
 
 Learning: Treat speculation as a bounded transaction with isolated mutable state, buffered external effects, and explicit commit or abort.
 
-Anunix comparison: Staged mutations, pending effects, and run fences exist. A shared speculation domain must coordinate state and external-effect admission.
+Anunix comparison: Existing stages publish or abort one object per call. Batch resolution validates up to four objects before any payload changes.
 
 Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/core/state/stage.c](../../kernel/core/state/stage.c), [kernel/core/exec/runtime.c](../../kernel/core/exec/runtime.c).
 
-Planned acceptance: Abort a speculative branch without dispatching its buffered effects; admit only the validated branch at commit.
+Planned acceptance: Four staged payloads abort without changing live data. Invalid authority, versions, handles, or review evidence reject every change; the owner commits all four exactly once.
 
-Status: Queued. Source message: `8e6b3d50-036a-46c2-b5f4-8c5127cf88f1`.
+Status: Validated on Jekyll. Tested commit: `f1e1fc2`. Source message: `8e6b3d50-036a-46c2-b5f4-8c5127cf88f1`.
+
+Detailed comparison and results: [Day 080](day-080.md).
 
 ## Day 081 — 2026-09-14
 
