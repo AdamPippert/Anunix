@@ -145,47 +145,64 @@
 #define MT_WFDMA0_RST_DRX_PTR           (MT_WFDMA0_BASE + 0x0280)
 
 /* ------------------------------------------------------------------ */
-/* TX ring registers                                                   */
-/* Each ring occupies 0x40 bytes starting at BASE + 0x300 + n*0x40    */
+/* DMA ring registers                                                  */
 /* ------------------------------------------------------------------ */
 
-#define MT_WFDMA0_TX_RING_BASE(n)       (MT_WFDMA0_BASE + 0x300 + (n) * 0x40)
-#define MT_WFDMA0_TX_RING_CNT(n)        (MT_WFDMA0_TX_RING_BASE(n) + 0x00)
-#define MT_WFDMA0_TX_RING_ADDR(n)       (MT_WFDMA0_TX_RING_BASE(n) + 0x04)
+/*
+ * Each ring is four registers, 0x10 apart, in this order
+ * (struct mt76_queue_regs, Linux v6.12 mt76 mt76.h lines 194-199;
+ * MT_RING_SIZE 0x10, dma.h line 10):
+ *
+ *   +0x0 desc_base   +0x4 ring_size   +0x8 cpu_idx   +0xc dma_idx
+ *
+ * These were 0x40 apart with ring_size and desc_base swapped, so every
+ * ring the driver configured landed on some other ring's registers.
+ */
+#define MT_RING_REG_SIZE                0x10
+#define MT_WFDMA0_TX_RING_BASE(n)       (MT_WFDMA0_BASE + 0x300 + (n) * MT_RING_REG_SIZE)
+#define MT_WFDMA0_TX_RING_ADDR(n)       (MT_WFDMA0_TX_RING_BASE(n) + 0x00)
+#define MT_WFDMA0_TX_RING_CNT(n)        (MT_WFDMA0_TX_RING_BASE(n) + 0x04)
 #define MT_WFDMA0_TX_RING_CIDX(n)       (MT_WFDMA0_TX_RING_BASE(n) + 0x08)
 #define MT_WFDMA0_TX_RING_DIDX(n)       (MT_WFDMA0_TX_RING_BASE(n) + 0x0C)
 
-/* TX ring indices */
-#define MT_DATA_TXRING                  0   /* normal data TX */
-#define MT_MCU_FWDL_TXRING             3   /* firmware download */
-#define MT_MCU_WA_TXRING               15  /* WA MCU commands */
-#define MT_MCU_WM_TXRING               20  /* WM MCU commands */
-
-/* ------------------------------------------------------------------ */
-/* RX ring registers                                                   */
-/* Each ring occupies 0x40 bytes starting at BASE + 0x500 + n*0x40    */
-/* ------------------------------------------------------------------ */
-
-#define MT_WFDMA0_RX_RING_BASE(n)       (MT_WFDMA0_BASE + 0x500 + (n) * 0x40)
-#define MT_WFDMA0_RX_RING_CNT(n)        (MT_WFDMA0_RX_RING_BASE(n) + 0x00)
-#define MT_WFDMA0_RX_RING_ADDR(n)       (MT_WFDMA0_RX_RING_BASE(n) + 0x04)
+#define MT_WFDMA0_RX_RING_BASE(n)       (MT_WFDMA0_BASE + 0x500 + (n) * MT_RING_REG_SIZE)
+#define MT_WFDMA0_RX_RING_ADDR(n)       (MT_WFDMA0_RX_RING_BASE(n) + 0x00)
+#define MT_WFDMA0_RX_RING_CNT(n)        (MT_WFDMA0_RX_RING_BASE(n) + 0x04)
 #define MT_WFDMA0_RX_RING_CIDX(n)       (MT_WFDMA0_RX_RING_BASE(n) + 0x08)
 #define MT_WFDMA0_RX_RING_DIDX(n)       (MT_WFDMA0_RX_RING_BASE(n) + 0x0C)
 
-/* RX ring indices */
-#define MT_DATA_RXRING                  0   /* normal data RX */
-#define MT_MCU_EVENT_RXRING             4   /* MCU events / FW download ACKs */
+/*
+ * Ring indices, mt7925/mt7925.h lines 89-101 (enum mt7925_txq_id and
+ * enum mt7925_rxq_id). Previously FWDL 3, WM 20, MCU event 4, data RX 0.
+ */
+#define MT_DATA_TXRING                  0   /* MT7925_TXQ_BAND0 */
+#define MT_MCU_WM_TXRING                15  /* MT7925_TXQ_MCU_WM */
+#define MT_MCU_FWDL_TXRING              16  /* MT7925_TXQ_FWDL */
+#define MT_MCU_EVENT_RXRING             0   /* MT7925_RXQ_MCU_WM */
+#define MT_DATA_RXRING                  2   /* MT7925_RXQ_BAND0 */
 
 /* ------------------------------------------------------------------ */
 /* DMA descriptor format                                               */
-/* 16-byte descriptor (4 × u32) used for both TX and RX rings         */
+/* 16-byte descriptor: buf0, ctrl, buf1, info (struct mt76_desc)      */
 /* ------------------------------------------------------------------ */
 
-/* ctrl field bits */
-#define MT_DMA_CTRL_SD_LEN0_MASK        0x0000ffff
-#define MT_DMA_CTRL_LAST_SEC0           (1U << 19)
-#define MT_DMA_CTRL_FIRST_SEC0          (1U << 20)
-#define MT_DMA_CTRL_DMA_DONE            (1U << 31)  /* HW sets on TX done; driver sets on RX refill */
+/*
+ * ctrl bits, dma.h lines 12-17. The segment length lives in bits 29:16,
+ * not 15:0, and LAST_SEC0 is bit 30, not bit 19. There is no FIRST_SEC0:
+ * the old bit 20 sat inside the length field and corrupted it.
+ *
+ * DMA_DONE belongs to the device. A refilled RX descriptor carries it
+ * clear; the device sets it when it has written the buffer.
+ */
+#define MT_DMA_CTRL_SD_LEN1_MASK        0x00003fffU
+#define MT_DMA_CTRL_LAST_SEC1           (1U << 14)
+#define MT_DMA_CTRL_BURST               (1U << 15)
+#define MT_DMA_CTRL_SD_LEN0_SHIFT       16
+#define MT_DMA_CTRL_SD_LEN0_MASK        (0x3fffU << MT_DMA_CTRL_SD_LEN0_SHIFT)
+#define MT_DMA_CTRL_LAST_SEC0           (1U << 30)
+#define MT_DMA_CTRL_DMA_DONE            (1U << 31)
+#define MT_DMA_CTRL_LEN0(len)           (((uint32_t)(len) << MT_DMA_CTRL_SD_LEN0_SHIFT) & MT_DMA_CTRL_SD_LEN0_MASK)
+#define MT_DMA_CTRL_GET_LEN0(ctrl)      (((ctrl) & MT_DMA_CTRL_SD_LEN0_MASK) >> MT_DMA_CTRL_SD_LEN0_SHIFT)
 
 /* info field bits (TX) */
 #define MT_DMA_INFO_TOKEN_MASK          0x1fff0000
