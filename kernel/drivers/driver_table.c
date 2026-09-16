@@ -31,6 +31,7 @@
 #include <anx/e1000.h>
 #include <anx/mt7925.h>
 #include <anx/xhci.h>
+#include <anx/bootlog.h>
 
 /* --- Driver table --- */
 
@@ -97,12 +98,23 @@ static bool pci_matches(const struct anx_driver *drv,
 void anx_drivers_probe(void)
 {
 	uint32_t i;
+	bool storage_done = false;
 
 	net_probe_ok = false;
 
 	for (i = 0; i < DRIVER_TABLE_SIZE; i++) {
 		const struct anx_driver *drv = &driver_table[i];
 		int r;
+
+		/*
+		 * Storage entries come first in the table. Once past them,
+		 * bring up the store and the boot-log ring before anything
+		 * else runs.
+		 */
+		if (!storage_done && drv->drv_class != ANX_DRVCLS_STORAGE) {
+			storage_done = true;
+			anx_drivers_storage_done();
+		}
 
 		if (drv->bus == ANX_BUS_PCI) {
 			struct anx_list_head *list = anx_pci_device_list();
@@ -122,6 +134,16 @@ void anx_drivers_probe(void)
 
 				/* Enable DMA before calling init (idempotent) */
 				anx_pci_enable_bus_master(dev);
+
+				/*
+				 * Put the log on disk first, so a driver that
+				 * faults or never returns still leaves a record
+				 * ending at this line.
+				 */
+				if (storage_done) {
+					kprintf("driver: probing %s\n", drv->name);
+					(void)anx_bootlog_ring_flush();
+				}
 
 				r = drv->init();
 				kprintf("driver: %s %s\n",
