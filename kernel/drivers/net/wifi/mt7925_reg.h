@@ -41,6 +41,25 @@
 #define MT_CONN_CHIP_ID                 (MT_CONN_INFRA_CFG_BASE + 0x0008)
 
 /* Top-level misc registers */
+/*
+ * Power ownership handshake.
+ *
+ * The chip boots with firmware owning the power domain. Until the driver
+ * claims it, register reads return bus garbage -- 0xdeadbeef on this
+ * machine -- and every later step fails for a reason that has nothing to do
+ * with the step itself.
+ *
+ * Chip address 0x7c060010 reaches BAR0 through the fixed map entry
+ * { 0x7c060000, 0x0e0000, 0x10000 } (CONN_INFRA, conn_host_csr_top), so the
+ * BAR0 offset is 0x0e0010. Values taken from Linux v6.12 mt76:
+ * mt792x_regs.h lines 469-472 and mt7925/pci.c line 150.
+ */
+#define MT_CONN_ON_LPCTL                0x0e0010      /* chip 0x7c060010 */
+#define PCIE_LPCR_HOST_CLR_OWN          (1U << 1)
+#define PCIE_LPCR_HOST_OWN_SYNC         (1U << 2)
+#define MT7925_DRV_OWN_RETRIES          10            /* MT792x_DRV_OWN_RETRY_COUNT */
+#define MT7925_DRV_OWN_POLL_MS          50
+
 #define MT_TOP_MISC2                    0xe110
 #define MT_TOP_MISC2_FW_STATE           0x7           /* bits [2:0] */
 #define MT_FW_STATE_IDLE                0x00

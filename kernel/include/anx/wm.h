@@ -217,4 +217,11 @@ bool anx_wm_ctx_menu_active(void);
 bool anx_wm_ctx_menu_pointer(int32_t x, int32_t y, uint32_t buttons,
 			      bool move_only);
 
+/*
+ * Tell the window manager that something has painted over the mouse cursor,
+ * so it repaints the sprite and forgets its stale save-under pixels. Any
+ * code that commits a surface covering the cursor must call this.
+ */
+void anx_wm_cursor_invalidate(void);
+
 #endif /* ANX_WM_H */
