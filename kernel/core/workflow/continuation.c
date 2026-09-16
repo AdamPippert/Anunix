@@ -46,12 +46,6 @@ struct continuation_record {
 static struct continuation_record *records[ANX_CONTINUATION_MAX];
 static struct anx_spinlock continuation_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
-int anx_continuation_idle_reclaim(uint64_t id, uint64_t epoch,
-		const struct anx_continuation_idle_request *request, struct anx_continuation_view *out)
-{
-	(void)id; (void)epoch; (void)request; (void)out;
-	return ANX_ENOSYS;
-}
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 static bool drop_reply, restore_fault;
 int anx_continuation_test_restore_fault(bool enabled)
@@ -81,6 +75,7 @@ static int owner_check(struct continuation_record *r)
 	struct continuation_policy now;
 	capture_policy(r->owner, &now);
 	int ret = anx_identity_admit(r->owner, &now.identity_record);
+	if (ret == ANX_OK && anx_uuid_compare(&r->owner->parent_cid, &r->view.lineage_parent)) ret = ANX_EBUSY;
 	if (ret == ANX_OK && anx_memcmp(&now, &r->policy, sizeof(now))) ret = ANX_EBUSY;
 	if (ret == ANX_OK && anx_cell_status_terminal(r->owner->status)) ret = ANX_EPERM;
 	if (ret == ANX_OK) ret = anx_cell_check_scope(r->owner);
@@ -196,6 +191,7 @@ int anx_continuation_create(const anx_cid_t *owner, struct anx_continuation_view
 	if (!r) return ANX_ENOMEM;
 	r->owner = anx_cell_store_lookup(owner); r->view.owner = *owner;
 	int ret = r->owner ? ANX_OK : ANX_ENOENT;
+	if (ret == ANX_OK) r->view.lineage_parent = r->owner->parent_cid;
 	if (ret == ANX_OK && !anx_uuid_is_nil(&r->owner->tool_namespace_id)) ret = ANX_ENOTSUP;
 	if (ret == ANX_OK) { capture_policy(r->owner, &r->policy); ret = anx_identity_admit(r->owner, &r->policy.identity_record); }
 	if (ret == ANX_OK) ret = owner_check(r);
@@ -407,9 +403,16 @@ static int phase_current(struct continuation_record *r)
 	int ret = anx_phase_get(&r->view.owner, &now);
 	if (ret != ANX_OK) return ret;
 	const struct anx_phase_view *old = &r->phase;
-	return now.epoch != old->epoch || now.parked != old->parked || now.phase != old->phase || now.role != old->role ||
+	if (now.epoch != old->epoch || now.parked != old->parked || now.phase != old->phase || now.role != old->role ||
 		now.tier != old->tier || now.memory_bytes != old->memory_bytes || now.accelerator != old->accelerator ||
-		now.accelerator_pct != old->accelerator_pct || anx_uuid_compare(&now.lease_id, &old->lease_id) ? ANX_EBUSY : ANX_OK;
+		now.accelerator_pct != old->accelerator_pct || anx_uuid_compare(&now.lease_id, &old->lease_id)) return ANX_EBUSY;
+	if (!now.parked) {
+		struct anx_engine_lease *lease = anx_lease_lookup(&now.lease_id);
+		if (!lease) return ANX_EPERM;
+		if (lease->mem_tier != now.tier || lease->mem_reserved_bytes != now.memory_bytes ||
+		    lease->accel != now.accelerator || lease->accel_pct != now.accelerator_pct) return ANX_EBUSY;
+	}
+	return ANX_OK;
 }
 static int resource_dispatch_check(struct continuation_record *r)
 {
@@ -513,14 +516,16 @@ int anx_continuation_suspend_configure(uint64_t id, uint64_t epoch, uint64_t pha
 int anx_continuation_pause(uint64_t id, uint64_t epoch, enum anx_suspension_reason reason, struct anx_continuation_view *out)
 {
 	if (anx_cell_current_id()) return ANX_EPERM;
-	if (!id || !epoch || !out || (reason != ANX_SUSPEND_TOOL_WAIT && reason != ANX_SUSPEND_HUMAN_APPROVAL)) return ANX_EINVAL;
+	if (!id || !epoch || !out || (reason != ANX_SUSPEND_TOOL_WAIT && reason != ANX_SUSPEND_HUMAN_APPROVAL &&
+	    reason != ANX_SUSPEND_MODEL_WAIT)) return ANX_EINVAL;
 	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
 	struct continuation_record *r = find(id);
 	int ret = suspension_check(r, epoch);
 	if (ret == ANX_OK && r->view.resource_state != ANX_CONT_RUNNABLE &&
 	    !(r->view.resource_state == ANX_CONT_SHORT_WAIT && reason == ANX_SUSPEND_HUMAN_APPROVAL)) ret = ANX_EBUSY;
 	struct continuation_ref ref = {0};
-	struct anx_continuation_event event = { .kind = reason == ANX_SUSPEND_TOOL_WAIT ? ANX_CONT_WAIT_EVENT : ANX_CONT_SUSPEND_EVENT };
+	struct anx_continuation_event event = { .kind = reason == ANX_SUSPEND_MODEL_WAIT ? ANX_CONT_MODEL_WAIT_EVENT :
+		reason == ANX_SUSPEND_TOOL_WAIT ? ANX_CONT_WAIT_EVENT : ANX_CONT_SUSPEND_EVENT };
 	if (ret == ANX_OK) ret = event_prepare(r, &event, &ref);
 	struct anx_phase_view parked;
 	if (ret == ANX_OK && reason == ANX_SUSPEND_HUMAN_APPROVAL) ret = anx_phase_park(&r->view.owner, r->phase.epoch, &parked);
@@ -529,7 +534,7 @@ int anx_continuation_pause(uint64_t id, uint64_t epoch, enum anx_suspension_reas
 			r->resume_bytes = r->phase.memory_bytes; r->resume_pct = r->phase.accelerator_pct;
 			r->phase = parked; r->view.phase_epoch = parked.epoch;
 		}
-		r->view.resource_state = reason == ANX_SUSPEND_TOOL_WAIT ? ANX_CONT_SHORT_WAIT : ANX_CONT_SUSPENDED;
+		r->view.resource_state = reason == ANX_SUSPEND_HUMAN_APPROVAL ? ANX_CONT_SUSPENDED : ANX_CONT_SHORT_WAIT;
 		r->view.suspension_reason = reason; event_publish(r, &event, &ref); *out = r->view;
 	} else if (!anx_uuid_is_nil(&ref.oid)) anx_so_delete(&ref.oid, false);
 	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
@@ -552,6 +557,32 @@ int anx_continuation_hibernate(uint64_t id, uint64_t epoch, struct anx_continuat
 	} else if (!anx_uuid_is_nil(&ref.oid)) anx_so_delete(&ref.oid, false);
 	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
 }
+int anx_continuation_idle_reclaim(uint64_t id, uint64_t epoch,
+		const struct anx_continuation_idle_request *request, struct anx_continuation_view *out)
+{
+	if (anx_cell_current_id()) return ANX_EPERM;
+	if (!id || !epoch || !request || !out || !request->phase_epoch) return ANX_EINVAL;
+	bool flags; anx_spin_lock_irqsave(&continuation_lock, &flags);
+	struct continuation_record *r = find(id);
+	int ret = suspension_check(r, epoch);
+	if (ret == ANX_OK && (r->view.resource_state != ANX_CONT_SHORT_WAIT ||
+	    r->view.suspension_reason != ANX_SUSPEND_MODEL_WAIT)) ret = ANX_EBUSY;
+	if (ret == ANX_OK && (!request->max_pages || r->view.physical_pages > request->max_pages)) ret = ANX_ENOMEM;
+	if (ret == ANX_OK && (anx_uuid_is_nil(&r->view.lineage_parent) ||
+	    anx_uuid_compare(&request->lineage_parent, &r->view.lineage_parent) ||
+	    anx_uuid_compare(&request->model_source, &r->model.oid))) ret = ANX_EPERM;
+	if (ret == ANX_OK && request->phase_epoch != r->phase.epoch) ret = ANX_EBUSY;
+	if (ret == ANX_OK) ret = object_read(r, &r->model, ANX_MODEL_USE_SCHEMA, NULL, sizeof(struct anx_adapter_image), false);
+	struct continuation_ref ref = {0};
+	struct anx_continuation_event event = { .kind = ANX_CONT_IDLE_RECLAIM_EVENT, .source = request->model_source };
+	if (ret == ANX_OK) ret = event_prepare(r, &event, &ref);
+	if (ret == ANX_OK) ret = cache_drop(r);
+	if (ret == ANX_OK) {
+		r->view.resource_state = ANX_CONT_IDLE_RECLAIMED; r->view.physical_pages = 0;
+		event_publish(r, &event, &ref); *out = r->view;
+	} else if (!anx_uuid_is_nil(&ref.oid)) anx_so_delete(&ref.oid, false);
+	anx_spin_unlock_irqrestore(&continuation_lock, flags); return ret;
+}
 int anx_continuation_resume(uint64_t id, uint64_t epoch, struct anx_continuation_view *out)
 {
 	if (anx_cell_current_id()) return ANX_EPERM;
@@ -560,13 +591,13 @@ int anx_continuation_resume(uint64_t id, uint64_t epoch, struct anx_continuation
 	struct continuation_record *r = find(id);
 	int ret = suspension_check(r, epoch);
 	if (ret == ANX_OK && r->view.resource_state == ANX_CONT_RUNNABLE) ret = ANX_EBUSY;
-	bool rebuild = ret == ANX_OK && r->view.resource_state == ANX_CONT_HIBERNATED;
+	bool rebuild = ret == ANX_OK && (r->view.resource_state == ANX_CONT_HIBERNATED || r->view.resource_state == ANX_CONT_IDLE_RECLAIMED);
 	if (ret == ANX_OK && rebuild && r->view.cache_generation == ~(uint64_t)0) ret = ANX_EFULL;
 	if (ret == ANX_OK) ret = object_read(r, &r->model, ANX_MODEL_USE_SCHEMA, NULL, sizeof(struct anx_adapter_image), false);
 	struct continuation_ref ref = {0};
 	struct anx_continuation_event event = { .kind = ANX_CONT_RESUME_EVENT };
 	/* Check predictable contention before allocating a cache or transcript event. */
-	if (ret == ANX_OK && r->view.resource_state != ANX_CONT_SHORT_WAIT) {
+	if (ret == ANX_OK && r->phase.parked) {
 		uint64_t bytes; uint32_t pct;
 		ret = anx_lease_avail_mem(r->phase.tier, &bytes);
 		if (ret == ANX_OK && bytes < r->resume_bytes) ret = ANX_ENOMEM;
@@ -584,9 +615,9 @@ int anx_continuation_resume(uint64_t id, uint64_t epoch, struct anx_continuation
 #endif
 	if (ret == ANX_OK) ret = event_prepare(r, &event, &ref);
 	struct anx_phase_view phase;
-	if (ret == ANX_OK && r->view.resource_state != ANX_CONT_SHORT_WAIT) ret = anx_phase_resume(&r->view.owner, r->phase.epoch, &phase);
+	if (ret == ANX_OK && r->phase.parked) ret = anx_phase_resume(&r->view.owner, r->phase.epoch, &phase);
 	if (ret == ANX_OK) {
-		if (r->view.resource_state != ANX_CONT_SHORT_WAIT) { r->phase = phase; r->view.phase_epoch = phase.epoch; }
+		if (r->phase.parked) { r->phase = phase; r->view.phase_epoch = phase.epoch; }
 		if (rebuild) r->view.cache_generation++;
 		r->view.physical_pages = 1; r->view.resource_state = ANX_CONT_RUNNABLE; r->view.suspension_reason = ANX_SUSPEND_NONE;
 		event_publish(r, &event, &ref); *out = r->view;
