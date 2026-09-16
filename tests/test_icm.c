@@ -7,6 +7,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/research_test.h>
 #include <anx/state_object.h>
 #include <anx/icm.h>
 #include <anx/meta.h>
@@ -168,5 +169,6 @@ int test_icm(void)
 		}
 	}
 
-	return 0;
+	ret = anx_research_day017();
+	return ret == ANX_OK ? anx_research_day041() : ret;
 }

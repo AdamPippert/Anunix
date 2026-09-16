@@ -43,7 +43,8 @@ struct anx_xfer_policy {
 void anx_xfer_policy_init(struct anx_xfer_policy *p,
                             const char *name, uint32_t flags);
 
-/* Add a destination URI prefix to the policy allow-list. */
+/* Add a canonical namespace URI prefix; matching ends at a component boundary.
+ * An explicit scheme-only prefix permits every authority under that scheme. */
 int anx_xfer_policy_allow(struct anx_xfer_policy *p,
                             const char *dest_prefix);
 
@@ -102,7 +103,8 @@ int anx_xfer_begin(const struct anx_xfer_policy *policy,
                     const char *provenance_tag,
                     struct anx_xfer_session *sess);
 
-/* Write a data chunk; updates hash and byte count. */
+/* Recheck destination policy, then update the hash and byte count.
+ * Policy denial aborts the session before the next chunk is counted. */
 int anx_xfer_write(struct anx_xfer_session *sess,
                     const void *data, uint32_t len);
 
@@ -112,7 +114,8 @@ int anx_xfer_interrupt(struct anx_xfer_session *sess);
 /* Resume an interrupted transfer; re-validates policy. */
 int anx_xfer_resume(struct anx_xfer_session *sess);
 
-/* Finalise: compute hash, fill result_out, mark COMMITTED. */
+/* Recheck policy, compute hash, fill result_out, and mark COMMITTED.
+ * Every failure clears result_out; policy denial aborts the session. */
 int anx_xfer_commit(struct anx_xfer_session *sess,
                      struct anx_xfer_result *result_out);
 

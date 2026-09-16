@@ -94,6 +94,7 @@ struct anx_staged_mutation {
 	uint64_t shadow_size;
 	anx_cid_t staging_cell;
 	uint64_t base_version;
+	uint64_t epistemic_id;
 };
 
 /* --- The State Object --- */
@@ -237,6 +238,9 @@ int anx_objstore_iterate(anx_objstore_iter_fn cb, void *arg);
 
 /* --- Staged mutation API --- */
 
+/* Internal shadow-write ownership gate; the caller holds the object lock. */
+int anx_object_stage_check_writer(const struct anx_state_object *obj);
+
 /*
  * Begin a staged mutation on an open handle (ANX_OPEN_WRITE or
  * ANX_OPEN_READWRITE). Once staged, anx_so_write_payload and
@@ -256,6 +260,8 @@ int anx_object_stage(struct anx_object_handle *handle, anx_cid_t staging_cell);
  * Atomically publish a staged mutation: the shadow payload becomes
  * the live payload, version increments exactly once, content_hash is
  * recomputed, and one ANX_PROV_MUTATED provenance event is appended.
+ * Publication requires a writable handle, the current actor's effect authority,
+ * object write permission, and the unchanged base version. A denial retains the stage.
  * Returns ANX_EINVAL if no stage is in progress.
  */
 int anx_object_commit(struct anx_object_handle *handle);
@@ -268,6 +274,14 @@ int anx_object_commit(struct anx_object_handle *handle);
  * Returns ANX_EINVAL if no stage is in progress.
  */
 int anx_object_abort(struct anx_object_handle *handle);
+
+#define ANX_STAGE_BATCH_MAX 4U
+/* One through four distinct stages with one non-nil owner. Rejection preserves every stage.
+ * Commit validates every target before publishing; abort validates ownership before discarding.
+ * These calls cover object payloads on the current bootstrap CPU, not external effects or crash recovery.
+ */
+int anx_object_commit_batch(struct anx_object_handle *const *handles, uint32_t count);
+int anx_object_abort_batch(struct anx_object_handle *const *handles, uint32_t count);
 
 /* --- Information-flow label API --- */
 

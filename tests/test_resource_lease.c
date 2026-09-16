@@ -5,6 +5,7 @@
 #include <anx/types.h>
 #include <anx/engine_lease.h>
 #include <anx/uuid.h>
+#include <anx/research_test.h>
 
 int test_resource_lease(void)
 {
@@ -130,5 +131,7 @@ int test_resource_lease(void)
 		return -23;
 
 	anx_lease_release(lease2);
-	return 0;
+	ret = anx_research_day036();
+	if (ret != ANX_OK) return ret;
+	return anx_research_day042();
 }

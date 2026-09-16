@@ -59,6 +59,9 @@
 #include <anx/amacs.h>
 #include <anx/fb.h>
 #include <anx/bootlog.h>
+#ifdef ANX_RESEARCH_TEST
+#include <anx/research_test.h>
+#endif
 
 /* --- Line input with history --- */
 
@@ -3082,6 +3085,10 @@ static void dispatch(int argc, char **argv)
 		cmd_fetch(argc, argv);
 	} else if (anx_strcmp(argv[0], "cells") == 0) {
 		cmd_cells(argc, argv);
+#ifdef ANX_RESEARCH_TEST
+	} else if (anx_strcmp(argv[0], "research-test") == 0) {
+		cmd_research_test(argc, argv);
+#endif
 	} else if (anx_strcmp(argv[0], "version") == 0) {
 		cmd_version(argc, argv);
 	} else if (anx_strcmp(argv[0], "mem") == 0) {

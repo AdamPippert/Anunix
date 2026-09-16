@@ -8,6 +8,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/research_test.h>
 #include <anx/route.h>
 #include <anx/engine.h>
 #include <anx/cell.h>
@@ -164,5 +165,9 @@ int test_route_planner(void)
 	anx_engine_unregister(near);
 	anx_engine_unregister(far);
 	anx_engine_unregister(generalist);
-	return 0;
+	int ret = anx_research_day015();
+	if (ret == ANX_OK)
+		ret = anx_research_day021();
+	if (ret == ANX_OK) ret = anx_research_day026();
+	return ret == ANX_OK ? anx_research_day044() : ret;
 }

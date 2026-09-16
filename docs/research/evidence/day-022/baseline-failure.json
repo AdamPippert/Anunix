@@ -1,0 +1,58 @@
+{
+  "revision": "67cd4a4",
+  "artifact": "/work/day022-baseline/build/x86_64/anunix-qemu.elf",
+  "sha256": "6ffc49963ea698f55f30e0f746bab21e769c229cab275444091088f3656b018f",
+  "qemu_command": [
+    "qemu-system-x86_64",
+    "-enable-kvm",
+    "-cpu",
+    "host",
+    "-m",
+    "1G",
+    "-display",
+    "none",
+    "-no-reboot",
+    "-monitor",
+    "none",
+    "-serial",
+    "file:/work/runs/day022-baseline-vm/serial.log",
+    "-netdev",
+    "user,id=n0,hostfwd=tcp:127.0.0.1:35165-:8080",
+    "-device",
+    "virtio-net-pci,netdev=n0",
+    "-kernel",
+    "/work/day022-baseline/build/x86_64/anunix-qemu.elf"
+  ],
+  "qemu_version": "QEMU emulator version 7.2.22 (Debian 1:7.2+dfsg-7+deb12u18+b3)",
+  "kernel_profile": {
+    "schema": 1,
+    "declared_revision": "67cd4a4",
+    "configuration": {
+      "architecture": "x86_64",
+      "research_test": 1
+    },
+    "artifact_sha256": "6ffc49963ea698f55f30e0f746bab21e769c229cab275444091088f3656b018f",
+    "artifact_bytes": 2966544
+  },
+  "profile_verified": true,
+  "tests": [
+    {
+      "name": "day-022",
+      "passed": false,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-022 FAIL rc=-2201\n"
+      }
+    }
+  ],
+  "passed": false,
+  "expected_failure": true,
+  "health": {
+    "status": "healthy"
+  },
+  "sysinfo": {
+    "status": "ok",
+    "output": "\n=== Anunix System Information ===\n\nANUNIX_KERNEL_PROFILE_V1 arch=x86_64 research_test=1\nCPU:       1 cores\nLAPIC:     0xfee00000\nIOAPICs:   1\nMemory:    11136 KiB free / 16384 KiB total (32% used)\nDisk:      none\nNetwork:   52:54:0:12:34:56 (ip 10.0.2.15)\nPCI:       6 devices\nScheduler: int=0 bg=0 lat=0 batch=0\nEvent Queue: depth=0/256 drops=0 threshold=90%\n  Latency: <1ms=0 1-5ms=0 5-10ms=0 >10ms=0\n\n"
+  },
+  "expected_result_observed": true
+}

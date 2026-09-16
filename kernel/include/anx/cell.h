@@ -37,6 +37,12 @@ enum anx_cell_status {
 	ANX_CELL_STATUS_COUNT,
 };
 
+static inline bool anx_cell_status_terminal(enum anx_cell_status status)
+{
+	return status == ANX_CELL_COMPLETED || status == ANX_CELL_FAILED ||
+	       status == ANX_CELL_CANCELLED || status == ANX_CELL_COMPENSATED;
+}
+
 /* --- Cell type families (RFC-0003 Section 7) --- */
 
 enum anx_cell_type {
@@ -106,6 +112,7 @@ enum anx_locality {
 
 struct anx_cell_constraints {
 	uint64_t max_latency_ms;	/* 0 = unlimited */
+	uint64_t max_memory_admission_bytes; /* 0 = unbounded memory-plane admission */
 	uint32_t max_cost_usd_cents;	/* 0 = unlimited */
 	enum anx_locality locality;
 	uint32_t max_recursion_depth;
@@ -144,6 +151,9 @@ enum anx_decomp_mode {
 struct anx_routing_policy {
 	enum anx_routing_strategy strategy;
 	enum anx_decomp_mode decomposition;
+	anx_oid_t profile_oid; /* optional privately validated finite routing profile */
+	uint64_t catalog_id, catalog_epoch; /* optional owner-bound catalog; takes precedence over profile_oid */
+	uint32_t catalog_index; /* untrusted categorical selector; rejection uses incumbent weights */
 };
 
 /* --- Validation policy (RFC-0003 Section 12) --- */
@@ -190,17 +200,17 @@ struct anx_retry_policy {
 /*
  * --- Execution contract (RFC-0003 extension: Execution Contracts) ---
  *
- * Declares how strongly this cell's outputs must behave under
- * concurrency and failure, and whether its State Object writes go
- * live immediately or through a staged mutation that only becomes
- * visible on commit. Zero value (BEST_EFFORT / DIRECT) reproduces
- * pre-contract behavior exactly, so existing cells are unaffected.
+ * Declares requested consistency and effect behavior. Declaration is
+ * separate from support: runtime admission currently accepts only
+ * BEST_EFFORT / DIRECT. Semantic, transactional, token-stable, and
+ * automatic staged execution require adapters that do not yet exist.
  */
 
 enum anx_consistency_class {
 	ANX_CONSISTENCY_BEST_EFFORT,
 	ANX_CONSISTENCY_SEMANTIC,
 	ANX_CONSISTENCY_TRANSACTIONAL,
+	ANX_CONSISTENCY_TOKEN_STABLE,
 };
 
 enum anx_effect_mode {
@@ -223,11 +233,10 @@ struct anx_execution_contract {
  * fields 0) means unset: no override, matching anxml's own "0 -> default"
  * convention for max_tokens, so existing cells are unaffected.
  *
- * Wiring this into the live anx_anxml_cell_dispatch() call path is
- * future work: that dispatch function is reached through a function
- * pointer from workflow_exec with no cell context threaded through
- * (intent, in_oids, in_count, out_oid_out only) — see
- * docs/design/regime-gated-scheduling.md.
+ * Model-server requests receive max_tokens through the cell runtime.
+ * Anxml generation also applies the active runtime's captured token ceiling.
+ * The ceiling bounds each generation, including specialized workflow calls.
+ * It is not a cumulative token allowance for the whole workflow.
  */
 
 struct anx_cognitive_envelope {
@@ -284,6 +293,10 @@ struct anx_cell {
 
 	/* Lineage */
 	anx_cid_t parent_cid;
+	anx_oid_t identity_id;		/* stable authority identity; nil retains legacy admission */
+	anx_oid_t effect_fence_id;	/* inherited run fence; nil retains legacy effects */
+	anx_oid_t tool_namespace_id;	/* inherited catalog view; nil retains legacy transport */
+	anx_oid_t revision_lease_id;	/* inherited revision ceiling; nil retains legacy controls */
 	anx_cid_t child_cids[ANX_MAX_CHILD_CELLS];
 	uint32_t child_count;
 	uint32_t recursion_depth;
@@ -305,6 +318,7 @@ struct anx_cell {
 	/* Plan and trace refs */
 	anx_pid_t plan_id;
 	anx_tid_t trace_id;
+	anx_oid_t trace_oid;		/* materialized trace, nil if unavailable */
 
 	/* Runtime state */
 	uint32_t attempt_count;
@@ -317,6 +331,9 @@ struct anx_cell {
 	char error_msg[256];
 
 	/* Kernel bookkeeping */
+	uint64_t memory_admitted_bytes;
+	uint32_t memory_admission_count;
+	bool runtime_active;
 	struct anx_spinlock lock;
 	uint32_t refcount;
 	struct anx_list_head store_link;	/* cell_store hash chain */
@@ -346,6 +363,9 @@ void anx_cell_store_release(struct anx_cell *cell);
 /* Destroy a cell (removes from store, must have refcount == 1) */
 int anx_cell_destroy(struct anx_cell *cell);
 
+/* Reap terminal direct child tasks with no descendants or extra references. */
+int anx_cell_reap_children(struct anx_cell *parent, uint32_t *reaped_out);
+
 /* Iterate all cells in the store */
 typedef int (*anx_cell_iter_fn)(struct anx_cell *cell, void *arg);
 int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg);
@@ -354,6 +374,12 @@ int anx_cell_store_iterate(anx_cell_iter_fn cb, void *arg);
 
 /* Run a cell through the full pipeline: admit→plan→execute→validate→commit */
 int anx_cell_run(struct anx_cell *cell);
+
+/* Identity of the synchronous runtime's active cell, NULL outside a run. */
+const anx_cid_t *anx_cell_current_id(void);
+
+/* Check the current delegated scope without admitting or executing the Cell. */
+int anx_cell_check_scope(struct anx_cell *cell);
 
 /* Cancel a running or queued cell */
 int anx_cell_cancel(struct anx_cell *cell);
@@ -406,22 +432,30 @@ void anx_cell_clear_topology(struct anx_cell *cell);
  * the run so routing/commit decisions downstream can rely on it.
  * Returns:
  *   ANX_OK      success
- *   ANX_EINVAL  null cell
+ *   ANX_EINVAL  null cell or unknown contract value
+ *   ANX_EPERM   executing Cells cannot change contracts
  *   ANX_EBUSY   cell has already left ANX_CELL_CREATED
  */
 int anx_cell_set_contract(struct anx_cell *cell,
 			  enum anx_consistency_class consistency,
 			  enum anx_effect_mode effect_mode);
+/* EINVAL for malformed contracts; ENOTSUP for valid but unenforced guarantees. */
+int anx_cell_check_contract(const struct anx_cell *cell);
 
 /*
  * Declare the cell's cognitive envelope. Only valid while the cell is
  * still ANX_CELL_CREATED. Returns:
  *   ANX_OK      success
  *   ANX_EINVAL  null cell
+ *   ANX_EPERM   active Cell cannot change envelopes
  *   ANX_EBUSY   cell has already left ANX_CELL_CREATED
  */
 int anx_cell_set_cognitive_envelope(struct anx_cell *cell,
 				    uint32_t max_tokens,
 				    uint32_t max_reasoning_depth);
+
+/* Clamp a positive generation limit to the captured active scopes.
+ * Unscoped controller calls retain their requested limit. Errors preserve output. */
+int anx_cell_cognitive_limit(uint32_t requested, uint32_t *out);
 
 #endif /* ANX_CELL_H */

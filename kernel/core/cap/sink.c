@@ -10,6 +10,7 @@
 #include <anx/types.h>
 #include <anx/capability.h>
 #include <anx/string.h>
+#include <anx/cell.h>
 
 #define ANX_SINK_MAX	16
 
@@ -21,6 +22,8 @@ void anx_sink_registry_init(void)
 {
 	uint32_t i;
 
+	if (anx_cell_current_id())
+		return;
 	for (i = 0; i < ANX_SINK_MAX; i++) {
 		sinks[i].name[0] = '\0';
 		sinks[i].max_sensitivity = ANX_SENSITIVITY_PUBLIC;
@@ -48,7 +51,9 @@ int anx_sink_register(const char *name, enum anx_sensitivity max_sensitivity,
 	struct anx_sink *slot;
 	uint32_t i;
 
-	if (!name || !name[0])
+	if (anx_cell_current_id())
+		return ANX_EPERM;
+	if (!name || !name[0] || (int)max_sensitivity < 0 || max_sensitivity > ANX_SENSITIVITY_RESTRICTED)
 		return ANX_EINVAL;
 	if (!initialized)
 		anx_sink_registry_init();

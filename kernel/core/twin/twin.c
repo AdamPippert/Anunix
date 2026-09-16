@@ -10,6 +10,7 @@
 #include <anx/alloc.h>
 #include <anx/arch.h>
 #include <anx/string.h>
+#include <anx/tuning.h>
 
 void anx_twin_init(void)
 {
@@ -39,20 +40,48 @@ enum anx_readiness anx_readiness_from_status(enum anx_engine_status status)
 
 void anx_route_weight_policy_incumbent(struct anx_route_weight_policy *out)
 {
+	struct anx_route_tuning_state current;
 	if (!out)
 		return;
+	anx_route_tuning_snapshot(&current);
+	*out = current.weights;
+}
 
-	/* Mirrors the constants anx_route_score_engine currently hardcodes
-	 * (kernel/core/route/planner.c). Keep these in sync if that
-	 * function's constants change. */
-	out->locality_bonus = 20;
-	out->local_first_bonus = 30;
-	out->gpu_cost_divisor = 5;
-	out->cpu_cost_divisor = 10;
-	out->degraded_penalty = -25;
-	out->private_data_bonus = 10;
-	out->topology_overlap_bonus = 25;
-	out->topology_mismatch_penalty = -15;
+int anx_route_weight_policy_validate(const struct anx_route_weight_policy *p)
+{
+	if (!p || p->gpu_cost_divisor < 1 || p->gpu_cost_divisor > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->cpu_cost_divisor < 1 || p->cpu_cost_divisor > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->locality_bonus < 0 || p->locality_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->local_first_bonus < 0 || p->local_first_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->private_data_bonus < 0 || p->private_data_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->topology_overlap_bonus < 0 || p->topology_overlap_bonus > ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->degraded_penalty > 0 || p->degraded_penalty < -ANX_ROUTE_WEIGHT_LIMIT ||
+	    p->topology_mismatch_penalty > 0 || p->topology_mismatch_penalty < -ANX_ROUTE_WEIGHT_LIMIT)
+		return ANX_EINVAL;
+	return ANX_OK;
+}
+
+static int validate_simulation(const struct anx_resource_twin *twin,
+			       const struct anx_cell *cell)
+{
+	uint32_t i;
+
+	if (twin->engine_count > ANX_TWIN_MAX_ENGINES ||
+	    (uint32_t)cell->constraints.locality > ANX_REMOTE_REQUIRED ||
+	    (uint32_t)cell->routing.strategy > ANX_ROUTE_POLICY_LOCKED ||
+	    (cell->constraints.topology_bk_set &&
+	     cell->constraints.topology_bk_lo > cell->constraints.topology_bk_hi))
+		return ANX_EINVAL;
+	for (i = 0; i < twin->engine_count; i++) {
+		const struct anx_twin_engine_snapshot *s = &twin->engines[i];
+		if ((uint32_t)s->engine_class >= ANX_ENGINE_CLASS_COUNT ||
+		    (uint32_t)s->status >= ANX_ENGINE_STATUS_COUNT ||
+		    s->readiness != anx_readiness_from_status(s->status) ||
+		    s->cpu_weight > 100 || s->gpu_weight > 100 || s->quality_score > 100 ||
+		    (s->has_topology_affinity && s->topology_bk_lo > s->topology_bk_hi))
+			return ANX_EINVAL;
+	}
+	return ANX_OK;
 }
 
 int anx_twin_snapshot(struct anx_resource_twin **out)
@@ -108,6 +137,8 @@ int anx_twin_snapshot(struct anx_resource_twin **out)
 		twin->queue_depth[queue_idx] =
 			anx_sched_queue_depth((enum anx_queue_class)queue_idx);
 
+	int capacity = anx_lease_snapshot_capacity(&twin->capacity);
+	if (capacity != ANX_OK && capacity != ANX_ENODEV) { anx_free(twin); return capacity; }
 	twin->taken_at = arch_time_now();
 
 	*out = twin;
@@ -149,6 +180,7 @@ static int32_t score_snapshot(struct anx_cell *cell,
 			      const struct anx_twin_engine_snapshot *snap,
 			      const struct anx_route_weight_policy *policy)
 {
+	/* Preflight bounds imply scores in [-2200, 4100] and margins <= 6300. */
 	int32_t score = 0;
 
 	score += (int32_t)snap->quality_score;
@@ -200,7 +232,8 @@ int anx_twin_simulate(struct anx_resource_twin *twin,
 
 	if (!twin || !cell || !policy || !result_out)
 		return ANX_EINVAL;
-	if (policy->gpu_cost_divisor == 0 || policy->cpu_cost_divisor == 0)
+	if (anx_route_weight_policy_validate(policy) != ANX_OK ||
+	    validate_simulation(twin, cell) != ANX_OK)
 		return ANX_EINVAL;
 
 	anx_memset(result_out, 0, sizeof(*result_out));
@@ -243,4 +276,31 @@ int anx_twin_simulate(struct anx_resource_twin *twin,
 	}
 
 	return ANX_OK;
+}
+
+int anx_twin_simulate_restoration(struct anx_resource_twin *twin, struct anx_cell *cell,
+		const struct anx_route_weight_policy *policy, const struct anx_twin_restore_request *request,
+		struct anx_twin_restore_result *out)
+{
+	if (!twin || !cell || !policy || !request || !out) return ANX_EINVAL;
+	if (anx_route_weight_policy_validate(policy) != ANX_OK || validate_simulation(twin, cell) != ANX_OK ||
+	    (uint32_t)request->tier >= ANX_MEM_TIER_COUNT || (uint32_t)request->accelerator >= ANX_ACCEL_COUNT ||
+	    request->accelerator_pct > 100 || (request->accelerator == ANX_ACCEL_NONE && request->accelerator_pct) ||
+	    !request->retained_bytes || !request->restore_peak_bytes || request->resident_bytes > request->retained_bytes ||
+	    request->restore_peak_bytes < request->resident_bytes) return ANX_EINVAL;
+	if (!twin->capacity.schema) return ANX_ENOTSUP;
+	if (twin->capacity.schema != 1) return ANX_EINVAL;
+	for (uint32_t i = 0; i < ANX_MEM_TIER_COUNT; i++)
+		if (twin->capacity.free_memory[i] > twin->capacity.total_memory[i]) return ANX_EINVAL;
+	for (uint32_t i = 0; i < ANX_ACCEL_COUNT; i++)
+		if (twin->capacity.total_accelerator[i] > 100 ||
+		    twin->capacity.free_accelerator[i] > twin->capacity.total_accelerator[i]) return ANX_EINVAL;
+	struct anx_twin_restore_result result;
+	anx_memset(&result, 0, sizeof(result));
+	result.additional_memory_bytes = request->restore_peak_bytes - request->resident_bytes;
+	if (result.additional_memory_bytes > twin->capacity.free_memory[request->tier] ||
+	    request->accelerator_pct > twin->capacity.free_accelerator[request->accelerator]) return ANX_ENOMEM;
+	int ret = anx_twin_simulate(twin, cell, policy, &result.route);
+	if (ret == ANX_OK) *out = result;
+	return ret;
 }

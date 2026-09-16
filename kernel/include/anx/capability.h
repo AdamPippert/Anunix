@@ -32,6 +32,14 @@ enum anx_cap_status {
 
 /* --- Capability struct --- */
 
+/* Execution requirements are distinct from an engine's computational skills. */
+#define ANX_CAP_AUTH_NETWORK       (1U << 0)
+#define ANX_CAP_AUTH_REMOTE_MODEL  (1U << 1)
+#define ANX_CAP_AUTH_DERIVE_CELL   (1U << 2)
+#define ANX_CAP_AUTH_SIDE_EFFECT   (1U << 3)
+#define ANX_CAP_AUTH_ALL           ((1U << 4) - 1)
+#define ANX_CAP_REQUIRED_ENGINES_MAX 8U
+
 struct anx_capability {
 	/* Identity */
 	anx_oid_t cap_oid;		/* underlying State Object OID */
@@ -42,16 +50,17 @@ struct anx_capability {
 	/* Contracts */
 	uint32_t input_cap_mask;	/* required input capabilities */
 	uint32_t output_cap_mask;	/* declared output capabilities */
+	uint32_t required_authority;	/* requested execution scope; default none */
 
 	/* Dependencies */
-	anx_eid_t required_engines[8];
+	anx_eid_t required_engines[ANX_CAP_REQUIRED_ENGINES_MAX];
 	uint32_t required_engine_count;
 
 	/* Supersession */
 	anx_oid_t supersedes_oid;	/* capability this supersedes */
 
 	/* Trust */
-	uint32_t validation_score;	/* 0-100 */
+	uint32_t validation_score;	/* structural readiness: 0 or 100 */
 	uint32_t invocation_count;
 	uint32_t success_count;
 
@@ -82,13 +91,16 @@ int anx_cap_transition(struct anx_capability *cap,
 /* Install a validated capability into the engine registry */
 int anx_cap_install(struct anx_capability *cap);
 
+/* Set a fresh DRAFT's ceiling from trusted kernel control code, outside a cell. */
+int anx_cap_set_authority_ceiling(struct anx_capability *cap, uint32_t ceiling);
+
 /* Uninstall a capability from the engine registry */
 int anx_cap_uninstall(struct anx_capability *cap);
 
 /* Record an invocation result */
 void anx_cap_record_invocation(struct anx_capability *cap, bool success);
 
-/* Validate a DRAFT capability; transitions to VALIDATED or back to DRAFT */
+/* Validate a bounded DRAFT declaration and all dependencies before VALIDATED. */
 int anx_cap_validate(struct anx_capability *cap);
 
 /* --- Sinks (RFC-0028 Protected Operation ABI) --- */
@@ -107,11 +119,12 @@ struct anx_sink {
 	enum anx_sensitivity max_sensitivity;
 };
 
-/* One-time registry init. Safe to call multiple times. */
+/* Trusted registry reset; active cells cannot reset destination grants. */
 void anx_sink_registry_init(void);
 
 /*
  * Register a Sink. Replaces any existing Sink with the same name.
+ * Trusted control only; active cells receive ANX_EPERM. Invalid labels fail.
  * Returns ANX_OK, ANX_EINVAL (bad args), or ANX_ENOMEM (registry full).
  */
 int anx_sink_register(const char *name, enum anx_sensitivity max_sensitivity,
@@ -165,7 +178,8 @@ struct anx_promotion_trial {
  * paired margin (candidate - incumbent) meets or exceeds
  * ANX_PROMOTION_MIN_MARGIN_BASE * num_candidates_tried. num_candidates_tried
  * of 0 is treated as 1 (a single candidate still needs to clear the base
- * margin). Returns ANX_EINVAL on null args or n outside [1, ANX_PROMOTION_TRIAL_MAX].
+ * margin). A non-null output is cleared even when validation fails.
+ * Returns ANX_EINVAL on null args or n outside [1, ANX_PROMOTION_TRIAL_MAX].
  */
 #define ANX_PROMOTION_MIN_MARGIN_BASE	5
 
@@ -176,7 +190,9 @@ int anx_promotion_gate_evaluate(const struct anx_promotion_trial *trial,
 /*
  * Install a capability that supersedes an installed incumbent
  * (cap->supersedes_oid non-nil), gated by a measured-null promotion
- * trial. Fails with ANX_EPERM if the trial does not clear the gate.
+ * trial. The incumbent must exist and retain a registered engine.
+ * Fails with ANX_ENOENT for an unknown incumbent, or ANX_EPERM for an
+ * inactive incumbent or a trial that does not clear the gate.
  * For a fresh install with no incumbent (supersedes_oid nil), use
  * anx_cap_install() instead — anx_cap_install() itself now rejects
  * (ANX_EPERM) any candidate that declares a supersedes_oid, forcing

@@ -127,6 +127,7 @@ static uint32_t node_fill_color(enum anx_wf_node_kind kind)
 	case ANX_WF_NODE_FAN_IN:
 		return COLOR_COND_FAN;
 	case ANX_WF_NODE_HUMAN_REVIEW:
+	case ANX_WF_NODE_CAP_PROMOTION:
 		return COLOR_HUMAN;
 	case ANX_WF_NODE_OUTPUT:
 		return COLOR_OUTPUT;

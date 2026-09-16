@@ -19,6 +19,8 @@
 
 #include <anx/types.h>
 #include <anx/workflow.h>
+#include <anx/workflow_reuse.h>
+#include <anx/workflow_semantic.h>
 #include <anx/cell.h>
 #include <anx/cell_trace.h>
 #include <anx/state_object.h>
@@ -26,6 +28,7 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/arch.h>
+#include <anx/uuid.h>
 #include <anx/jepa.h>
 #include <anx/jepa_cell.h>
 #include <anx/agent_cell.h>
@@ -33,6 +36,7 @@
 #include <anx/amacs.h>
 #include <anx/audio.h>
 #include <anx/video.h>
+#include <anx/promotion_evidence.h>
 
 /*
  * Inline prefix matcher for specialized cell intents.  Returns true and
@@ -493,6 +497,17 @@ wf_dispatch_node(struct anx_wf_object *wf, uint32_t slot,
 		ret = wf_dispatch_output(wf, slot, slot_by_id, port_oid);
 		break;
 
+	case ANX_WF_NODE_CAP_PROMOTION:
+		if (!wf->policy.allow_capability_install) {
+			ret = ANX_EPERM;
+		} else {
+			anx_oid_t evidence_oid = wf_get_input_oid(wf, node->id, 0,
+							      slot_by_id, port_oid);
+			ret = anx_cap_install_evidence(&evidence_oid, &entry->trace_oid);
+			port_oid[slot][1] = entry->trace_oid;
+		}
+		break;
+
 	case ANX_WF_NODE_HUMAN_REVIEW:
 		/* Signal to the outer loop to transition to WAITING_HUMAN. */
 		ret = ANX_EBUSY;
@@ -559,6 +574,44 @@ wf_suspend(struct anx_wf_object *wf, uint16_t failed_node_id, int error_code,
 /* Core dispatch loop                                                  */
 /* ------------------------------------------------------------------ */
 
+static void wf_cache_refresh(struct anx_wf_object *wf, const bool *completed,
+			     const uint32_t *slot_by_id,
+			     const anx_oid_t (*port_oid)[ANX_WF_MAX_PORTS])
+{
+	wf->cache_live_count = 0;
+	wf->cache_liveness_unknown = false;
+	for (uint32_t i = 0; i < ANX_WF_MAX_EDGES; i++) {
+		const struct anx_wf_edge *edge = &wf->edges[i];
+		uint32_t from, to, j;
+		anx_oid_t oid;
+		if (!edge->from_node && !edge->to_node)
+			continue;
+		if (!edge->from_node || !edge->to_node || edge->from_node > ANX_WF_MAX_NODES ||
+		    edge->to_node > ANX_WF_MAX_NODES || edge->from_port >= ANX_WF_MAX_PORTS ||
+		    edge->to_port >= ANX_WF_MAX_PORTS)
+			goto unknown;
+		from = slot_by_id[edge->from_node];
+		to = slot_by_id[edge->to_node];
+		if (from >= ANX_WF_MAX_NODES || to >= ANX_WF_MAX_NODES ||
+		    wf->nodes[from].id != edge->from_node || wf->nodes[to].id != edge->to_node)
+			goto unknown;
+		if (completed[to])
+			continue;
+		oid = port_oid[from][edge->from_port];
+		if (oid_is_null(&oid))
+			continue;
+		for (j = 0; j < wf->cache_live_count; j++)
+			if (wf->cache_live_oids[j].hi == oid.hi && wf->cache_live_oids[j].lo == oid.lo)
+				break;
+		if (j == wf->cache_live_count)
+			wf->cache_live_oids[wf->cache_live_count++] = oid;
+	}
+	return;
+unknown:
+	/* An invalid edge cannot justify reclaiming any active workflow input. */
+	wf->cache_liveness_unknown = true;
+}
+
 /*
  * Execute the workflow from the given executor state.
  *
@@ -585,6 +638,7 @@ wf_run_inner(struct anx_wf_object *wf,
 	uint32_t i;
 
 	wf_build_tables(wf, slot_id, slot_by_id);
+	wf_cache_refresh(wf, completed, slot_by_id, port_oid);
 
 	/* Count occupied slots. */
 	total_nodes = 0;
@@ -669,6 +723,7 @@ wf_run_inner(struct anx_wf_object *wf,
 			/* Success: mark completed, reduce successors. */
 			completed[slot] = true;
 			processed++;
+			wf_cache_refresh(wf, completed, slot_by_id, port_oid);
 
 			for (i = 0; i < ANX_WF_MAX_EDGES; i++) {
 				uint16_t from = wf->edges[i].from_node;
@@ -730,10 +785,15 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 	wf = anx_wf_object_get(wf_oid);
 	if (!wf)
 		return ANX_ENOENT;
-	if (wf->run_state == ANX_WF_RUN_RUNNING)
+	if (wf->run_state == ANX_WF_RUN_RUNNING || wf->run_state == ANX_WF_RUN_SUSPENDED ||
+	    wf->run_state == ANX_WF_RUN_WAITING_HUMAN)
 		return ANX_EBUSY;
 	if (wf->node_count == 0)
 		return ANX_EINVAL;
+	ret = anx_wf_semantic_check(wf);
+	if (ret != ANX_OK) return ret;
+	ret = anx_wf_reuse_check(wf);
+	if (ret != ANX_OK) return ret;
 
 	/* Snapshot system state before dispatch for JEPA training. */
 	if (anx_jepa_available()) {
@@ -743,6 +803,9 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 	}
 
 	/* Allocate trace entry table for this run. */
+	wf->checkpoint_consumed = true;
+	wf->trace_oid = ANX_UUID_NIL;
+	wf->topology.trace_epoch = 0;
 	anx_free(wf->trace_entries);
 	wf->trace_entries = anx_alloc(
 		sizeof(struct anx_wf_trace_entry) * ANX_WF_MAX_NODES);
@@ -789,9 +852,9 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 		wf->last_status = ANX_OK;
 		kprintf("wf: '%s' completed\n", wf->name);
 
-		/* Seal trace and feed to JEPA training pipeline. */
-		if (jepa_obs_ok &&
-		    anx_wf_trace_seal(wf_oid, &trace_oid) == ANX_OK &&
+		/* Persist the trace even when JEPA observations are unavailable. */
+		if (anx_wf_trace_seal(wf_oid, &trace_oid) == ANX_OK &&
+		    jepa_obs_ok &&
 		    anx_jepa_observe(&obs_after) == ANX_OK &&
 		    anx_jepa_observe_store(&obs_after, &obs_after_oid) == ANX_OK) {
 			anx_jepa_ingest_wf_trace(&trace_oid,
@@ -802,6 +865,7 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 
 	if (run_cid_out)
 		anx_memset(run_cid_out, 0, sizeof(*run_cid_out));
+	anx_wf_reuse_observe(wf, ret);
 
 	return ret;
 }
@@ -824,10 +888,21 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		return ANX_ENOENT;
 	if (wf->run_state != ANX_WF_RUN_SUSPENDED)
 		return ANX_EINVAL;
+	if (action < ANX_WF_RESUME_RETRY || action > ANX_WF_RESUME_REPLACE)
+		return ANX_EINVAL;
 
 	cont = wf->continuation;
+	if (!cont && action == ANX_WF_RESUME_ABORT && !anx_uuid_is_nil(&wf->checkpoint_oid)) {
+		wf->checkpoint_consumed = true;
+		wf->run_state = ANX_WF_RUN_FAILED;
+		return ANX_OK;
+	}
 	if (!cont)
 		return ANX_EINVAL;
+	if (action != ANX_WF_RESUME_ABORT) {
+		ret = anx_wf_semantic_check(wf);
+		if (ret != ANX_OK) return ret;
+	}
 
 	wf_build_tables(wf, slot_id, slot_by_id);
 
@@ -838,6 +913,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 
 	if (action == ANX_WF_RESUME_ABORT) {
 		int saved_error = cont->error_code;
+		wf->checkpoint_consumed = true;
 
 		anx_free(cont);
 		wf->continuation = NULL;
@@ -847,6 +923,8 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 	}
 
 	if (action == ANX_WF_RESUME_REPLACE) {
+		if (wf->topology.enabled || wf->semantic)
+			return ANX_EPERM;
 		if (!replacement || failed_slot >= ANX_WF_MAX_NODES)
 			return ANX_EINVAL;
 		/* Preserve the node's id and position in the graph. */
@@ -856,6 +934,8 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		wf->nodes[failed_slot].id = preserved_id;
 	}
 
+	ret = anx_wf_reuse_check(wf);
+	if (ret != ANX_OK) return ret;
 	if (action == ANX_WF_RESUME_SKIP && failed_slot < ANX_WF_MAX_NODES) {
 		/* Mark the failed node as completed with null outputs. */
 		cont->completed[failed_slot] = true;
@@ -878,6 +958,7 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 
 	wf->run_state = ANX_WF_RUN_RUNNING;
 	wf->continuation = NULL;	/* executor takes ownership back */
+	wf->checkpoint_consumed = true;
 
 	ret = wf_run_inner(wf, cont->in_deg, cont->completed, cont->port_oid,
 			   wf->computed_cap);
@@ -888,7 +969,9 @@ anx_wf_resume(const anx_oid_t *wf_oid,
 		wf->run_state   = ANX_WF_RUN_COMPLETED;
 		wf->last_status = ANX_OK;
 		kprintf("wf: '%s' completed after resume\n", wf->name);
+		anx_wf_trace_seal(wf_oid, NULL);
 	}
+	anx_wf_reuse_observe(wf, ret);
 
 	return ret;
 }
@@ -919,10 +1002,18 @@ anx_wf_trace_seal(const anx_oid_t *wf_oid, anx_oid_t *trace_oid_out)
 	ret = anx_so_create(&p, &obj);
 	if (ret != ANX_OK)
 		return ret;
+	ret = anx_so_seal(&obj->oid);
+	if (ret != ANX_OK) {
+		anx_so_delete(&obj->oid, false);
+		anx_objstore_release(obj);
+		return ret;
+	}
 
 	wf->trace_oid = obj->oid;
+	wf->topology.trace_epoch = wf->topology.epoch;
 	if (trace_oid_out)
 		*trace_oid_out = obj->oid;
+	anx_objstore_release(obj);
 
 	anx_free(wf->trace_entries);
 	wf->trace_entries     = NULL;

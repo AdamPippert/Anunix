@@ -37,8 +37,8 @@ struct anx_wf_bundle_hdr {
 int anx_wf_bundle_pack(const struct anx_wf_template *tmpl,
 		       void *buf, uint32_t buf_size, uint32_t *size_out);
 
-/* Deserialise, heap-allocate an anx_wf_template, and register it.
- * The allocated template is never freed (library lifetime). */
+/* Validate and register an owned copy. Failed imports release their allocation.
+ * Successful imports retain an immutable template for library lifetime. */
 int anx_wf_bundle_register(const void *buf, uint32_t size);
 
 #endif /* ANX_WF_BUNDLE_H */

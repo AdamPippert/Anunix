@@ -92,6 +92,7 @@ static const char *kind_token(enum anx_wf_node_kind k)
 	case ANX_WF_NODE_HUMAN_REVIEW:	return "human-review";
 	case ANX_WF_NODE_SUBFLOW:	return "subflow";
 	case ANX_WF_NODE_OUTPUT:	return "output";
+	case ANX_WF_NODE_CAP_PROMOTION:	return "cap-promotion";
 	default:			return "unknown";
 	}
 }

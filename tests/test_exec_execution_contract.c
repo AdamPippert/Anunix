@@ -64,14 +64,7 @@ int test_exec_execution_contract(void)
 
 	anx_cell_destroy(cell);
 
-	/*
-	 * A STAGED-effect contract survives the full run pipeline
-	 * unmodified. The runtime's commit stage does not yet perform
-	 * real State Object writes (Memory Control Plane wiring is
-	 * still pending — see runtime_commit in kernel/core/exec/runtime.c),
-	 * so this checks that the declared contract is preserved end to
-	 * end rather than asserting a write path that does not exist yet.
-	 */
+	/* A declaration cannot substitute for an implemented runtime guarantee. */
 	ret = anx_cell_create(ANX_CELL_TASK_EXECUTION, &intent, &cell);
 	if (ret != ANX_OK)
 		return -12;
@@ -82,10 +75,10 @@ int test_exec_execution_contract(void)
 		return -13;
 
 	ret = anx_cell_run(cell);
-	if (ret != ANX_OK)
+	if (ret != ANX_ENOTSUP)
 		return -14;
 
-	if (cell->status != ANX_CELL_COMPLETED)
+	if (cell->status != ANX_CELL_FAILED)
 		return -15;
 	if (cell->contract.consistency != ANX_CONSISTENCY_TRANSACTIONAL)
 		return -16;

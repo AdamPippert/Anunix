@@ -9,6 +9,7 @@
 #include <anx/cell.h>
 #include <anx/string.h>
 #include <anx/crypto.h>
+#include <anx/research_test.h>
 
 #define ASSERT(cond, code) do { if (!(cond)) return (code); } while (0)
 
@@ -571,5 +572,5 @@ int test_userspace_prereqs(void)
 	rc = test_crash_recovery_profile();
 	if (rc != 0)
 		return rc;
-	return 0;
+	return anx_research_day018();
 }
