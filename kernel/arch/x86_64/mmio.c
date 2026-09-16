@@ -25,9 +25,10 @@
 #define PTE_RW		(1ULL << 1)
 #define PTE_PWT		(1ULL << 3)	/* write-through */
 #define PTE_PCD		(1ULL << 4)	/* cache disable */
-#define PTE_PS		(1ULL << 7)	/* 1 GiB page at PDPT level */
+#define PTE_PS		(1ULL << 7)	/* large page (1 GiB at PDPT, 2 MiB at PD) */
 
 #define GIB		(1ULL << 30)
+#define MIB2		(2ULL << 20)
 #define ADDR_MASK	0x000FFFFFFFFFF000ULL
 
 static uint64_t read_cr3(void)
@@ -62,43 +63,87 @@ static uint64_t alloc_table(void)
 	return (uint64_t)page;
 }
 
-/* Map one 1 GiB-aligned region. Returns false on failure. */
-static bool map_gib(uint64_t base)
+/*
+ * Split a 1 GiB page into 512 x 2 MiB pages covering the same range with the
+ * same attributes. Returns the page directory, or 0 on failure.
+ *
+ * This is what makes it possible to uncache a BAR that shares a gigabyte
+ * with RAM. The old code saw a present 1 GiB entry, concluded that
+ * uncaching it would slow every RAM access in the same gigabyte -- which is
+ * true -- and left the mapping alone. That was the wrong conclusion: it
+ * meant anx_mmio_map() silently returned a write-back mapping for every BAR
+ * the boot map already covered, which on a machine with BARs under 4 GiB is
+ * all of them. Drivers then read stale cache lines and wrote registers that
+ * never reached the device.
+ */
+static uint64_t split_1gib(uint64_t entry)
+{
+	uint64_t base  = entry & ADDR_MASK & ~(GIB - 1);
+	uint64_t flags = entry & (PTE_PRESENT | PTE_RW | PTE_PCD | PTE_PWT);
+	uint64_t pd    = alloc_table();
+	uint64_t *e;
+	uint32_t i;
+
+	if (!pd)
+		return 0;
+
+	e = (uint64_t *)pd;
+	for (i = 0; i < 512; i++)
+		e[i] = (base + (uint64_t)i * MIB2) | flags | PTE_PS;
+
+	return pd;
+}
+
+/*
+ * Make [base, base + size) uncached at 2 MiB granularity, splitting a 1 GiB
+ * page if one covers it. RAM in the same gigabyte outside the requested
+ * range keeps its original attributes.
+ */
+static bool map_uncached(uint64_t base, uint64_t size)
 {
 	uint64_t *pml4 = (uint64_t *)(read_cr3() & ADDR_MASK);
-	uint64_t *pdpt;
-	uint32_t i4 = (uint32_t)((base >> 39) & 0x1FF);
-	uint32_t i3 = (uint32_t)((base >> 30) & 0x1FF);
+	uint64_t *pdpt, *pd;
+	uint64_t first = base & ~(MIB2 - 1);
+	uint64_t last  = (base + size - 1) & ~(MIB2 - 1);
+	uint64_t addr;
 
-	if (!(pml4[i4] & PTE_PRESENT)) {
-		uint64_t table = alloc_table();
+	for (addr = first; addr <= last; addr += MIB2) {
+		uint32_t i4 = (uint32_t)((addr >> 39) & 0x1FF);
+		uint32_t i3 = (uint32_t)((addr >> 30) & 0x1FF);
+		uint32_t i2 = (uint32_t)((addr >> 21) & 0x1FF);
 
-		if (!table)
-			return false;
-		pml4[i4] = table | PTE_PRESENT | PTE_RW;
+		if (!(pml4[i4] & PTE_PRESENT)) {
+			uint64_t t = alloc_table();
+
+			if (!t)
+				return false;
+			pml4[i4] = t | PTE_PRESENT | PTE_RW;
+		}
+		pdpt = (uint64_t *)(pml4[i4] & ADDR_MASK);
+
+		if (!(pdpt[i3] & PTE_PRESENT)) {
+			uint64_t t = alloc_table();
+
+			if (!t)
+				return false;
+			pdpt[i3] = t | PTE_PRESENT | PTE_RW;
+		} else if (pdpt[i3] & PTE_PS) {
+			uint64_t t = split_1gib(pdpt[i3]);
+
+			if (!t)
+				return false;
+			pdpt[i3] = t | PTE_PRESENT | PTE_RW;
+		}
+		pd = (uint64_t *)(pdpt[i3] & ADDR_MASK);
+
+		pd[i2] = (addr & ~(MIB2 - 1)) | PTE_PRESENT | PTE_RW | PTE_PS |
+			 PTE_PCD | PTE_PWT;
 	}
-
-	pdpt = (uint64_t *)(pml4[i4] & ADDR_MASK);
-
-	if (pdpt[i3] & PTE_PRESENT) {
-		/*
-		 * Already mapped. Leave it alone: a 1 GiB page low in memory
-		 * covers RAM as well as any MMIO in the same gigabyte, and
-		 * making that range uncached would slow every access to the
-		 * RAM sharing it.
-		 */
-		return true;
-	}
-
-	pdpt[i3] = (base & ~(GIB - 1)) | PTE_PRESENT | PTE_RW | PTE_PS |
-		   PTE_PCD | PTE_PWT;
 	return true;
 }
 
 void *anx_mmio_map(uint64_t phys, uint64_t size)
 {
-	uint64_t first, last, addr;
-
 	if (size == 0)
 		return NULL;
 
@@ -106,19 +151,8 @@ void *anx_mmio_map(uint64_t phys, uint64_t size)
 	if (phys > 0xFFFFFFFFFFFFFFFFULL - (size - 1))
 		return NULL;
 
-	first = phys & ~(GIB - 1);
-	last  = (phys + size - 1) & ~(GIB - 1);
-
-	for (addr = first; ; addr += GIB) {
-		if (!map_gib(addr)) {
-			kprintf("mmio: cannot map %llx (+%llu)\n",
-				(unsigned long long)phys,
-				(unsigned long long)size);
-			return NULL;
-		}
-		if (addr == last)
-			break;
-	}
+	if (!map_uncached(phys, size))
+		return NULL;
 
 	flush_tlb();
 	return (void *)(uintptr_t)phys;
