@@ -12,6 +12,7 @@
 #include <anx/arch.h>
 #include <anx/spinlock.h>
 #include <anx/sched_domain.h>
+#include <anx/continuation_group.h>
 
 /* Per-queue state */
 static struct {
@@ -51,6 +52,7 @@ int anx_sched_enqueue(const anx_cid_t *cell_id,
 	if (cell) {
 		bool terminal = anx_cell_status_terminal(cell->status);
 		int allowed = terminal ? ANX_EPERM : anx_sched_domain_check_queue(cell, queue, priority);
+		if (allowed == ANX_OK) allowed = anx_continuation_group_check(cell);
 		anx_cell_store_release(cell);
 		if (allowed != ANX_OK)
 			return allowed;
@@ -117,6 +119,7 @@ int anx_sched_dequeue(enum anx_queue_class queue,
 		queues[queue].depth--;
 		struct anx_cell *cell = anx_cell_store_lookup(&entry->cell_id);
 		int allowed = cell ? anx_sched_domain_check_queue(cell, queue, entry->priority) : ANX_OK;
+		if (cell && allowed == ANX_OK) allowed = anx_continuation_group_check(cell);
 		if (cell && anx_cell_status_terminal(cell->status)) allowed = ANX_EPERM;
 		if (cell) anx_cell_store_release(cell);
 		if (allowed == ANX_OK) {

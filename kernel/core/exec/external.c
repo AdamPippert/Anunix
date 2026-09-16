@@ -16,6 +16,7 @@
 #include <anx/spinlock.h>
 #include <anx/cell.h>
 #include <anx/sched_domain.h>
+#include <anx/continuation_group.h>
 #include <anx/branch_group.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
@@ -169,6 +170,7 @@ int anx_external_invoke(struct anx_external_call *call)
 		ret = anx_cell_check_contract(caller);
 		if (ret == ANX_OK) ret = anx_branch_group_effect_check(&caller->cid);
 		if (ret == ANX_OK) ret = anx_sched_domain_check(caller);
+		if (ret == ANX_OK) ret = anx_continuation_group_check(caller);
 		if (ret == ANX_OK) {
 			ret = ANX_EPERM;
 			if (caller->execution.allow_side_effects && !anx_cell_status_terminal(caller->status) &&
@@ -478,6 +480,7 @@ int anx_external_operation_dispatch(const anx_oid_t *id, struct anx_external_cal
 	}
 	if (ret == ANX_OK) ret = anx_cell_check_contract(op->owner);
 	if (ret == ANX_OK) ret = anx_sched_domain_check(op->owner);
+	if (ret == ANX_OK) ret = anx_continuation_group_check(op->owner);
 	if (ret == ANX_OK) ret = anx_tool_authorize_call(op->owner, &op->call);
 	if (ret == ANX_OK) ret = operation_source(op, false);
 	if (ret == ANX_OK && op->view.sink_name[0] && anx_sink_lookup(op->view.sink_name) != op->effect->sink) ret = ANX_EPERM;

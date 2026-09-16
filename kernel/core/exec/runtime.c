@@ -23,6 +23,7 @@
 #include <anx/external_call.h>
 #include <anx/sched.h>
 #include <anx/sched_domain.h>
+#include <anx/continuation_group.h>
 #include <anx/branch_group.h>
 #include <anx/identity.h>
 #include <anx/effect_fence.h>
@@ -154,6 +155,9 @@ static int runtime_admit(struct anx_cell *cell, struct anx_cell_trace *trace)
 	ret = anx_sched_domain_check(cell);
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_SCHEDULER_DOMAIN, ret, "scheduler domain denied");
+	ret = anx_continuation_group_check(cell);
+	if (ret != ANX_OK)
+		return runtime_deny(trace, ANX_ADMISSION_CONTINUATION_GROUP, ret, "continuation holder denied");
 	ret = anx_branch_group_check(cell);
 	if (ret != ANX_OK)
 		return runtime_deny(trace, ANX_ADMISSION_BRANCH_SCOPE, ret, "branch scope denied");
@@ -482,7 +486,8 @@ int anx_cell_cognitive_limit(uint32_t requested, uint32_t *out)
 	uint32_t limit = requested;
 	for (const struct runtime_cognitive_scope *scope = active_cognitive; scope; scope = scope->previous) {
 		if (scope->cell->status == ANX_CELL_CANCELLED) return ANX_ECANCELED;
-		int allowed = anx_sched_domain_check(scope->cell);
+		int allowed = anx_continuation_group_check(scope->cell);
+		if (allowed == ANX_OK) allowed = anx_sched_domain_check(scope->cell);
 		if (allowed != ANX_OK) return allowed;
 		if (scope->cell->status != ANX_CELL_RUNNING ||
 		    scope->cell->cognitive.max_tokens != scope->envelope.max_tokens ||
@@ -638,6 +643,8 @@ int anx_cell_run(struct anx_cell *cell)
 
 	if (!cell)
 		return ANX_EINVAL;
+	ret = anx_continuation_group_check(cell);
+	if (ret != ANX_OK) return ret;
 	anx_spin_lock(&cell->lock);
 	if (cell->status != ANX_CELL_CREATED || cell->runtime_active) {
 		anx_spin_unlock(&cell->lock);
