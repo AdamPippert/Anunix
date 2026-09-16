@@ -53,6 +53,12 @@ struct anx_driver {
  * Net class: calls all matches. */
 void anx_drivers_probe(void);
 
+/*
+ * Bring up partitions, RAID, the object store and the boot-log ring. The
+ * probe calls it once the storage drivers have run; defined in main.c.
+ */
+void anx_drivers_storage_done(void);
+
 /* Returns true if any NET class driver succeeded during the last probe. */
 bool anx_net_probe_ok(void);
 

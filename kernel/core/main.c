@@ -67,6 +67,92 @@
 #include <anx/twin.h>
 #include <anx/regime.h>
 
+/*
+ * Partition scan, RAID assembly, store mount and the boot-log ring.
+ *
+ * The driver probe calls this as soon as the storage drivers have run and
+ * before any network driver starts, so the boot log is on disk before code
+ * that might hang or fault. A crash in a network driver used to leave no
+ * record at all, because the log was only claimed after every driver had
+ * returned. Runs once; later calls do nothing.
+ */
+void anx_drivers_storage_done(void)
+{
+	static bool done;
+
+	if (done)
+		return;
+	done = true;
+
+	/* 10b-2. Partition scan (RFC-0031) — register a block device per GPT
+	 * entry on every drive, so Anunix can live in a partition beside
+	 * another operating system. Runs before RAID assembly so an array
+	 * can take partitions as members. */
+	PERF_BEGIN("part_scan");
+	anx_part_scan_all();
+	PERF_END();
+
+	/* 10c. Software RAID — assemble arrays from member superblocks.
+	 * An assembled array takes over as the active block device, so the
+	 * object store below mounts from the array, not from one member. */
+	PERF_BEGIN("md_init");
+	anx_md_init();
+	PERF_END();
+
+	if (anx_blk_ready()) {
+		int ds_ret;
+
+		/*
+		 * Pick the device carrying our superblock rather than
+		 * whichever registered first (RFC-0031 section 4). Without
+		 * this the active device on a partitioned machine is
+		 * typically the firmware's EFI system partition.
+		 */
+		anx_disk_select_store();
+
+		ds_ret = anx_disk_store_init();
+
+		if (ds_ret != ANX_OK) {
+			/*
+			 * Do not format. This path used to write a fresh
+			 * object store over the active device whenever it
+			 * failed to find one, reading nothing first -- which
+			 * destroyed the partition table of any disk Anunix
+			 * was booted beside (RFC-0031 section 8). Running
+			 * without a store is always recoverable; formatting
+			 * someone's disk is not.
+			 */
+			char what[ANX_PROBE_DESC_MAX];
+
+			(void)anx_blk_probe(anx_blk_active(), what,
+					    sizeof(what));
+			kprintf("disk: no object store on %s (holds %s)\n",
+				anx_blk_active_name(), what);
+			kprintf("disk: running without persistence; "
+				"install to create a store\n");
+		}
+		if (ds_ret == ANX_OK) {
+			kprintf("disk: object store mounted\n");
+			anx_bootlog_disk_init();
+		}
+
+		/*
+		 * The ring does not depend on the store having mounted, so it
+		 * is claimed either way. This is the copy that survives when
+		 * the rest of the chain does not.
+		 */
+		if (anx_bootlog_ring_init() == ANX_OK) {
+			int fr = anx_bootlog_ring_flush();
+
+			if (fr != ANX_OK)
+				kprintf("bootlog: ring flush failed (%d)\n", fr);
+			else
+				kprintf("bootlog: ring flush ok\n");
+		}
+	}
+
+}
+
 void kernel_main(void)
 {
 	/* Boot session ring buffer — must be first, before any kprintf output */
@@ -301,72 +387,8 @@ void kernel_main(void)
 	anx_video_init();
 	PERF_END();
 
-	/* 10b-2. Partition scan (RFC-0031) — register a block device per GPT
-	 * entry on every drive, so Anunix can live in a partition beside
-	 * another operating system. Runs before RAID assembly so an array
-	 * can take partitions as members. */
-	PERF_BEGIN("part_scan");
-	anx_part_scan_all();
-	PERF_END();
-
-	/* 10c. Software RAID — assemble arrays from member superblocks.
-	 * An assembled array takes over as the active block device, so the
-	 * object store below mounts from the array, not from one member. */
-	PERF_BEGIN("md_init");
-	anx_md_init();
-	PERF_END();
-
-	if (anx_blk_ready()) {
-		int ds_ret;
-
-		/*
-		 * Pick the device carrying our superblock rather than
-		 * whichever registered first (RFC-0031 section 4). Without
-		 * this the active device on a partitioned machine is
-		 * typically the firmware's EFI system partition.
-		 */
-		anx_disk_select_store();
-
-		ds_ret = anx_disk_store_init();
-
-		if (ds_ret != ANX_OK) {
-			/*
-			 * Do not format. This path used to write a fresh
-			 * object store over the active device whenever it
-			 * failed to find one, reading nothing first -- which
-			 * destroyed the partition table of any disk Anunix
-			 * was booted beside (RFC-0031 section 8). Running
-			 * without a store is always recoverable; formatting
-			 * someone's disk is not.
-			 */
-			char what[ANX_PROBE_DESC_MAX];
-
-			(void)anx_blk_probe(anx_blk_active(), what,
-					    sizeof(what));
-			kprintf("disk: no object store on %s (holds %s)\n",
-				anx_blk_active_name(), what);
-			kprintf("disk: running without persistence; "
-				"install to create a store\n");
-		}
-		if (ds_ret == ANX_OK) {
-			kprintf("disk: object store mounted\n");
-			anx_bootlog_disk_init();
-		}
-
-		/*
-		 * The ring does not depend on the store having mounted, so it
-		 * is claimed either way. This is the copy that survives when
-		 * the rest of the chain does not.
-		 */
-		if (anx_bootlog_ring_init() == ANX_OK) {
-			int fr = anx_bootlog_ring_flush();
-
-			if (fr != ANX_OK)
-				kprintf("bootlog: ring flush failed (%d)\n", fr);
-			else
-				kprintf("bootlog: ring flush ok\n");
-		}
-	}
+	/* Normally already done from inside the driver probe; see below. */
+	anx_drivers_storage_done();
 
 	/* Load previously persisted PAL state before hardware priming so that
 	 * organic session data from prior boots is not overwritten by priming */
