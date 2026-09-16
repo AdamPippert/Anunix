@@ -94,3 +94,7 @@ RFC-0002, RFC-0030
 
 RFC-0031 (Partition Layer) is numbered and drafted on the branch
 `rfc-0031-partition-layer`. It is not merged, so it is not listed above.
+
+RFC-0008
+  └── RFC-0034 (Connectivity Secrets) — Wi-Fi, SSH and Eigentunnel key
+       material readable and removable only by a key-authenticated principal
