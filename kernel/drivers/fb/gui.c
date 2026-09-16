@@ -230,6 +230,31 @@ void anx_gui_update_time(void)
 
 /* --- Terminal output --- */
 
+/*
+ * Reaching the bottom of the boot terminal.
+ *
+ * This used to scroll with a memmove of nearly the whole panel inside the
+ * framebuffer -- about 15 MiB per line on a 2560x1600 panel, and the read
+ * half of it comes back from video memory, which is slow however the
+ * mapping is cached. Each new line visibly wiped down the screen for about
+ * a second; video of the Framework boot shows it clearly. The console
+ * paging added to fbcon.c never helped, because while this panel is up
+ * fbcon hands every character straight here.
+ *
+ * Page instead: clear the panel and start again at the top. That is one
+ * write-only fill per screenful and no read at all. The serial log and the
+ * boot-log ring keep every line, so only the pixels are lost.
+ *
+ * anx_gui_set_paging(false) restores scrolling for callers that want the
+ * history on screen.
+ */
+static bool term_paging = true;
+
+void anx_gui_set_paging(bool paging)
+{
+	term_paging = paging;
+}
+
 static void terminal_scroll(void)
 {
 	const struct anx_fb_info *info = anx_fb_get_info();
@@ -242,12 +267,6 @@ static void terminal_scroll(void)
 	pitch = info->pitch;
 	base  = (uint8_t *)(uintptr_t)info->addr;
 
-	/*
-	 * Bulk-move the entire terminal block (full pitch per row) in one call.
-	 * Copying the horizontal margins too is harmless since they are static
-	 * background that never changes.  This avoids (term_h - term_char_h)
-	 * individual per-scanline copies, which is the scroll-lag bottleneck.
-	 */
 	anx_memmove(base + term_y * pitch,
 		    base + (term_y + term_char_h) * pitch,
 		    (term_h - term_char_h) * pitch);
@@ -261,7 +280,14 @@ static void terminal_newline(void)
 {
 	cur_col = 0;
 	cur_row++;
-	if (cur_row >= term_rows) {
+	if (cur_row < term_rows)
+		return;
+
+	if (term_paging) {
+		anx_fb_fill_rect(term_x, term_y, term_w, term_h,
+				  ANX_COLOR_AX_SURFACE);
+		cur_row = 0;
+	} else {
 		cur_row = term_rows - 1;
 		terminal_scroll();
 	}

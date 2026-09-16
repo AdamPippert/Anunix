@@ -56,6 +56,13 @@ void anx_gui_set_tz_offset(int32_t hours);
 /* Check if GUI is active */
 bool anx_gui_active(void);
 
+/*
+ * Page the boot terminal at the bottom of the panel instead of scrolling
+ * it. Paging never reads the framebuffer; scrolling copies the panel
+ * inside video memory once per line. Paging is the default.
+ */
+void anx_gui_set_paging(bool paging);
+
 /* Clear the GUI terminal area and reset the cursor */
 void anx_gui_terminal_clear(void);
 
