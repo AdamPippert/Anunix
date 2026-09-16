@@ -26,12 +26,39 @@ jobs:
 
       - name: Run tests (must pass for release)
         run: |
+          set -o pipefail
           make test 2>&1 | tee test-output.txt
-          PASS=$(grep -oE "[0-9]+ passed" test-output.txt | head -1 || echo "0 passed")
-          FAIL=$(grep -oE "[0-9]+ failed" test-output.txt | head -1 || echo "0 failed")
-          echo "Tests: $PASS, $FAIL"
-          if echo "$FAIL" | grep -qv "^0 "; then
-            echo "Release blocked: tests failed"
+          MAKE_STATUS=$?
+
+          # Read the harness summary line, not the whole log. The old gate
+          # grepped test-output.txt for "[0-9]+ failed" and took the first
+          # match, which found the "v1" in this expected negative-path line:
+          #   kickstart: workflow load=anx:workflow/no-such/v1 failed (-3)
+          # That reported "1 failed" against a suite that had just printed
+          # "0 failed", and it blocked both 2026.9.4 and the first 2026.9.15
+          # tag on a green run.
+          SUMMARY=$(grep -oE "=== Results: [0-9]+ passed, [0-9]+ failed ===" test-output.txt | tail -1)
+
+          if [ -z "$SUMMARY" ]; then
+            echo "Release blocked: the test harness printed no summary line."
+            echo "That means the suite did not run to completion."
+            exit 1
+          fi
+
+          PASS=$(echo "$SUMMARY" | sed -E 's/.*: ([0-9]+) passed.*/\1/')
+          FAIL=$(echo "$SUMMARY" | sed -E 's/.*, ([0-9]+) failed.*/\1/')
+          echo "Tests: $PASS passed, $FAIL failed"
+
+          if [ "$FAIL" != "0" ]; then
+            echo "Release blocked: $FAIL test(s) failed"
+            exit 1
+          fi
+          if [ "$PASS" -eq 0 ]; then
+            echo "Release blocked: the suite reported zero passing tests"
+            exit 1
+          fi
+          if [ "$MAKE_STATUS" -ne 0 ]; then
+            echo "Release blocked: make test exited $MAKE_STATUS"
             exit 1
           fi
 
