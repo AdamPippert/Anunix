@@ -82,6 +82,9 @@ int test_hid_boot(void);
 int test_aml_res(void);
 int test_i2c_hid(void);
 int test_research_integration(void);
+int test_part(void);
+int test_blk_probe(void);
+int test_blk_select(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -148,6 +151,9 @@ static struct test_case tests[] = {
 	{ "aml_res",		test_aml_res },
 	{ "i2c_hid",		test_i2c_hid },
 	{ "research_integration",	test_research_integration },
+	{ "part",		test_part },
+	{ "blk_probe",		test_blk_probe },
+	{ "blk_select",		test_blk_select },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

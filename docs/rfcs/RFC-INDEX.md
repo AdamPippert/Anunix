@@ -86,6 +86,10 @@ RFC-0012, RFC-0014
        boot-protocol translation into the Interface Plane
        └── RFC-0033 (ACPI, AML and HID over I2C) — reaches the same input
             path for devices firmware describes in AML, not on PCI
+
+RFC-0002, RFC-0030
+  └── RFC-0031 (Partition Layer) — registers GPT partitions as bounded
+       block devices so Anunix installs beside another operating system
 ```
 
 RFC-0031 (Partition Layer) is numbered and drafted on the branch

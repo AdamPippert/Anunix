@@ -8,6 +8,8 @@
 
 #include <anx/types.h>
 #include <anx/gpt.h>
+#include <anx/crc32.h>
+#include <anx/blk.h>
 #include <anx/virtio_blk.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -22,41 +24,10 @@
 /* Protective MBR partition type for GPT */
 #define MBR_TYPE_GPT		0xEE
 
-/* CRC32 for GPT checksums */
-static uint32_t crc32_table[256];
-static bool crc32_ready;
+/* CRC-32 lives in kernel/lib/crc32.c: the partition scanner needs it
+ * long before the installer is reachable. */
+#define crc32(d, l) anx_crc32((d), (l))
 
-static void crc32_init(void)
-{
-	uint32_t i, j, c;
-
-	for (i = 0; i < 256; i++) {
-		c = i;
-		for (j = 0; j < 8; j++) {
-			if (c & 1)
-				c = 0xEDB88320 ^ (c >> 1);
-			else
-				c >>= 1;
-		}
-		crc32_table[i] = c;
-	}
-	crc32_ready = true;
-}
-
-static uint32_t crc32(const void *data, uint32_t len)
-{
-	const uint8_t *p = (const uint8_t *)data;
-	uint32_t crc = 0xFFFFFFFF;
-	uint32_t i;
-
-	if (!crc32_ready)
-		crc32_init();
-
-	for (i = 0; i < len; i++)
-		crc = crc32_table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
-
-	return crc ^ 0xFFFFFFFF;
-}
 
 /* Generate a pseudo-random GUID from TSC */
 static void make_guid(uint64_t *lo, uint64_t *hi)
@@ -296,17 +267,71 @@ int anx_gpt_create_default(const char *label)
 }
 
 /* Simplified read — just find partitions for the installer */
-int anx_gpt_read(struct anx_gpt_table *table)
+/*
+ * Parse one GPT header and its entry array from buf/entries.
+ * Returns ANX_OK when the header validates.
+ */
+static int gpt_parse_header(const uint8_t *hdr, uint32_t *entry_lba,
+			    uint32_t *num_entries, uint32_t *entry_size,
+			    uint32_t *entries_crc)
+{
+	uint64_t sig;
+	uint32_t stored_crc, calc_crc, header_size;
+	uint64_t part_lba;
+	uint8_t scratch[GPT_HEADER_SIZE];
+
+	anx_memcpy(&sig, hdr, 8);
+	if (sig != GPT_SIGNATURE)
+		return ANX_EINVAL;
+
+	anx_memcpy(&header_size, hdr + 12, 4);
+	if (header_size < GPT_HEADER_SIZE || header_size > 512)
+		return ANX_EINVAL;
+
+	/* The header CRC is computed with its own field zeroed. */
+	anx_memcpy(&stored_crc, hdr + 16, 4);
+	anx_memcpy(scratch, hdr, GPT_HEADER_SIZE);
+	anx_memset(scratch + 16, 0, 4);
+	calc_crc = anx_crc32(scratch, GPT_HEADER_SIZE);
+	if (calc_crc != stored_crc)
+		return ANX_EINVAL;
+
+	anx_memcpy(&part_lba, hdr + 72, 8);
+	anx_memcpy(num_entries, hdr + 80, 4);
+	anx_memcpy(entry_size, hdr + 84, 4);
+	anx_memcpy(entries_crc, hdr + 88, 4);
+
+	/*
+	 * Bound what a malformed table can make us allocate or read.
+	 * 128 entries at 128 bytes is the GPT norm and all we support.
+	 */
+	if (*entry_size < 128 || *entry_size > 512)
+		return ANX_EINVAL;
+	if (*num_entries == 0 || *num_entries > 128)
+		return ANX_EINVAL;
+	if (part_lba == 0 || part_lba > 0xFFFFFFFFULL)
+		return ANX_EINVAL;
+
+	*entry_lba = (uint32_t)part_lba;
+	return ANX_OK;
+}
+
+int anx_gpt_read_dev(struct anx_blk_dev *dev, struct anx_gpt_table *table)
 {
 	uint8_t *header_buf;
 	uint8_t *entries_buf;
-	uint64_t sig;
-	uint32_t num_entries, entry_size;
+	uint32_t entry_lba = 0, num_entries = 0, entry_size = 0;
+	uint32_t entries_crc = 0, entries_bytes, entries_sectors;
+	uint64_t capacity;
 	uint32_t i;
 	int ret;
 
-	if (!anx_blk_ready())
-		return ANX_EIO;
+	if (!dev || !table)
+		return ANX_EINVAL;
+
+	capacity = anx_blk_dev_capacity(dev);
+	if (capacity < 3)
+		return ANX_EINVAL;
 
 	anx_memset(table, 0, sizeof(*table));
 
@@ -314,71 +339,98 @@ int anx_gpt_read(struct anx_gpt_table *table)
 	if (!header_buf)
 		return ANX_ENOMEM;
 
-	ret = anx_blk_read(1, 1, header_buf);
+	/* Primary header at LBA 1. */
+	ret = anx_blk_dev_read(dev, 1, 1, header_buf);
+	if (ret == ANX_OK)
+		ret = gpt_parse_header(header_buf, &entry_lba, &num_entries,
+				       &entry_size, &entries_crc);
+
 	if (ret != ANX_OK) {
-		anx_free(header_buf);
-		return ret;
-	}
+		/*
+		 * A damaged primary is exactly the case the backup exists
+		 * for. It lives in the last sector of the device.
+		 */
+		int bret = anx_blk_dev_read(dev, capacity - 1, 1, header_buf);
 
-	anx_memcpy(&sig, header_buf, 8);
-	if (sig != GPT_SIGNATURE) {
-		anx_free(header_buf);
-		return ANX_EINVAL;
+		if (bret == ANX_OK)
+			bret = gpt_parse_header(header_buf, &entry_lba,
+						&num_entries, &entry_size,
+						&entries_crc);
+		if (bret != ANX_OK) {
+			anx_free(header_buf);
+			return ANX_EINVAL;
+		}
+		kprintf("gpt: %s primary header bad, using backup\n",
+			dev->name);
+		ret = ANX_OK;
 	}
-
-	anx_memcpy(&table->disk_guid_lo, header_buf + 56, 8);
-	anx_memcpy(&table->disk_guid_hi, header_buf + 64, 8);
-	anx_memcpy(&num_entries, header_buf + 80, 4);
-	anx_memcpy(&entry_size, header_buf + 84, 4);
 	anx_free(header_buf);
 
-	if (entry_size != 128 || num_entries == 0)
+	entries_bytes   = num_entries * entry_size;
+	entries_sectors = (entries_bytes + 511) / 512;
+	if (entry_lba + entries_sectors > capacity)
 		return ANX_EINVAL;
 
-	entries_buf = anx_alloc(32 * 512);
+	entries_buf = anx_alloc(entries_sectors * 512);
 	if (!entries_buf)
 		return ANX_ENOMEM;
 
-	ret = anx_blk_read(2, 32, entries_buf);
+	ret = anx_blk_dev_read(dev, entry_lba, entries_sectors, entries_buf);
 	if (ret != ANX_OK) {
 		anx_free(entries_buf);
 		return ret;
 	}
 
-	for (i = 0; i < num_entries && table->partition_count < ANX_GPT_MAX_PARTS; i++) {
-		uint8_t *e = entries_buf + i * 128;
-		uint64_t type_lo;
+	if (anx_crc32(entries_buf, entries_bytes) != entries_crc) {
+		anx_free(entries_buf);
+		return ANX_EINVAL;
+	}
 
-		anx_memcpy(&type_lo, e, 8);
-		if (type_lo == 0)
+	for (i = 0; i < num_entries &&
+	     table->partition_count < ANX_GPT_MAX_PARTS; i++) {
+		const uint8_t *e = entries_buf + i * entry_size;
+		struct anx_gpt_partition *p;
+		uint64_t type_lo, type_hi;
+		int j;
+
+		anx_memcpy(&type_lo, e + 0, 8);
+		anx_memcpy(&type_hi, e + 8, 8);
+		if (type_lo == 0 && type_hi == 0)
 			continue;	/* empty entry */
 
-		{
-			struct anx_gpt_partition *p;
-			int j;
+		p = &table->partitions[table->partition_count];
+		p->type_lo = type_lo;
+		p->type_hi = type_hi;
+		anx_memcpy(&p->guid_lo, e + 16, 8);
+		anx_memcpy(&p->guid_hi, e + 24, 8);
+		anx_memcpy(&p->start_lba, e + 32, 8);
+		anx_memcpy(&p->end_lba, e + 40, 8);
+		anx_memcpy(&p->attributes, e + 48, 8);
 
-			p = &table->partitions[table->partition_count];
-			anx_memcpy(&p->type_lo, e + 0, 8);
-			anx_memcpy(&p->type_hi, e + 8, 8);
-			anx_memcpy(&p->guid_lo, e + 16, 8);
-			anx_memcpy(&p->guid_hi, e + 24, 8);
-			anx_memcpy(&p->start_lba, e + 32, 8);
-			anx_memcpy(&p->end_lba, e + 40, 8);
-			anx_memcpy(&p->attributes, e + 48, 8);
+		/* Entry indices are 1-based and stay with the partition, so
+		 * a name stays stable when an earlier entry is deleted. */
+		p->index = i + 1;
 
-			/* Decode UTF-16LE name to ASCII */
-			for (j = 0; j < 36; j++) {
-				p->name[j] = (char)e[56 + j * 2];
-				if (p->name[j] == '\0')
-					break;
-			}
-			p->name[36] = '\0';
-			table->partition_count++;
+		/* Decode UTF-16LE name to ASCII. */
+		for (j = 0; j < 36; j++) {
+			p->name[j] = (char)e[56 + j * 2];
+			if (p->name[j] == '\0')
+				break;
 		}
+		p->name[36] = '\0';
+
+		table->partition_count++;
 	}
 
 	anx_free(entries_buf);
 	return ANX_OK;
+}
+
+int anx_gpt_read(struct anx_gpt_table *table)
+{
+	if (!anx_blk_ready())
+		return ANX_EIO;
+	return anx_gpt_read_dev(anx_blk_active(), table);
 }
 
 int anx_gpt_write(const struct anx_gpt_table *table)

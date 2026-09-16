@@ -14,6 +14,9 @@
 
 #include <anx/types.h>
 #include <anx/objstore_disk.h>
+#include <anx/blk.h>
+#include <anx/blk_probe.h>
+#include <anx/part.h>
 #include <anx/virtio_blk.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -304,6 +307,37 @@ static int journal_commit(void)
 
 int anx_disk_format(const char *label)
 {
+	struct anx_blk_dev *dev = anx_blk_active();
+	enum anx_blk_content content;
+	char what[ANX_PROBE_DESC_MAX];
+
+	if (!anx_blk_ready())
+		return ANX_EIO;
+
+	/*
+	 * An array member holds metadata the array depends on. Formatting it
+	 * corrupts the array without touching the array device itself, which
+	 * makes the damage hard to attribute later.
+	 */
+	if (anx_blk_dev_is_member(dev)) {
+		kprintf("disk: refusing to format %s: claimed by a RAID array\n",
+			anx_blk_active_name());
+		return ANX_EBUSY;
+	}
+
+	content = anx_blk_probe(dev, what, sizeof(what));
+	if (content == ANX_CONTENT_FOREIGN) {
+		kprintf("disk: refusing to format %s: holds %s\n",
+			anx_blk_active_name(), what);
+		kprintf("disk: use the installer to overwrite it deliberately\n");
+		return ANX_EEXIST;
+	}
+
+	return anx_disk_format_forced(label);
+}
+
+int anx_disk_format_forced(const char *label)
+{
 	uint8_t *zero_buf;
 	uint32_t i;
 	int ret;
@@ -368,6 +402,66 @@ int anx_disk_format(const char *label)
 		super.label,
 		(uint32_t)(super.total_sectors * 512 / (1024 * 1024)));
 	return ANX_OK;
+}
+
+
+/* Rank a candidate: higher wins. An array is the most specific thing a
+ * store can live on, a whole drive the least. */
+static int store_rank(struct anx_blk_dev *dev)
+{
+	if (dev->flags & ANX_BLK_F_ARRAY)
+		return 3;
+	if (anx_part_is_partition(dev))
+		return 2;
+	return 1;
+}
+
+/* True when dev carries a superblock this kernel understands. */
+static bool has_store(struct anx_blk_dev *dev)
+{
+	struct anx_disk_super probe;
+
+	if (anx_blk_dev_read(dev, ANX_SUPER_SECTOR, 1, &probe) != ANX_OK)
+		return false;
+	if (probe.magic != ANX_DISK_MAGIC)
+		return false;
+	if (probe.version != ANX_DISK_VERSION)
+		return false;
+	return true;
+}
+
+struct anx_blk_dev *anx_disk_select_store(void)
+{
+	struct anx_blk_dev *best = NULL;
+	int best_rank = 0;
+	uint32_t i, count;
+
+	count = anx_blk_dev_count();
+	for (i = 0; i < count; i++) {
+		struct anx_blk_dev *dev = anx_blk_dev_at(i);
+		int rank;
+
+		if (!dev)
+			continue;
+		/* A member belongs to its array; writing it corrupts the
+		 * array without touching the array device (RFC-0030). */
+		if (anx_blk_dev_is_member(dev))
+			continue;
+		if (!has_store(dev))
+			continue;
+
+		rank = store_rank(dev);
+		if (rank > best_rank) {
+			best = dev;
+			best_rank = rank;
+		}
+	}
+
+	if (best) {
+		kprintf("disk: object store found on %s\n", best->name);
+		anx_blk_set_active(best);
+	}
+	return best;
 }
 
 int anx_disk_store_init(void)
