@@ -47,6 +47,16 @@ struct anx_list_head *anx_pci_device_list(void);
 /* Enable PCI bus mastering for a device (required for DMA) */
 void anx_pci_enable_bus_master(struct anx_pci_device *dev);
 
+/*
+ * Move a device to D0 if its Power Management capability says it is parked
+ * lower. Returns the power state found on entry (0 means it was already in
+ * D0), or -1 when the device has no PM capability.
+ *
+ * A device in D3hot does not decode its BARs, so a driver that skips this
+ * reads bus filler and cannot tell that from a chip that is misbehaving.
+ */
+int anx_pci_power_on(struct anx_pci_device *dev);
+
 /* Get human-readable name for a PCI class/subclass */
 const char *anx_pci_class_name(uint8_t class_code, uint8_t subclass);
 

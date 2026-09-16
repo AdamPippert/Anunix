@@ -353,6 +353,16 @@ int anx_mt7925_init(void)
 		g_dev.bar2 = anx_mmio_map((uint64_t)(pci->bar[2] & ~0xfu),
 					   0x8000);
 
+	{
+		int was = anx_pci_power_on(pci);
+
+		if (was > 0)
+			kprintf("mt7925: device was in D%d, moved to D0\n", was);
+		else if (was == 0)
+			kprintf("mt7925: device already in D0\n");
+		else
+			kprintf("mt7925: no PM capability\n");
+	}
 	anx_pci_enable_bus_master(pci);
 
 	/*
@@ -365,6 +375,15 @@ int anx_mt7925_init(void)
 		kprintf("mt7925: driver own failed; chip did not wake\n");
 		return ANX_EIO;
 	}
+
+	/*
+	 * Dump a few words from the start of the BAR before anything else.
+	 * All-zero and all-ones are the two ways a BAR that is not decoding
+	 * presents itself, and telling those apart from a chip that answers
+	 * with a power-off sentinel is the whole diagnostic question here.
+	 */
+	kprintf("mt7925: BAR0[0..3] = %08x %08x %08x %08x\n",
+		nic_rd(0x0), nic_rd(0x4), nic_rd(0x8), nic_rd(0xc));
 
 	/* Read chip ID */
 	uint32_t hw_ver = nic_rd(MT_CONN_HW_VER);

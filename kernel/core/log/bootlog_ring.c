@@ -73,14 +73,26 @@ int anx_bootlog_ring_init(void)
 
 	g_ring_ok = false;
 
-	if (!anx_blk_ready())
+	if (!anx_blk_ready()) {
+		kprintf("bootlog: ring unavailable, no block device\n");
 		return ANX_ENODEV;
-	if (!device_is_ours())
+	}
+	if (!device_is_ours()) {
+		struct anx_disk_super *sb = (struct anx_disk_super *)g_sector;
+
+		kprintf("bootlog: ring refused, %s sector 0 magic 0x%08x "
+			"is not an Anunix store\n",
+			anx_blk_active_name(), (uint32_t)sb->magic);
 		return ANX_EPERM;
+	}
 
 	cap = anx_blk_capacity();
-	if (cap <= (uint64_t)ANX_BLOG_RING_SECTORS + ANX_DATA_START)
+	if (cap <= (uint64_t)ANX_BLOG_RING_SECTORS + ANX_DATA_START) {
+		kprintf("bootlog: ring refused, device has %u sectors, "
+			"needs more than %u\n", (uint32_t)cap,
+			(uint32_t)(ANX_BLOG_RING_SECTORS + ANX_DATA_START));
 		return ANX_EFULL;
+	}
 
 	g_ring_start = cap - ANX_BLOG_RING_SECTORS;
 

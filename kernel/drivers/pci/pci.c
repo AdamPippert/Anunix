@@ -29,6 +29,13 @@
 #define PCI_INTERRUPT		0x3C
 
 /* Command register bits */
+#define PCI_STATUS		0x06
+#define PCI_STATUS_CAP_LIST	(1 << 4)
+#define PCI_CAP_PTR		0x34
+#define PCI_CAP_ID_PM		0x01	/* PCI Power Management */
+#define PCI_PM_CTRL		0x04	/* offset within the PM capability */
+#define PCI_PM_STATE_MASK	0x3
+
 #define PCI_CMD_IO_SPACE	(1 << 0)
 #define PCI_CMD_MEM_SPACE	(1 << 1)
 #define PCI_CMD_BUS_MASTER	(1 << 2)
@@ -214,6 +221,71 @@ const char *anx_pci_class_name(uint8_t class_code, uint8_t subclass)
 	case 0x0D: return "wireless controller";
 	default:   return "unknown";
 	}
+}
+
+/*
+ * Bring a device to D0.
+ *
+ * Firmware may hand the OS a device parked in D3hot to save power -- a
+ * laptop's Wi-Fi is a common one. A device in D3hot does not decode its
+ * BARs, so every register read returns bus filler rather than the chip, and
+ * a driver has no way to tell that from a chip that is present and unhappy.
+ * Anunix had no power-state handling at all and so never made this
+ * transition; Linux makes it in pcim_enable_device() before touching a
+ * register.
+ *
+ * Returns the state found on entry, or -1 when the device has no Power
+ * Management capability (in which case it is already usable).
+ */
+int anx_pci_power_on(struct anx_pci_device *dev)
+{
+	uint32_t status;
+	uint8_t  cap;
+	uint32_t guard = 0;
+
+	status = anx_pci_config_read(dev->bus, dev->slot, dev->func,
+				      PCI_STATUS - 2) >> 16;
+	if (!(status & PCI_STATUS_CAP_LIST))
+		return -1;
+
+	cap = (uint8_t)(anx_pci_config_read(dev->bus, dev->slot, dev->func,
+					     PCI_CAP_PTR) & 0xFC);
+
+	while (cap >= 0x40 && guard++ < 48) {
+		uint32_t hdr = anx_pci_config_read(dev->bus, dev->slot,
+						    dev->func, cap);
+		uint8_t  id   = (uint8_t)(hdr & 0xFF);
+		uint8_t  next = (uint8_t)((hdr >> 8) & 0xFC);
+
+		if (id == PCI_CAP_ID_PM) {
+			uint32_t pmcsr = anx_pci_config_read(dev->bus,
+					     dev->slot, dev->func,
+					     (uint8_t)(cap + PCI_PM_CTRL));
+			int state = (int)(pmcsr & PCI_PM_STATE_MASK);
+
+			if (state != 0) {
+				anx_pci_config_write(dev->bus, dev->slot,
+					dev->func,
+					(uint8_t)(cap + PCI_PM_CTRL),
+					pmcsr & ~(uint32_t)PCI_PM_STATE_MASK);
+				/*
+				 * The spec requires 10 ms after leaving D3hot
+				 * before the device is addressed. Reading
+				 * config space repeatedly is the only clock
+				 * available this early.
+				 */
+				for (guard = 0; guard < 200000u; guard++)
+					(void)anx_pci_config_read(dev->bus,
+						dev->slot, dev->func,
+						PCI_COMMAND);
+			}
+			return state;
+		}
+		if (next == cap)
+			break;
+		cap = next;
+	}
+	return -1;
 }
 
 void anx_pci_enable_bus_master(struct anx_pci_device *dev)

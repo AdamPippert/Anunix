@@ -358,8 +358,14 @@ void kernel_main(void)
 		 * is claimed either way. This is the copy that survives when
 		 * the rest of the chain does not.
 		 */
-		if (anx_bootlog_ring_init() == ANX_OK)
-			anx_bootlog_ring_flush();
+		if (anx_bootlog_ring_init() == ANX_OK) {
+			int fr = anx_bootlog_ring_flush();
+
+			if (fr != ANX_OK)
+				kprintf("bootlog: ring flush failed (%d)\n", fr);
+			else
+				kprintf("bootlog: ring flush ok\n");
+		}
 	}
 
 	/* Load previously persisted PAL state before hardware priming so that
