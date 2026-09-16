@@ -19,6 +19,9 @@ void arch_init(void);
 /* Halt the processor */
 void arch_halt(void) __attribute__((noreturn));
 
+/* Restart the machine; never returns. */
+void arch_reboot(void) __attribute__((noreturn));
+
 /* Disable/enable interrupts, return previous state */
 bool arch_irq_disable(void);
 void arch_irq_enable(void);

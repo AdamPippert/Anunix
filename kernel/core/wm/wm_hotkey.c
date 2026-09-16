@@ -22,6 +22,7 @@
  */
 
 #include <anx/wm.h>
+#include <anx/fb.h>
 #include <anx/input.h>
 #include <anx/interface_plane.h>
 #include <anx/clipboard.h>
@@ -65,6 +66,13 @@ int anx_wm_hotkey_register(uint32_t mods, uint32_t key,
 
 bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key)
 {
+	/* While the power dialog is open it owns the keyboard, except for
+	 * the shortcuts that opened it, which simply re-assert it. */
+	if (anx_wm_power_active()) {
+		anx_wm_power_key(key);
+		return true;
+	}
+
 	uint32_t i;
 	bool flags;
 	anx_hotkey_fn fn = NULL;
@@ -97,6 +105,12 @@ bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode)
 	kev.keycode   = key;
 	kev.modifiers = mods;
 	kev.unicode   = unicode;
+
+	/* Priority 0: the power dialog is modal */
+	if (anx_wm_power_active()) {
+		anx_wm_power_key(key);
+		return true;
+	}
 
 	/* Priority 1: switcher */
 	if (anx_wm_switcher_active()) {
@@ -381,11 +395,46 @@ static void hk_float(uint32_t mods, uint32_t key, void *arg)
 		anx_wm_window_float(surf);
 }
 
-static void hk_halt(uint32_t mods, uint32_t key, void *arg)
+/* Meta+arrows and Meta+HJKL move focus; the switcher uses the same axes. */
+static void hk_focus_dir(uint32_t mods, uint32_t key, void *arg)
+{
+	(void)mods; (void)arg;
+
+	switch (key) {
+	case ANX_KEY_LEFT:  case ANX_KEY_H: anx_wm_window_focus_dir(-1, 0); break;
+	case ANX_KEY_RIGHT: case ANX_KEY_L: anx_wm_window_focus_dir(1, 0);  break;
+	case ANX_KEY_UP:    case ANX_KEY_K: anx_wm_window_focus_dir(0, -1); break;
+	case ANX_KEY_DOWN:  case ANX_KEY_J: anx_wm_window_focus_dir(0, 1);  break;
+	default: break;
+	}
+}
+
+/* Meta+T snaps a floating window to a half, or restores a snapped one. */
+static void hk_tile_toggle(uint32_t mods, uint32_t key, void *arg)
+{
+	anx_oid_t focused;
+	struct anx_surface *surf = NULL;
+	const struct anx_fb_info *fb;
+	(void)mods; (void)key; (void)arg;
+
+	focused = anx_input_focus_get();
+	anx_iface_surface_lookup(focused, &surf);
+	fb = anx_fb_get_info();
+	if (!surf || !fb || !fb->available)
+		return;
+
+	if (surf->width <= fb->width / 2 + 1)
+		anx_wm_window_float(surf);
+	else if (surf->x < (int32_t)fb->width / 2)
+		anx_wm_window_tile_left(surf);
+	else
+		anx_wm_window_tile_right(surf);
+}
+
+static void hk_power(uint32_t mods, uint32_t key, void *arg)
 {
 	(void)mods; (void)key; (void)arg;
-	kprintf("[wm] system halt requested\n");
-	arch_halt();
+	anx_wm_power_open();
 }
 
 /* ------------------------------------------------------------------ */
@@ -415,7 +464,9 @@ void anx_wm_hotkeys_init(void)
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_TAB,      hk_switcher,           NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_ENTER,    hk_shell,              NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_SPACE,    hk_search,             NULL);
-	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_W,        hk_workflow_designer,  NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_W,        hk_close,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_W,     hk_workflow_designer,  NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_T,        hk_tile_toggle,        NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_O,        hk_object_viewer,      NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_C,        hk_copy,               NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_V,        hk_paste,              NULL);
@@ -424,20 +475,31 @@ void anx_wm_hotkeys_init(void)
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_LBRACKET, hk_tile_left,          NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,              ANX_KEY_RBRACKET, hk_tile_right,         NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_F,    hk_float,              NULL);
-	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_H,    hk_halt,               NULL);
+	anx_wm_hotkey_register(ANX_MOD_META,                 ANX_KEY_ESC,  hk_power,              NULL);
+	anx_wm_hotkey_register(ANX_MOD_CTRL | ANX_MOD_ALT,   ANX_KEY_DELETE, hk_power,            NULL);
 	anx_wm_hotkey_register(ANX_MOD_META,                  ANX_KEY_M,    hk_minimize,           NULL);
 
-	/* Keyboard-driven window move (Meta+Arrow) */
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_LEFT,  hk_win_move, NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_RIGHT, hk_win_move, NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_UP,    hk_win_move, NULL);
-	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_DOWN,  hk_win_move, NULL);
+	/* Focus follows the arrows or HJKL (Meta) */
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_LEFT,  hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_RIGHT, hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_UP,    hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_DOWN,  hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_H,     hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_L,     hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_J,     hk_focus_dir, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META, ANX_KEY_K,     hk_focus_dir, NULL);
 
-	/* Keyboard-driven window resize (Meta+Shift+Arrow) */
-	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_LEFT,  hk_win_resize, NULL);
-	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_RIGHT, hk_win_resize, NULL);
-	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_UP,    hk_win_resize, NULL);
-	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_DOWN,  hk_win_resize, NULL);
+	/* Move the window (Meta+Shift) */
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_LEFT,  hk_win_move, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_RIGHT, hk_win_move, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_UP,    hk_win_move, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_DOWN,  hk_win_move, NULL);
+
+	/* Resize the window (Meta+Ctrl) */
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_LEFT,  hk_win_resize, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_RIGHT, hk_win_resize, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_UP,    hk_win_resize, NULL);
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_DOWN,  hk_win_resize, NULL);
 
 	kprintf("[wm] hotkeys registered (%u bindings)\n", g_hotkey_count);
 }

@@ -598,6 +598,16 @@ void anx_wm_switcher_key_event(struct anx_key_event *ev)
 {
 	uint32_t key = ev->keycode;
 
+	/* Vim keys are the same axes as the arrows: H and L move across apps,
+	 * J and K move through that app's instances. */
+	switch (key) {
+	case ANX_KEY_H: key = ANX_KEY_LEFT;  break;
+	case ANX_KEY_L: key = ANX_KEY_RIGHT; break;
+	case ANX_KEY_J: key = ANX_KEY_DOWN;  break;
+	case ANX_KEY_K: key = ANX_KEY_UP;    break;
+	default: break;
+	}
+
 	switch (g_sw.state) {
 	case SW_APPS:
 		if (key == ANX_KEY_RIGHT || key == ANX_KEY_TAB) {

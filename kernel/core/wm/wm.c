@@ -864,6 +864,61 @@ int anx_wm_window_float(struct anx_surface *surf)
 /* Send window to workspace                                           */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Focus the nearest window in one direction on the active workspace.
+ *
+ * Distance is measured between window centres, counting movement along the
+ * requested axis first, so a window slightly off to the side does not beat
+ * one directly ahead. Minimized windows are skipped.
+ */
+int anx_wm_window_focus_dir(int32_t dx, int32_t dy)
+{
+	struct anx_wm_workspace *ws = active_ws();
+	struct anx_surface *cur = NULL, *best = NULL;
+	uint64_t best_score = 0;
+	int32_t cx, cy;
+	uint32_t i;
+
+	if (!ws)
+		return ANX_ENOENT;
+	anx_iface_surface_lookup(ws->focused, &cur);
+	if (!cur)
+		return ANX_ENOENT;
+
+	cx = cur->x + (int32_t)cur->width / 2;
+	cy = cur->y + (int32_t)cur->height / 2;
+
+	for (i = 0; i < ws->surf_count; i++) {
+		struct anx_surface *s = NULL;
+		int32_t sx, sy, along, across;
+		uint64_t score;
+
+		anx_iface_surface_lookup(ws->surfs[i], &s);
+		if (!s || s == cur || s->state == ANX_SURF_MINIMIZED)
+			continue;
+
+		sx = s->x + (int32_t)s->width / 2;
+		sy = s->y + (int32_t)s->height / 2;
+		along  = dx ? (sx - cx) * dx : (sy - cy) * dy;
+		across = dx ? (sy - cy) : (sx - cx);
+		if (along <= 0)
+			continue;	/* not in the requested direction */
+		if (across < 0)
+			across = -across;
+
+		score = (uint64_t)along + (uint64_t)across * 4u;
+		if (!best || score < best_score) {
+			best = s;
+			best_score = score;
+		}
+	}
+
+	if (!best)
+		return ANX_ENOENT;
+	anx_wm_window_focus(best);
+	return ANX_OK;
+}
+
 int anx_wm_window_send_to_workspace(struct anx_surface *surf, uint32_t ws_id)
 {
 	struct anx_wm_workspace *src, *dst;
@@ -963,6 +1018,14 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 	bool right_down = (buttons & 2) != 0;
 
 	cursor_erase();
+
+	/* Power dialog: modal, takes every event while open */
+	if (anx_wm_power_active()) {
+		if (anx_wm_power_pointer(x, y, buttons, move_only)) {
+			cursor_draw(x, y);
+			return;
+		}
+	}
 
 	/* Help overlay: any click dismisses it */
 	if (anx_wm_help_active() && !move_only) {
@@ -1104,8 +1167,9 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 
 			/* Power button: rightmost 24px of menubar → halt */
 			if (x >= (int32_t)g_menubar->width - 24) {
-				kprintf("[wm] power button clicked — halting\n");
-				arch_halt();
+				anx_wm_power_open();
+				cursor_draw(x, y);
+				return;
 			}
 		}
 		cursor_draw(x, y);
@@ -1227,7 +1291,8 @@ void anx_wm_run(void)
 	kprintf("[wm]   Meta+W         workflow designer\n");
 	kprintf("[wm]   Meta+O         object viewer\n");
 	kprintf("[wm]   Meta+M         minimize window\n");
-	kprintf("[wm]   Meta+Shift+H   halt system\n");
+	kprintf("[wm]   Meta+Esc       power: restart or halt\n");
+	kprintf("[wm]   Ctrl+Alt+Del   power: restart or halt\n");
 
 	/* Open agent surface as primary boot interface */
 	anx_wm_agent_open();
@@ -1239,6 +1304,11 @@ void anx_wm_run(void)
 		if (anx_iface_event_poll_wm(&ev) == ANX_OK) {
 			switch (ev.type) {
 			case ANX_EVENT_KEY_DOWN:
+				/* The power dialog is modal while it is open. */
+				if (anx_wm_power_active()) {
+					anx_wm_power_key(ev.data.key.keycode);
+					break;
+				}
 				/* F1 toggles the help overlay; Esc closes it. */
 				if (ev.data.key.keycode == ANX_KEY_F1)
 					anx_wm_help_toggle();
