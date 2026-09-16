@@ -22,6 +22,32 @@
 
 /* Probe PCI bus, download firmware, boot MCU, init DMA rings.
  * Returns ANX_OK if the device was found and firmware started. */
+/* ── register access ─────────────────────────────────────────────────────
+ *
+ * bar_rd/bar_wr take a raw BAR0 offset. rr/wr take a CHIP address and
+ * translate it, which is what a register constant from the datasheet or from
+ * Linux is. Most of the chip's register space has no fixed slot in the 2 MiB
+ * BAR and is unreachable without that translation.
+ */
+uint32_t anx_mt7925_bar_rd(uint32_t bar_offset);
+void     anx_mt7925_bar_wr(uint32_t bar_offset, uint32_t val);
+
+uint32_t anx_mt7925_reg_addr(uint32_t chip_addr);
+uint32_t anx_mt7925_rr(uint32_t chip_addr);
+void     anx_mt7925_wr(uint32_t chip_addr, uint32_t val);
+
+/* Remap window, from Linux v6.12 mt76 mt7925/regs.h lines 70-80. */
+#define MT_HIF_REMAP_L1         0x155024u
+#define MT_HIF_REMAP_L1_MASK    0xFFFF0000u
+#define MT_HIF_REMAP_BASE_L1    0x130000u
+#define MT_HIF_REMAP_L2         0x0120u
+#define MT_HIF_REMAP_BASE_L2    0x18500000u
+
+/* Real chip identity, mt792x_regs.h lines 394-395. Neither has a fixed slot;
+ * both are reached through the L1 remap window. */
+#define MT_HW_CHIPID            0x70010200u
+#define MT_HW_REV               0x70010204u
+
 int anx_mt7925_init(void);
 
 /* True if the driver is active and MCU is running. */
