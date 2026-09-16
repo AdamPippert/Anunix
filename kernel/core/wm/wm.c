@@ -28,6 +28,7 @@
 #include <anx/e1000.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
+#include <anx/xhci.h>
 #include <anx/net.h>
 #include <anx/browser_cell.h>
 
@@ -1298,6 +1299,9 @@ void anx_wm_run(void)
 					focused->on_event(focused, &sev);
 			}
 		}
+
+		/* Poll USB input (the driver has no interrupts) */
+		anx_xhci_poll();
 
 		/* Poll network stack — keeps HTTP/SSH/TCP alive in desktop mode */
 		anx_e1000_poll();

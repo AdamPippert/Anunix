@@ -472,7 +472,7 @@ TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 DRIVER_C_ALL := $(shell find $(DRIVER_DIR) -name '*.c' \
 		  ! -path '*/pci/*' ! -path '*/virtio/*' ! -path '*/net/*' \
 		  ! -path '*/acpi/*' ! -path '*/accel/*' ! -path '*/storage/*' \
-		  ! -path '*/audio/*' \
+		  ! -path '*/audio/*' ! -path '*/usb/*' \
 		  ! -name 'gui.c' ! -name 'splash_img.S' \
 		  ! -name 'driver_table.c' \
 		  2>/dev/null)
@@ -482,6 +482,7 @@ DRIVER_C_ALL += $(DRIVER_DIR)/storage/blk.c
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
                tests/harness/mock_wifi.c \
+               tests/harness/mock_usb.c \
                tests/test_state_object.c \
                tests/test_cell_lifecycle.c \
                tests/test_cell_runtime.c \
@@ -541,7 +542,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_regime_detector.c \
                tests/test_sched_cognitive_envelope.c \
                tests/test_cap_measured_null_promotion.c \
-               tests/test_md_raid.c
+               tests/test_md_raid.c \
+               tests/test_hid_boot.c
 TEST_BIN    := build/test/anunix_test
 
 test:
