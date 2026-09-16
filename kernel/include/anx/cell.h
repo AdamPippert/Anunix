@@ -152,6 +152,8 @@ struct anx_routing_policy {
 	enum anx_routing_strategy strategy;
 	enum anx_decomp_mode decomposition;
 	anx_oid_t profile_oid; /* optional privately validated finite routing profile */
+	uint64_t catalog_id, catalog_epoch; /* optional owner-bound catalog; takes precedence over profile_oid */
+	uint32_t catalog_index; /* untrusted categorical selector; rejection uses incumbent weights */
 };
 
 /* --- Validation policy (RFC-0003 Section 12) --- */
