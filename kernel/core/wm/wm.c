@@ -303,9 +303,67 @@ static void cursor_erase(void)
  * content back over whatever was just drawn, so invalidating means "forget
  * the saved pixels", not "erase".
  */
+#ifndef INT32_MIN
+#define INT32_MIN (-2147483647 - 1)
+#endif
+
+void anx_wm_cursor_invalidate_rect(int32_t rx, int32_t ry,
+				   uint32_t rw, uint32_t rh)
+{
+	const struct anx_fb_info *fb;
+	const uint8_t (*shape)[CURSOR_W];
+	int32_t rx2 = rx + (int32_t)rw;
+	int32_t ry2 = ry + (int32_t)rh;
+	uint32_t r, c;
+
+	if (!g_cur_on)
+		return;
+
+	/*
+	 * No overlap: the repaint did not touch the sprite, so the saved
+	 * pixels are still valid and nothing needs to happen. Invalidating
+	 * anyway is what left a trail -- the next move skipped the erase and
+	 * the old sprite stayed on the desktop.
+	 */
+	if (g_cur_x >= rx2 || g_cur_x + (int32_t)CURSOR_W <= rx ||
+	    g_cur_y >= ry2 || g_cur_y + (int32_t)CURSOR_H <= ry)
+		return;
+
+	/*
+	 * Partial overlap: pixels inside the repainted rect are already new
+	 * content and must not be restored; pixels outside it still show the
+	 * sprite and must be. Restore those now, then forget the save.
+	 */
+	fb = anx_fb_get_info();
+	if (fb && fb->available) {
+		shape = cursor_shapes[g_cursor_type];
+		for (r = 0; r < CURSOR_H; r++) {
+			int32_t py = g_cur_y + (int32_t)r;
+
+			if (py < 0 || (uint32_t)py >= fb->height)
+				continue;
+			for (c = 0; c < CURSOR_W; c++) {
+				int32_t px = g_cur_x + (int32_t)c;
+
+				if (px < 0 || (uint32_t)px >= fb->width)
+					continue;
+				if (shape[r][c] == 0)
+					continue;
+				if (px >= rx && px < rx2 && py >= ry && py < ry2)
+					continue;
+				anx_fb_row_ptr((uint32_t)py)[px] =
+					g_cur_saved[r][c];
+			}
+		}
+	}
+	g_cur_on = false;
+}
+
+/* Whole-screen form, for callers that repaint everything. */
 void anx_wm_cursor_invalidate(void)
 {
-	g_cur_on = false;
+	anx_wm_cursor_invalidate_rect(INT32_MIN / 2, INT32_MIN / 2,
+				      0xFFFFFFFFu, 0xFFFFFFFFu);
 }
 
 /* Repaint the sprite if a commit has painted over it. */

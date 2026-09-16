@@ -70,6 +70,20 @@
  */
 #define MT_CONN_ON_LPCTL                0x7c060010u   /* chip address */
 
+/*
+ * Wi-Fi subsystem reset and bring-up, Linux v6.12 mt76.
+ * mt7925_regs.h line 83; mt792x_regs.h lines 397-404 and 484-485.
+ */
+#define MT_WFSYS_SW_RST_B               0x7c000140u   /* chip address */
+#define WFSYS_SW_RST_B                  (1U << 0)
+#define WFSYS_SW_INIT_DONE              (1U << 4)
+#define MT_HW_EMI_CTL                   0x18011100u   /* chip address */
+#define MT_HW_EMI_CTL_SLPPROT_EN        (1U << 1)
+#define MT_PCIE_MAC_INT_ENABLE          0x10188u      /* BAR offset */
+#define MT_PCIE_MAC_PM                  0x10194u      /* BAR offset */
+#define MT_PCIE_MAC_PM_L0S_DIS          (1U << 8)
+#define MT_WFDMA0_HOST_INT_ENA          0xd4228u      /* BAR offset */
+
 /* Firmware power/ready bits, mt792x_regs.h lines 474-477. */
 #define MT_CONN_ON_MISC                 0x7c0600f0u   /* chip address */
 #define MT_TOP_MISC2_FW_PWR_ON          (1U << 0)

@@ -423,6 +423,51 @@ int anx_mt7925_init(void)
 			nic_rd(0xd000));
 	}
 
+	/*
+	 * Bring the Wi-Fi subsystem up, in the order mt7925_pci_probe() uses
+	 * (Linux v6.12 mt76 pci.c lines 390-400). Without the WFSYS reset the
+	 * subsystem stays unpowered -- CONN_ON_MISC reads 0, FW_PWR_ON clear --
+	 * so there is no ROM code running to answer the patch semaphore, and
+	 * "MCU not responding" is literally true.
+	 */
+	{
+		uint32_t v, i;
+
+		v = anx_mt7925_rr(MT_HW_EMI_CTL);
+		anx_mt7925_wr(MT_HW_EMI_CTL, v | MT_HW_EMI_CTL_SLPPROT_EN);
+
+		/* mt792x_wfsys_reset(): mt792x_dma.c lines 357-370. */
+		v = anx_mt7925_rr(MT_WFSYS_SW_RST_B);
+		anx_mt7925_wr(MT_WFSYS_SW_RST_B, v & ~WFSYS_SW_RST_B);
+		anx_delay_ms(50);
+		v = anx_mt7925_rr(MT_WFSYS_SW_RST_B);
+		anx_mt7925_wr(MT_WFSYS_SW_RST_B, v | WFSYS_SW_RST_B);
+
+		for (i = 0; i < 500; i++) {
+			v = anx_mt7925_rr(MT_WFSYS_SW_RST_B);
+			if (v & WFSYS_SW_INIT_DONE)
+				break;
+			anx_delay_ms(1);
+		}
+		kprintf("mt7925: wfsys reset %s after %u ms (reg=0x%08x)\n",
+			(v & WFSYS_SW_INIT_DONE) ? "done" : "TIMED OUT", i, v);
+		if (!(v & WFSYS_SW_INIT_DONE))
+			return ANX_ETIMEDOUT;
+
+		anx_mt7925_bar_wr(MT_WFDMA0_HOST_INT_ENA, 0);
+		anx_mt7925_bar_wr(MT_PCIE_MAC_INT_ENABLE, 0xff);
+
+		/* mt7925e_mcu_init(): ownership again, then disable L0s. */
+		if (mt7925_drv_own() != ANX_OK)
+			return ANX_EIO;
+		v = anx_mt7925_bar_rd(MT_PCIE_MAC_PM);
+		anx_mt7925_bar_wr(MT_PCIE_MAC_PM, v | MT_PCIE_MAC_PM_L0S_DIS);
+
+		kprintf("mt7925: after reset TOP_MISC=0x%08x CONN_ON_MISC=0x%08x\n",
+			anx_mt7925_rr(MT_TOP_MISC2),
+			anx_mt7925_rr(MT_CONN_ON_MISC));
+	}
+
 	/* Download firmware and boot MCU */
 	int ret = mt7925_fw_download(&g_dev);
 	if (ret) {

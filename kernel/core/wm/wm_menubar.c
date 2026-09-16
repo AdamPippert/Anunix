@@ -448,7 +448,9 @@ void anx_wm_menubar_refresh(void)
 	/* Commit the updated canvas to the framebuffer */
 	if (g_menubar->state == ANX_SURF_VISIBLE) {
 		anx_iface_surface_commit(g_menubar);
-		/* The bar just painted over wherever the cursor was. */
-		anx_wm_cursor_invalidate();
+		/* The bar repainted its own rectangle; only that matters. */
+		anx_wm_cursor_invalidate_rect(g_menubar->x, g_menubar->y,
+					      g_menubar->width,
+					      g_menubar->height);
 	}
 }

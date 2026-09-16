@@ -224,4 +224,8 @@ bool anx_wm_ctx_menu_pointer(int32_t x, int32_t y, uint32_t buttons,
  */
 void anx_wm_cursor_invalidate(void);
 
+/* Same, but only when [x, x+w) x [y, y+h) overlaps the cursor. */
+void anx_wm_cursor_invalidate_rect(int32_t x, int32_t y,
+				   uint32_t w, uint32_t h);
+
 #endif /* ANX_WM_H */
