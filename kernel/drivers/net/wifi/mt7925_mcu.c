@@ -85,27 +85,10 @@ struct mt7925_dma_desc {
 /* WM command TX ring (ring 20)                                        */
 /* ------------------------------------------------------------------ */
 
-#define WM_RING_SIZE    32
 #define WM_CMD_BUF     512   /* max command size */
 
-static struct mt7925_dma_desc *wm_ring;
-static uint8_t *wm_cmd_bufs;
-static uint32_t wm_cidx;
+/* The WM and event rings live in mt7925_fw.c; see mt7925_wm_push(). */
 static uint16_t wm_seq;
-
-/* MCU event ring state shared with fw.c (extern) */
-extern void *mcu_evt_ring_ptr(void);  /* defined in fw.c */
-
-static inline uint32_t mcu_rd(const struct mt7925_dev *dev, uint32_t reg)
-{
-	return *(volatile uint32_t *)((uint8_t *)dev->bar0 + reg);
-}
-
-static inline void mcu_wr(const struct mt7925_dev *dev,
-			   uint32_t reg, uint32_t val)
-{
-	*(volatile uint32_t *)((uint8_t *)dev->bar0 + reg) = val;
-}
 
 /* ------------------------------------------------------------------ */
 /* WM ring initialization                                              */
@@ -113,29 +96,13 @@ static inline void mcu_wr(const struct mt7925_dev *dev,
 
 int mt7925_mcu_init(struct mt7925_dev *dev)
 {
-	uintptr_t ring_pa = anx_page_alloc(0);
-	if (!ring_pa) return -1;
-
-	uint32_t buf_order = 0;
-	while ((1U << buf_order) * ANX_PAGE_SIZE <
-	       WM_RING_SIZE * WM_CMD_BUF)
-		buf_order++;
-	uintptr_t buf_pa = anx_page_alloc(buf_order);
-	if (!buf_pa) return -1;
-
-	anx_memset((void *)ring_pa, 0, ANX_PAGE_SIZE);
-	anx_memset((void *)buf_pa, 0, (size_t)(1U << buf_order) * ANX_PAGE_SIZE);
-
-	wm_ring     = (struct mt7925_dma_desc *)ring_pa;
-	wm_cmd_bufs = (uint8_t *)buf_pa;
-	wm_cidx     = 0;
-
-	mcu_wr(dev, MT_WFDMA0_TX_RING_CNT(MT_MCU_WM_TXRING), WM_RING_SIZE);
-	mcu_wr(dev, MT_WFDMA0_TX_RING_ADDR(MT_MCU_WM_TXRING),
-	       (uint32_t)ring_pa);
-	mcu_wr(dev, MT_WFDMA0_TX_RING_CIDX(MT_MCU_WM_TXRING), 0);
-
-	kprintf("mt7925: MCU WM ring @ 0x%x\n", (uint32_t)ring_pa);
+	/*
+	 * The WM ring and the event ring are set up by mt7925_fw_download()
+	 * and stay in use after the firmware starts. Re-programming ring 15
+	 * here would reset its indices under the device.
+	 */
+	(void)dev;
+	kprintf("mt7925: MCU uses the WM ring from firmware download\n");
 	return 0;
 }
 
@@ -147,10 +114,11 @@ static int mcu_send(struct mt7925_dev *dev, uint8_t ext_cid,
 		    const void *payload, uint16_t payload_len)
 {
 	uint32_t total = sizeof(struct mt7925_mcu_txd) + payload_len;
+
+	(void)dev;
 	if (total > WM_CMD_BUF) return -1;
 
-	uint32_t slot = wm_cidx % WM_RING_SIZE;
-	uint8_t *buf  = wm_cmd_bufs + slot * WM_CMD_BUF;
+	uint8_t buf[WM_CMD_BUF];
 
 	struct mt7925_mcu_txd *txd = (struct mt7925_mcu_txd *)buf;
 	anx_memset(txd, 0, sizeof(*txd));
@@ -166,17 +134,12 @@ static int mcu_send(struct mt7925_dev *dev, uint8_t ext_cid,
 	if (payload && payload_len)
 		anx_memcpy(buf + sizeof(*txd), payload, payload_len);
 
-	/* Write DMA descriptor */
-	wm_ring[slot].buf  = (uint32_t)(uintptr_t)buf;
-	wm_ring[slot].ctrl = (total & MT_DMA_CTRL_SD_LEN0_MASK)
-			   | MT_DMA_CTRL_FIRST_SEC0
-			   | MT_DMA_CTRL_LAST_SEC0;
-	wm_ring[slot].buf1 = 0;
-	wm_ring[slot].info = MT_DMA_INFO_PKT_TYPE_CMD;
-
-	wm_cidx++;
-	mcu_wr(dev, MT_WFDMA0_TX_RING_CIDX(MT_MCU_WM_TXRING),
-	       wm_cidx % WM_RING_SIZE);
+	/*
+	 * TODO(mt7925 stage 2): after boot the MT7925 takes UNI commands, not
+	 * this extended-command framing. Porting that is the next stage.
+	 */
+	if (mt7925_wm_push(buf, total) != ANX_OK)
+		return -1;
 
 	return (int)txd->seq_num;
 }
@@ -189,32 +152,8 @@ static int mcu_send(struct mt7925_dev *dev, uint8_t ext_cid,
  * Returns pointer into RX buffer (valid until next poll), or NULL. */
 static const uint8_t *mcu_poll_one(struct mt7925_dev *dev, uint32_t *out_len)
 {
-	/* We peek at ring 4 DMA index and our own cidx.
-	 * The ring structures were allocated in mt7925_fw.c — we access
-	 * them via the exported symbol below. */
-	extern struct mt7925_dma_desc *mcu_evt_ring;
-	extern uint8_t *mcu_evt_bufs;
-	extern uint32_t mcu_evt_cidx;
-	extern uint32_t mcu_evt_ring_count;
-
-	uint32_t didx = mcu_rd(dev,
-			       MT_WFDMA0_RX_RING_DIDX(MT_MCU_EVENT_RXRING));
-	uint32_t count = mcu_evt_ring_count;
-	uint32_t cidx  = mcu_evt_cidx % count;
-
-	if (cidx == didx) return NULL;
-
-	struct mt7925_dma_desc *desc = &mcu_evt_ring[cidx];
-	uint32_t len = desc->ctrl & MT_DMA_CTRL_SD_LEN0_MASK;
-	const uint8_t *buf = mcu_evt_bufs + cidx * 2048;
-
-	desc->ctrl = 2048 | MT_DMA_CTRL_DMA_DONE;
-	mcu_evt_cidx++;
-	mcu_wr(dev, MT_WFDMA0_RX_RING_CIDX(MT_MCU_EVENT_RXRING),
-	       mcu_evt_cidx % count);
-
-	if (out_len) *out_len = len;
-	return buf;
+	(void)dev;
+	return mt7925_evt_poll(out_len);
 }
 
 static int mcu_wait_for(struct mt7925_dev *dev,

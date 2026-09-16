@@ -49,6 +49,10 @@ struct mt7925_dev {
 
 /* Internal functions */
 int  mt7925_fw_download(struct mt7925_dev *dev);
+
+/* WM command ring and MCU event ring, owned by mt7925_fw.c. */
+int  mt7925_wm_push(const uint8_t *buf, uint32_t len);
+const uint8_t *mt7925_evt_poll(uint32_t *out_len);
 int  mt7925_mcu_init(struct mt7925_dev *dev);
 int  mt7925_data_rings_init(struct mt7925_dev *dev);
 int  mt7925_mcu_connect(struct mt7925_dev *dev,

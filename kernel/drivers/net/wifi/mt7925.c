@@ -143,7 +143,7 @@ static int data_rx_ring_init(void)
 	for (uint32_t i = 0; i < DATA_RX_RING_SIZE; i++) {
 		data_rx_ring[i].buf  = (uint32_t)(uintptr_t)(data_rx_bufs +
 							      i * DATA_RX_BUF_SIZE);
-		data_rx_ring[i].ctrl = DATA_RX_BUF_SIZE | MT_DMA_CTRL_DMA_DONE;
+		data_rx_ring[i].ctrl = MT_DMA_CTRL_LEN0(DATA_RX_BUF_SIZE);
 		data_rx_ring[i].buf1 = 0;
 		data_rx_ring[i].info = 0;
 	}
@@ -189,9 +189,7 @@ int mt7925_tx_frame(struct mt7925_dev *dev, const void *frame, uint16_t len)
 
 	anx_memcpy(buf, frame, len);
 	data_tx_ring[slot].buf  = (uint32_t)(uintptr_t)buf;
-	data_tx_ring[slot].ctrl = (len & MT_DMA_CTRL_SD_LEN0_MASK)
-				| MT_DMA_CTRL_FIRST_SEC0
-				| MT_DMA_CTRL_LAST_SEC0;
+	data_tx_ring[slot].ctrl = MT_DMA_CTRL_LEN0(len) | MT_DMA_CTRL_LAST_SEC0;
 	data_tx_ring[slot].buf1 = 0;
 	data_tx_ring[slot].info = 0;
 
@@ -226,10 +224,10 @@ const uint8_t *mt7925_data_rx_one(struct mt7925_dev *dev, uint32_t *out_len)
 	if (cidx == didx) return NULL;
 
 	desc = &data_rx_ring[cidx];
-	len  = desc->ctrl & MT_DMA_CTRL_SD_LEN0_MASK;
+	len  = MT_DMA_CTRL_GET_LEN0(desc->ctrl);
 	buf  = data_rx_bufs + cidx * DATA_RX_BUF_SIZE;
 
-	desc->ctrl = DATA_RX_BUF_SIZE | MT_DMA_CTRL_DMA_DONE;
+	desc->ctrl = MT_DMA_CTRL_LEN0(DATA_RX_BUF_SIZE);
 	rx_cidx++;
 	nic_wr(MT_WFDMA0_RX_RING_CIDX(MT_DATA_RXRING),
 	       rx_cidx % DATA_RX_RING_SIZE);
@@ -250,14 +248,14 @@ void mt7925_rx_poll(struct mt7925_dev *dev)
 
 	while (cidx != didx) {
 		struct mt7925_dma_desc *desc = &data_rx_ring[cidx];
-		uint32_t len = desc->ctrl & MT_DMA_CTRL_SD_LEN0_MASK;
+		uint32_t len = MT_DMA_CTRL_GET_LEN0(desc->ctrl);
 		const uint8_t *buf = data_rx_bufs + cidx * DATA_RX_BUF_SIZE;
 
 		if (len >= ANX_ETH_HLEN)
 			anx_eth_recv(buf, len);
 
 		/* Refill descriptor */
-		desc->ctrl = DATA_RX_BUF_SIZE | MT_DMA_CTRL_DMA_DONE;
+		desc->ctrl = MT_DMA_CTRL_LEN0(DATA_RX_BUF_SIZE);
 		rx_cidx++;
 		cidx = rx_cidx % DATA_RX_RING_SIZE;
 
