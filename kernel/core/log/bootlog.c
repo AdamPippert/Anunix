@@ -224,6 +224,9 @@ int anx_bootlog_disk_init(void)
 
 void anx_bootlog_shutdown(void)
 {
+	/* The ring first: it is the copy that does not need the store. */
+	anx_bootlog_ring_flush();
+
 	static const anx_oid_t idx_oid = {
 		ANX_BOOTLOG_IDX_OID_HI, ANX_BOOTLOG_IDX_OID_LO
 	};

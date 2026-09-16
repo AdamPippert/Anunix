@@ -84,6 +84,7 @@ int test_i2c_hid(void);
 int test_research_integration(void);
 int test_part(void);
 int test_cred_class(void);
+int test_bootlog_ring(void);
 int test_blk_probe(void);
 int test_blk_select(void);
 
@@ -154,6 +155,7 @@ static struct test_case tests[] = {
 	{ "research_integration",	test_research_integration },
 	{ "part",		test_part },
 	{ "cred_class",		test_cred_class },
+	{ "bootlog_ring",	test_bootlog_ring },
 	{ "blk_probe",		test_blk_probe },
 	{ "blk_select",		test_blk_select },
 };

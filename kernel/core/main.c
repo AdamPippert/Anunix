@@ -352,6 +352,14 @@ void kernel_main(void)
 			kprintf("disk: object store mounted\n");
 			anx_bootlog_disk_init();
 		}
+
+		/*
+		 * The ring does not depend on the store having mounted, so it
+		 * is claimed either way. This is the copy that survives when
+		 * the rest of the chain does not.
+		 */
+		if (anx_bootlog_ring_init() == ANX_OK)
+			anx_bootlog_ring_flush();
 	}
 
 	/* Load previously persisted PAL state before hardware priming so that
@@ -488,6 +496,13 @@ void kernel_main(void)
 			}
 		}
 	}
+
+	/*
+	 * Second flush: everything from the store mounting through driver
+	 * bring-up and networking is now on disk even if the machine hangs
+	 * or is power-cycled before an orderly shutdown.
+	 */
+	anx_bootlog_ring_flush();
 
 	/* Start HTTP API server (after network init) */
 	anx_httpd_init(8080);
