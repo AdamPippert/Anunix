@@ -99,7 +99,7 @@ static uint64_t split_1gib(uint64_t entry)
  * page if one covers it. RAM in the same gigabyte outside the requested
  * range keeps its original attributes.
  */
-static bool map_uncached(uint64_t base, uint64_t size)
+static bool map_cache_attr(uint64_t base, uint64_t size, uint64_t attr)
 {
 	uint64_t *pml4 = (uint64_t *)(read_cr3() & ADDR_MASK);
 	uint64_t *pdpt, *pd;
@@ -137,7 +137,7 @@ static bool map_uncached(uint64_t base, uint64_t size)
 		pd = (uint64_t *)(pdpt[i3] & ADDR_MASK);
 
 		pd[i2] = (addr & ~(MIB2 - 1)) | PTE_PRESENT | PTE_RW | PTE_PS |
-			 PTE_PCD | PTE_PWT;
+			 attr;
 	}
 	return true;
 }
@@ -180,9 +180,107 @@ void *anx_mmio_map(uint64_t phys, uint64_t size)
 	if (phys > 0xFFFFFFFFFFFFFFFFULL - (size - 1))
 		return NULL;
 
-	if (!map_uncached(phys, size))
+	if (!map_cache_attr(phys, size, PTE_PCD | PTE_PWT))
 		return NULL;
 
+	flush_tlb();
+	return (void *)(uintptr_t)phys;
+}
+
+/* ------------------------------------------------------------------ */
+/* Write-combining for framebuffers                                     */
+/* ------------------------------------------------------------------ */
+
+/*
+ * IA32_PAT maps the three cache bits in a page-table entry (PAT, PCD, PWT)
+ * to one of eight memory types. The power-on table has no write-combining
+ * entry at all, and Anunix never changed it, so the framebuffer took
+ * whatever the firmware's MTRRs said -- uncached for a PCIe BAR -- and
+ * every pixel was its own bus write. Boot text visibly scanned down the
+ * screen because of it.
+ *
+ * Linux reprograms slot 1 (PWT set, PCD and PAT clear) to write-combining
+ * on every x86 CPU it supports (arch/x86/mm/pat/memtype.c, v6.12). This
+ * does the same, and changes nothing else: the firmware's other seven
+ * slots are kept as found, so no existing mapping changes meaning.
+ * Uncached device memory uses PCD|PWT, slot 3, which is untouched.
+ */
+#define MSR_IA32_PAT		0x277
+#define PAT_TYPE_WC		0x01	/* MTRR_TYPE_WRCOMB, uapi/asm/mtrr.h */
+#define CR0_NW			(1ULL << 29)
+#define CR0_CD			(1ULL << 30)
+
+static bool g_pat_wc;
+
+static uint64_t rdmsr(uint32_t msr)
+{
+	uint32_t lo, hi;
+
+	__asm__ volatile("rdmsr" : "=a"(lo), "=d"(hi) : "c"(msr) : "memory");
+	return ((uint64_t)hi << 32) | lo;
+}
+
+static void wrmsr(uint32_t msr, uint64_t val)
+{
+	__asm__ volatile("wrmsr" : : "c"(msr), "a"((uint32_t)val),
+			 "d"((uint32_t)(val >> 32)) : "memory");
+}
+
+static uint64_t read_cr0(void)
+{
+	uint64_t v;
+
+	__asm__ volatile("mov %%cr0, %0" : "=r"(v));
+	return v;
+}
+
+static void write_cr0(uint64_t v)
+{
+	__asm__ volatile("mov %0, %%cr0" : : "r"(v) : "memory");
+}
+
+bool anx_pat_enable_wc(void)
+{
+	uint64_t old, want, cr0;
+
+	if (g_pat_wc)
+		return true;
+
+	old = rdmsr(MSR_IA32_PAT);
+	if (old == 0) {
+		kprintf("pat: firmware left PAT disabled; no write-combining\n");
+		return false;
+	}
+
+	want = (old & ~(0xffULL << 8)) | ((uint64_t)PAT_TYPE_WC << 8);
+	if (want != old) {
+		/*
+		 * The SDM asks for caches to be disabled around a change to
+		 * memory types, with the TLB flushed on both sides.
+		 */
+		cr0 = read_cr0();
+		write_cr0((cr0 | CR0_CD) & ~CR0_NW);
+		flush_tlb();
+		wrmsr(MSR_IA32_PAT, want);
+		flush_tlb();
+		write_cr0(cr0);
+	}
+
+	g_pat_wc = rdmsr(MSR_IA32_PAT) == want;
+	kprintf("pat: 0x%016llx -> 0x%016llx, slot 1 %s\n",
+		(unsigned long long)old, (unsigned long long)want,
+		g_pat_wc ? "is write-combining" : "did not take");
+	return g_pat_wc;
+}
+
+void *anx_mmio_map_wc(uint64_t phys, uint64_t size)
+{
+	if (size == 0 || phys > 0xFFFFFFFFFFFFFFFFULL - (size - 1))
+		return NULL;
+	if (!g_pat_wc)
+		return (void *)(uintptr_t)phys;	/* keep the existing map */
+	if (!map_cache_attr(phys, size, PTE_PWT))
+		return NULL;
 	flush_tlb();
 	return (void *)(uintptr_t)phys;
 }

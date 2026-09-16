@@ -40,4 +40,17 @@ void *anx_mmio_map(uint64_t phys, uint64_t size);
  */
 uint64_t anx_mmio_pte(const void *va);
 
+/*
+ * Program the CPU so that one page-table cache combination means
+ * write-combining. Returns false when the CPU or firmware does not allow it.
+ */
+bool anx_pat_enable_wc(void);
+
+/*
+ * Map [phys, phys + size) as write-combining device memory, for a linear
+ * framebuffer: writes are batched rather than sent one at a time. Falls
+ * back to the existing mapping when write-combining is unavailable.
+ */
+void *anx_mmio_map_wc(uint64_t phys, uint64_t size);
+
 #endif /* ANX_MMIO_H */

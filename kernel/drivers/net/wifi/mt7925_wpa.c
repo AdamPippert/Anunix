@@ -16,6 +16,7 @@
 #include <anx/string.h>
 #include <anx/crypto.h>
 #include <anx/kprintf.h>
+#include <anx/delay.h>
 #include <anx/net.h>
 #include "mt7925_drv.h"
 #include "mt7925_reg.h"
@@ -354,26 +355,26 @@ static const uint8_t *poll_eapol(struct mt7925_dev *dev, uint32_t *out_len)
 }
 
 /*
- * Spin-wait for an EAPOL frame with a timeout expressed as a loop count.
- * On x86 "pause" hints the CPU that this is a spin-wait (~100 ns/iter).
- * On ARM64 "wfe" enters a low-power wait state until an event wakes the core.
+ * Wait up to timeout_ms for an EAPOL frame.
+ *
+ * This used to count 50 million spin iterations and call it five seconds,
+ * on the assumption that an iteration costs about 100 ns. Every iteration
+ * also reads a ring index from the chip, and once the BAR was mapped as real
+ * device memory each of those reads became a genuine round trip -- so the
+ * "five second" wait ran for minutes and looked like a hang. Bound it by
+ * elapsed time instead.
  */
 static const uint8_t *wait_eapol(struct mt7925_dev *dev, uint32_t *out_len,
-				  uint32_t max_iters)
+				  uint32_t timeout_ms)
 {
 	uint32_t i;
 
-	for (i = 0; i < max_iters; i++) {
+	for (i = 0; i < timeout_ms; i++) {
 		const uint8_t *f = poll_eapol(dev, out_len);
 
-		if (f) return f;
-#if defined(__x86_64__)
-		__asm__ volatile("pause" ::: "memory");
-#elif defined(__aarch64__)
-		__asm__ volatile("wfe" ::: "memory");
-#else
-		__asm__ volatile("" ::: "memory");
-#endif
+		if (f)
+			return f;
+		anx_delay_ms(1);
 	}
 	return NULL;
 }
@@ -402,8 +403,7 @@ int mt7925_wpa_connect(struct mt7925_dev *dev,
 
 	/* ---- 3. Wait for EAPOL Message 1 from AP (~5s)  ----------- */
 	kprintf("mt7925: waiting for EAPOL M1...\n");
-	/* 50 million pause iterations ≈ 5 seconds */
-	frame = wait_eapol(dev, &flen, 50000000);
+	frame = wait_eapol(dev, &flen, 5000);
 	if (!frame) {
 		kprintf("mt7925: EAPOL M1 timeout\n");
 		goto out;
@@ -439,7 +439,7 @@ int mt7925_wpa_connect(struct mt7925_dev *dev,
 	kprintf("mt7925: sent EAPOL M2\n");
 
 	/* ---- 6. Wait for EAPOL Message 3 (~5s) -------------------- */
-	frame = wait_eapol(dev, &flen, 50000000);
+	frame = wait_eapol(dev, &flen, 5000);
 	if (!frame) {
 		kprintf("mt7925: EAPOL M3 timeout\n");
 		goto out;

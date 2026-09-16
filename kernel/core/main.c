@@ -180,6 +180,9 @@ void kernel_main(void)
 	arch_init();
 	PERF_END();
 
+	/* Batch pixel writes from here on; boot text was one bus write per pixel. */
+	anx_fb_enable_wc();
+
 	/* Boot splash (after arch_init so page allocator is ready for JPEG) */
 	PERF_BEGIN("splash");
 	anx_splash();
