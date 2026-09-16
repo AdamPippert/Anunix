@@ -29,6 +29,7 @@
 #include <anx/httpd.h>
 #include <anx/sshd.h>
 #include <anx/xhci.h>
+#include <anx/i2c_input.h>
 #include <anx/net.h>
 #include <anx/browser_cell.h>
 
@@ -1300,8 +1301,9 @@ void anx_wm_run(void)
 			}
 		}
 
-		/* Poll USB input (the driver has no interrupts) */
+		/* Poll USB and I2C input (both drivers have no interrupts) */
 		anx_xhci_poll();
+		anx_i2c_input_poll();
 
 		/* Poll network stack — keeps HTTP/SSH/TCP alive in desktop mode */
 		anx_e1000_poll();

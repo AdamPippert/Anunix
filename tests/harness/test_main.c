@@ -79,6 +79,8 @@ int test_sched_cognitive_envelope(void);
 int test_cap_measured_null_promotion(void);
 int test_md_raid(void);
 int test_hid_boot(void);
+int test_aml_res(void);
+int test_i2c_hid(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -142,6 +144,8 @@ static struct test_case tests[] = {
 	{ "cap_measured_null_promotion", test_cap_measured_null_promotion },
 	{ "md_raid",                    test_md_raid },
 	{ "hid_boot",		test_hid_boot },
+	{ "aml_res",		test_aml_res },
+	{ "i2c_hid",		test_i2c_hid },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

@@ -1,9 +1,9 @@
 /*
  * acpi.c — ACPI table discovery and MADT parsing.
  *
- * Scans for the RSDP in low memory (BIOS) or reads it from the
- * multiboot info. Traverses RSDT/XSDT to find tables. Parses MADT
- * for CPU count and IOAPIC information.
+ * Takes the RSDP from the EFI loader's boot info, or scans the BIOS
+ * area for it. Traverses RSDT/XSDT to find tables, and finds the DSDT
+ * through the FADT. Parses MADT for CPU count and IOAPIC information.
  */
 
 #include <anx/types.h>
@@ -72,9 +72,19 @@ struct madt_io_apic {
 	uint32_t gsi_base;
 } __attribute__((packed));
 
+/* EFI loader boot info block (kernel/boot/efi/efi_stub.c) */
+#define BOOT_INFO_ADDR		0x1000
+#define BOOT_INFO_MAGIC		0x414E5846	/* "ANXF" */
+#define BOOT_INFO_RSDP		0x1028
+
+/* FADT fields holding the DSDT address */
+#define FADT_DSDT_OFF		40
+#define FADT_X_DSDT_OFF		140
+
 /* --- State --- */
 
 static struct anx_acpi_info acpi_info;
+static const struct acpi_rsdp *g_rsdp;
 
 /* --- RSDP discovery --- */
 
@@ -97,6 +107,33 @@ static const struct acpi_rsdp *find_rsdp(void)
 	 */
 	const uint8_t *p;
 	const uint8_t *end;
+
+#if defined(__x86_64__)
+	/*
+	 * The EFI loader copies the RSDP address from the UEFI configuration
+	 * table into its boot info block (kernel/boot/efi/efi_stub.c). UEFI
+	 * firmware does not place the RSDP in the BIOS area, so on that path
+	 * this is the only way to find it. The address must stay inside the
+	 * low 4 GiB the loader always maps.
+	 */
+	{
+		uint32_t magic;
+		uint64_t addr;
+
+		anx_memcpy(&magic, (const void *)(uintptr_t)BOOT_INFO_ADDR,
+			   sizeof(magic));
+		anx_memcpy(&addr, (const void *)(uintptr_t)BOOT_INFO_RSDP,
+			   sizeof(addr));
+		if (magic == BOOT_INFO_MAGIC && addr != 0 && addr < (1ULL << 32)) {
+			const struct acpi_rsdp *rsdp =
+				(const struct acpi_rsdp *)(uintptr_t)addr;
+
+			if (anx_strncmp(rsdp->signature, "RSD PTR ", 8) == 0 &&
+			    rsdp_checksum_valid(rsdp))
+				return rsdp;
+		}
+	}
+#endif
 
 	/* BIOS ROM area */
 	p = (const uint8_t *)0xE0000ULL;
@@ -131,59 +168,76 @@ static bool sdt_checksum_valid(const struct acpi_sdt_header *hdr)
 	return sum == 0;
 }
 
+/* The index-th table with signature sig; SSDTs share one signature. */
 static const struct acpi_sdt_header *find_table(const struct acpi_rsdp *rsdp,
-						 const char *sig)
+						 const char *sig,
+						 uint32_t index)
 {
-	uint32_t entries;
-	uint32_t i;
+	const struct acpi_sdt_header *root;
+	bool wide = rsdp->revision >= 2 && rsdp->xsdt_addr != 0;
+	uint32_t entries, i, seen = 0;
 
-	if (rsdp->revision >= 2 && rsdp->xsdt_addr != 0) {
-		/* XSDT: 64-bit pointers */
-		const struct acpi_sdt_header *xsdt;
-		const uint64_t *ptrs;
+	/* XSDT holds 64-bit pointers, RSDT 32-bit ones. */
+	root = (const struct acpi_sdt_header *)(uintptr_t)
+		(wide ? rsdp->xsdt_addr : (uint64_t)rsdp->rsdt_addr);
+	if (!sdt_checksum_valid(root))
+		return NULL;
+	entries = (root->length - sizeof(*root)) / (wide ? 8u : 4u);
 
-		xsdt = (const struct acpi_sdt_header *)
-			(uintptr_t)rsdp->xsdt_addr;
-		if (!sdt_checksum_valid(xsdt))
-			return NULL;
+	for (i = 0; i < entries; i++) {
+		const uint8_t *slot = (const uint8_t *)root + sizeof(*root) +
+				      i * (wide ? 8u : 4u);
+		uint64_t addr = 0;
+		const struct acpi_sdt_header *hdr;
 
-		entries = (xsdt->length - sizeof(*xsdt)) / 8;
-		ptrs = (const uint64_t *)((const uint8_t *)xsdt +
-					  sizeof(*xsdt));
-
-		for (i = 0; i < entries; i++) {
-			const struct acpi_sdt_header *hdr;
-
-			hdr = (const struct acpi_sdt_header *)
-				(uintptr_t)ptrs[i];
-			if (anx_strncmp(hdr->signature, sig, 4) == 0)
-				return hdr;
-		}
-	} else {
-		/* RSDT: 32-bit pointers */
-		const struct acpi_sdt_header *rsdt;
-		const uint32_t *ptrs;
-
-		rsdt = (const struct acpi_sdt_header *)
-			(uintptr_t)rsdp->rsdt_addr;
-		if (!sdt_checksum_valid(rsdt))
-			return NULL;
-
-		entries = (rsdt->length - sizeof(*rsdt)) / 4;
-		ptrs = (const uint32_t *)((const uint8_t *)rsdt +
-					  sizeof(*rsdt));
-
-		for (i = 0; i < entries; i++) {
-			const struct acpi_sdt_header *hdr;
-
-			hdr = (const struct acpi_sdt_header *)
-				(uintptr_t)ptrs[i];
-			if (anx_strncmp(hdr->signature, sig, 4) == 0)
-				return hdr;
-		}
+		anx_memcpy(&addr, slot, wide ? 8u : 4u);
+		hdr = (const struct acpi_sdt_header *)(uintptr_t)addr;
+		if (anx_strncmp(hdr->signature, sig, 4) != 0)
+			continue;
+		if (seen++ == index)
+			return hdr;
 	}
 
 	return NULL;
+}
+
+const uint8_t *anx_acpi_find_table(const char *sig, uint32_t index,
+				   uint32_t *length)
+{
+	const struct acpi_sdt_header *hdr;
+
+	if (!g_rsdp || !sig)
+		return NULL;
+
+	if (anx_strncmp(sig, "DSDT", 4) == 0) {
+		/* The DSDT is not listed in the XSDT; the FADT points to it. */
+		const struct acpi_sdt_header *fadt = find_table(g_rsdp, "FACP", 0);
+		uint64_t addr = 0;
+
+		if (!fadt || index != 0 || !sdt_checksum_valid(fadt))
+			return NULL;
+		if (fadt->length >= FADT_X_DSDT_OFF + 8)
+			anx_memcpy(&addr, (const uint8_t *)fadt + FADT_X_DSDT_OFF, 8);
+		if (addr == 0 && fadt->length >= FADT_DSDT_OFF + 4) {
+			uint32_t addr32;
+
+			anx_memcpy(&addr32, (const uint8_t *)fadt + FADT_DSDT_OFF, 4);
+			addr = addr32;
+		}
+		if (addr == 0)
+			return NULL;
+		hdr = (const struct acpi_sdt_header *)(uintptr_t)addr;
+		if (anx_strncmp(hdr->signature, "DSDT", 4) != 0)
+			return NULL;
+	} else {
+		hdr = find_table(g_rsdp, sig, index);
+	}
+
+	if (!hdr || !sdt_checksum_valid(hdr))
+		return NULL;
+	if (length)
+		*length = hdr->length;
+	return (const uint8_t *)hdr;
 }
 
 /* --- MADT parsing --- */
@@ -247,6 +301,7 @@ int anx_acpi_init(void)
 		return ANX_ENOENT;
 	}
 
+	g_rsdp = rsdp;
 	acpi_info.acpi_revision = rsdp->revision;
 	{
 		char oem[7];
@@ -257,7 +312,7 @@ int anx_acpi_init(void)
 			(uint32_t)rsdp->revision, oem);
 	}
 
-	madt_hdr = find_table(rsdp, "APIC");
+	madt_hdr = find_table(rsdp, "APIC", 0);
 	if (madt_hdr) {
 		parse_madt((const struct acpi_madt *)madt_hdr);
 		kprintf("acpi: %u CPUs, %u IOAPICs, LAPIC at 0x%x\n",
