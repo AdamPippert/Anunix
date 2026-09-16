@@ -57,7 +57,8 @@ OVMF_FD    := $(firstword $(wildcard \
     /usr/share/edk2/x64/OVMF.4m.fd \
     /usr/share/OVMF/OVMF.fd \
     /usr/share/ovmf/OVMF.fd \
-    /usr/share/qemu/OVMF.fd))
+    /usr/share/qemu/OVMF.fd \
+    /usr/share/edk2/ovmf/OVMF_CODE.fd))
 
 ifeq ($(ARCH),arm64)
   TARGET  := aarch64-none-elf
@@ -188,7 +189,7 @@ KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
 .DEFAULT_GOAL := kernel
-.PHONY: kernel qemu qemu-fb qemu-raid qemu-raid-clean qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
+.PHONY: kernel qemu qemu-fb qemu-raid qemu-raid-clean qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test test-uefi-highmem
 
 kernel: $(KERNEL_BIN)
 	@echo "  BUILT   $(KERNEL_BIN) [$(ARCH)]"
@@ -360,6 +361,20 @@ ifeq ($(ARCH),x86_64)
 	    -device virtio-net-pci,netdev=net0
 else
 	@echo "qemu-iso is only supported for ARCH=x86_64" && exit 1
+endif
+
+
+# Boot the UEFI ISO under OVMF with 1 GiB and with 4 GiB of guest RAM.
+# The EFI stub links at 0x140000000, so only the 4 GiB guest loads it above
+# 4 GiB, as real hardware does. The stub is built explicitly first because
+# the iso target discards stub build errors.
+test-uefi-highmem:
+ifeq ($(ARCH),x86_64)
+	@$(MAKE) ARCH=x86_64 efi-stub
+	@$(MAKE) ARCH=x86_64 iso
+	@QEMU="$(QEMU)" OVMF_FD="$(OVMF_FD)" ./tools/test-uefi-highmem.sh
+else
+	@echo "test-uefi-highmem is only supported for ARCH=x86_64" && exit 1
 endif
 
 

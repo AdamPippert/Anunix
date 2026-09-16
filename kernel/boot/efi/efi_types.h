@@ -163,6 +163,20 @@ typedef EFI_STATUS (EFIAPI *EFI_EXIT_BOOT_SERVICES)(
 	UINTN MapKey
 );
 
+typedef enum {
+	AllocateAnyPages,
+	AllocateMaxAddress,
+	AllocateAddress,
+	MaxAllocateType
+} EFI_ALLOCATE_TYPE;
+
+typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_PAGES)(
+	EFI_ALLOCATE_TYPE Type,
+	UINT32 MemoryType,
+	UINTN Pages,
+	EFI_PHYSICAL_ADDRESS *Memory
+);
+
 typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_POOL)(
 	UINT32 PoolType,
 	UINTN Size,
@@ -182,7 +196,7 @@ typedef struct _EFI_BOOT_SERVICES {
 	VOID	*RestoreTPL;
 
 	/* Memory (5 entries) */
-	VOID		*AllocatePages;
+	EFI_ALLOCATE_PAGES	AllocatePages;
 	VOID		*FreePages;
 	EFI_GET_MEMORY_MAP	GetMemoryMap;
 	EFI_ALLOCATE_POOL	AllocatePool;
