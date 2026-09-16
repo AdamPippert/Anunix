@@ -16,6 +16,7 @@
 #include <anx/types.h>
 #include <anx/mt7925.h>
 #include <anx/pci.h>
+#include <anx/mmio.h>
 #include <anx/alloc.h>
 #include <anx/page.h>
 #include <anx/string.h>
@@ -260,30 +261,60 @@ void mt7925_rx_poll(struct mt7925_dev *dev)
 /* ------------------------------------------------------------------ */
 
 /*
- * Take driver ownership of the power domain.
+ * Power ownership handshake, two phases.
  *
- * Write CLR_OWN, then wait for the chip to drop OWN_SYNC. Mirrors
- * __mt792xe_mcu_drv_pmctrl() in Linux v6.12 mt76 (mt792x_core.c lines
- * 806-828), including the retry count and the 50 ms wait per attempt.
- * Anunix always polls; there is no sleeping context here.
+ * Linux hands ownership to firmware and then takes it back
+ * (mt7925_pci_probe() calls __mt792x_mcu_fw_pmctrl() and only then
+ * __mt792xe_mcu_drv_pmctrl(); v6.12 mt76 pci.c lines 379-383). Doing only the
+ * second half is not enough: if OWN_SYNC already reads clear, clearing it
+ * again is a no-op and the domain never actually transitions, so the driver
+ * reports success while the chip stays asleep and every register still reads
+ * the 0xdeadbeef power-off sentinel.
+ *
+ * Phase 1 writes SET_OWN and waits for OWN_SYNC to come up.
+ * Phase 2 writes CLR_OWN and waits for OWN_SYNC to go down.
  */
-static int mt7925_drv_own(void)
+static int lpctl_phase(uint32_t write_bit, uint32_t want_sync, const char *what)
 {
-	uint32_t i, j;
+	uint32_t i, j, v = 0;
 
 	for (i = 0; i < MT7925_DRV_OWN_RETRIES; i++) {
-		nic_wr(MT_CONN_ON_LPCTL, PCIE_LPCR_HOST_CLR_OWN);
+		nic_wr(MT_CONN_ON_LPCTL, write_bit);
 
-		/* Poll in 1 ms steps for up to MT7925_DRV_OWN_POLL_MS. */
 		for (j = 0; j < MT7925_DRV_OWN_POLL_MS; j++) {
-			if ((nic_rd(MT_CONN_ON_LPCTL) &
-			     PCIE_LPCR_HOST_OWN_SYNC) == 0)
+			v = nic_rd(MT_CONN_ON_LPCTL);
+			if ((v & PCIE_LPCR_HOST_OWN_SYNC) == want_sync)
 				return ANX_OK;
 			anx_delay_ms(1);
 		}
 	}
+	kprintf("mt7925: %s failed, LPCTL=0x%08x\n", what, v);
 	return ANX_EIO;
 }
+
+static int mt7925_drv_own(void)
+{
+	uint32_t before = nic_rd(MT_CONN_ON_LPCTL);
+	int ret;
+
+	kprintf("mt7925: LPCTL=0x%08x before ownership handshake\n", before);
+
+	/* Phase 1: give the domain to firmware so it is in a known state. */
+	ret = lpctl_phase(PCIE_LPCR_HOST_SET_OWN, PCIE_LPCR_HOST_OWN_SYNC,
+			  "firmware own");
+	if (ret != ANX_OK)
+		return ret;
+
+	/* Phase 2: take it for the driver. */
+	ret = lpctl_phase(PCIE_LPCR_HOST_CLR_OWN, 0, "driver own");
+	if (ret != ANX_OK)
+		return ret;
+
+	kprintf("mt7925: LPCTL=0x%08x after ownership handshake\n",
+		nic_rd(MT_CONN_ON_LPCTL));
+	return ANX_OK;
+}
+
 
 int anx_mt7925_init(void)
 {
@@ -302,10 +333,25 @@ int anx_mt7925_init(void)
 		pci->bus, pci->slot, pci->func,
 		pci->bar[0] & ~0xf);
 
-	/* BAR0: identity-mapped (phys == virt in Anunix) */
-	g_dev.bar0 = (void *)(uintptr_t)(pci->bar[0] & ~0xf);
+	/*
+	 * Map the BARs as device memory. Using the physical address directly
+	 * happens to be a valid pointer here -- BAR0 sits under 4 GiB, inside
+	 * the identity map -- but that map is write-back cached, and a cached
+	 * mapping lets the CPU answer a register read from a stale line and
+	 * hold a register write in cache instead of sending it to the chip.
+	 *
+	 * That is what made this driver unfixable from the outside: every
+	 * register read returned the same value forever, so the ownership
+	 * handshake wrote to nothing and then read back its own stale cache.
+	 */
+	g_dev.bar0 = anx_mmio_map((uint64_t)(pci->bar[0] & ~0xfu), 0x200000);
+	if (!g_dev.bar0) {
+		kprintf("mt7925: could not map BAR0\n");
+		return ANX_ENOMEM;
+	}
 	if (pci->bar[2])
-		g_dev.bar2 = (void *)(uintptr_t)(pci->bar[2] & ~0xf);
+		g_dev.bar2 = anx_mmio_map((uint64_t)(pci->bar[2] & ~0xfu),
+					   0x8000);
 
 	anx_pci_enable_bus_master(pci);
 
