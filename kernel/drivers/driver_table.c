@@ -30,6 +30,7 @@
 #include <anx/virtio_net.h>
 #include <anx/e1000.h>
 #include <anx/mt7925.h>
+#include <anx/xhci.h>
 
 /* --- Driver table --- */
 
@@ -57,6 +58,9 @@ static const struct anx_driver driver_table[] = {
 
 	/* Network: MediaTek MT7925 Wi-Fi 7 (Framework Laptop 16) */
 	ANX_DRIVER_PCI_DEV("mt7925",  ANX_DRVCLS_NET, 0x14C3, 0x0717, anx_mt7925_init),
+
+	/* Input: USB through xHCI (class 0x0C, subclass 0x03, prog_if 0x30) */
+	ANX_DRIVER_PCI_CLASS("xhci",  ANX_DRVCLS_INPUT, 0x0C, 0x03, 0x30, anx_xhci_init),
 };
 
 #define DRIVER_TABLE_SIZE \

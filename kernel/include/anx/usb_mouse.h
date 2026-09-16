@@ -42,11 +42,8 @@ struct anx_hid_mouse_report {
 /* ------------------------------------------------------------------ */
 
 /*
- * Initialise the USB HID mouse driver.
- * Scans PCI for xHCI/OHCI/UHCI/EHCI controllers and probes for boot-
- * class HID mouse devices. Falls back to polling mode if no interrupt-
- * capable path is available.
- * Returns ANX_OK on success, ANX_ENOENT if no USB mouse found (non-fatal).
+ * Initialise the cursor from the framebuffer size.
+ * Controllers are bound by the xHCI driver, not here. Returns ANX_OK.
  */
 int anx_usb_mouse_init(void);
 

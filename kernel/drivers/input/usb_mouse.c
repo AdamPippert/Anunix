@@ -6,14 +6,11 @@
  * 3-byte report (buttons, dX, dY) or 4-byte with scroll wheel.
  *
  * Implementation notes:
- *   - Full xHCI ring / descriptor programming is not yet implemented.
- *     This driver detects USB controllers via PCI (class 0x0C sub 0x03),
- *     enables them, and registers an IRQ handler ready to receive reports.
- *   - The report parser (anx_usb_mouse_report) is complete and correct;
- *     it is also callable from a synthetic stream for testing.
+ *   - The xHCI driver (drivers/usb/xhci.c) delivers boot mouse reports
+ *     to anx_usb_mouse_report(); this file owns only the cursor.
+ *   - The report parser is also callable from a synthetic stream for
+ *     testing.
  *   - Cursor state is maintained here (absolute X,Y clamped to screen).
- *   - Actual host controller initialisation is behind ANX_USB_HCI_READY;
- *     the TODO comment marks where xHCI bulk-in endpoint setup belongs.
  */
 
 #include <anx/usb_mouse.h>
@@ -51,29 +48,6 @@ static uint32_t scr_h = 768;
 
 /* Sensitivity: movements are scaled by this factor / 256 */
 #define MOUSE_SCALE  256u
-
-/* ------------------------------------------------------------------ */
-/* IRQ handler                                                          */
-/* ------------------------------------------------------------------ */
-
-/*
- * Called when a USB interrupt fires. In a full xHCI implementation this
- * would read the completed transfer ring entry and pass the report bytes
- * here. For now we define the handler skeleton; the report bytes arrive
- * via anx_usb_mouse_report() once the host controller is wired.
- */
-static void usb_mouse_irq_handler(uint32_t irq, void *arg)
-{
-	(void)irq;
-	(void)arg;
-	/*
-	 * TODO(xhci): dequeue completed bulk-in TRB, extract HID report,
-	 * call anx_usb_mouse_report(&report, scr_w, scr_h).
-	 *
-	 * Until then this handler acks the interrupt so the system
-	 * doesn't hang on spurious PCI IRQs from the USB controller.
-	 */
-}
 
 /* ------------------------------------------------------------------ */
 /* anx_usb_mouse_report — HID report parser                            */
@@ -147,9 +121,6 @@ anx_usb_mouse_get_pos(int32_t *x, int32_t *y)
 int
 anx_usb_mouse_init(void)
 {
-	struct anx_list_head *list;
-	struct anx_list_head *pos;
-	bool found_controller = false;
 	const struct anx_fb_info *fb;
 
 	/* Centre cursor on screen using framebuffer dimensions */
@@ -162,59 +133,11 @@ anx_usb_mouse_init(void)
 	cur_y = (int32_t)(scr_h / 2);
 	prev_buttons = 0;
 
-	/* Walk PCI device list looking for USB host controllers */
-	list = anx_pci_device_list();
-	ANX_LIST_FOR_EACH(pos, list) {
-		struct anx_pci_device *dev =
-			ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
-
-		if (dev->class_code != PCI_CLASS_SERIAL_BUS ||
-		    dev->subclass   != PCI_SUBCLASS_USB)
-			continue;
-
-		found_controller = true;
-
-		kprintf("usb_mouse: found USB controller [%04x:%04x] "
-		        "progif=%02x irq=%u\n",
-		        dev->vendor_id, dev->device_id,
-		        dev->prog_if,   dev->irq_line);
-
-		/* Enable bus mastering so the controller can DMA */
-		anx_pci_enable_bus_master(dev);
-
-		/*
-		 * Register an IRQ handler for this controller's interrupt
-		 * line. IRQ lines 10-11 are typical for PCI USB controllers.
-		 * We only register once even if multiple controllers share a
-		 * line (the handler does nothing until xHCI is wired).
-		 */
-		if (dev->irq_line > 0 && dev->irq_line <= 15) {
-			anx_irq_register((uint8_t)dev->irq_line,
-			                  usb_mouse_irq_handler, dev);
-			anx_irq_unmask((uint8_t)dev->irq_line);
-		}
-
-		/*
-		 * TODO(xhci): initialise the host controller ring:
-		 *   1. Reset the controller (XHCI_OP_USBCMD HCRST bit)
-		 *   2. Allocate DCBAA and command/event rings
-		 *   3. Walk port status registers, detect FS/LS/HS device
-		 *   4. Issue ENABLE_SLOT, ADDRESS_DEVICE commands
-		 *   5. Set configuration for HID boot-protocol mouse
-		 *      (SET_PROTOCOL, SET_IDLE)
-		 *   6. Schedule recurring bulk-in TRBs on interrupt endpoint
-		 * Once done, reports arrive in usb_mouse_irq_handler above.
-		 *
-		 * For now, break after the first controller — one is enough.
-		 */
-		break;
-	}
-
-	if (!found_controller) {
-		kprintf("usb_mouse: no USB controller found (non-fatal)\n");
-		return ANX_ENOENT;
-	}
-
+	/*
+	 * This runs before the PCI scan, so it cannot look for controllers.
+	 * The xHCI driver binds them from the driver table and feeds reports
+	 * into anx_usb_mouse_report().
+	 */
 	initialized = true;
 	kprintf("usb_mouse: initialized (report parser ready, "
 	        "cursor at %dx%d, screen %ux%u)\n",
