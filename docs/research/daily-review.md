@@ -1263,7 +1263,7 @@ Evidence: [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h), [kernel/
 
 Planned acceptance: Reclaim sibling caches only during current model waits, reject stale or incompatible requests, and restore verified CPU output without changing the retained reservation.
 
-Status: Validated on Jekyll. Tested commit: `07cd519`. Source message: `04ea316e-9606-4726-8f4f-cf54680e81c2`.
+Status: Merged at `e82c2f0` after Jekyll validation. Tested commit: `07cd519`. Source message: `04ea316e-9606-4726-8f4f-cf54680e81c2`.
 
 Detailed comparison and results: [Day 078](day-078.md).
 
@@ -1273,13 +1273,15 @@ Detailed comparison and results: [Day 078](day-078.md).
 
 Learning: Bind scheduling decisions to execution phases and state versions, then revalidate those assumptions at commit.
 
-Anunix comparison: Routing trials use policy generations, and effects use fence epochs. Decisions spanning multiple changing resources need a common validation boundary.
+Anunix comparison: Existing shape resizing validates a supplied shape epoch. The new decision also binds progress, phase capacity, resident geometry, identity, and run-fence generation across planning.
 
 Evidence: [kernel/core/twin/twin.c](../../kernel/core/twin/twin.c), [kernel/core/route/tuning.c](../../kernel/core/route/tuning.c), [kernel/core/cap/effect_fence.c](../../kernel/core/cap/effect_fence.c).
 
-Planned acceptance: Reject a decision after any required state version changes; accept an unchanged observation at the commit boundary.
+Planned acceptance: Seven stale observations reject without changing resource geometry or caller output. A fresh private decision commits two replicas, preserves completed work, and completes both CPU operations.
 
-Status: Queued. Source message: `01591a3b-c89f-42b3-bdfb-2c93786e2f23`.
+Status: Validated on Jekyll. Tested commit: `e731ce9`. Source message: `01591a3b-c89f-42b3-bdfb-2c93786e2f23`.
+
+Detailed comparison and results: [Day 079](day-079.md).
 
 ## Day 080 — 2026-09-13
 
