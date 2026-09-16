@@ -20,6 +20,7 @@
 #include <anx/page.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/delay.h>
 #include <anx/net.h>
 #include "mt7925_reg.h"
 #include "mt7925_drv.h"
@@ -258,6 +259,32 @@ void mt7925_rx_poll(struct mt7925_dev *dev)
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Take driver ownership of the power domain.
+ *
+ * Write CLR_OWN, then wait for the chip to drop OWN_SYNC. Mirrors
+ * __mt792xe_mcu_drv_pmctrl() in Linux v6.12 mt76 (mt792x_core.c lines
+ * 806-828), including the retry count and the 50 ms wait per attempt.
+ * Anunix always polls; there is no sleeping context here.
+ */
+static int mt7925_drv_own(void)
+{
+	uint32_t i, j;
+
+	for (i = 0; i < MT7925_DRV_OWN_RETRIES; i++) {
+		nic_wr(MT_CONN_ON_LPCTL, PCIE_LPCR_HOST_CLR_OWN);
+
+		/* Poll in 1 ms steps for up to MT7925_DRV_OWN_POLL_MS. */
+		for (j = 0; j < MT7925_DRV_OWN_POLL_MS; j++) {
+			if ((nic_rd(MT_CONN_ON_LPCTL) &
+			     PCIE_LPCR_HOST_OWN_SYNC) == 0)
+				return ANX_OK;
+			anx_delay_ms(1);
+		}
+	}
+	return ANX_EIO;
+}
+
 int anx_mt7925_init(void)
 {
 	anx_memset(&g_dev, 0, sizeof(g_dev));
@@ -281,6 +308,17 @@ int anx_mt7925_init(void)
 		g_dev.bar2 = (void *)(uintptr_t)(pci->bar[2] & ~0xf);
 
 	anx_pci_enable_bus_master(pci);
+
+	/*
+	 * Claim the power domain before reading anything. Skipping this is
+	 * what produced hw_ver=0xdeadbeef and then "patch sem GET failed
+	 * (MCU not responding)": the MCU was never powered, so it could not
+	 * answer.
+	 */
+	if (mt7925_drv_own() != ANX_OK) {
+		kprintf("mt7925: driver own failed; chip did not wake\n");
+		return ANX_EIO;
+	}
 
 	/* Read chip ID */
 	uint32_t hw_ver = nic_rd(MT_CONN_HW_VER);

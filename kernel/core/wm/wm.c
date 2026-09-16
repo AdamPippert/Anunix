@@ -255,6 +255,8 @@ static int32_t  g_cur_y  = -1;
 static bool     g_cur_on = false;
 static uint32_t g_cur_saved[CURSOR_H][CURSOR_W];
 
+static void cursor_draw(int32_t x, int32_t y);
+
 static void cursor_set(enum cursor_type t)
 {
 	g_cursor_type = t;
@@ -287,6 +289,31 @@ static void cursor_erase(void)
 		}
 	}
 	g_cur_on = false;
+}
+
+/*
+ * The cursor is a save-under sprite written straight into the framebuffer,
+ * and it is drawn only when the pointer moves. Anything else that paints the
+ * same pixels -- the menu bar redrawing its clock, for instance -- overwrites
+ * it, and it stays gone until the next pointer event. That is why the pointer
+ * was invisible over the top bar while clicks still landed: hit testing never
+ * depended on the sprite being there.
+ *
+ * A repaint also makes g_cur_saved stale. Restoring it would stamp the old
+ * content back over whatever was just drawn, so invalidating means "forget
+ * the saved pixels", not "erase".
+ */
+void anx_wm_cursor_invalidate(void)
+{
+	g_cur_on = false;
+}
+
+/* Repaint the sprite if a commit has painted over it. */
+static void cursor_refresh(void)
+{
+	if (g_cur_on || g_cur_x < 0 || g_cur_y < 0)
+		return;
+	cursor_draw(g_cur_x, g_cur_y);
 }
 
 static void cursor_draw(int32_t x, int32_t y)
@@ -1299,6 +1326,9 @@ void anx_wm_run(void)
 
 	while (g_wm_running) {
 		struct anx_event ev;
+
+		/* Put the cursor back if a commit painted over it. */
+		cursor_refresh();
 
 		/* Poll WM-targeted events (null target_surf) from the event ring */
 		if (anx_iface_event_poll_wm(&ev) == ANX_OK) {
