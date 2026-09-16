@@ -1239,15 +1239,17 @@ Detailed comparison and results: [Day 076](day-076.md).
 
 Learning: Control computation depth, speculation, and parallelism within explicit quality and resource limits, with deterministic enforcement.
 
-Anunix comparison: Workload candidates now pass a frozen output check before selection within an explicit token limit.
+Anunix comparison: Anunix records verified model execution. The new workload controller freezes output requirements, admits measured candidates, and enforces a selected token allowance.
 
 Evidence: [kernel/core/route/planner.c](../../kernel/core/route/planner.c), [kernel/core/route/budget.c](../../kernel/core/route/budget.c), [kernel/include/anx/cell.h](../../kernel/include/anx/cell.h).
 
-Planned acceptance: Reject candidates outside the quality or token bounds and preserve the current selection after failed admission.
+Planned acceptance: Reject candidates that violate the frozen prefix, length, or token bounds. Execute accepted eight-token and four-token choices with fresh receipts and unchanged quality requirements.
 
-Status: Local checks pass at `0ab932e`; Jekyll VM validation is pending. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
+Status: Validated on Jekyll. Tested commit: `0ab932e`. Source message: `598f8149-e0fb-47a4-a0bb-975e0b26d183`.
 
 Detailed comparison and pending checks: [Day 077](day-077.md).
+
+Detailed comparison and results: [Day 077](day-077.md).
 
 ## Day 078 — 2026-09-11
 

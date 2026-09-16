@@ -1542,17 +1542,17 @@
         "kernel/core/route/workload.c",
         "kernel/core/tools/research_day077.c"
       ],
-      "comparison": "Workload candidates now pass a frozen output check before selection within an explicit token limit.",
-      "acceptance": "Reject candidates outside the quality or token bounds and preserve the current selection after failed admission.",
+      "comparison": "Anunix records verified model execution. The new workload controller freezes output requirements, admits measured candidates, and enforces a selected token allowance.",
+      "acceptance": "Reject candidates that violate the frozen prefix, length, or token bounds. Execute accepted eight-token and four-token choices with fresh receipts and unchanged quality requirements.",
       "day": 77,
       "date": "2026-09-10",
       "message_id": "598f8149-e0fb-47a4-a0bb-975e0b26d183",
       "title": "AI-first OS update \u2014 September 10: schedule the amount of computation, not only where it runs",
-      "status": "awaiting_vm",
+      "status": "validated",
       "branch": "codex/ai-os-day-077",
       "comparison_baseline": "eeb5047",
-      "candidate_commit": "0ab932e",
-      "pending": "Jekyll offline during upload; complete both candidate boots and artifact verification before integration."
+      "tested_commit": "0ab932e",
+      "evidence": "docs/research/evidence/day-077/uefi-boot.json"
     },
     {
       "learning": "Use agent phases, idle intervals, lineage, and shared origins to schedule state movement while preserving capacity and correctness.",
