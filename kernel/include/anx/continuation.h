@@ -12,8 +12,8 @@
 #define ANX_CONTINUATION_RESULT_SCHEMA "anx:continuation/result/v1"
 enum anx_continuation_event_kind { ANX_CONT_BIND, ANX_CONT_INTENT, ANX_CONT_COMMITTED, ANX_CONT_UNCERTAIN, ANX_CONT_REJECTED,
 	ANX_CONT_RESOURCE_CONFIG, ANX_CONT_WAIT_EVENT, ANX_CONT_SUSPEND_EVENT, ANX_CONT_HIBERNATE_EVENT, ANX_CONT_RESUME_EVENT };
-enum anx_continuation_resource_state { ANX_CONT_RUNNABLE, ANX_CONT_SHORT_WAIT, ANX_CONT_SUSPENDED, ANX_CONT_HIBERNATED };
-enum anx_suspension_reason { ANX_SUSPEND_NONE, ANX_SUSPEND_TOOL_WAIT, ANX_SUSPEND_HUMAN_APPROVAL };
+enum anx_continuation_resource_state { ANX_CONT_RUNNABLE, ANX_CONT_SHORT_WAIT, ANX_CONT_SUSPENDED, ANX_CONT_HIBERNATED, ANX_CONT_IDLE_RECLAIMED };
+enum anx_suspension_reason { ANX_SUSPEND_NONE, ANX_SUSPEND_TOOL_WAIT, ANX_SUSPEND_HUMAN_APPROVAL, ANX_SUSPEND_MODEL_WAIT };
 struct anx_continuation_view {
 	uint64_t id, epoch;
 	anx_cid_t owner;
@@ -59,6 +59,14 @@ int anx_continuation_hibernate(uint64_t id, uint64_t epoch, struct anx_continuat
 int anx_continuation_resume(uint64_t id, uint64_t epoch, struct anx_continuation_view *out);
 int anx_continuation_cache_stats(uint64_t id, struct anx_resource_pool_stats *out);
 int anx_continuation_acceleration_read(uint64_t id, uint64_t epoch, uint64_t generation, struct anx_adapter_image *out);
+struct anx_continuation_idle_request {
+	anx_cid_t lineage_parent;
+	anx_oid_t model_source;
+	uint64_t phase_epoch;
+	uint32_t max_pages;
+};
+int anx_continuation_idle_reclaim(uint64_t id, uint64_t epoch,
+		const struct anx_continuation_idle_request *request, struct anx_continuation_view *out);
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 /* Drop one completion reply after sealing its result; production builds omit this hook. */
 int anx_continuation_test_drop_reply(bool enabled);
