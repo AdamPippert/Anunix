@@ -98,6 +98,11 @@ int anx_research_day078(void)
 	if (ret != ANX_OK) goto out;
 	f->idle[0].lineage_parent=foreign->cid; ret=denied078(f,0,f->view[0].epoch,ANX_EPERM); f->idle[0].lineage_parent=parent->cid;
 	if (ret != ANX_OK) goto out;
+	owner[0]->parent_cid=foreign->cid;
+	anx_memset(&f->output,0x55,sizeof(f->output));f->sentinel=f->output;
+	ret=anx_continuation_idle_reclaim(f->view[0].id,f->view[0].epoch,&f->idle[0],&f->output);
+	owner[0]->parent_cid=parent->cid;
+	if (ret != ANX_EBUSY || anx_memcmp(&f->output,&f->sentinel,sizeof(f->output))) {ret=-7811;goto out;}
 	f->idle[0].model_source=ANX_UUID_NIL; ret=denied078(f,0,f->view[0].epoch,ANX_EPERM); f->idle[0].model_source=model->oid;
 	if (ret != ANX_OK) goto out;
 	f->idle[0].phase_epoch++; ret=denied078(f,0,f->view[0].epoch,ANX_EBUSY); f->idle[0].phase_epoch--;
@@ -132,6 +137,11 @@ int anx_research_day078(void)
 	model->version--;
 	if (ret != ANX_EBUSY || anx_memcmp(&f->output,&f->sentinel,sizeof(f->output)) ||
 	    anx_continuation_cache_stats(f->view[0].id,&stats) != ANX_OK || stats.physical_pages) {ret=-7809;goto out;}
+	ret=anx_continuation_test_restore_fault(true);
+	if (ret == ANX_OK) ret=anx_continuation_resume(f->view[0].id,f->view[0].epoch,&f->output);
+	if (ret != ANX_EIO || anx_memcmp(&f->output,&f->sentinel,sizeof(f->output)) ||
+	    anx_continuation_cache_stats(f->view[0].id,&stats) != ANX_OK || stats.physical_pages ||
+	    anx_phase_get(&owner[0]->cid,&current) != ANX_OK || anx_memcmp(&current,&phases[0],sizeof(current))) {ret=-7812;goto out;}
 	for (uint32_t i=0;i<2;i++) {
 		ret=anx_continuation_resume(f->view[i].id,f->view[i].epoch,&f->view[i]);
 		if (ret == ANX_OK) ret=generate078(f,i);
@@ -163,6 +173,7 @@ int anx_research_day078(void)
 	ret=anx_cell_run(owner[0]);
 	if (ret == ANX_OK) kprintf("day078 sibling_cache_pages=2,1,0,2 held_reservation=8192 outputs=AAAA,AAAA phase_and_lineage=checked\n");
 out:
+	anx_continuation_test_restore_fault(false);
 	anx_external_unregister_handler("anxresearch078");
 	for (uint32_t i=0;i<2;i++) {
 		/* Event objects are separate from the reclaimed acceleration pages. */
