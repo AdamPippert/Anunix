@@ -68,9 +68,26 @@ uint32_t anx_fbcon_cursor_y(void)
 	return cur_y;
 }
 
-static void fbcon_scroll_one_line(void)
+/*
+ * Scrolling a framebuffer console costs one full-screen move per scroll,
+ * and on a high-resolution panel that move is the single most expensive
+ * thing the boot path does. Scrolling one text row at a time means paying
+ * it once per line of output.
+ *
+ * Scroll a batch of rows instead. The console gives up FBCON_SCROLL_ROWS
+ * rows of history each time it reaches the bottom and pays the full-screen
+ * move once per batch, so boot output costs a fraction of the moves it used
+ * to. The cursor lands below the last live row, so nothing is overwritten.
+ */
+#define FBCON_SCROLL_ROWS	12
+
+static void fbcon_scroll_rows(uint32_t rows)
 {
-	anx_fb_scroll(ANX_FONT_HEIGHT, FBCON_BG);
+	if (rows == 0)
+		return;
+	if (rows > con_rows)
+		rows = con_rows;
+	anx_fb_scroll(rows * ANX_FONT_HEIGHT, FBCON_BG);
 }
 
 static void fbcon_newline(void)
@@ -78,8 +95,12 @@ static void fbcon_newline(void)
 	cur_x = 0;
 	cur_y++;
 	if (cur_y >= con_rows) {
-		cur_y = con_rows - 1;
-		fbcon_scroll_one_line();
+		uint32_t rows = FBCON_SCROLL_ROWS;
+
+		if (rows >= con_rows)
+			rows = con_rows > 1 ? con_rows - 1 : 1;
+		fbcon_scroll_rows(rows);
+		cur_y = con_rows - rows;
 	}
 }
 

@@ -14,6 +14,16 @@
 #include <anx/string.h>
 #include <anx/kprintf.h>
 
+/*
+ * How long to wait for each of OFFER and ACK, in 100 Hz timer ticks.
+ *
+ * This was five seconds per phase. A machine with no DHCP server -- a
+ * laptop whose Wi-Fi firmware did not load, for instance -- paid ten
+ * seconds of boot for an answer that was never coming. Two seconds is
+ * long enough for a server that exists to reply.
+ */
+#define DHCP_WAIT_TICKS		200
+
 /* DHCP ports */
 #define DHCP_CLIENT_PORT	68
 #define DHCP_SERVER_PORT	67
@@ -266,9 +276,10 @@ int anx_dhcp_discover(struct anx_net_config *cfg)
 		return ret;
 	}
 
-	/* Wait for OFFER (up to 5 seconds) */
+	/* Wait for OFFER */
 	start = arch_timer_ticks();
-	while (!dhcp_got_offer && arch_timer_ticks() - start < 500)
+	while (!dhcp_got_offer &&
+	       arch_timer_ticks() - start < DHCP_WAIT_TICKS)
 		anx_net_poll();
 
 	if (!dhcp_got_offer) {
@@ -326,7 +337,8 @@ int anx_dhcp_discover(struct anx_net_config *cfg)
 
 	/* Wait for ACK */
 	start = arch_timer_ticks();
-	while (!dhcp_got_ack && arch_timer_ticks() - start < 500)
+	while (!dhcp_got_ack &&
+	       arch_timer_ticks() - start < DHCP_WAIT_TICKS)
 		anx_net_poll();
 
 	anx_free(pkt);

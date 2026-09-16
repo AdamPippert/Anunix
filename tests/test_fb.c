@@ -286,20 +286,46 @@ static int test_fbcon_line_wrap(void)
 	return 0;
 }
 
+/*
+ * The console scrolls a batch of rows at a time, not one, because a
+ * full-screen move is the most expensive thing the boot path does. So the
+ * cursor does not land back on the last row; it lands wherever the batch
+ * left it. What must hold is that the cursor is always on screen and that
+ * output never runs off the bottom, no matter how much is written.
+ */
 static int test_fbcon_scroll_at_bottom(void)
 {
 	uint32_t rows = anx_fbcon_rows();
-	uint32_t i;
+	uint32_t i, after_first;
+
+	ASSERT(rows > 1, "console has more than one row");
 
 	anx_fbcon_clear();
 
-	/* Fill all rows */
+	/* Fill exactly one screen, which forces exactly one scroll. */
 	for (i = 0; i < rows; i++)
 		anx_fbcon_putc('\n');
 
-	/* Cursor should still be on the last row (scrolled) */
-	ASSERT(anx_fbcon_cursor_y() == rows - 1,
-	       "cursor stays on last row after scroll");
+	after_first = anx_fbcon_cursor_y();
+	ASSERT(after_first < rows, "cursor stays on screen after scroll");
+
+	/*
+	 * A batched scroll frees more than one row, so the cursor must not
+	 * come to rest on the last row. A one-row scroll would fail here.
+	 */
+	ASSERT(after_first < rows - 1, "scroll freed more than one row");
+
+	/* Keep writing well past the bottom; the cursor must stay on screen. */
+	for (i = 0; i < rows * 5 + 7; i++) {
+		anx_fbcon_putc('x');
+		anx_fbcon_putc('\n');
+		ASSERT(anx_fbcon_cursor_y() < rows,
+		       "cursor stays on screen under sustained output");
+	}
+
+	/* Column tracking survives scrolling. */
+	anx_fbcon_putc('A');
+	ASSERT(anx_fbcon_cursor_x() == 1, "column advances after a scroll");
 
 	return 0;
 }
