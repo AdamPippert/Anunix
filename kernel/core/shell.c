@@ -472,6 +472,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  secret show <name>         Show credential metadata\n");
 		kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
 		kputs("  secret revoke <name>       Revoke a credential\n");
+		kputs("  secret wipe-connectivity   Remove Wi-Fi/SSH/tunnel secrets (key session only)\n");
 		kputs("  login <user>               Login with password\n");
 		kputs("  logout                     End session\n");
 		kputs("  useradd <user> <pass>      Create user account\n");
@@ -1574,7 +1575,7 @@ static const char *cred_type_name(enum anx_credential_type t)
 static void cmd_secret(int argc, char **argv)
 {
 	if (argc < 2) {
-		kputs("usage: secret <set|list|show|revoke> [args]\n");
+		kputs("usage: secret <set|list|show|revoke|wipe-connectivity> [args]\n");
 		return;
 	}
 
@@ -1597,6 +1598,24 @@ static void cmd_secret(int argc, char **argv)
 		/* Zero the value in the command buffer */
 		anx_memset(argv[3], 0, anx_strlen(argv[3]));
 
+	} else if (anx_strcmp(argv[1], "wipe-connectivity") == 0) {
+		uint32_t removed = 0;
+		int ret = anx_credential_wipe_connectivity(&removed);
+
+		if (ret == ANX_EPERM) {
+			kputs("secret: refused -- connectivity secrets are "
+			      "removable only from a key-authenticated "
+			      "session (RFC-0034)\n");
+			return;
+		}
+		if (ret != ANX_OK) {
+			kprintf("secret: wipe failed (%d)\n", ret);
+			return;
+		}
+		kprintf("secret: removed %u connectivity credential(s)\n",
+			removed);
+		kputs("secret: this machine has given up its network; "
+		      "reconfigure from the console\n");
 	} else if (anx_strcmp(argv[1], "list") == 0) {
 		struct anx_credential_info entries[16];
 		uint32_t count = 0;
@@ -2183,9 +2202,13 @@ static void cmd_ssh_addkey(int argc, char **argv)
 	}
 	pk = decoded + pbo;
 
-	/* Read existing keys */
-	anx_credential_read("ssh-authorized-keys", current,
-			    sizeof(current), &cur_len);
+	/*
+	 * Read-modify-write, not disclosure: this appends a key and never
+	 * prints what it read. It must work from the console, or there is no
+	 * way to authorize the first key (RFC-0034 section 4).
+	 */
+	anx_credential_read_system("ssh-authorized-keys", current,
+				    sizeof(current), &cur_len);
 	if (cur_len % 32 != 0) cur_len = 0;	/* corrupt — reset */
 
 	/* Check for duplicate */
@@ -2267,9 +2290,9 @@ static void cmd_ssh_keygen(void)
 		return;
 	}
 
-	/* Self-authorize: append pubkey to ssh-authorized-keys */
-	anx_credential_read("ssh-authorized-keys", existing_keys,
-			    sizeof(existing_keys), &key_len);
+	/* Self-authorize: append pubkey. Read-modify-write, never printed. */
+	anx_credential_read_system("ssh-authorized-keys", existing_keys,
+				    sizeof(existing_keys), &key_len);
 	if (key_len % 32 != 0) key_len = 0;
 	if (key_len + 32 <= (uint32_t)(ANX_AUTHORIZED_KEYS_MAX * 32)) {
 		anx_memcpy(existing_keys + key_len, pub, 32);

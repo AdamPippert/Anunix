@@ -11,6 +11,7 @@
 
 #include <anx/types.h>
 #include <anx/credential.h>
+#include <anx/auth.h>
 #include <anx/arch.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -124,9 +125,62 @@ int anx_credential_create(const char *name,
 	return ANX_OK;
 }
 
+/*
+ * Reserved connectivity names (RFC-0034 section 1). Exact matches, plus the
+ * "eigentunnel-" prefix reserved for post-quantum tunnel key material that
+ * the kernel does not yet carry -- reserved now so it lands in the protected
+ * class on the day it arrives, rather than being retrofitted after it has
+ * been stored in the clear.
+ */
+static const char *const connectivity_names[] = {
+	"wifi-ssid",
+	"wifi-pass",
+	"ssh-host-key",
+	"ssh-authorized-keys",
+	"ssh-identity",
+	"ssh-password",
+};
+
+#define EIGENTUNNEL_PREFIX	"eigentunnel-"
+
+enum anx_credential_class anx_credential_class_of(const char *name)
+{
+	uint32_t i;
+	const char *p = EIGENTUNNEL_PREFIX;
+	const char *n = name;
+
+	if (!name)
+		return ANX_CRED_CLASS_ORDINARY;
+
+	for (i = 0; i < sizeof(connectivity_names) /
+			sizeof(connectivity_names[0]); i++)
+		if (anx_strcmp(name, connectivity_names[i]) == 0)
+			return ANX_CRED_CLASS_CONNECTIVITY;
+
+	while (*p && *n && *p == *n) {
+		p++;
+		n++;
+	}
+	if (*p == '\0')
+		return ANX_CRED_CLASS_CONNECTIVITY;
+
+	return ANX_CRED_CLASS_ORDINARY;
+}
+
 int anx_credential_read(const char *name,
 			 void *buf, uint32_t buf_len,
 			 uint32_t *actual_len)
+{
+	if (anx_credential_class_of(name) == ANX_CRED_CLASS_CONNECTIVITY &&
+	    !anx_auth_is_key_authenticated())
+		return ANX_EPERM;
+
+	return anx_credential_read_system(name, buf, buf_len, actual_len);
+}
+
+int anx_credential_read_system(const char *name,
+				void *buf, uint32_t buf_len,
+				uint32_t *actual_len)
 {
 	struct credential_entry *entry;
 	bool irq_state;
@@ -236,6 +290,16 @@ int anx_credential_rotate(const char *name,
 int anx_credential_revoke(const char *name)
 {
 	struct credential_entry *entry;
+
+	/*
+	 * A connectivity secret is not removable one name at a time
+	 * (RFC-0034 section 5). Losing these costs the machine its network,
+	 * so removal goes through anx_credential_wipe_connectivity(), which
+	 * names the class it clears and requires a key-authenticated session.
+	 */
+	if (anx_credential_class_of(name) == ANX_CRED_CLASS_CONNECTIVITY)
+		return ANX_EPERM;
+
 	bool irq_state;
 	void *old_secret;
 	uint32_t old_len;
@@ -261,6 +325,65 @@ int anx_credential_revoke(const char *name)
 
 	kprintf("credential: %s revoked\n", name);
 	anx_credstore_save();
+	return ANX_OK;
+}
+
+/*
+ * Remove every connectivity-class credential (RFC-0034 section 5).
+ *
+ * Requires a key-authenticated session. Clears the whole class in one
+ * operation so a caller cannot guess names one at a time, and so the person
+ * running it knows they are giving up the machine's network rather than
+ * deleting a single secret.
+ */
+int anx_credential_wipe_connectivity(uint32_t *removed)
+{
+	bool irq_state;
+	uint32_t i, n = 0;
+
+	if (removed)
+		*removed = 0;
+
+	if (!anx_auth_is_key_authenticated())
+		return ANX_EPERM;
+
+	anx_spin_lock_irqsave(&credstore_lock, &irq_state);
+
+	for (i = 0; i < CREDSTORE_MAX; i++) {
+		struct credential_entry *e = &credstore[i];
+		void *old_secret;
+		uint32_t old_len;
+
+		if (!e->active)
+			continue;
+		if (anx_credential_class_of(e->name) !=
+		    ANX_CRED_CLASS_CONNECTIVITY)
+			continue;
+
+		old_secret = e->secret;
+		old_len    = e->secret_len;
+
+		e->secret     = NULL;
+		e->secret_len = 0;
+		e->active     = false;
+
+		if (old_secret) {
+			volatile uint8_t *z = (volatile uint8_t *)old_secret;
+			uint32_t j;
+
+			for (j = 0; j < old_len; j++)
+				z[j] = 0;
+			anx_free(old_secret);
+		}
+		n++;
+	}
+
+	anx_spin_unlock_irqrestore(&credstore_lock, irq_state);
+
+	if (n > 0)
+		anx_credstore_save();
+	if (removed)
+		*removed = n;
 	return ANX_OK;
 }
 

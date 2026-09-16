@@ -305,6 +305,7 @@ int anx_auth_login_password(const char *username, const char *password,
 				   key->scope_count * sizeof(struct anx_key_scope));
 			session->scope_count = key->scope_count;
 			session->max_scope = key->scopes[0].type;
+			session->auth_method = ANX_AUTH_BY_PASSWORD;
 			session->active = true;
 
 			/* Set as current session */
@@ -314,6 +315,30 @@ int anx_auth_login_password(const char *username, const char *password,
 	}
 
 	return ANX_EPERM;
+}
+
+void anx_auth_session_begin(const char *username,
+			     enum anx_auth_method method)
+{
+	anx_memset(&current_session, 0, sizeof(current_session));
+	anx_strlcpy(current_session.username,
+		     username ? username : "",
+		     sizeof(current_session.username));
+	current_session.auth_method = method;
+	current_session.max_scope   = ANX_SCOPE_ADMIN;
+	current_session.scope_count = 0;
+	current_session.active      = method != ANX_AUTH_BY_NONE;
+}
+
+/*
+ * Fails closed. No session, an inactive session, or any proof weaker than a
+ * public key all answer false, so a caller that forgets to handle the
+ * no-session case still denies rather than discloses (RFC-0034 section 2).
+ */
+bool anx_auth_is_key_authenticated(void)
+{
+	return current_session.active &&
+	       current_session.auth_method == ANX_AUTH_BY_KEY;
 }
 
 bool anx_auth_session_has_scope(const struct anx_session *session,

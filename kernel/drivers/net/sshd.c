@@ -28,6 +28,7 @@
 #include <anx/kprintf.h>
 #include <anx/crypto.h>
 #include <anx/credential.h>
+#include <anx/auth.h>
 #include <anx/shell.h>
 
 /* --- SSH message numbers (RFC 4250 section 4.1) --- */
@@ -650,7 +651,7 @@ static int ensure_host_key(uint8_t pub[32], uint8_t priv[64])
 	int r;
 
 	if (anx_credential_exists("ssh-host-key")) {
-		r = anx_credential_read("ssh-host-key", blob, sizeof(blob),
+		r = anx_credential_read_system("ssh-host-key", blob, sizeof(blob),
 					 &actual);
 		if (r == ANX_OK && actual == 96) {
 			anx_memcpy(pub, blob, 32);
@@ -1072,6 +1073,18 @@ static bool str_eq(const uint8_t *a, uint32_t a_len, const char *b)
 
 /* Check submitted password against configured value.
  * Priority: credential "ssh-password" if present, else hardcoded default. */
+/* Username of the connection being authenticated, for the session record. */
+static char sshd_user[64];
+
+static void sshd_note_user(const uint8_t *user, uint32_t user_len)
+{
+	uint32_t i;
+
+	for (i = 0; i < user_len && i < sizeof(sshd_user) - 1; i++)
+		sshd_user[i] = (char)user[i];
+	sshd_user[i] = '\0';
+}
+
 static bool check_password(const uint8_t *p, uint32_t len)
 {
 	char expected[128];
@@ -1079,7 +1092,7 @@ static bool check_password(const uint8_t *p, uint32_t len)
 	uint32_t i;
 
 	if (anx_credential_exists("ssh-password")) {
-		int r = anx_credential_read("ssh-password", expected,
+		int r = anx_credential_read_system("ssh-password", expected,
 					     sizeof(expected) - 1, &actual);
 
 		if (r == ANX_OK && actual > 0) {
@@ -1201,6 +1214,7 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 			anx_free(payload);
 			return ANX_EIO;
 		}
+		sshd_note_user(user, user_len);
 
 		if (str_eq(method, method_len, "none")) {
 			/* 'none' auth always fails — its only purpose is to
@@ -1238,6 +1252,13 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 						kputc((char)user[i]);
 				}
 				kprintf("'\n");
+				/*
+				 * A password session is NOT key-authenticated,
+				 * so it cannot read connectivity secrets back
+				 * (RFC-0034 section 3).
+				 */
+				anx_auth_session_begin(sshd_user,
+						       ANX_AUTH_BY_PASSWORD);
 				anx_free(payload);
 				return sshd_send_userauth_success(s);
 			}
@@ -1460,7 +1481,7 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 						bool authorized = false;
 
 						if (anx_credential_exists("ssh-authorized-keys")) {
-							anx_credential_read(
+							anx_credential_read_system(
 								"ssh-authorized-keys",
 								authkeys,
 								sizeof(authkeys),
@@ -1502,6 +1523,13 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 								kprintf("%02x", fp[i]);
 							kprintf("...\n");
 						}
+						/*
+						 * Proof was a public key. This
+						 * is the only path that unlocks
+						 * connectivity secrets.
+						 */
+						anx_auth_session_begin(sshd_user,
+								ANX_AUTH_BY_KEY);
 						anx_free(payload);
 						return sshd_send_userauth_success(s);
 					}

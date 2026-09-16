@@ -396,11 +396,11 @@ void kernel_main(void)
 			char wifi_pass[128] = {0};
 			uint32_t ssid_len = 0, pass_len = 0;
 
-			if (anx_credential_read("wifi-ssid", wifi_ssid,
+			if (anx_credential_read_system("wifi-ssid", wifi_ssid,
 						sizeof(wifi_ssid) - 1,
 						&ssid_len) == ANX_OK &&
 			    ssid_len > 0) {
-				anx_credential_read("wifi-pass", wifi_pass,
+				anx_credential_read_system("wifi-pass", wifi_pass,
 						    sizeof(wifi_pass) - 1,
 						    &pass_len);
 				anx_mt7925_connect(wifi_ssid,

@@ -55,9 +55,25 @@ struct anx_user {
 	bool active;
 };
 
+/*
+ * How a session proved itself (RFC-0034).
+ *
+ * Connectivity secrets are readable only by ANX_AUTH_BY_KEY. A session at
+ * the physical keyboard is ANX_AUTH_BY_CONSOLE and cannot read them back,
+ * which is the point: someone at the keyboard can overwrite the Wi-Fi
+ * password but cannot walk away knowing it.
+ */
+enum anx_auth_method {
+	ANX_AUTH_BY_NONE = 0,	/* no session */
+	ANX_AUTH_BY_CONSOLE,	/* physical keyboard */
+	ANX_AUTH_BY_PASSWORD,	/* password, local or over SSH */
+	ANX_AUTH_BY_KEY,	/* SSH public key */
+};
+
 /* Active session after login */
 struct anx_session {
 	char username[64];
+	enum anx_auth_method auth_method;
 	enum anx_key_scope_type max_scope;
 	struct anx_key_scope scopes[ANX_MAX_SCOPE_ENTRIES];
 	uint32_t scope_count;
@@ -94,5 +110,20 @@ void anx_auth_logout(void);
 
 /* Check if any users exist (for first-boot setup) */
 bool anx_auth_has_users(void);
+
+/*
+ * Establish a session for a principal that authenticated outside the
+ * password path -- sshd calls this once it has verified a public key or a
+ * password. Passing ANX_AUTH_BY_KEY is what unlocks connectivity secrets,
+ * so a caller MUST NOT pass it for any weaker proof.
+ */
+void anx_auth_session_begin(const char *username,
+			     enum anx_auth_method method);
+
+/*
+ * True only when the current session proved itself with a public key.
+ * Returns false when there is no session at all, so callers fail closed.
+ */
+bool anx_auth_is_key_authenticated(void);
 
 #endif /* ANX_AUTH_H */

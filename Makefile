@@ -552,6 +552,7 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_i2c_hid.c \
                tests/test_research_integration.c \
                tests/test_part.c \
+               tests/test_cred_class.c \
                tests/test_blk_probe.c
 TEST_BIN    := build/test/anunix_test
 

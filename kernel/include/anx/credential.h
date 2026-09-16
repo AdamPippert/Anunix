@@ -33,6 +33,21 @@ struct anx_credential_info {
 	bool active;
 };
 
+/*
+ * Credential class (RFC-0034).
+ *
+ * Classification is by name, never by a flag the creator chooses. A caller
+ * that could pick its own class could store a connectivity secret as
+ * ordinary and read it straight back, which defeats the rule.
+ */
+enum anx_credential_class {
+	ANX_CRED_CLASS_ORDINARY = 0,
+	ANX_CRED_CLASS_CONNECTIVITY,	/* reach beyond this machine */
+};
+
+/* Classify a credential name. Pure function; no store access. */
+enum anx_credential_class anx_credential_class_of(const char *name);
+
 /* Initialize the credential store */
 void anx_credstore_init(void);
 /* Persist all credentials to disk */
@@ -45,10 +60,41 @@ int anx_credential_create(const char *name,
 			    enum anx_credential_type cred_type,
 			    const void *secret, uint32_t secret_len);
 
-/* Read the credential payload into buf (enforces access policy) */
+/*
+ * Read the credential payload into buf, enforcing access policy.
+ *
+ * A connectivity-class credential returns ANX_EPERM unless the current
+ * session authenticated with a public key (RFC-0034). This is the default
+ * accessor precisely so that a caller who has never read RFC-0034 gets a
+ * refusal rather than a leak.
+ */
 int anx_credential_read(const char *name,
 			 void *buf, uint32_t buf_len,
 			 uint32_t *actual_len);
+
+/*
+ * Read a credential on the kernel's own behalf, with no principal check.
+ *
+ * For bring-up paths that run before any principal can exist: the boot-time
+ * Wi-Fi association, the SSH host key the server needs in order to offer
+ * authentication at all, and the password check that authenticates a session
+ * which does not yet exist.
+ *
+ * MUST NOT be reachable from the shell, the HTTP API, or an SSH session.
+ */
+int anx_credential_read_system(const char *name,
+				void *buf, uint32_t buf_len,
+				uint32_t *actual_len);
+
+/*
+ * Remove every connectivity-class credential.
+ *
+ * Refuses with ANX_EPERM unless the current session authenticated with a
+ * public key. Clears the class rather than a caller-named credential, so a
+ * caller cannot guess its way to removing one secret at a time. Writes the
+ * number removed to removed when it is not NULL.
+ */
+int anx_credential_wipe_connectivity(uint32_t *removed);
 
 /* Get credential metadata without accessing the payload */
 int anx_credential_info(const char *name,

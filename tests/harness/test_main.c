@@ -83,6 +83,7 @@ int test_aml_res(void);
 int test_i2c_hid(void);
 int test_research_integration(void);
 int test_part(void);
+int test_cred_class(void);
 int test_blk_probe(void);
 int test_blk_select(void);
 
@@ -152,6 +153,7 @@ static struct test_case tests[] = {
 	{ "i2c_hid",		test_i2c_hid },
 	{ "research_integration",	test_research_integration },
 	{ "part",		test_part },
+	{ "cred_class",		test_cred_class },
 	{ "blk_probe",		test_blk_probe },
 	{ "blk_select",		test_blk_select },
 };
