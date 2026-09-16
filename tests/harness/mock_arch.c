@@ -6,6 +6,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/mmio.h>
 #include <anx/arch.h>
 #include <anx/irq.h>
 #include <anx/pci.h>
@@ -480,3 +481,7 @@ bool anx_dt_has_compatible(const char *compatible)
 
 /* Mock MT7925 state — used by kernel_main() post-probe WiFi connect logic */
 anx_mt7925_state_t anx_mt7925_state(void) { return MT7925_STATE_DOWN; }
+
+/* The host has no PAT; tests keep the framebuffer's plain mapping. */
+bool anx_pat_enable_wc(void) { return false; }
+void *anx_mmio_map_wc(uint64_t phys, uint64_t size) { (void)size; return (void *)(uintptr_t)phys; }

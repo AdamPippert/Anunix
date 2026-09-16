@@ -36,6 +36,9 @@ int anx_fb_init(const struct anx_fb_info *info);
 /* Query whether framebuffer is available */
 bool anx_fb_available(void);
 
+/* Remap the framebuffer write-combining; call after the page allocator. */
+void anx_fb_enable_wc(void);
+
 /* Get current framebuffer info (valid only if available) */
 const struct anx_fb_info *anx_fb_get_info(void);
 

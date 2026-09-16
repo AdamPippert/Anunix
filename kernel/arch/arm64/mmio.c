@@ -30,3 +30,15 @@ uint64_t anx_mmio_pte(const void *va)
 	(void)va;
 	return 0;
 }
+
+/* No PAT on arm64; memory attributes live in MAIR_EL1, not set up yet. */
+bool anx_pat_enable_wc(void)
+{
+	return false;
+}
+
+void *anx_mmio_map_wc(uint64_t phys, uint64_t size)
+{
+	(void)size;
+	return (void *)(uintptr_t)phys;
+}

@@ -8,6 +8,8 @@
 
 #include <anx/types.h>
 #include <anx/fb.h>
+#include <anx/mmio.h>
+#include <anx/kprintf.h>
 #include <anx/string.h>
 
 static struct anx_fb_info fb;
@@ -25,6 +27,26 @@ int anx_fb_init(const struct anx_fb_info *info)
 
 	fb = *info;
 	return ANX_OK;
+}
+
+/*
+ * Remap the framebuffer write-combining. Called once the page allocator
+ * exists, since remapping may need a new page table.
+ */
+void anx_fb_enable_wc(void)
+{
+	uint64_t size;
+
+	if (!fb.available)
+		return;
+	if (!anx_pat_enable_wc())
+		return;
+	size = (uint64_t)fb.pitch * fb.height;
+	if (anx_mmio_map_wc(fb.addr, size) == NULL)
+		kprintf("fb: write-combining map failed\n");
+	else
+		kprintf("fb: 0x%llx+0x%llx mapped write-combining\n",
+			(unsigned long long)fb.addr, (unsigned long long)size);
 }
 
 bool anx_fb_available(void)
