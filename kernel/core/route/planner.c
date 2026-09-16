@@ -14,6 +14,7 @@
 #include <anx/jepa.h>
 #include <anx/tuning.h>
 #include <anx/route_profile.h>
+#include <anx/route_catalog.h>
 #include <anx/uuid.h>
 
 void anx_route_planner_init(void)
@@ -165,7 +166,13 @@ int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result)
 
 	anx_memset(result, 0, sizeof(*result));
 	anx_route_tuning_snapshot(&current);
-	if (!anx_uuid_is_nil(&cell->routing.profile_oid)) {
+	if (cell->routing.catalog_id || cell->routing.catalog_epoch || cell->routing.catalog_index) {
+		struct anx_route_weight_policy selected = current.weights;
+		result->profile_status = anx_route_catalog_choose(cell->routing.catalog_id, cell->routing.catalog_epoch,
+			cell->routing.catalog_index, cell, &current, &selected);
+		result->profile_applied = result->profile_status == ANX_OK;
+		if (result->profile_applied) current.weights = selected;
+	} else if (!anx_uuid_is_nil(&cell->routing.profile_oid)) {
 		struct anx_route_weight_policy selected = current.weights;
 		result->profile_status = anx_route_profile_choose(&cell->routing.profile_oid, cell, &current, &selected);
 		result->profile_applied = result->profile_status == ANX_OK;

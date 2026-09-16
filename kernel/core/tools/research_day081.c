@@ -63,7 +63,6 @@ int anx_research_day081(void)
 	struct anx_effect_fence_view fence;
 	struct anx_route_profile_case input = { .strategy = ANX_ROUTE_LOCAL_FIRST, .locality = ANX_LOCAL_ONLY };
 	struct anx_route_tuning_state after;
-	uint64_t trial = 0;
 	int ret = ANX_ENOMEM;
 	if (!f) return ret;
 	ret = anx_route_tuning_snapshot(&f->original);
@@ -132,6 +131,13 @@ int anx_research_day081(void)
 	ret = anx_effect_fence_get(&fence.id, &fence);
 	if (ret == ANX_OK) ret = anx_effect_fence_transition(&fence.id, fence.generation, ANX_FENCE_RUNNING);
 	if (ret != ANX_OK) goto out;
+	select081(f, f->owner, 1);
+	ret = anx_route_profile_release(&f->profiles[1]);
+	if (ret != ANX_OK) goto out;
+	if (!scores081(f, f->owner, ANX_EPERM, &f->original.weights)) { ret = -8117; goto out; }
+	anx_so_delete(&f->profiles[1], false); f->profiles[1] = ANX_UUID_NIL;
+	ret = anx_route_profile_compile(&f->weights[1], &input, 1, &f->profiles[1]);
+	if (ret != ANX_OK) goto out;
 	anx_oid_t reversed[3] = {f->profiles[2], f->profiles[1], f->profiles[0]};
 	ret = anx_route_catalog_replace(f->catalog.id, f->catalog.epoch, reversed, 3, &f->catalog);
 	if (ret != ANX_OK) goto out;
@@ -155,7 +161,6 @@ int anx_research_day081(void)
 	ret = ANX_OK;
 	kprintf("day081 policies=3 catalog_epochs=2 actual_scores=checked invalid=incumbent foreign=denied global_policy=unchanged\n");
 out:
-	if (trial) anx_route_tuning_finish(trial, ANX_ROUTE_TRIAL_REJECT);
 	anx_external_unregister_handler("anxresearch081");
 	if (f->catalog.id) anx_route_catalog_destroy(f->catalog.id);
 	if (profile) anx_objstore_release(profile);
