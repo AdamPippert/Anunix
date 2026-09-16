@@ -23,6 +23,11 @@
 #include <anx/branch_group.h>
 #include <anx/epistemic.h>
 
+int anx_object_commit_batch(struct anx_object_handle *const *handles, uint32_t count)
+{ (void)handles; (void)count; return ANX_ENOSYS; }
+int anx_object_abort_batch(struct anx_object_handle *const *handles, uint32_t count)
+{ (void)handles; (void)count; return ANX_ENOSYS; }
+
 /* Defined in objstore.c; shared the way anx_lifecycle_transition is. */
 void anx_so_compute_content_hash(struct anx_state_object *obj);
 

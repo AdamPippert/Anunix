@@ -275,6 +275,14 @@ int anx_object_commit(struct anx_object_handle *handle);
  */
 int anx_object_abort(struct anx_object_handle *handle);
 
+#define ANX_STAGE_BATCH_MAX 4U
+/* One through four distinct stages with one non-nil owner. Rejection preserves every stage.
+ * Commit validates every target before publishing; abort validates ownership before discarding.
+ * These calls cover object payloads on the current bootstrap CPU, not external effects or crash recovery.
+ */
+int anx_object_commit_batch(struct anx_object_handle *const *handles, uint32_t count);
+int anx_object_abort_batch(struct anx_object_handle *const *handles, uint32_t count);
+
 /* --- Information-flow label API --- */
 
 /*
