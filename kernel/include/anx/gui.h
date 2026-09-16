@@ -63,6 +63,9 @@ bool anx_gui_active(void);
  */
 void anx_gui_set_paging(bool paging);
 
+/* Time the panel's framebuffer operations on this hardware and log them. */
+void anx_gui_benchmark(void);
+
 /* Clear the GUI terminal area and reset the cursor */
 void anx_gui_terminal_clear(void);
 

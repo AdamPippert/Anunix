@@ -213,6 +213,7 @@ void anx_gui_init(void) {}
 bool anx_gui_active(void) { return false; }
 void anx_gui_terminal_putc(char c) { (void)c; }
 void anx_gui_set_paging(bool paging) { (void)paging; }
+void anx_gui_benchmark(void) { }
 void anx_gui_update_time(void) {}
 void anx_gui_get_time(char *buf, uint32_t buflen)
 { if (buf && buflen >= 6) { buf[0]='0';buf[1]='0';buf[2]=':';buf[3]='0';buf[4]='0';buf[5]='\0'; } }
