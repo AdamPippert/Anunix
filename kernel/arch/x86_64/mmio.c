@@ -142,6 +142,35 @@ static bool map_uncached(uint64_t base, uint64_t size)
 	return true;
 }
 
+/*
+ * Report the page-table entry backing a virtual address, so a driver can
+ * prove what the CPU thinks its BAR is rather than trusting that a call to
+ * anx_mmio_map() did what it says. That trust was misplaced once already.
+ *
+ * Returns the entry, or 0 when nothing maps the address.
+ */
+uint64_t anx_mmio_pte(const void *va)
+{
+	uint64_t addr  = (uint64_t)(uintptr_t)va;
+	uint64_t *pml4 = (uint64_t *)(read_cr3() & ADDR_MASK);
+	uint64_t *pdpt, *pd;
+	uint32_t i4 = (uint32_t)((addr >> 39) & 0x1FF);
+	uint32_t i3 = (uint32_t)((addr >> 30) & 0x1FF);
+	uint32_t i2 = (uint32_t)((addr >> 21) & 0x1FF);
+
+	if (!(pml4[i4] & PTE_PRESENT))
+		return 0;
+	pdpt = (uint64_t *)(pml4[i4] & ADDR_MASK);
+	if (!(pdpt[i3] & PTE_PRESENT))
+		return 0;
+	if (pdpt[i3] & PTE_PS)
+		return pdpt[i3];
+	pd = (uint64_t *)(pdpt[i3] & ADDR_MASK);
+	if (!(pd[i2] & PTE_PRESENT))
+		return 0;
+	return pd[i2];
+}
+
 void *anx_mmio_map(uint64_t phys, uint64_t size)
 {
 	if (size == 0)

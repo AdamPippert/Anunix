@@ -18,3 +18,15 @@ void *anx_mmio_map(uint64_t phys, uint64_t size)
 	(void)size;
 	return (void *)(uintptr_t)phys;
 }
+
+/*
+ * No page tables of our own yet, so there is no entry to report. Returning 0
+ * says "nothing maps this", which is honest: a caller checking cache bits
+ * must not be told the mapping is device memory when nothing has arranged
+ * for it to be.
+ */
+uint64_t anx_mmio_pte(const void *va)
+{
+	(void)va;
+	return 0;
+}

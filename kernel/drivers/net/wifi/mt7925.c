@@ -37,6 +37,16 @@ static bool g_ready;
 /* MMIO helpers                                                        */
 /* ------------------------------------------------------------------ */
 
+uint32_t anx_mt7925_bar_rd(uint32_t reg)
+{
+	return *(volatile uint32_t *)((uint8_t *)g_dev.bar0 + reg);
+}
+
+void anx_mt7925_bar_wr(uint32_t reg, uint32_t val)
+{
+	*(volatile uint32_t *)((uint8_t *)g_dev.bar0 + reg) = val;
+}
+
 static inline uint32_t nic_rd(uint32_t reg)
 {
 	return *(volatile uint32_t *)((uint8_t *)g_dev.bar0 + reg);
@@ -279,10 +289,10 @@ static int lpctl_phase(uint32_t write_bit, uint32_t want_sync, const char *what)
 	uint32_t i, j, v = 0;
 
 	for (i = 0; i < MT7925_DRV_OWN_RETRIES; i++) {
-		nic_wr(MT_CONN_ON_LPCTL, write_bit);
+		anx_mt7925_wr(MT_CONN_ON_LPCTL, write_bit);
 
 		for (j = 0; j < MT7925_DRV_OWN_POLL_MS; j++) {
-			v = nic_rd(MT_CONN_ON_LPCTL);
+			v = anx_mt7925_rr(MT_CONN_ON_LPCTL);
 			if ((v & PCIE_LPCR_HOST_OWN_SYNC) == want_sync)
 				return ANX_OK;
 			anx_delay_ms(1);
@@ -294,10 +304,12 @@ static int lpctl_phase(uint32_t write_bit, uint32_t want_sync, const char *what)
 
 static int mt7925_drv_own(void)
 {
-	uint32_t before = nic_rd(MT_CONN_ON_LPCTL);
+	uint32_t before = anx_mt7925_rr(MT_CONN_ON_LPCTL);
 	int ret;
 
-	kprintf("mt7925: LPCTL=0x%08x before ownership handshake\n", before);
+	kprintf("mt7925: LPCTL=0x%08x before handshake (chip 0x%08x -> bar 0x%06x)\n",
+		before, (uint32_t)MT_CONN_ON_LPCTL,
+		anx_mt7925_reg_addr(MT_CONN_ON_LPCTL));
 
 	/* Phase 1: give the domain to firmware so it is in a known state. */
 	ret = lpctl_phase(PCIE_LPCR_HOST_SET_OWN, PCIE_LPCR_HOST_OWN_SYNC,
@@ -311,7 +323,7 @@ static int mt7925_drv_own(void)
 		return ret;
 
 	kprintf("mt7925: LPCTL=0x%08x after ownership handshake\n",
-		nic_rd(MT_CONN_ON_LPCTL));
+		anx_mt7925_rr(MT_CONN_ON_LPCTL));
 	return ANX_OK;
 }
 
@@ -382,12 +394,34 @@ int anx_mt7925_init(void)
 	 * presents itself, and telling those apart from a chip that answers
 	 * with a power-off sentinel is the whole diagnostic question here.
 	 */
+	{
+		uint64_t pte = anx_mmio_pte(g_dev.bar0);
+
+		kprintf("mt7925: BAR0 pte=0x%08x%08x pcd=%u pwt=%u ps=%u\n",
+			(uint32_t)(pte >> 32), (uint32_t)pte,
+			(uint32_t)((pte >> 4) & 1), (uint32_t)((pte >> 3) & 1),
+			(uint32_t)((pte >> 7) & 1));
+	}
 	kprintf("mt7925: BAR0[0..3] = %08x %08x %08x %08x\n",
 		nic_rd(0x0), nic_rd(0x4), nic_rd(0x8), nic_rd(0xc));
 
-	/* Read chip ID */
-	uint32_t hw_ver = nic_rd(MT_CONN_HW_VER);
-	kprintf("mt7925: chip hw_ver=0x%08x\n", hw_ver);
+	/*
+	 * The real chip identity, through the remap window. The old read used
+	 * BAR offset 0xd000, which is the fixed slot for WF_UMAC_TOP (PSE) --
+	 * a Wi-Fi MAC block that is powered down on a cold chip. It answered
+	 * 0xdeadbeef every time, and that was read as "the chip is asleep"
+	 * when it actually meant "wrong register".
+	 */
+	{
+		uint32_t chipid = anx_mt7925_rr(MT_HW_CHIPID);
+		uint32_t rev    = anx_mt7925_rr(MT_HW_REV);
+
+		kprintf("mt7925: chip id=0x%08x rev=0x%08x "
+			"(remap L1 window)\n", chipid, rev);
+		kprintf("mt7925: legacy 0xd000 read = 0x%08x "
+			"(WF_UMAC PSE, expect deadbeef when cold)\n",
+			nic_rd(0xd000));
+	}
 
 	/* Download firmware and boot MCU */
 	int ret = mt7925_fw_download(&g_dev);

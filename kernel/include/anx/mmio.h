@@ -33,4 +33,11 @@
  */
 void *anx_mmio_map(uint64_t phys, uint64_t size);
 
+/*
+ * The page-table entry backing a virtual address, for a driver that needs to
+ * confirm its BAR really is mapped as device memory. Bit 3 is PWT and bit 4
+ * is PCD; both set means uncached. Returns 0 when nothing maps the address.
+ */
+uint64_t anx_mmio_pte(const void *va);
+
 #endif /* ANX_MMIO_H */

@@ -26,15 +26,29 @@
 #define MT_CONN_INFRA_BASE              0x18000000 /* chip-space */
 #define MT_TOP_CFG_BASE                 0x80020000 /* chip-space */
 
-/* PCIe remap window registers (within BAR0) */
-#define MT_HIF_REMAP_L1                 0x260004
-#define MT_HIF_REMAP_L2                 0x260008
+/*
+ * The PCIe remap window registers live in anx/mt7925.h, with the values from
+ * Linux v6.12 mt76 (mt7925/regs.h lines 70-80).
+ *
+ * They were 0x260004 and 0x260008 here, which are not this chip's remap
+ * registers. The correct offsets are 0x155024 and 0x0120. Any remap the
+ * driver attempted therefore wrote to an unrelated location and the window
+ * never moved, which is why every register outside the fixed map read as
+ * filler.
+ */
 #define MT_PCIE_REMAP_BASE4             0x260010
 
 /* ------------------------------------------------------------------ */
 /* Connectivity subsystem control (via PCIE remap window)              */
 /* ------------------------------------------------------------------ */
 
+/*
+ * WARNING: 0xd000 is NOT a CONN_INFRA base. In this chip's fixed map that BAR
+ * offset falls inside WF_UMAC_TOP (PSE), a Wi-Fi MAC block. Reading it on a
+ * cold chip returns the 0xdeadbeef power-off sentinel, which was mistaken for
+ * evidence that the chip would not wake. The real chip identity is
+ * MT_HW_CHIPID in anx/mt7925.h, reached through the remap window.
+ */
 #define MT_CONN_INFRA_CFG_BASE          0xd000
 #define MT_CONN_HW_VER                  (MT_CONN_INFRA_CFG_BASE + 0x0000)
 #define MT_CONN_FW_VER                  (MT_CONN_INFRA_CFG_BASE + 0x0004)
@@ -54,7 +68,7 @@
  * BAR0 offset is 0x0e0010. Values taken from Linux v6.12 mt76:
  * mt792x_regs.h lines 469-472 and mt7925/pci.c line 150.
  */
-#define MT_CONN_ON_LPCTL                0x0e0010      /* chip 0x7c060010 */
+#define MT_CONN_ON_LPCTL                0x7c060010u   /* chip address */
 #define PCIE_LPCR_HOST_SET_OWN          (1U << 0)
 #define PCIE_LPCR_HOST_CLR_OWN          (1U << 1)
 #define PCIE_LPCR_HOST_OWN_SYNC         (1U << 2)
