@@ -1295,7 +1295,7 @@ Evidence: [kernel/core/cap/effect.c](../../kernel/core/cap/effect.c), [kernel/co
 
 Planned acceptance: Four staged payloads abort without changing live data. Invalid authority, versions, handles, or review evidence reject every change; the owner commits all four exactly once.
 
-Status: Validated on Jekyll. Tested commit: `f1e1fc2`. Source message: `8e6b3d50-036a-46c2-b5f4-8c5127cf88f1`.
+Status: Merged at `53057aa` after Jekyll validation. Tested commit: `f1e1fc2`. Source message: `8e6b3d50-036a-46c2-b5f4-8c5127cf88f1`.
 
 Detailed comparison and results: [Day 080](day-080.md).
 
@@ -1305,13 +1305,15 @@ Detailed comparison and results: [Day 080](day-080.md).
 
 Learning: Keep runtime policy selection inside a previously validated, finite action space.
 
-Anunix comparison: Finite routing profiles and typed tuning actions exist. A versioned policy catalog with indexed selection still needs an explicit runtime boundary.
+Anunix comparison: Individual profiles already validate finite cases. An issued catalog adds owner binding, versioned membership, and integer selection with default-policy fallback.
 
 Evidence: [kernel/core/route/profile.c](../../kernel/core/route/profile.c), [kernel/core/route/tuning.c](../../kernel/core/route/tuning.c), [kernel/core/regime/regime.c](../../kernel/core/regime/regime.c).
 
-Planned acceptance: Select only issued policies through a bounded index; prove invalid or stale selections retain the validated fallback.
+Planned acceptance: Three compiled profiles produce expected routing scores. Invalid, stale, altered, revoked, or foreign selections use incumbent weights; the global policy remains unchanged.
 
-Status: Queued. Source message: `2b0646b7-8ce0-4118-a447-80e8979d269b`.
+Status: Validated on Jekyll. Tested commit: `72219d6`. Source message: `2b0646b7-8ce0-4118-a447-80e8979d269b`.
+
+Detailed comparison and results: [Day 081](day-081.md).
 
 ## Day 082 — 2026-09-15
 
