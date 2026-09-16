@@ -172,7 +172,19 @@ source-identity-force:
 $(SOURCE_HEADER): source-identity-force
 	@python3 tools/source_identity.py --header $@
 
-$(ALL_OBJ): $(SOURCE_HEADER)
+# Optional local Wi-Fi credentials for bringing a machine onto a network
+# before it can be configured any other way. config/boot-secrets.conf is
+# gitignored; when it is absent the generated header is empty and the kernel
+# embeds nothing. Regenerated every build so removing the file takes effect.
+BOOT_SECRETS_CONF   := config/boot-secrets.conf
+BOOT_SECRETS_HEADER := $(BUILD_DIR)/generated/anx_boot_secrets.h
+.PHONY: boot-secrets-force
+boot-secrets-force:
+
+$(BOOT_SECRETS_HEADER): boot-secrets-force
+	@python3 tools/gen_boot_secrets.py --input $(BOOT_SECRETS_CONF) --header $@
+
+$(ALL_OBJ): $(SOURCE_HEADER) $(BOOT_SECRETS_HEADER)
 CFLAGS += -I $(BUILD_DIR)/generated
 
 # Rebuild when switching between the normal and research images.

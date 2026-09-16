@@ -28,6 +28,7 @@
 #include <anx/acpi.h>
 #include <anx/string.h>
 #include <anx/credential.h>
+#include <anx_boot_secrets.h>
 #include <anx/auth.h>
 #include <anx/blk.h>
 #include <anx/md.h>
@@ -389,6 +390,42 @@ void kernel_main(void)
 
 	/* 12. Network bring-up (drivers already probed above) */
 	{
+		/*
+		 * Apply locally-embedded Wi-Fi credentials, if this kernel
+		 * was built with config/boot-secrets.conf present. Existing
+		 * stored credentials win, so a machine that has been
+		 * configured properly is never silently overridden by a
+		 * stale build-time value.
+		 */
+		if (ANX_BOOT_SECRET_COUNT > 0) {
+			uint32_t bi;
+
+			kprintf("\n");
+			kprintf("*** This kernel carries embedded Wi-Fi "
+				"credentials in plaintext.\n");
+			kprintf("*** Do not publish this image. Rebuild "
+				"without config/boot-secrets.conf.\n\n");
+
+			for (bi = 0; anx_boot_secrets[bi].name; bi++) {
+				const char *n = anx_boot_secrets[bi].name;
+				const char *v = anx_boot_secrets[bi].value;
+				uint32_t vlen = 0;
+
+				while (v[vlen])
+					vlen++;
+				if (anx_credential_exists(n)) {
+					kprintf("boot-secrets: %s already "
+						"stored; keeping it\n", n);
+					continue;
+				}
+				if (anx_credential_create(n, ANX_CRED_OPAQUE,
+							   v, vlen) == ANX_OK)
+					kprintf("boot-secrets: %s applied\n", n);
+				else
+					kprintf("boot-secrets: %s failed\n", n);
+			}
+		}
+
 		/* Auto-connect WiFi if cred:wifi-ssid was passed on cmdline.
 		 * Only runs when MT7925 is the active driver (virtio/e1000 absent). */
 		if (anx_net_probe_ok() && anx_mt7925_state() == MT7925_STATE_FW_UP) {
