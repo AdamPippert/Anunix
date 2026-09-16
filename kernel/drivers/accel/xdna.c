@@ -26,6 +26,7 @@
 #include <anx/types.h>
 #include <anx/xdna.h>
 #include <anx/pci.h>
+#include <anx/mmio.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -405,7 +406,10 @@ int anx_xdna_init(void)
 	/* Map BAR0 (identity-mapped in Anunix 4 GiB window) */
 	xdna_dev.bar0_phys = pci->bar[0] & ~0xFULL;
 	xdna_dev.bar0_size = 0x400000;		/* 4 MiB */
-	xdna_dev.bar0 = (volatile uint8_t *)(uintptr_t)xdna_dev.bar0_phys;
+	/* Device memory, not cached RAM -- see anx/mmio.h. */
+	xdna_dev.bar0 = xdna_dev.bar0_phys
+			? anx_mmio_map(xdna_dev.bar0_phys, 0x100000)
+			: NULL;
 
 	if (xdna_dev.bar0_phys == 0) {
 		kprintf("xdna: BAR0 not mapped (BIOS resource assignment?)\n");

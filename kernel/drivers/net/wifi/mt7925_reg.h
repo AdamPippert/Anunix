@@ -55,6 +55,7 @@
  * mt792x_regs.h lines 469-472 and mt7925/pci.c line 150.
  */
 #define MT_CONN_ON_LPCTL                0x0e0010      /* chip 0x7c060010 */
+#define PCIE_LPCR_HOST_SET_OWN          (1U << 0)
 #define PCIE_LPCR_HOST_CLR_OWN          (1U << 1)
 #define PCIE_LPCR_HOST_OWN_SYNC         (1U << 2)
 #define MT7925_DRV_OWN_RETRIES          10            /* MT792x_DRV_OWN_RETRY_COUNT */

@@ -29,6 +29,8 @@
 #define PCI_INTERRUPT		0x3C
 
 /* Command register bits */
+#define PCI_CMD_IO_SPACE	(1 << 0)
+#define PCI_CMD_MEM_SPACE	(1 << 1)
 #define PCI_CMD_BUS_MASTER	(1 << 2)
 
 static struct anx_list_head pci_devices = ANX_LIST_HEAD_INIT(pci_devices);
@@ -220,7 +222,13 @@ void anx_pci_enable_bus_master(struct anx_pci_device *dev)
 
 	cmd = anx_pci_config_read(dev->bus, dev->slot, dev->func,
 				  PCI_COMMAND);
-	cmd |= PCI_CMD_BUS_MASTER;
+	/*
+	 * Memory space decode, not just bus mastering. A device whose BAR is
+	 * not decoded answers nothing, and the driver above sees whatever the
+	 * host bridge returns rather than the chip. Linux does the same check
+	 * in mt7925_pci_probe() before it touches a register.
+	 */
+	cmd |= PCI_CMD_BUS_MASTER | PCI_CMD_MEM_SPACE;
 	anx_pci_config_write(dev->bus, dev->slot, dev->func,
 			     PCI_COMMAND, cmd);
 }

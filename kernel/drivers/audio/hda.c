@@ -35,6 +35,7 @@
 #include <anx/hda.h>
 #include <anx/audio.h>
 #include <anx/pci.h>
+#include <anx/mmio.h>
 #include <anx/page.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
@@ -663,7 +664,10 @@ anx_hda_init(void)
 		return ANX_ENODEV;
 
 	g_hda.pci = pci;
-	g_hda.bar = (volatile uint8_t *)(uintptr_t)bar0;
+	/* Device memory, not cached RAM -- see anx/mmio.h. */
+	g_hda.bar = anx_mmio_map((uint64_t)bar0, 0x4000);
+	if (!g_hda.bar)
+		return ANX_ENOMEM;
 
 	anx_pci_enable_bus_master(pci);
 

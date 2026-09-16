@@ -21,6 +21,7 @@
 #include <anx/types.h>
 #include <anx/e1000.h>
 #include <anx/pci.h>
+#include <anx/mmio.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -399,9 +400,10 @@ int anx_e1000_init(void)
 	nic.slot      = pci->slot;
 	nic.func      = pci->func;
 
-	/* Map BAR0 (MMIO, 128 KiB typical) */
-	nic.mmio = (volatile uint8_t *)(uintptr_t)(pci->bar[0] & ~0xFULL);
-	if ((uintptr_t)nic.mmio == 0) {
+	/* Map BAR0 (MMIO, 128 KiB typical) as device memory, not cached RAM. */
+	if ((pci->bar[0] & ~0xFULL) != 0)
+		nic.mmio = anx_mmio_map(pci->bar[0] & ~0xFULL, 0x20000);
+	if (nic.mmio == NULL) {
 		kprintf("e1000: BAR0 not assigned\n");
 		return ANX_EIO;
 	}
