@@ -21,6 +21,7 @@
 #include <anx/page.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/mt7925.h>
 #include "mt7925_reg.h"
 #include "mt7925_drv.h"
 
@@ -73,15 +74,22 @@ struct mt7925_mcu_txd {
 /* MMIO helpers                                                        */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Both take a CHIP address and translate it. An address below the BAR size
+ * passes through unchanged, so the raw BAR offsets in mt7925_reg.h keep
+ * working while chip addresses like MT_TOP_MISC become reachable.
+ */
 static inline uint32_t fw_rd(const struct mt7925_dev *dev, uint32_t reg)
 {
-	return *(volatile uint32_t *)((uint8_t *)dev->bar0 + reg);
+	(void)dev;
+	return anx_mt7925_rr(reg);
 }
 
 static inline void fw_wr(const struct mt7925_dev *dev,
 			  uint32_t reg, uint32_t val)
 {
-	*(volatile uint32_t *)((uint8_t *)dev->bar0 + reg) = val;
+	(void)dev;
+	anx_mt7925_wr(reg, val);
 }
 
 /* Spin-poll until (reg & mask) == val, or timeout (iterations). */
@@ -408,6 +416,18 @@ int mt7925_fw_download(struct mt7925_dev *dev)
 	if (ret) return ret;
 
 	/* Step 2: acquire patch semaphore */
+	/*
+	 * State at the corrected addresses, before anything is asked of the
+	 * MCU. Every one of these was previously read from an offset that
+	 * belonged to a different block.
+	 */
+	kprintf("mt7925: TOP_MISC=0x%08x (fw_state=%u) CONN_ON_MISC=0x%08x\n",
+		fw_rd(dev, MT_TOP_MISC2),
+		fw_rd(dev, MT_TOP_MISC2) & MT_TOP_MISC2_FW_STATE,
+		fw_rd(dev, MT_CONN_ON_MISC));
+	kprintf("mt7925: WFDMA0_GLO_CFG=0x%08x (base now 0x%x)\n",
+		fw_rd(dev, MT_WFDMA0_GLO_CFG), (uint32_t)MT_WFDMA0_BASE);
+
 	kprintf("mt7925: acquiring patch semaphore\n");
 	ret = cmd_patch_sem(dev, MT_PATCH_SEM_GET);
 	if (ret) {

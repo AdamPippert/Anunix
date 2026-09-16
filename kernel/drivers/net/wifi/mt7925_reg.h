@@ -69,13 +69,26 @@
  * mt792x_regs.h lines 469-472 and mt7925/pci.c line 150.
  */
 #define MT_CONN_ON_LPCTL                0x7c060010u   /* chip address */
+
+/* Firmware power/ready bits, mt792x_regs.h lines 474-477. */
+#define MT_CONN_ON_MISC                 0x7c0600f0u   /* chip address */
+#define MT_TOP_MISC2_FW_PWR_ON          (1U << 0)
+#define MT_TOP_MISC2_FW_N9_ON           (1U << 1)
+#define MT_TOP_MISC2_FW_N9_RDY          0x3u
 #define PCIE_LPCR_HOST_SET_OWN          (1U << 0)
 #define PCIE_LPCR_HOST_CLR_OWN          (1U << 1)
 #define PCIE_LPCR_HOST_OWN_SYNC         (1U << 2)
 #define MT7925_DRV_OWN_RETRIES          10            /* MT792x_DRV_OWN_RETRY_COUNT */
 #define MT7925_DRV_OWN_POLL_MS          50
 
-#define MT_TOP_MISC2                    0xe110
+/*
+ * Firmware state. Was BAR offset 0xe110, which is not this register. Linux
+ * v6.12 mt76 mt792x_regs.h lines 373-381: MT_TOP_BASE is the chip address
+ * 0x18060000 and MT_TOP_MISC is MT_TOP(0xf0), reached through the L1 remap
+ * window.
+ */
+#define MT_TOP_BASE                     0x18060000u   /* chip address */
+#define MT_TOP_MISC2                    (MT_TOP_BASE + 0xf0u)
 #define MT_TOP_MISC2_FW_STATE           0x7           /* bits [2:0] */
 #define MT_FW_STATE_IDLE                0x00
 #define MT_FW_STATE_RUNNING             0x04
@@ -96,7 +109,12 @@
 /* MT7925 uses WFDMA0 for both data and MCU communication.            */
 /* ------------------------------------------------------------------ */
 
-#define MT_WFDMA0_BASE                  0x4000
+/*
+ * Was 0x4000, which is the fixed slot for "WFDMA reserved" -- so the whole
+ * firmware download drove the wrong block. Linux v6.12 mt76 mt792x_regs.h
+ * line 260 gives 0xd4000.
+ */
+#define MT_WFDMA0_BASE                  0xd4000
 
 /* Global DMA config */
 #define MT_WFDMA0_GLO_CFG               (MT_WFDMA0_BASE + 0x0208)
