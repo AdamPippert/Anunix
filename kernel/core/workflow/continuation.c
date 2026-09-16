@@ -46,6 +46,12 @@ struct continuation_record {
 static struct continuation_record *records[ANX_CONTINUATION_MAX];
 static struct anx_spinlock continuation_lock = ANX_SPINLOCK_INIT;
 static uint64_t sequence;
+int anx_continuation_idle_reclaim(uint64_t id, uint64_t epoch,
+		const struct anx_continuation_idle_request *request, struct anx_continuation_view *out)
+{
+	(void)id; (void)epoch; (void)request; (void)out;
+	return ANX_ENOSYS;
+}
 #if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
 static bool drop_reply, restore_fault;
 int anx_continuation_test_restore_fault(bool enabled)
