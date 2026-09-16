@@ -12,6 +12,8 @@
 #include <anx/types.h>
 #include <anx/gui.h>
 #include <anx/fb.h>
+#include <anx/kprintf.h>
+#include <anx/perf.h>
 #include <anx/font.h>
 #include <anx/io.h>
 #include <anx/arch.h>
@@ -394,6 +396,99 @@ void anx_gui_init(void)
 	anx_gui_update_time();
 
 	gui_ready = true;
+}
+
+/*
+ * Time the framebuffer operations the boot panel depends on, on whatever
+ * hardware is running, and log the result.
+ *
+ * QEMU's framebuffer is ordinary RAM, where reading pixels back costs the
+ * same as writing them, so it cannot show the cost that made the panel
+ * slow on real hardware. These numbers come from the machine itself and
+ * land in the boot-log ring.
+ *
+ * The TSC is uncalibrated, so the cycle counts are converted with the
+ * 100 Hz timer when it is ticking; otherwise raw cycles are reported.
+ */
+void anx_gui_benchmark(void)
+{
+	const struct anx_fb_info *info = anx_fb_get_info();
+	uint64_t hz = 0, t0, t_fill, t_scroll, t_line, t_read;
+	uint64_t tick0, c0;
+	uint8_t *base;
+	uint32_t i, row;
+	volatile uint32_t sum = 0;
+
+	if (!gui_ready || !info)
+		return;
+
+	/* Calibrate: cycles across 10 timer ticks, if ticks advance. */
+	tick0 = arch_timer_ticks();
+	c0 = anx_rdtsc();
+	for (i = 0; i < 20000000u && arch_timer_ticks() == tick0; i++)
+		;
+	if (arch_timer_ticks() != tick0) {
+		tick0 = arch_timer_ticks();
+		c0 = anx_rdtsc();
+		while (arch_timer_ticks() - tick0 < 10)
+			;
+		hz = (anx_rdtsc() - c0) * 10;	/* 10 ticks = 100 ms */
+	}
+
+	base = (uint8_t *)(uintptr_t)info->addr;
+
+	t0 = anx_rdtsc();
+	anx_fb_fill_rect(term_x, term_y, term_w, term_h, ANX_COLOR_AX_SURFACE);
+	t_fill = anx_rdtsc() - t0;
+
+	t0 = anx_rdtsc();
+	anx_memmove(base + term_y * info->pitch,
+		    base + (term_y + term_char_h) * info->pitch,
+		    (term_h - term_char_h) * info->pitch);
+	t_scroll = anx_rdtsc() - t0;
+
+	t0 = anx_rdtsc();
+	for (i = 0; i < term_cols; i++)
+		anx_gui_draw_char_scaled(term_x + i * term_char_w, term_y,
+					  (char)('A' + i % 26),
+					  ANX_COLOR_AX_TEXT,
+					  ANX_COLOR_AX_SURFACE,
+					  term_font_scale);
+	t_line = anx_rdtsc() - t0;
+
+	t0 = anx_rdtsc();
+	for (row = term_y; row < term_y + term_h; row++) {
+		volatile uint32_t *p = anx_fb_row_ptr(row);
+
+		/* volatile: the reads must happen, not be optimised out */
+		for (i = 0; i < info->width; i += 4)
+			sum += p[i];
+	}
+	t_read = anx_rdtsc() - t0;
+	(void)sum;
+
+	anx_fb_fill_rect(term_x, term_y, term_w, term_h, ANX_COLOR_AX_SURFACE);
+	cur_row = 0;
+	cur_col = 0;
+
+	if (hz) {
+		kprintf("fbbench: tsc %llu Hz; panel %ux%u; fill %llu us, "
+			"scroll-copy %llu us, text line %llu us, "
+			"read quarter-panel %llu us\n",
+			(unsigned long long)hz, term_w, term_h,
+			(unsigned long long)(t_fill * 1000000ULL / hz),
+			(unsigned long long)(t_scroll * 1000000ULL / hz),
+			(unsigned long long)(t_line * 1000000ULL / hz),
+			(unsigned long long)(t_read * 1000000ULL / hz));
+	} else {
+		kprintf("fbbench: timer not ticking, raw cycles; panel %ux%u; "
+			"fill %llu, scroll-copy %llu, text line %llu, "
+			"read quarter-panel %llu\n", term_w, term_h,
+			(unsigned long long)t_fill,
+			(unsigned long long)t_scroll,
+			(unsigned long long)t_line,
+			(unsigned long long)t_read);
+	}
 }
 
 bool anx_gui_active(void)

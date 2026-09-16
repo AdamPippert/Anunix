@@ -192,6 +192,7 @@ void kernel_main(void)
 	if (anx_fb_available()) {
 		PERF_BEGIN("gui_init");
 		anx_gui_init();
+		anx_gui_benchmark();
 		PERF_END();
 	}
 
