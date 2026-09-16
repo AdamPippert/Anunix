@@ -7,6 +7,7 @@
 #include <anx/engine.h>
 #include <anx/engine_lease.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 int test_model_server(void)
 {
@@ -115,5 +116,5 @@ int test_model_server(void)
 	/* Destroy */
 	anx_msrv_destroy(srv);
 	anx_engine_unregister(engine);
-	return 0;
+	return anx_research_day003();
 }

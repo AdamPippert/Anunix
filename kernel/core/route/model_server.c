@@ -183,6 +183,8 @@ int anx_msrv_stop(struct anx_model_server *srv)
 int anx_msrv_submit(struct anx_model_server *srv,
 		    struct anx_infer_request *req)
 {
+	struct anx_engine *engine;
+
 	if (!srv || !req)
 		return ANX_EINVAL;
 
@@ -192,6 +194,23 @@ int anx_msrv_submit(struct anx_model_server *srv,
 		anx_spin_unlock(&srv->lock);
 		return ANX_EPERM;
 	}
+
+	/* Reject expired work before it consumes a serving slot. */
+	if (req->deadline_ns && arch_time_now() >= req->deadline_ns) {
+		anx_spin_unlock(&srv->lock);
+		return ANX_ETIMEDOUT;
+	}
+	engine = anx_engine_lookup(&srv->engine_id);
+	if (!engine) {
+		anx_spin_unlock(&srv->lock);
+		return ANX_ENOENT;
+	}
+	if (engine->max_context_tokens && req->max_tokens > engine->max_context_tokens) {
+		anx_spin_unlock(&srv->lock);
+		return ANX_EINVAL;
+	}
+	if (!req->max_tokens)
+		req->max_tokens = engine->max_context_tokens;
 
 	/* Backpressure check */
 	if (srv->pending_count >= srv->max_pending) {

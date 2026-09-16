@@ -25,6 +25,8 @@ enum anx_accel_type {
 
 /* --- Resource lease --- */
 
+#define ANX_LEASE_DEPTH_MAX 8U
+
 struct anx_engine_lease {
 	anx_eid_t engine_id;
 
@@ -40,6 +42,9 @@ struct anx_engine_lease {
 	/* Lifetime */
 	anx_time_t granted_at;
 	anx_time_t expires_at;		/* 0 = no expiry */
+	struct anx_engine_lease *parent;
+	uint32_t depth;
+	bool revoked;
 
 	/* Bookkeeping */
 	struct anx_spinlock lock;
@@ -59,6 +64,14 @@ int anx_lease_grant(const anx_eid_t *engine_id,
 		    uint32_t accel_pct,
 		    struct anx_engine_lease **out);
 
+/* Delegate a subset of a parent's reservation, using its tier and accelerator. */
+int anx_lease_grant_child(struct anx_engine_lease *parent, const anx_eid_t *engine_id,
+			  uint64_t mem_bytes, uint32_t accel_pct, struct anx_engine_lease **out);
+/* Revoke a quiescent subtree. Physical users must stop before this ledger operation. */
+int anx_lease_revoke(struct anx_engine_lease *lease);
+/* Controller-only resizing preserves identity, tier, accelerator, and ancestry. */
+int anx_lease_resize(struct anx_engine_lease *lease, uint64_t memory_bytes, uint32_t accelerator_pct);
+
 /* Look up the lease for an engine */
 struct anx_engine_lease *anx_lease_lookup(const anx_eid_t *engine_id);
 
@@ -68,5 +81,14 @@ int anx_lease_release(struct anx_engine_lease *lease);
 /* Query total available resources */
 int anx_lease_avail_mem(enum anx_mem_tier tier, uint64_t *avail_out);
 int anx_lease_avail_accel(enum anx_accel_type accel, uint32_t *pct_out);
+
+/* One coherent ledger snapshot, independent of physical allocator accounting. */
+struct anx_lease_capacity {
+	uint32_t schema;
+	anx_time_t taken_at;
+	uint64_t total_memory[ANX_MEM_TIER_COUNT], free_memory[ANX_MEM_TIER_COUNT];
+	uint32_t total_accelerator[ANX_ACCEL_COUNT], free_accelerator[ANX_ACCEL_COUNT];
+};
+int anx_lease_snapshot_capacity(struct anx_lease_capacity *out);
 
 #endif /* ANX_ENGINE_LEASE_H */

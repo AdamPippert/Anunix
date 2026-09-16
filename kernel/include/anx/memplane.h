@@ -13,6 +13,8 @@
 #include <anx/list.h>
 #include <anx/spinlock.h>
 
+struct anx_cell;
+
 /* --- Memory tiers (RFC-0004 Section 7) --- */
 
 enum anx_mem_tier {
@@ -69,6 +71,15 @@ enum anx_forget_mode {
 
 /* --- Memory placement record --- */
 
+#define ANX_MEM_RETENTION_PRIORITY_MAX 100U
+#define ANX_MEM_RETENTION_SWEEPS_MAX 16U
+#define ANX_MEM_EVICTION_CANDIDATES_MAX 32U
+
+struct anx_mem_retention_hint {
+	uint32_t priority;
+	uint32_t sweeps;
+};
+
 struct anx_mem_entry {
 	anx_oid_t oid;				/* State Object reference */
 
@@ -83,13 +94,18 @@ struct anx_mem_entry {
 	uint32_t confidence_pct;		/* 0-100 */
 	uint32_t contradiction_count;
 	anx_time_t last_validated_at;
+	uint64_t validation_generation; /* controller validation identity; zero means never validated */
 	anx_time_t last_accessed_at;
 
 	/* Decay scoring (higher = more likely to be demoted/forgotten) */
 	uint32_t decay_score;			/* 0-1000 */
 	uint32_t access_count;
+	struct anx_mem_retention_hint retention; /* advisory; zero means no hint */
+	uint8_t protected_tiers;                 /* controller-owned protection */
 
 	/* Bookkeeping */
+	uint64_t admitted_bytes;
+	struct anx_cell *admission_owner; /* bounded owner held until hard forgetting */
 	struct anx_spinlock lock;
 	struct anx_list_head store_link;	/* memplane hash chain */
 };
@@ -119,15 +135,15 @@ struct anx_mem_entry *anx_memplane_lookup(const anx_oid_t *oid);
 /* Release a memory entry reference */
 void anx_memplane_release(struct anx_mem_entry *entry);
 
-/* Promote an entry to a higher tier */
+/* Controller-only placement; L4 accepts only provisional or validated state. */
 int anx_memplane_promote(struct anx_mem_entry *entry,
 			 enum anx_mem_tier target_tier);
 
-/* Demote an entry from a tier */
+/* Controller-only demotion still respects protection and workflow dependencies. */
 int anx_memplane_demote(struct anx_mem_entry *entry,
 			enum anx_mem_tier tier);
 
-/* Update validation state */
+/* Controller-only validation; each update issues a fresh, non-reused generation. */
 int anx_memplane_set_validation(struct anx_mem_entry *entry,
 				enum anx_mem_validation_state state);
 
@@ -137,13 +153,23 @@ int anx_memplane_add_contradiction(struct anx_mem_entry *entry);
 /* Record an access (updates access_count and last_accessed_at) */
 void anx_memplane_record_access(struct anx_mem_entry *entry);
 
-/* Forget a memory entry */
+/* Controller forgetting; active owners may release only their own charged admission. */
 int anx_memplane_forget(struct anx_mem_entry *entry,
 			enum anx_forget_mode mode);
+
+/* Metadata-authorized hints cannot grant residency or validation. */
+int anx_memplane_hint(struct anx_mem_entry *entry, const struct anx_mem_retention_hint *hint);
+/* Trusted controller API; active cells cannot set or clear protection. */
+int anx_memplane_protect(struct anx_mem_entry *entry, uint32_t tiers);
+/* Evict one logical L0/L1/L3 placement from a bounded, controller-selected pool. */
+int anx_memplane_evict(const anx_oid_t *candidates, uint32_t count,
+		       enum anx_mem_tier tier, anx_oid_t *victim_out);
 
 /* --- Decay API --- */
 
 /* Run one decay sweep over all entries (called periodically) */
 int anx_memplane_decay_sweep(void);
+/* Advance one entry without changing other live entries. */
+int anx_memplane_decay_entry(struct anx_mem_entry *entry);
 
 #endif /* ANX_MEMPLANE_H */

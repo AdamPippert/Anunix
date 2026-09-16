@@ -96,7 +96,8 @@ int anx_msrv_start(struct anx_model_server *srv);
 /* Stop a model server (drain, unload) */
 int anx_msrv_stop(struct anx_model_server *srv);
 
-/* Submit an inference request */
+/* Reject expired deadlines and output limits above a known context capacity.
+ * A zero output limit uses the engine's capacity (zero remains unknown). */
 int anx_msrv_submit(struct anx_model_server *srv,
 		    struct anx_infer_request *req);
 

@@ -85,6 +85,8 @@ typedef uint64_t anx_time_t;
 #define ANX_EFULL	-13   /* store or queue is full */
 #define ANX_ENODEV	-14   /* no such device */
 #define ANX_ENOTSUP	-15   /* operation not supported */
+#define ANX_ECANCELED	-16   /* execution cancelled */
+#define ANX_EAUDIT	-17   /* execution completed, audit finalization failed */
 
 /* Kernel version string — YYYY.M.D */
 #define ANX_VERSION	"2026.9.4"

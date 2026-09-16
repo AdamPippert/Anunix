@@ -7,6 +7,7 @@
 #include <anx/state_object.h>
 #include <anx/uuid.h>
 #include <anx/string.h>
+#include <anx/research_test.h>
 
 int test_state_staged_mutation(void)
 {
@@ -36,7 +37,7 @@ int test_state_staged_mutation(void)
 		uint64_t version_before = obj->version;
 		char buf[16];
 
-		ret = anx_so_open(&obj->oid, ANX_OPEN_WRITE, &handle);
+		ret = anx_so_open(&obj->oid, ANX_OPEN_READWRITE, &handle);
 		if (ret != ANX_OK)
 			return -2;
 
@@ -207,5 +208,6 @@ int test_state_staged_mutation(void)
 	if (ret != ANX_OK)
 		return -41;
 
-	return 0;
+	ret = anx_research_day034();
+	return ret == ANX_OK ? anx_research_day045() : ret;
 }

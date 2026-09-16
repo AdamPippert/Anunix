@@ -1,0 +1,623 @@
+{
+  "revision": "d839e3a",
+  "artifact": "/work/day070-d839e3a/build/anunix-x86_64-uefi.img",
+  "boot_mode": "uefi",
+  "source_sha256": "d9378a4f117d493d1b60f8576d273ce2e82f8e96d87fd3b34e0663bce039f53b",
+  "source_verified": true,
+  "sha256": "15a3e801d290d25f6bcdccbe7da9b2350f9fc3e953256868256e981a188aa375",
+  "qemu_command": [
+    "qemu-system-x86_64",
+    "-enable-kvm",
+    "-cpu",
+    "host",
+    "-m",
+    "1G",
+    "-display",
+    "none",
+    "-no-reboot",
+    "-monitor",
+    "none",
+    "-serial",
+    "file:/work/runs/day070-d839e3a-uefi/serial.log",
+    "-netdev",
+    "user,id=n0,hostfwd=tcp:127.0.0.1:40841-:8080",
+    "-device",
+    "virtio-net-pci,netdev=n0",
+    "-drive",
+    "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd",
+    "-drive",
+    "if=ide,format=raw,snapshot=on,file=/work/day070-d839e3a/build/anunix-x86_64-uefi.img"
+  ],
+  "qemu_version": "QEMU emulator version 7.2.22 (Debian 1:7.2+dfsg-7+deb12u18+b3)",
+  "kernel_profile": {
+    "schema": 1,
+    "declared_revision": "d839e3a",
+    "configuration": {
+      "architecture": "x86_64",
+      "research_test": 1
+    },
+    "artifact_sha256": "15a3e801d290d25f6bcdccbe7da9b2350f9fc3e953256868256e981a188aa375",
+    "artifact_bytes": 136314880
+  },
+  "profile_verified": true,
+  "tests": [
+    {
+      "name": "day-001",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-001 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-002",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf_bundle: size mismatch (got 1685, need 1686)\nwf_bundle: size mismatch (got 1687, need 1686)\nwf: created 'research-day-002' (cap 1)\nwf: running 'research-day-002' (2 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-002' completed\nwf: 'research-day-002' trace sealed\nRESEARCH day-002 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-003",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-003 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-004",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "[cap] validated: research-day-004-incumbent v1 score=100\n[cap] validated: research-day-004-candidate v2 score=100\nRESEARCH day-004 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-005",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "[cap] validated: research-day-005-incumbent v1 score=100\n[cap] validated: research-day-005-candidate v2 score=100\nwf: created 'research-day-005' (cap 1)\nwf: running 'research-day-005' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-005' suspended at node 2 (err -5)\nwf: running 'research-day-005' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-005' suspended at node 2 (err -5)\nwf: running 'research-day-005' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-005' suspended at node 2 (err -5)\nwf: running 'research-day-005' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-005' suspended at node 2 (err -2)\nwf: running 'research-day-005' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-005' completed\nwf: 'research-day-005' trace sealed\nRESEARCH day-005 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-006",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-006 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-007",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-007 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-008",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-008 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-009",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-009 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-010",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-010 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-011",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-011 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-012",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-012 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-013",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-013 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-014",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-014 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-015",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-015 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-016",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-016 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-017",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-017 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-018",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-018 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-019",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "[cap] validated: research-day-019-denied v1 score=100\n[cap] validated: research-day-019-incumbent v1 score=100\n[cap] validated: research-day-019-candidate v2 score=100\n[cap] validated: research-day-019-next v3 score=100\n[cap] validated: research-day-019-ready v1 score=100\n[cap] validated: research-day-019-draft v1 score=100\nRESEARCH day-019 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-020",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-020 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-021",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-021 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-022",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-022 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-023",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-023 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-024",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-024 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-025",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-025 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-026",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-026 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-027",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "[cap] validated: research-day-027-missing v1 score=100\n[cap] validated: research-day-027-checked v1 score=100\n[cap] validated: research-day-027-wide v1 score=100\n[cap] validated: research-day-027-good v1 score=100\nRESEARCH day-027 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-028",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-028 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-029",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-029-first' (cap 1)\nwf: running 'research-day-029-first' (3 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-029-first' suspended at node 3 (err -5)\nwf: created 'research-day-029-shared' (cap 1)\nwf: running 'research-day-029-shared' (3 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-029-shared' suspended at node 3 (err -5)\nwf: 'research-day-029-first' completed after resume\nwf: 'research-day-029-first' trace sealed\nwf: created 'research-day-029-review' (cap 1)\nwf: running 'research-day-029-review' (3 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nRESEARCH day-029 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-030",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-030 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-031",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-031 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-032",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-032 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-033",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "[cap] validated: research-day-033-candidate v1 score=100\n[cap] validated: research-day-033-incumbent v1 score=100\nRESEARCH day-033 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-034",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-034 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-035",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-035 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-036",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-036 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-037",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-037' (cap 1)\nwf: running 'research-day-037' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-037' completed\nwf: 'research-day-037' trace sealed\nwf: running 'research-day-037' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-037' completed\nwf: 'research-day-037' trace sealed\nwf: running 'research-day-037' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 3 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-037' completed\nwf: 'research-day-037' trace sealed\nwf: running 'research-day-037' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-037' completed\nwf: 'research-day-037' trace sealed\nwf: created 'research-day-037-paused' (cap 1)\nwf: running 'research-day-037-paused' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: created 'research-day-037-paused' (cap 1)\nwf: running 'research-day-037-paused' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: 'research-day-037-paused' suspended at node 1 (err -5)\nRESEARCH day-037 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-038",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-038' (cap 1)\nwf: running 'research-day-038' (2 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-038' completed\nwf: 'research-day-038' trace sealed\nreuse: 'research-day-038' condition 0 changed (version 1 to 2, hash 1)\nwf: running 'research-day-038' (2 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-038' completed\nwf: 'research-day-038' trace sealed\nreuse: 'research-day-038' graph changed\nwf: running 'research-day-038' (2 nodes, 1 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf: 'research-day-038' suspended at node 2 (err -5)\nRESEARCH day-038 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-039",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-039' (cap 1)\nwf: running 'research-day-039' (5 nodes, 5 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf:   dispatch node 4 [] ''\nwf: 'research-day-039' suspended at node 4 (err -5)\nwf:   dispatch node 5 [] ''\nwf: 'research-day-039' completed after resume\nwf: 'research-day-039' trace sealed\nRESEARCH day-039 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-040",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-040 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-041",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-041 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-042",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-042 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-043",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-043' (cap 1)\nwf: running 'research-day-043' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: 'research-day-043' suspended at node 1 (err -5)\nwf: running 'research-day-043' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: 'research-day-043' suspended at node 1 (err -5)\nwf: running 'research-day-043' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: 'research-day-043' suspended at node 1 (err -5)\nwf: 'research-day-043' completed after resume\nwf: 'research-day-043' trace sealed\nRESEARCH day-043 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-044",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-044 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-045",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-045 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-046",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-046 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-047",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-047 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-048",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-048' (cap 1)\nwf: running 'research-day-048' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: 'research-day-048' suspended at node 1 (err -5)\nwf: running 'research-day-048' (1 nodes, 0 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf: 'research-day-048' suspended at node 1 (err -5)\nwf: 'research-day-048' completed after resume\nwf: 'research-day-048' trace sealed\nRESEARCH day-048 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-049",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-049 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-050",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-050 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-051",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-051 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-052",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-052 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-053",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-053 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-054",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-054 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-055",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-055 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-056",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-056 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-057",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-057 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-058",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "wf: created 'research-day-058' (cap 1)\nwf: running 'research-day-058' (3 nodes, 2 edges, cap 1)\nwf:   dispatch node 1 [] ''\nwf:   dispatch node 2 [] ''\nwf:   dispatch node 3 [] ''\nwf: 'research-day-058' completed\nwf: 'research-day-058' trace sealed\nRESEARCH day-058 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-059",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-059 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-060",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-060 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-061",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-061 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-062",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-062 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-063",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-063 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-064",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-064 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-065",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "day065 comparison logical=3 literal_compute=3 reused_compute=2 literal_tokens=12 reused_tokens=8 outputs=equal\nRESEARCH day-065 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-066",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-066 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-067",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-067 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-068",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "day068 hibernate state=3 pages=0 free_before=800 free_after=799 cache_ret=0 cache_pages=0 records=0 bytes=0 checkpoint_same=1 completed=1 result_ret=0 result_same=1\nRESEARCH day-068 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-069",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "day069 full_before_first=144 frontier_before_first=72 output=AAAABBBB\nRESEARCH day-069 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-070",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "day070 root_limit=100 workflow_limit=80 committed=40 uncertain=40 overdraft=0 closure_preserved=1\nRESEARCH day-070 PASS rc=0\n"
+      }
+    },
+    {
+      "name": "day-070",
+      "passed": true,
+      "response": {
+        "status": "ok",
+        "output": "day070 root_limit=100 workflow_limit=80 committed=40 uncertain=40 overdraft=0 closure_preserved=1\nRESEARCH day-070 PASS rc=0\n"
+      }
+    }
+  ],
+  "passed": true,
+  "expected_failure": false,
+  "health": {
+    "status": "healthy"
+  },
+  "sysinfo": {
+    "status": "ok",
+    "output": "\n=== Anunix System Information ===\n\nANUNIX_KERNEL_PROFILE_V1 arch=x86_64 research_test=1\nANUNIX_SOURCE_PROFILE_V1 sha256=d9378a4f117d493d1b60f8576d273ce2e82f8e96d87fd3b34e0663bce039f53b\nMemory:    11136 KiB free / 16384 KiB total (32% used)\nDisk:      none\nNetwork:   52:54:0:12:34:56 (ip 10.0.2.15)\nPCI:       6 devices\nScheduler: int=0 bg=0 lat=0 batch=0\nEvent Queue: depth=0/256 drops=0 threshold=90%\n  Latency: <1ms=0 1-5ms=0 5-10ms=0 >10ms=0\n\n"
+  },
+  "expected_result_observed": true
+}

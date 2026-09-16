@@ -124,7 +124,20 @@ ASFLAGS := -target $(TARGET) \
 LDFLAGS := -nostdlib --gc-sections
 endif
 
+# Interrupt entry uses the current kernel stack, including the red zone.
+ifeq ($(ARCH),x86_64)
+CFLAGS += -mno-red-zone
+endif
+
 # --- Source files ---
+RESEARCH_TEST ?= 0
+ifeq ($(filter $(RESEARCH_TEST),0 1),)
+$(error RESEARCH_TEST must be 0 or 1)
+endif
+ifeq ($(RESEARCH_TEST),1)
+CFLAGS += -DANX_RESEARCH_TEST=1
+endif
+
 ARCH_DIR    := kernel/arch/$(ARCH)
 CORE_DIR    := kernel/core
 LIB_DIR     := kernel/lib
@@ -150,10 +163,31 @@ DRIVER_S_OBJ := $(patsubst $(DRIVER_DIR)/%.S,$(BUILD_DIR)/drivers/%.o,$(DRIVER_S
 
 ALL_OBJ    := $(ARCH_S_OBJ) $(ARCH_C_OBJ) $(CORE_OBJ) $(DRIVER_OBJ) $(DRIVER_S_OBJ) $(LIB_OBJ)
 
+# Refresh the fingerprint on every invocation; unchanged content keeps its mtime.
+SOURCE_HEADER := $(BUILD_DIR)/generated/anx_source_identity.h
+.PHONY: source-identity-force
+source-identity-force:
+
+$(SOURCE_HEADER): source-identity-force
+	@python3 tools/source_identity.py --header $@
+
+$(ALL_OBJ): $(SOURCE_HEADER)
+CFLAGS += -I $(BUILD_DIR)/generated
+
+# Rebuild when switching between the normal and research images.
+RESEARCH_MODE_STAMP := $(BUILD_DIR)/.research-mode-$(RESEARCH_TEST)
+$(RESEARCH_MODE_STAMP):
+	@mkdir -p $(BUILD_DIR)
+	@rm -f $(BUILD_DIR)/.research-mode-0 $(BUILD_DIR)/.research-mode-1
+	@touch $@
+
+$(ALL_OBJ): $(RESEARCH_MODE_STAMP)
+
 KERNEL_ELF := $(BUILD_DIR)/anunix.elf
 KERNEL_BIN := $(BUILD_DIR)/anunix.bin
 
 # --- Targets ---
+.DEFAULT_GOAL := kernel
 .PHONY: kernel qemu qemu-fb qemu-raid qemu-raid-clean qemu-iso qemu-deps clean test toolchain toolchain-check iso iso-deps dist proto-install proto-test
 
 kernel: $(KERNEL_BIN)
@@ -501,11 +535,15 @@ test:
 	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(DRIVER_C_ALL) $(LIB_C) -o $(TEST_BIN)
 	@echo "  Running tests..."
 	@$(TEST_BIN)
+	@python3 tests/test_kernel_profile.py
+	@python3 tests/test_candidate_gate.py
+	@python3 tools/source_identity.py --label ANUNIX_HOST_SOURCE_V1
 
 conformance:
 	@echo "  Running deterministic conformance harness..."
 	@mkdir -p build/conformance
 	@python3 tools/conformance_harness.py --out-dir build/conformance
+	@python3 tools/source_identity.py --label ANUNIX_CONFORMANCE_SOURCE_V1
 
 # --- Python prototype (legacy) ---
 proto-install:

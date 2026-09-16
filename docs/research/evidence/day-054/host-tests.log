@@ -1,0 +1,463 @@
+  Building host-native test binary...
+clang -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include -DANX_HOST_TEST=1 tests/harness/test_main.c tests/harness/mock_arch.c tests/harness/mock_wifi.c tests/test_state_object.c tests/test_cell_lifecycle.c tests/test_cell_runtime.c tests/test_memplane.c tests/test_engine_registry.c tests/test_scheduler.c tests/test_capability.c tests/test_fb.c tests/test_engine_lifecycle.c tests/test_resource_lease.c tests/test_model_server.c tests/test_posix.c tests/test_tensor.c tests/test_model.c tests/test_tensor_ops.c tests/test_crypto.c tests/test_sshd_crypto.c tests/test_input_routing.c tests/test_compositor_cell.c tests/test_shm_ipc.c tests/test_conformance_harness.c tests/test_userspace_prereqs.c tests/test_rlm.c tests/test_external_call.c tests/test_disk_store.c tests/test_route_planner.c tests/test_vm_object.c tests/test_workflow.c tests/test_theme.c tests/test_event_qos.c tests/test_compositor_dirty_rect.c tests/test_multi_surface.c tests/test_clipboard.c tests/test_text_shaping.c tests/test_transfer_policy.c tests/test_diag.c tests/test_isolation.c tests/test_a11y.c tests/test_media.c tests/test_conformance_gate.c tests/test_ibal.c tests/test_ebm.c tests/test_kickstart.c tests/test_anxml.c tests/test_audio.c tests/test_video.c tests/test_hda.c tests/test_amacs.c tests/test_uor.c tests/test_diag_inline.c tests/test_icm.c tests/test_state_staged_mutation.c tests/test_exec_execution_contract.c tests/test_cap_flow_label.c tests/test_cap_effect_protocol.c tests/test_resourced_twin_simulate.c tests/test_regime_detector.c tests/test_sched_cognitive_envelope.c tests/test_cap_measured_null_promotion.c kernel/core/anxml/adapter.c kernel/core/anxml/anxml.c kernel/core/apps/amacs/buffer.c kernel/core/apps/amacs/cell.c kernel/core/apps/amacs/elisp.c kernel/core/apps/amacs/faces.c kernel/core/apps/amacs/keymap.c kernel/core/apps/amacs/textprop.c kernel/core/apps/amacs/window.c kernel/core/apps/object_viewer.c kernel/core/apps/terminal.c kernel/core/apps/video_player.c kernel/core/apps/workflow_designer.c kernel/core/audio/audio.c kernel/core/audio/cell.c kernel/core/audio/probe.c kernel/core/audio/sink.c kernel/core/auth.c kernel/core/cap/capability.c kernel/core/cap/effect.c kernel/core/cap/effect_fence.c kernel/core/cap/promotion.c kernel/core/cap/promotion_evidence.c kernel/core/cap/revision.c kernel/core/cap/sink.c kernel/core/cap/tool_namespace.c kernel/core/conformance_gate.c kernel/core/credential.c kernel/core/diag.c kernel/core/ebm/ebm.c kernel/core/ebm/ebm_constraint.c kernel/core/ebm/ebm_goal.c kernel/core/ebm/ebm_uncertainty.c kernel/core/ebm/ebm_world.c kernel/core/exec/agent_cell.c kernel/core/exec/browser_cell.c kernel/core/exec/cell.c kernel/core/exec/cell_store.c kernel/core/exec/external.c kernel/core/exec/isolation.c kernel/core/exec/jepa_cell.c kernel/core/exec/plan.c kernel/core/exec/runtime.c kernel/core/exec/trace.c kernel/core/icm/icm.c kernel/core/icm/observation.c kernel/core/identity.c kernel/core/iface/a11y.c kernel/core/iface/clipboard.c kernel/core/iface/event_queue.c kernel/core/iface/iface.c kernel/core/iface/media.c kernel/core/iface/renderer_gpu.c kernel/core/iface/renderer_headless.c kernel/core/iface/shm_ipc.c kernel/core/input/input.c kernel/core/install/gpt.c kernel/core/install/installer.c kernel/core/jepa/jepa.c kernel/core/jepa/jepa_encoder.c kernel/core/jepa/jepa_mem.c kernel/core/jepa/jepa_obs.c kernel/core/jepa/jepa_online.c kernel/core/jepa/jepa_predictor.c kernel/core/jepa/jepa_rlm.c kernel/core/jepa/jepa_route.c kernel/core/jepa/jepa_tool.c kernel/core/jepa/jepa_train.c kernel/core/jepa/jepa_traj.c kernel/core/jepa/jepa_wf.c kernel/core/jepa/jepa_workflow.c kernel/core/jepa/jepa_world.c kernel/core/kickstart.c kernel/core/log/bootlog.c kernel/core/loop/loop.c kernel/core/loop/loop_belief.c kernel/core/loop/loop_branch.c kernel/core/loop/loop_cexl.c kernel/core/loop/loop_goal.c kernel/core/loop/loop_jepa_train.c kernel/core/loop/loop_llm_propose.c kernel/core/loop/loop_memory.c kernel/core/loop/loop_pal.c kernel/core/loop/loop_pal_prime.c kernel/core/loop/loop_proposal.c kernel/core/loop/loop_score.c kernel/core/loop/loop_shell.c kernel/core/loop/loop_state.c kernel/core/mem/decay.c kernel/core/mem/memplane.c kernel/core/mem/resource_view.c kernel/core/mem/retention.c kernel/core/net/netplane.c kernel/core/posix/posix.c kernel/core/regime/regime.c kernel/core/rlm/batch.c kernel/core/rlm/rlm_pal.c kernel/core/rlm/rollout.c kernel/core/route/budget.c kernel/core/route/continuity.c kernel/core/route/engine.c kernel/core/route/feedback.c kernel/core/route/hwprobe.c kernel/core/route/lease.c kernel/core/route/model_server.c kernel/core/route/optimization.c kernel/core/route/optimization_harness.c kernel/core/route/phase.c kernel/core/route/planner.c kernel/core/route/policy_task.c kernel/core/route/profile.c kernel/core/route/session.c kernel/core/route/tuning.c kernel/core/sched/scheduler.c kernel/core/shell.c kernel/core/splash.c kernel/core/state/access.c kernel/core/state/disk_store.c kernel/core/state/flow.c kernel/core/state/lifecycle.c kernel/core/state/meta.c kernel/core/state/namespace.c kernel/core/state/objstore.c kernel/core/state/provenance.c kernel/core/state/speculation.c kernel/core/state/stage.c kernel/core/state/xfer.c kernel/core/tensor/brin.c kernel/core/tensor/checkpoint.c kernel/core/tensor/diff.c kernel/core/tensor/engine_cpu.c kernel/core/tensor/model.c kernel/core/tensor/quantize.c kernel/core/tensor/safetensors.c kernel/core/tensor/search.c kernel/core/tensor/slice.c kernel/core/tensor/softfloat.c kernel/core/tensor/tensor.c kernel/core/tensor/tensor_ops.c kernel/core/tensor/training.c kernel/core/theme.c kernel/core/tools/appendb64.c kernel/core/tools/bootlog.c kernel/core/tools/browser.c kernel/core/tools/cat.c kernel/core/tools/cells.c kernel/core/tools/conformance.c kernel/core/tools/cp.c kernel/core/tools/display.c kernel/core/tools/exec.c kernel/core/tools/fetch.c kernel/core/tools/hwd.c kernel/core/tools/iface_tools.c kernel/core/tools/inspect.c kernel/core/tools/kernel_profile.c kernel/core/tools/kickstart.c kernel/core/tools/ls.c kernel/core/tools/meta.c kernel/core/tools/model.c kernel/core/tools/mv.c kernel/core/tools/netinfo.c kernel/core/tools/research.c kernel/core/tools/research_day002.c kernel/core/tools/research_day003.c kernel/core/tools/research_day004.c kernel/core/tools/research_day005.c kernel/core/tools/research_day006.c kernel/core/tools/research_day007.c kernel/core/tools/research_day008.c kernel/core/tools/research_day009.c kernel/core/tools/research_day010.c kernel/core/tools/research_day011.c kernel/core/tools/research_day012.c kernel/core/tools/research_day013.c kernel/core/tools/research_day014.c kernel/core/tools/research_day015.c kernel/core/tools/research_day016.c kernel/core/tools/research_day017.c kernel/core/tools/research_day018.c kernel/core/tools/research_day019.c kernel/core/tools/research_day020.c kernel/core/tools/research_day021.c kernel/core/tools/research_day022.c kernel/core/tools/research_day023.c kernel/core/tools/research_day024.c kernel/core/tools/research_day025.c kernel/core/tools/research_day026.c kernel/core/tools/research_day027.c kernel/core/tools/research_day028.c kernel/core/tools/research_day029.c kernel/core/tools/research_day030.c kernel/core/tools/research_day031.c kernel/core/tools/research_day032.c kernel/core/tools/research_day033.c kernel/core/tools/research_day034.c kernel/core/tools/research_day035.c kernel/core/tools/research_day036.c kernel/core/tools/research_day037.c kernel/core/tools/research_day038.c kernel/core/tools/research_day039.c kernel/core/tools/research_day040.c kernel/core/tools/research_day041.c kernel/core/tools/research_day042.c kernel/core/tools/research_day043.c kernel/core/tools/research_day044.c kernel/core/tools/research_day045.c kernel/core/tools/research_day046.c kernel/core/tools/research_day047.c kernel/core/tools/research_day048.c kernel/core/tools/research_day049.c kernel/core/tools/research_day050.c kernel/core/tools/research_day051.c kernel/core/tools/research_day052.c kernel/core/tools/research_day053.c kernel/core/tools/research_day054.c kernel/core/tools/rm_obj.c kernel/core/tools/search.c kernel/core/tools/sysinfo.c kernel/core/tools/tensor.c kernel/core/tools/theme.c kernel/core/tools/uor.c kernel/core/tools/vm.c kernel/core/tools/workflow.c kernel/core/tools/write_obj.c kernel/core/twin/twin.c kernel/core/uor/uor.c kernel/core/update/update.c kernel/core/video/player.c kernel/core/video/sink.c kernel/core/vm/backend_qemu.c kernel/core/vm/vm_backend_select.c kernel/core/vm/vm_config.c kernel/core/vm/vm_object.c kernel/core/wm/wm.c kernel/core/wm/wm_agent.c kernel/core/wm/wm_app_menu.c kernel/core/wm/wm_ctx_menu.c kernel/core/wm/wm_help.c kernel/core/wm/wm_hotkey.c kernel/core/wm/wm_menubar.c kernel/core/wm/wm_search.c kernel/core/wm/wm_switcher.c kernel/core/wm/wm_taskbar.c kernel/core/wm/wm_terminal.c kernel/core/workflow/checkpoint.c kernel/core/workflow/reuse.c kernel/core/workflow/semantic.c kernel/core/workflow/topology.c kernel/core/workflow/wf_bundle.c kernel/core/workflow/workflow_exec.c kernel/core/workflow/workflow_library.c kernel/core/workflow/workflow_object.c kernel/core/workflow/workflow_render.c kernel/core/workflow/workflow_serial.c kernel/core/workflow/workflow_validate.c kernel/drivers/fb/fb.c kernel/drivers/fb/fbcon.c kernel/drivers/input/usb_mouse.c kernel/lib/alloc.c kernel/lib/base64.c kernel/lib/crypto/aes.c kernel/lib/crypto/aes128.c kernel/lib/crypto/chacha20.c kernel/lib/crypto/curve25519.c kernel/lib/crypto/ed25519.c kernel/lib/crypto/poly1305.c kernel/lib/crypto/random.c kernel/lib/crypto/sha1.c kernel/lib/crypto/sha256.c kernel/lib/crypto/sha512.c kernel/lib/font.c kernel/lib/hashtable.c kernel/lib/jpeg.c kernel/lib/json.c kernel/lib/kprintf.c kernel/lib/page.c kernel/lib/panic.c kernel/lib/perf.c kernel/lib/string.c kernel/lib/tensor.c kernel/lib/utf8.c kernel/lib/uuid.c -o build/test/anunix_test
+  Running tests...
+=== Anunix Kernel Tests ===
+
+  [RUN]  state_object
+  [PASS] state_object
+  [RUN]  cell_lifecycle
+  [PASS] cell_lifecycle
+  [RUN]  cell_runtime
+  [PASS] cell_runtime
+  [RUN]  memplane
+  [PASS] memplane
+  [RUN]  engine_registry
+  [PASS] engine_registry
+  [RUN]  scheduler
+  [PASS] scheduler
+  [RUN]  capability
+[cap] validated: validator_test v2.0 score=100
+[cap] validated: double_validate v1.0 score=100
+[cap] validated: research-day-019-denied v1 score=100
+[cap] validated: research-day-019-incumbent v1 score=100
+[cap] validated: research-day-019-candidate v2 score=100
+[cap] validated: research-day-019-next v3 score=100
+[cap] validated: research-day-019-ready v1 score=100
+[cap] validated: research-day-019-draft v1 score=100
+[cap] validated: research-day-027-missing v1 score=100
+[cap] validated: research-day-027-checked v1 score=100
+[cap] validated: research-day-027-wide v1 score=100
+[cap] validated: research-day-027-good v1 score=100
+[cap] validated: research-day-033-candidate v1 score=100
+[cap] validated: research-day-033-incumbent v1 score=100
+  [PASS] capability
+  [RUN]  fb
+  [PASS] fb
+  [RUN]  engine_lifecycle
+  [PASS] engine_lifecycle
+  [RUN]  resource_lease
+  [PASS] resource_lease
+  [RUN]  model_server
+  [PASS] model_server
+  [RUN]  posix
+  [PASS] posix
+  [RUN]  tensor
+  [PASS] tensor
+  [RUN]  tensor_codec
+  [PASS] tensor_codec
+  [RUN]  model
+  [PASS] model
+  [RUN]  tensor_ops
+  [PASS] tensor_ops
+  [RUN]  crypto
+  [PASS] crypto
+  [RUN]  sshd_crypto
+  [PASS] sshd_crypto
+  [RUN]  input_routing
+  [PASS] input_routing
+  [RUN]  compositor_cell
+  [PASS] compositor_cell
+  [RUN]  shm_ipc
+  [PASS] shm_ipc
+  [RUN]  conformance_harness
+  [PASS] conformance_harness
+  [RUN]  userspace_prereqs
+  [PASS] userspace_prereqs
+  [RUN]  rlm
+[pal] updated world=anx:world/rlm-test sessions=1
+[rlm-pal] world=anx:world/rlm-test action=0 score=80 energy=0.20
+[pal] updated world=anx:world/rlm-test sessions=2
+[rlm-pal] world=anx:world/rlm-test action=1 score=20 energy=0.80
+[rlm-pal] counterexample stored (score<30)
+  [PASS] rlm
+  [RUN]  external_call
+  [PASS] external_call
+  [RUN]  disk_store
+disk: formatting...
+disk: formatted 'test' (0 MiB)
+  [PASS] disk_store
+  [RUN]  route_planner
+  [PASS] route_planner
+  [RUN]  vm_object
+vm: subsystem initialized (max 32 VMs)
+vm: created 'test-vm' (2 cpu, 1024 MB) via qemu
+vm: qemu start: qemu-system-x86_64 -m 1024M -smp 4 -nographic -no-reboot -serial mon:stdio -qmp tcp:127.0.0.1:4440,server,nowait -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+vm: qemu exec failed (-3)
+vm: destroyed 'test-vm'
+  [PASS] vm_object
+  [RUN]  workflow
+wf: subsystem initialized (max 16 workflows)
+wf: created 'test-flow' (cap 2)
+wf: running 'test-flow' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [start] 'start'
+wf:   dispatch node 2 [infer] 'infer'
+wf: 'test-flow' completed
+wf: 'test-flow' trace sealed
+[jepa] registered worlds: os-default, cellular, robotics, enterprise-it
+wf: created 'anx:workflow/jepa-agent-loop' (cap 2)
+wf: created 'anx:workflow/jepa-plugin-loop' (cap 2)
+[jepa] workflows registered: jepa-agent-loop, jepa-plugin-loop
+[jepa] latent-state subsystem ready (compute: CPU, world: anx:world/os-default)
+[jepa-cell] observe: rc=0
+[jepa-cell] encode: rc=0
+[jepa-cell] observe-encode: rc=0
+[jepa-cell] predict: action=1 rc=0
+[wf-lib] registered 16 built-in workflow templates
+wf: created 'test-jepa-oe' (cap 2)
+wf: running 'test-jepa-oe' (4 nodes, 3 edges, cap 2)
+wf:   dispatch node 1 [start] 'start'
+wf:   dispatch node 2 [observe] 'observe'
+[jepa-cell] observe: rc=0
+wf:   dispatch node 3 [encode] 'encode'
+[jepa-cell] encode: rc=0
+wf:   dispatch node 4 [latent] 'latent'
+wf: 'test-jepa-oe' completed
+wf: 'test-jepa-oe' trace sealed
+[jepa-traj] exported 1 entries (3624 bytes)
+wf_bundle: size mismatch (got 1685, need 1686)
+wf_bundle: size mismatch (got 1687, need 1686)
+wf: created 'research-day-002' (cap 2)
+wf: running 'research-day-002' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-002' completed
+wf: 'research-day-002' trace sealed
+[cap] validated: research-day-005-incumbent v1 score=100
+[cap] validated: research-day-005-candidate v2 score=100
+wf: created 'research-day-005' (cap 2)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -2)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-005' completed
+wf: 'research-day-005' trace sealed
+wf: created 'research-day-029-first' (cap 2)
+wf: running 'research-day-029-first' (3 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-029-first' suspended at node 3 (err -5)
+wf: created 'research-day-029-shared' (cap 2)
+wf: running 'research-day-029-shared' (3 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-029-shared' suspended at node 3 (err -5)
+wf: 'research-day-029-first' completed after resume
+wf: 'research-day-029-first' trace sealed
+wf: created 'research-day-029-review' (cap 2)
+wf: running 'research-day-029-review' (3 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: created 'research-day-037' (cap 2)
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 3 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: created 'research-day-037-paused' (cap 2)
+wf: running 'research-day-037-paused' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: created 'research-day-037-paused' (cap 2)
+wf: running 'research-day-037-paused' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-037-paused' suspended at node 1 (err -5)
+wf: created 'research-day-038' (cap 2)
+wf: running 'research-day-038' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-038' completed
+wf: 'research-day-038' trace sealed
+reuse: 'research-day-038' condition 0 changed (version 1 to 2, hash 1)
+wf: running 'research-day-038' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-038' completed
+wf: 'research-day-038' trace sealed
+reuse: 'research-day-038' graph changed
+wf: running 'research-day-038' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-038' suspended at node 2 (err -5)
+wf: created 'research-day-039' (cap 2)
+wf: running 'research-day-039' (5 nodes, 5 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf:   dispatch node 4 [] ''
+wf: 'research-day-039' suspended at node 4 (err -5)
+wf:   dispatch node 5 [] ''
+wf: 'research-day-039' completed after resume
+wf: 'research-day-039' trace sealed
+wf: created 'research-day-043' (cap 2)
+wf: running 'research-day-043' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-043' suspended at node 1 (err -5)
+wf: running 'research-day-043' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-043' suspended at node 1 (err -5)
+wf: running 'research-day-043' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-043' suspended at node 1 (err -5)
+wf: 'research-day-043' completed after resume
+wf: 'research-day-043' trace sealed
+  [PASS] workflow
+  [RUN]  theme
+theme: switched to pretty
+theme: initialized pretty
+theme: switched to boring
+theme: switched to pretty
+theme: switched to boring
+  [PASS] theme
+  [RUN]  event_qos
+  [PASS] event_qos
+  [RUN]  compositor_dirty_rect
+  [PASS] compositor_dirty_rect
+  [RUN]  multi_surface
+  [PASS] multi_surface
+  [RUN]  clipboard
+  [PASS] clipboard
+  [RUN]  text_shaping
+  [PASS] text_shaping
+  [RUN]  transfer_policy
+  [PASS] transfer_policy
+  [RUN]  diag
+  [PASS] diag
+  [RUN]  isolation
+  [PASS] isolation
+  [RUN]  a11y
+  [PASS] a11y
+  [RUN]  media
+  [PASS] media
+  [RUN]  conformance_gate
+  [PASS] conformance_gate
+  [RUN]  ibal
+wf: subsystem initialized (max 16 workflows)
+[wf-lib] registered 16 built-in workflow templates
+[jepa] failed to register built-in worlds (-4)
+[loop] session subsystem initialized (max 32 sessions)
+[loop] session 0000000000000001 created world=anx:world/os-default max_iter=4 halt=1 goal=""
+[loop] session 0000000000000002 created world=anx:world/os-default max_iter=8 halt=1 goal=""
+[loop] session 0000000000000003 created world=anx:world/os-default max_iter=16 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[pal] updated world=anx:world/os-default sessions=1
+[memory] consolidated 0000000000000003 world=anx:world/os-default iters=1 energy=0.0000
+[ibal] state saved: b91a89e4c2c92e5d
+[ibal] state loaded: 8 weights, 12 action slots
+[pal] updated world=anx:world/test-pal-unit sessions=1
+[pal] updated world=anx:world/test-pal-unit sessions=2
+[pal] updated world=anx:world/test-pal-unit sessions=3
+[loop] session 0000000000000004 created world=anx:world/test-cexl max_iter=1 halt=1 goal=""
+[loop] session 0000000000000005 created world=anx:world/test-branch max_iter=8 halt=1 goal=""
+[loop] session 0000000000000006 created world=anx:world/test-branch max_iter=4 halt=1 goal=""
+[loop] branch 0 created 0000000000000006 from parent 0000000000000005
+[loop] session 0000000000000007 created world=anx:world/test-branch-list max_iter=8 halt=1 goal=""
+[loop] session 0000000000000008 created world=anx:world/test-branch-list max_iter=4 halt=1 goal=""
+[loop] branch 0 created 0000000000000008 from parent 0000000000000007
+[loop] session 0000000000000009 created world=anx:world/test-branch-list max_iter=4 halt=1 goal=""
+[loop] branch 1 created 0000000000000009 from parent 0000000000000007
+[loop] session 000000000000000a created world=anx:world/test-jepa-ingest max_iter=4 halt=1 goal="observe"
+[loop-jepa] session 000000000000000a: action=0 obs=ok
+[loop] session 000000000000000b created world=anx:world/test-jepa-nil max_iter=1 halt=1 goal=""
+[loop-jepa] session 000000000000000b: action=0 obs=ok
+[loop] session 000000000000000c created world=anx:world/test-diag max_iter=4 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.4750 act=0 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=2: action=0 (pal-fallback)
+[ebm] iter 2: best_energy=0.5000 act=0 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=3: action=0 (pal-fallback)
+[ebm] iter 3: best_energy=0.5250 act=0 decision=0
+[loop] session 000000000000000c halted on budget at iter 4
+[loop-jepa] session 000000000000000c: action=0 obs=ok
+[pal] updated world=anx:world/test-diag sessions=1
+[memory] consolidated 000000000000000c world=anx:world/test-diag iters=4 energy=0.5250
+[loop] session 000000000000000d created world=anx:world/test-diag2 max_iter=2 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.5000 act=0 decision=0
+[loop] session 000000000000000d halted on budget at iter 2
+[loop-jepa] session 000000000000000d: action=0 obs=ok
+[pal] updated world=anx:world/test-diag2 sessions=1
+[memory] consolidated 000000000000000d world=anx:world/test-diag2 iters=2 energy=0.5000
+  [PASS] ibal
+  [RUN]  ebm
+[jepa] failed to register built-in worlds (-4)
+[loop] session subsystem initialized (max 32 sessions)
+[ebm] initialized: 4 scorers (world/goal/constraint/uncertainty)
+[ebm] initialized: 4 scorers (world/goal/constraint/uncertainty)
+[loop] session 0000000000000001 created world=anx:world/test-ebm max_iter=2 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.5000 act=0 decision=0
+[loop] session 0000000000000002 created world=anx:world/test-ebm2 max_iter=3 halt=1 goal="route network traffic"
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.3633 act=1 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=2: action=0 (pal-fallback)
+[ebm] iter 2: best_energy=0.3967 act=1 decision=0
+[loop] session 0000000000000002 halted on budget at iter 3
+[loop-jepa] session 0000000000000002: action=0 obs=ok
+[pal] updated world=anx:world/test-ebm2 sessions=1
+[memory] consolidated 0000000000000002 world=anx:world/test-ebm2 iters=3 energy=0.3967
+[loop] session 0000000000000003 created world=anx:world/test-ebm3 max_iter=2 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.5000 act=0 decision=0
+[loop] session 0000000000000003 halted on budget at iter 2
+[loop-jepa] session 0000000000000003: action=0 obs=ok
+[pal] updated world=anx:world/test-ebm3 sessions=1
+[memory] consolidated 0000000000000003 world=anx:world/test-ebm3 iters=2 energy=0.5000
+[loop] session 0000000000000004 created world=anx:world/test-ebm3 max_iter=3 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.4833 act=0 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=2: action=0 (pal-fallback)
+[ebm] iter 2: best_energy=0.5167 act=0 decision=0
+[loop] session 0000000000000004 halted on budget at iter 3
+[loop-jepa] session 0000000000000004: action=0 obs=ok
+[pal] updated world=anx:world/test-ebm3 sessions=2
+[memory] consolidated 0000000000000004 world=anx:world/test-ebm3 iters=3 energy=0.5167
+[loop] session 0000000000000005 created world=anx:world/test-llm max_iter=4 halt=1 goal="route network traffic"
+[loop-llm] iter=1: action=0 (pal-fallback)
+  [PASS] ebm
+  [RUN]  kickstart
+wf: subsystem initialized (max 16 workflows)
+[wf-lib] registered 16 built-in workflow templates
+kickstart: applying config (74 bytes)
+kickstart: hostname=anunix-test
+wf: created 'anx:workflow/ibal/lite/v1' (cap 2)
+kickstart: workflow loaded: anx:workflow/ibal/lite/v1
+[pal-prime] kickstart uri=anx:workflow/ibal/lite/v1 → action=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=1
+[pal] updated world=anx:world/workflow-search/v1 sessions=2
+[pal] updated world=anx:world/workflow-search/v1 sessions=3
+[pal] updated world=anx:world/os-default sessions=2
+[pal] updated world=anx:world/os-default sessions=3
+[pal] updated world=anx:world/os-default sessions=4
+kickstart: applying config (46 bytes)
+wf: created 'anx:workflow/ibal/default/v1' (cap 2)
+kickstart: workflow loaded: anx:workflow/ibal/default/v1
+[pal-prime] kickstart uri=anx:workflow/ibal/default/v1 → action=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=5
+[pal] updated world=anx:world/workflow-search/v1 sessions=6
+[pal] updated world=anx:world/os-default sessions=5
+[pal] updated world=anx:world/os-default sessions=6
+[pal] updated world=anx:world/os-default sessions=7
+kickstart: applying config (41 bytes)
+kickstart: workflow load=anx:workflow/no-such/v1 failed (-3)
+kickstart: applying config (50 bytes)
+wf: created 'anx:workflow/ibal/symbolic/v1' (cap 2)
+[pal-prime] kickstart uri=anx:workflow/ibal/symbolic/v1 → action=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=7
+[pal] updated world=anx:world/workflow-search/v1 sessions=8
+[pal] updated world=anx:world/workflow-search/v1 sessions=9
+[pal] updated world=anx:world/os-default sessions=8
+[pal] updated world=anx:world/os-default sessions=9
+[pal] updated world=anx:world/os-default sessions=10
+wf: running 'anx:workflow/ibal/symbolic/v1' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [start] 'start'
+wf:   dispatch node 2 [ibal-symbolic] 'ibal-symbolic'
+wf:   dispatch node 3 [plan] 'plan'
+wf: 'anx:workflow/ibal/symbolic/v1' completed
+wf: 'anx:workflow/ibal/symbolic/v1' trace sealed
+kickstart: workflow autorunning: anx:workflow/ibal/symbolic/v1
+kickstart: applying config (30 bytes)
+  [PASS] kickstart
+  [RUN]  anxml
+  [PASS] anxml
+  [RUN]  audio
+  [PASS] audio
+  [RUN]  video
+  [PASS] video
+  [RUN]  hda
+  [PASS] hda
+  [RUN]  amacs
+DIAG plus123: rc=0 out="6"
+DIAG mul76: rc=0 out="42"
+DIAG carcons: rc=0 out="1"
+DIAG anxml r1: rc=0 len=16 out="the the the the "
+DIAG anxml r2: rc=0 len=16 out="the the the the "
+  [PASS] amacs
+  [RUN]  uor
+disk: formatting...
+disk: formatted 'uor' (1 MiB)
+  [PASS] uor
+  [RUN]  icm
+  [PASS] icm
+  [RUN]  state_staged_mutation
+  [PASS] state_staged_mutation
+  [RUN]  exec_execution_contract
+  [PASS] exec_execution_contract
+  [RUN]  cap_flow_label
+  [PASS] cap_flow_label
+  [RUN]  cap_effect_protocol
+  [PASS] cap_effect_protocol
+  [RUN]  resourced_twin_simulate
+  [PASS] resourced_twin_simulate
+  [RUN]  regime_detector
+  [PASS] regime_detector
+  [RUN]  sched_cognitive_envelope
+  [PASS] sched_cognitive_envelope
+  [RUN]  cap_measured_null_promotion
+[cap] validated: incumbent v1.0 score=100
+[cap] validated: winner v1.0 score=100
+[cap] validated: fresh v1.0 score=100
+[cap] validated: noisy_challenger v1.0 score=100
+[cap] validated: research-day-004-incumbent v1 score=100
+[cap] validated: research-day-004-candidate v2 score=100
+  [PASS] cap_measured_null_promotion
+
+=== Results: 59 passed, 0 failed ===
+.........
+----------------------------------------------------------------------
+Ran 9 tests in 0.078s
+
+OK
+............
+----------------------------------------------------------------------
+Ran 12 tests in 0.164s
+
+OK
+ANUNIX_HOST_SOURCE_V1 sha256=8e2e79e649d538d3876a6eda9f3c5ca9a2f285e737c88e40b99e40cd6c188565

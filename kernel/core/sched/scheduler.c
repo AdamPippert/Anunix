@@ -11,6 +11,8 @@
 #include <anx/uuid.h>
 #include <anx/arch.h>
 #include <anx/spinlock.h>
+#include <anx/sched_domain.h>
+#include <anx/continuation_group.h>
 
 /* Per-queue state */
 static struct {
@@ -18,15 +20,18 @@ static struct {
 	struct anx_spinlock lock;
 	uint32_t depth;
 } queues[ANX_QUEUE_CLASS_COUNT];
+static bool initialized;
 
 void anx_sched_init(void)
 {
 	uint32_t i;
+	if (anx_cell_current_id()) return;
 	for (i = 0; i < ANX_QUEUE_CLASS_COUNT; i++) {
 		anx_list_init(&queues[i].head);
 		anx_spin_init(&queues[i].lock);
 		queues[i].depth = 0;
 	}
+	initialized = true;
 }
 
 int anx_sched_enqueue(const anx_cid_t *cell_id,
@@ -35,11 +40,26 @@ int anx_sched_enqueue(const anx_cid_t *cell_id,
 {
 	struct anx_sched_entry *entry;
 	struct anx_list_head *pos;
+	struct anx_cell *cell;
 
 	if (!cell_id)
 		return ANX_EINVAL;
 	if ((int)queue < 0 || queue >= ANX_QUEUE_CLASS_COUNT)
 		return ANX_EINVAL;
+	if ((int)priority < 0 || priority > ANX_PRIO_CRITICAL)
+		return ANX_EINVAL;
+	cell = anx_cell_store_lookup(cell_id);
+	if (cell) {
+		bool terminal = anx_cell_status_terminal(cell->status);
+		int allowed = terminal ? ANX_EPERM : anx_sched_domain_check_queue(cell, queue, priority);
+		if (allowed == ANX_OK) allowed = anx_continuation_group_check(cell);
+		anx_cell_store_release(cell);
+		if (allowed != ANX_OK)
+			return allowed;
+	}
+	if (!initialized && anx_cell_current_id()) return ANX_EPERM;
+	if (!initialized)
+		anx_sched_init();
 
 	entry = anx_zalloc(sizeof(*entry));
 	if (!entry)
@@ -89,25 +109,29 @@ int anx_sched_dequeue(enum anx_queue_class queue,
 		return ANX_EINVAL;
 	if ((int)queue < 0 || queue >= ANX_QUEUE_CLASS_COUNT)
 		return ANX_EINVAL;
+	if (!initialized) return ANX_ENOENT;
 
 	anx_spin_lock(&queues[queue].lock);
 
-	if (anx_list_empty(&queues[queue].head)) {
-		anx_spin_unlock(&queues[queue].lock);
-		return ANX_ENOENT;
+	while (!anx_list_empty(&queues[queue].head)) {
+		entry = ANX_LIST_ENTRY(queues[queue].head.next, struct anx_sched_entry, queue_link);
+		anx_list_del(&entry->queue_link);
+		queues[queue].depth--;
+		struct anx_cell *cell = anx_cell_store_lookup(&entry->cell_id);
+		int allowed = cell ? anx_sched_domain_check_queue(cell, queue, entry->priority) : ANX_OK;
+		if (cell && allowed == ANX_OK) allowed = anx_continuation_group_check(cell);
+		if (cell && anx_cell_status_terminal(cell->status)) allowed = ANX_EPERM;
+		if (cell) anx_cell_store_release(cell);
+		if (allowed == ANX_OK) {
+			*cell_id_out = entry->cell_id;
+			anx_free(entry);
+			anx_spin_unlock(&queues[queue].lock);
+			return ANX_OK;
+		}
+		anx_free(entry);
 	}
-
-	/* Take from head (highest priority) */
-	entry = ANX_LIST_ENTRY(queues[queue].head.next,
-			       struct anx_sched_entry, queue_link);
-	anx_list_del(&entry->queue_link);
-	queues[queue].depth--;
-
 	anx_spin_unlock(&queues[queue].lock);
-
-	*cell_id_out = entry->cell_id;
-	anx_free(entry);
-	return ANX_OK;
+	return ANX_ENOENT;
 }
 
 uint32_t anx_sched_queue_depth(enum anx_queue_class queue)
@@ -120,9 +144,12 @@ uint32_t anx_sched_queue_depth(enum anx_queue_class queue)
 int anx_sched_cancel(const anx_cid_t *cell_id)
 {
 	uint32_t i;
+	bool removed = false;
 
 	if (!cell_id)
 		return ANX_EINVAL;
+	if (!initialized)
+		return ANX_ENOENT;
 
 	for (i = 0; i < ANX_QUEUE_CLASS_COUNT; i++) {
 		struct anx_list_head *pos, *tmp;
@@ -137,14 +164,13 @@ int anx_sched_cancel(const anx_cid_t *cell_id)
 			if (anx_uuid_compare(&entry->cell_id, cell_id) == 0) {
 				anx_list_del(&entry->queue_link);
 				queues[i].depth--;
-				anx_spin_unlock(&queues[i].lock);
 				anx_free(entry);
-				return ANX_OK;
+				removed = true;
 			}
 		}
 
 		anx_spin_unlock(&queues[i].lock);
 	}
 
-	return ANX_ENOENT;
+	return removed ? ANX_OK : ANX_ENOENT;
 }

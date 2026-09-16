@@ -13,6 +13,7 @@
 #include <anx/kprintf.h>
 #include <anx/hwprobe.h>
 #include <anx/engine_lease.h>
+#include <anx/workflow_semantic.h>
 
 static struct anx_wf_object	wf_table[ANX_WF_MAX_WFS];
 static uint32_t			wf_count;
@@ -33,6 +34,31 @@ static bool
 wf_oid_eq(const anx_oid_t *a, const anx_oid_t *b)
 {
 	return a->hi == b->hi && a->lo == b->lo;
+}
+
+static bool wf_live(const struct anx_wf_object *wf)
+{
+	return wf->run_state == ANX_WF_RUN_RUNNING || wf->run_state == ANX_WF_RUN_SUSPENDED ||
+	       wf->run_state == ANX_WF_RUN_WAITING_HUMAN;
+}
+
+bool anx_wf_cache_needed(const anx_oid_t *oid)
+{
+	if (!oid || (!oid->hi && !oid->lo))
+		return false;
+	for (uint32_t i = 0; i < ANX_WF_MAX_WFS; i++) {
+		const struct anx_wf_object *wf = &wf_table[i];
+		if (!wf->in_use || !wf_live(wf))
+			continue;
+		if (anx_wf_semantic_needed(wf, oid))
+			return true;
+		if (wf->cache_liveness_unknown || wf->cache_live_count > ANX_WF_MAX_EDGES)
+			return true;
+		for (uint32_t j = 0; j < wf->cache_live_count; j++)
+			if (wf_oid_eq(oid, &wf->cache_live_oids[j]))
+				return true;
+	}
+	return false;
 }
 
 /* Initialize the workflow subsystem (called at kernel boot). */
@@ -126,12 +152,15 @@ anx_wf_create(const char *name, const char *description, anx_oid_t *oid_out)
 	wf->policy.timeout_ms	= 0;
 	wf->policy.auto_retry	= false;
 	wf->policy.max_retries	= 0;
+	wf->policy.allow_capability_install = false;
 
 	wf->computed_cap	= anx_wf_cap_compute(&wf->policy);
 	wf->continuation	= NULL;
 	wf->trace_entries	= NULL;
 	wf->trace_entry_count	= 0;
 	wf->output_count	= 0;
+	wf->cache_live_count = 0;
+	wf->cache_liveness_unknown = false;
 
 	*oid_out = wf->oid;
 	wf_count++;
@@ -156,6 +185,8 @@ anx_wf_destroy(const anx_oid_t *oid)
 	anx_free(wf->edges);
 	anx_free(wf->continuation);
 	anx_free(wf->trace_entries);
+	anx_free(wf->reuse);
+	anx_free(wf->semantic);
 
 	anx_memset(wf, 0, sizeof(*wf));
 	wf_count--;
@@ -174,6 +205,9 @@ anx_wf_node_add(const anx_oid_t *wf_oid, const struct anx_wf_node *spec,
 	wf = anx_wf_object_get(wf_oid);
 	if (!wf)
 		return ANX_ENOENT;
+	if (wf_live(wf))
+		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 	if (!spec || !id_out)
 		return ANX_EINVAL;
 	if (wf->node_count >= ANX_WF_MAX_NODES)
@@ -208,6 +242,9 @@ anx_wf_node_remove(const anx_oid_t *wf_oid, uint16_t node_id)
 	wf = anx_wf_object_get(wf_oid);
 	if (!wf)
 		return ANX_ENOENT;
+	if (wf_live(wf))
+		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 
 	/* Find the node. */
 	for (i = 0; i < ANX_WF_MAX_NODES; i++) {
@@ -243,6 +280,9 @@ anx_wf_edge_add(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_port,
 	wf = anx_wf_object_get(wf_oid);
 	if (!wf)
 		return ANX_ENOENT;
+	if (wf_live(wf))
+		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 	if (wf->edge_count >= ANX_WF_MAX_EDGES)
 		return ANX_ENOMEM;
 	if (from_node == to_node)
@@ -277,6 +317,9 @@ anx_wf_edge_remove(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_por
 	wf = anx_wf_object_get(wf_oid);
 	if (!wf)
 		return ANX_ENOENT;
+	if (wf_live(wf))
+		return ANX_EBUSY;
+	if (wf->topology.enabled) return ANX_EPERM;
 
 	for (i = 0; i < ANX_WF_MAX_EDGES; i++) {
 		if (wf->edges[i].from_node == from_node &&

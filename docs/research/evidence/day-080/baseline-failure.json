@@ -1,0 +1,61 @@
+{
+  "revision": "c2e8394",
+  "artifact": "/work/day080-baseline/build/x86_64/anunix-qemu.elf",
+  "boot_mode": "kernel",
+  "source_sha256": "da31fac2347b3da81657d7dd916db134effffc54b979d98f155f5c6b3c8d4462",
+  "source_verified": true,
+  "sha256": "ee5d39f78c4477c1359bed1ce5bc2d37627261a7929ca157aab392c2293360fc",
+  "qemu_command": [
+    "qemu-system-x86_64",
+    "-enable-kvm",
+    "-cpu",
+    "host",
+    "-m",
+    "1G",
+    "-display",
+    "none",
+    "-no-reboot",
+    "-monitor",
+    "none",
+    "-serial",
+    "file:/work/runs/day080-baseline-vm/serial.log",
+    "-netdev",
+    "user,id=n0,hostfwd=tcp:127.0.0.1:34333-:8080",
+    "-device",
+    "virtio-net-pci,netdev=n0",
+    "-kernel",
+    "/work/day080-baseline/build/x86_64/anunix-qemu.elf"
+  ],
+  "qemu_version": "QEMU emulator version 7.2.22 (Debian 1:7.2+dfsg-7+deb12u18+b3)",
+  "kernel_profile": {
+    "schema": 1,
+    "declared_revision": "c2e8394",
+    "configuration": {
+      "architecture": "x86_64",
+      "research_test": 1
+    },
+    "artifact_sha256": "ee5d39f78c4477c1359bed1ce5bc2d37627261a7929ca157aab392c2293360fc",
+    "artifact_bytes": 3367952
+  },
+  "profile_verified": true,
+  "tests": [
+    {
+      "name": "day-080",
+      "passed": false,
+      "response": {
+        "status": "ok",
+        "output": "day080 native failure rc=-8001\nRESEARCH day-080 FAIL rc=-8001\n"
+      }
+    }
+  ],
+  "passed": false,
+  "expected_failure": true,
+  "health": {
+    "status": "healthy"
+  },
+  "sysinfo": {
+    "status": "ok",
+    "output": "\n=== Anunix System Information ===\n\nANUNIX_KERNEL_PROFILE_V1 arch=x86_64 research_test=1\nANUNIX_SOURCE_PROFILE_V1 sha256=da31fac2347b3da81657d7dd916db134effffc54b979d98f155f5c6b3c8d4462\nCPU:       1 cores\nLAPIC:     0xfee00000\nIOAPICs:   1\nMemory:    11136 KiB free / 16384 KiB total (32% used)\nDisk:      none\nNetwork:   52:54:0:12:34:56 (ip 10.0.2.15)\nPCI:       6 devices\nScheduler: int=0 bg=0 lat=0 batch=0\nEvent Queue: depth=0/256 drops=0 threshold=90%\n  Latency: <1ms=0 1-5ms=0 5-10ms=0 >10ms=0\n\n"
+  },
+  "expected_result_observed": true
+}

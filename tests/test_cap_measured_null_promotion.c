@@ -8,6 +8,7 @@
 #include <anx/engine.h>
 #include <anx/state_object.h>
 #include <anx/uuid.h>
+#include <anx/research_test.h>
 
 static int make_validated_successor(const char *name,
 				    const anx_oid_t *supersedes,
@@ -175,5 +176,5 @@ int test_cap_measured_null_promotion(void)
 	if (anx_uuid_is_nil(&winner->installed_engine_id))
 		return -22;
 
-	return 0;
+	return anx_research_day004();
 }

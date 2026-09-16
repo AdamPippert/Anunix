@@ -13,6 +13,12 @@
 #include <anx/string.h>
 #include <anx/arch.h>
 
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+static bool fail_reservation, fail_finalize;
+void anx_trace_test_fail_reservation(bool fail) { fail_reservation = fail; }
+void anx_trace_test_fail_finalize(bool fail) { fail_finalize = fail; }
+#endif
+
 int anx_trace_create(const anx_cid_t *cell_ref, struct anx_cell_trace **out)
 {
 	struct anx_cell_trace *trace;
@@ -59,26 +65,27 @@ int anx_trace_append(struct anx_cell_trace *trace,
 	return ANX_OK;
 }
 
-int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out)
+int anx_trace_prepare(struct anx_cell_trace *trace)
 {
 	struct anx_state_object *obj;
-	struct anx_so_create_params params;
+	struct anx_so_create_params params = {0};
 	int ret;
 
 	if (!trace)
 		return ANX_EINVAL;
 	if (trace->finalized)
 		return ANX_EPERM;
-
-	trace->completed_at = arch_time_now();
-	trace->finalized = true;
-
-	/*
-	 * Materialize the trace as an execution_trace State Object.
-	 * The trace struct itself becomes the payload.
-	 */
-	anx_memset(&params, 0, sizeof(params));
+	if (!anx_uuid_is_nil(&trace->storage_oid))
+		return ANX_OK;
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+	if (fail_reservation) {
+		fail_reservation = false;
+		return ANX_ENOMEM;
+	}
+#endif
 	params.object_type = ANX_OBJ_EXECUTION_TRACE;
+	params.schema_uri = ANX_CELL_TRACE_SCHEMA;
+	params.schema_version = ANX_CELL_TRACE_SCHEMA_VERSION;
 	params.payload = trace;
 	params.payload_size = sizeof(*trace);
 	params.creator_cell = trace->cell_ref;
@@ -86,13 +93,52 @@ int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out)
 	ret = anx_so_create(&params, &obj);
 	if (ret != ANX_OK)
 		return ret;
-
-	if (trace_oid_out)
-		*trace_oid_out = obj->oid;
-
-	/* Release the object store's reference — caller gets the OID */
+	trace->storage_oid = obj->oid;
 	anx_objstore_release(obj);
 	return ANX_OK;
+}
+
+int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out)
+{
+	struct anx_object_handle handle = {0};
+	int ret;
+
+	if (trace_oid_out)
+		*trace_oid_out = ANX_UUID_NIL;
+	if (!trace)
+		return ANX_EINVAL;
+	if (trace->finalized)
+		return ANX_EPERM;
+	ret = anx_trace_prepare(trace);
+	if (ret != ANX_OK)
+		return ret;
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+	if (fail_finalize) {
+		fail_finalize = false;
+		return ANX_EIO;
+	}
+#endif
+	ret = anx_so_open(&trace->storage_oid, ANX_OPEN_WRITE, &handle);
+	if (ret != ANX_OK)
+		return ret;
+	trace->completed_at = arch_time_now();
+	trace->finalized = true;
+	ret = anx_so_write_payload(&handle, 0, trace, sizeof(*trace));
+	anx_so_close(&handle);
+	if (ret != (int)sizeof(*trace)) {
+		ret = ret < 0 ? ret : ANX_EIO;
+		goto fail;
+	}
+	ret = anx_so_seal(&trace->storage_oid);
+	if (ret != ANX_OK)
+		goto fail;
+	if (trace_oid_out)
+		*trace_oid_out = trace->storage_oid;
+	return ANX_OK;
+fail:
+	trace->finalized = false;
+	trace->completed_at = 0;
+	return ret;
 }
 
 void anx_trace_destroy(struct anx_cell_trace *trace)

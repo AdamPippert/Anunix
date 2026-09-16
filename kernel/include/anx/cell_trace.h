@@ -12,11 +12,13 @@
 #include <anx/types.h>
 
 #define ANX_MAX_TRACE_EVENTS	64
+#define ANX_CELL_TRACE_SCHEMA "anx:schema/cell-trace/v2"
+#define ANX_CELL_TRACE_SCHEMA_VERSION "2"
 
 /* --- Trace event types --- */
 
 enum anx_trace_event_type {
-	ANX_TRACE_CREATED,
+	ANX_TRACE_CREATED,		/* description: intent name at runtime entry */
 	ANX_TRACE_ADMITTED,
 	ANX_TRACE_PLAN_GENERATED,
 	ANX_TRACE_STEP_STARTED,
@@ -29,6 +31,25 @@ enum anx_trace_event_type {
 	ANX_TRACE_CANCELLED,
 	ANX_TRACE_FAILED,
 	ANX_TRACE_COMPLETED,
+	ANX_TRACE_ADMISSION_DENIED,
+	ANX_TRACE_IDENTITY_COMMITMENT,	/* description: signed commitment record OID */
+	ANX_TRACE_EFFECT_FENCE,		/* description: fence OID and epoch */
+};
+
+enum anx_admission_gate {
+	ANX_ADMISSION_NONE,
+	ANX_ADMISSION_SCOPE,
+	ANX_ADMISSION_DESCRIPTOR,
+	ANX_ADMISSION_AUTHORITY,
+	ANX_ADMISSION_AUDIT_REQUIRED,
+	ANX_ADMISSION_AUDIT_STORAGE,
+	ANX_ADMISSION_IDENTITY,
+	ANX_ADMISSION_EFFECT_FENCE,
+	ANX_ADMISSION_TOOL_NAMESPACE,
+	ANX_ADMISSION_EXECUTION_CONTRACT,
+	ANX_ADMISSION_SCHEDULER_DOMAIN,
+	ANX_ADMISSION_BRANCH_SCOPE,
+	ANX_ADMISSION_CONTINUATION_GROUP,
 };
 
 /* --- Trace event --- */
@@ -43,6 +64,16 @@ struct anx_trace_event {
 
 /* --- The Cell Trace --- */
 
+struct anx_tool_accounting {
+	bool attempted;
+	anx_time_t started_at;
+	anx_time_t completed_at;
+	uint32_t request_bytes;
+	uint32_t response_bytes;
+	int transport_result;
+	int status_code;
+};
+
 struct anx_cell_trace {
 	anx_tid_t trace_id;
 	anx_cid_t cell_ref;		/* cell this trace belongs to */
@@ -55,6 +86,9 @@ struct anx_cell_trace {
 	anx_time_t started_at;
 	anx_time_t completed_at;
 
+	struct anx_tool_accounting tool;
+	enum anx_admission_gate denied_gate;
+	anx_oid_t storage_oid;
 	bool finalized;			/* true after cell completes */
 };
 
@@ -71,6 +105,14 @@ int anx_trace_append(struct anx_cell_trace *trace,
 
 /* Finalize a trace (materializes as execution_trace State Object) */
 int anx_trace_finalize(struct anx_cell_trace *trace, anx_oid_t *trace_oid_out);
+
+/* Reserve the full trace object before an external handler may run. */
+int anx_trace_prepare(struct anx_cell_trace *trace);
+
+#if defined(ANX_RESEARCH_TEST) || defined(ANX_HOST_TEST)
+void anx_trace_test_fail_reservation(bool fail);
+void anx_trace_test_fail_finalize(bool fail);
+#endif
 
 /* Destroy a trace */
 void anx_trace_destroy(struct anx_cell_trace *trace);

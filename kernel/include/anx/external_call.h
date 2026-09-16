@@ -17,6 +17,7 @@
 #define ANX_EXTERNAL_CALL_H
 
 #include <anx/types.h>
+#include <anx/tool_namespace.h>
 
 #define ANX_EXT_ENDPOINT_MAX	256
 #define ANX_EXT_METHOD_MAX	16
@@ -26,6 +27,7 @@
 struct anx_external_call {
 	char endpoint[ANX_EXT_ENDPOINT_MAX];	/* e.g. "pg://topo/scan?lo=0&hi=1023" */
 	char method[ANX_EXT_METHOD_MAX];	/* "GET", "POST", "QUERY", ... */
+	struct anx_tool_handle tool_handle;	/* mandatory for a bound tool namespace */
 
 	const void *request_body;		/* caller-owned */
 	uint32_t request_size;
@@ -63,7 +65,9 @@ int anx_external_register_handler(const char *scheme,
 int anx_external_unregister_handler(const char *scheme);
 
 /*
- * Invoke an external call. Parses the scheme from call->endpoint,
+ * Active cells pass current execution, identity, fence, and tool-namespace gates.
+ * Unscoped kernel callers retain trusted transport access.
+ * Parses the scheme from call->endpoint,
  * looks up the handler, and delegates. Returns ANX_ENOENT if no
  * handler is registered for the scheme.
  */

@@ -1,0 +1,451 @@
+=== Anunix Kernel Tests ===
+
+  [RUN]  state_object
+  [PASS] state_object
+  [RUN]  cell_lifecycle
+  [PASS] cell_lifecycle
+  [RUN]  cell_runtime
+  [PASS] cell_runtime
+  [RUN]  memplane
+  [PASS] memplane
+  [RUN]  engine_registry
+  [PASS] engine_registry
+  [RUN]  scheduler
+  [PASS] scheduler
+  [RUN]  capability
+[cap] validated: validator_test v2.0 score=100
+[cap] validated: double_validate v1.0 score=100
+[cap] validated: research-day-019-denied v1 score=100
+[cap] validated: research-day-019-incumbent v1 score=100
+[cap] validated: research-day-019-candidate v2 score=100
+[cap] validated: research-day-019-next v3 score=100
+[cap] validated: research-day-019-ready v1 score=100
+[cap] validated: research-day-019-draft v1 score=100
+[cap] validated: research-day-027-missing v1 score=100
+[cap] validated: research-day-027-checked v1 score=100
+[cap] validated: research-day-027-wide v1 score=100
+[cap] validated: research-day-027-good v1 score=100
+[cap] validated: research-day-033-candidate v1 score=100
+[cap] validated: research-day-033-incumbent v1 score=100
+  [PASS] capability
+  [RUN]  fb
+  [PASS] fb
+  [RUN]  engine_lifecycle
+  [PASS] engine_lifecycle
+  [RUN]  resource_lease
+  [PASS] resource_lease
+  [RUN]  model_server
+  [PASS] model_server
+  [RUN]  posix
+  [PASS] posix
+  [RUN]  tensor
+  [PASS] tensor
+  [RUN]  tensor_codec
+  [PASS] tensor_codec
+  [RUN]  model
+  [PASS] model
+  [RUN]  tensor_ops
+  [PASS] tensor_ops
+  [RUN]  crypto
+  [PASS] crypto
+  [RUN]  sshd_crypto
+  [PASS] sshd_crypto
+  [RUN]  input_routing
+  [PASS] input_routing
+  [RUN]  compositor_cell
+  [PASS] compositor_cell
+  [RUN]  shm_ipc
+  [PASS] shm_ipc
+  [RUN]  conformance_harness
+  [PASS] conformance_harness
+  [RUN]  userspace_prereqs
+  [PASS] userspace_prereqs
+  [RUN]  rlm
+[pal] updated world=anx:world/rlm-test sessions=1
+[rlm-pal] world=anx:world/rlm-test action=0 score=80 energy=0.20
+[pal] updated world=anx:world/rlm-test sessions=2
+[rlm-pal] world=anx:world/rlm-test action=1 score=20 energy=0.80
+[rlm-pal] counterexample stored (score<30)
+  [PASS] rlm
+  [RUN]  external_call
+  [PASS] external_call
+  [RUN]  disk_store
+disk: formatting...
+disk: formatted 'test' (0 MiB)
+  [PASS] disk_store
+  [RUN]  route_planner
+  [PASS] route_planner
+  [RUN]  vm_object
+vm: subsystem initialized (max 32 VMs)
+vm: created 'test-vm' (2 cpu, 1024 MB) via qemu
+vm: qemu start: qemu-system-x86_64 -m 1024M -smp 4 -nographic -no-reboot -serial mon:stdio -qmp tcp:127.0.0.1:4440,server,nowait -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+vm: qemu exec failed (-3)
+vm: destroyed 'test-vm'
+  [PASS] vm_object
+  [RUN]  workflow
+wf: subsystem initialized (max 16 workflows)
+wf: created 'test-flow' (cap 2)
+wf: running 'test-flow' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [start] 'start'
+wf:   dispatch node 2 [infer] 'infer'
+wf: 'test-flow' completed
+wf: 'test-flow' trace sealed
+[jepa] registered worlds: os-default, cellular, robotics, enterprise-it
+wf: created 'anx:workflow/jepa-agent-loop' (cap 2)
+wf: created 'anx:workflow/jepa-plugin-loop' (cap 2)
+[jepa] workflows registered: jepa-agent-loop, jepa-plugin-loop
+[jepa] latent-state subsystem ready (compute: CPU, world: anx:world/os-default)
+[jepa-cell] observe: rc=0
+[jepa-cell] encode: rc=0
+[jepa-cell] observe-encode: rc=0
+[jepa-cell] predict: action=1 rc=0
+[wf-lib] registered 16 built-in workflow templates
+wf: created 'test-jepa-oe' (cap 2)
+wf: running 'test-jepa-oe' (4 nodes, 3 edges, cap 2)
+wf:   dispatch node 1 [start] 'start'
+wf:   dispatch node 2 [observe] 'observe'
+[jepa-cell] observe: rc=0
+wf:   dispatch node 3 [encode] 'encode'
+[jepa-cell] encode: rc=0
+wf:   dispatch node 4 [latent] 'latent'
+wf: 'test-jepa-oe' completed
+wf: 'test-jepa-oe' trace sealed
+[jepa-traj] exported 1 entries (3624 bytes)
+wf_bundle: size mismatch (got 1685, need 1686)
+wf_bundle: size mismatch (got 1687, need 1686)
+wf: created 'research-day-002' (cap 2)
+wf: running 'research-day-002' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-002' completed
+wf: 'research-day-002' trace sealed
+[cap] validated: research-day-005-incumbent v1 score=100
+[cap] validated: research-day-005-candidate v2 score=100
+wf: created 'research-day-005' (cap 2)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -5)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-005' suspended at node 2 (err -2)
+wf: running 'research-day-005' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-005' completed
+wf: 'research-day-005' trace sealed
+wf: created 'research-day-029-first' (cap 2)
+wf: running 'research-day-029-first' (3 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-029-first' suspended at node 3 (err -5)
+wf: created 'research-day-029-shared' (cap 2)
+wf: running 'research-day-029-shared' (3 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-029-shared' suspended at node 3 (err -5)
+wf: 'research-day-029-first' completed after resume
+wf: 'research-day-029-first' trace sealed
+wf: created 'research-day-029-review' (cap 2)
+wf: running 'research-day-029-review' (3 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: created 'research-day-037' (cap 2)
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 3 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: running 'research-day-037' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf: 'research-day-037' completed
+wf: 'research-day-037' trace sealed
+wf: created 'research-day-037-paused' (cap 2)
+wf: running 'research-day-037-paused' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: created 'research-day-037-paused' (cap 2)
+wf: running 'research-day-037-paused' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-037-paused' suspended at node 1 (err -5)
+wf: created 'research-day-038' (cap 2)
+wf: running 'research-day-038' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-038' completed
+wf: 'research-day-038' trace sealed
+reuse: 'research-day-038' condition 0 changed (version 1 to 2, hash 1)
+wf: running 'research-day-038' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-038' completed
+wf: 'research-day-038' trace sealed
+reuse: 'research-day-038' graph changed
+wf: running 'research-day-038' (2 nodes, 1 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf: 'research-day-038' suspended at node 2 (err -5)
+wf: created 'research-day-039' (cap 2)
+wf: running 'research-day-039' (5 nodes, 5 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf:   dispatch node 2 [] ''
+wf:   dispatch node 3 [] ''
+wf:   dispatch node 4 [] ''
+wf: 'research-day-039' suspended at node 4 (err -5)
+wf:   dispatch node 5 [] ''
+wf: 'research-day-039' completed after resume
+wf: 'research-day-039' trace sealed
+wf: created 'research-day-043' (cap 2)
+wf: running 'research-day-043' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-043' suspended at node 1 (err -5)
+wf: running 'research-day-043' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-043' suspended at node 1 (err -5)
+wf: running 'research-day-043' (1 nodes, 0 edges, cap 2)
+wf:   dispatch node 1 [] ''
+wf: 'research-day-043' suspended at node 1 (err -5)
+wf: 'research-day-043' completed after resume
+wf: 'research-day-043' trace sealed
+  [PASS] workflow
+  [RUN]  theme
+theme: switched to pretty
+theme: initialized pretty
+theme: switched to boring
+theme: switched to pretty
+theme: switched to boring
+  [PASS] theme
+  [RUN]  event_qos
+  [PASS] event_qos
+  [RUN]  compositor_dirty_rect
+  [PASS] compositor_dirty_rect
+  [RUN]  multi_surface
+  [PASS] multi_surface
+  [RUN]  clipboard
+  [PASS] clipboard
+  [RUN]  text_shaping
+  [PASS] text_shaping
+  [RUN]  transfer_policy
+  [PASS] transfer_policy
+  [RUN]  diag
+  [PASS] diag
+  [RUN]  isolation
+  [PASS] isolation
+  [RUN]  a11y
+  [PASS] a11y
+  [RUN]  media
+  [PASS] media
+  [RUN]  conformance_gate
+  [PASS] conformance_gate
+  [RUN]  ibal
+wf: subsystem initialized (max 16 workflows)
+[wf-lib] registered 16 built-in workflow templates
+[jepa] failed to register built-in worlds (-4)
+[loop] session subsystem initialized (max 32 sessions)
+[loop] session 0000000000000001 created world=anx:world/os-default max_iter=4 halt=1 goal=""
+[loop] session 0000000000000002 created world=anx:world/os-default max_iter=8 halt=1 goal=""
+[loop] session 0000000000000003 created world=anx:world/os-default max_iter=16 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[pal] updated world=anx:world/os-default sessions=1
+[memory] consolidated 0000000000000003 world=anx:world/os-default iters=1 energy=0.0000
+[ibal] state saved: b91a89e4c2c92e5d
+[ibal] state loaded: 8 weights, 12 action slots
+[pal] updated world=anx:world/test-pal-unit sessions=1
+[pal] updated world=anx:world/test-pal-unit sessions=2
+[pal] updated world=anx:world/test-pal-unit sessions=3
+[loop] session 0000000000000004 created world=anx:world/test-cexl max_iter=1 halt=1 goal=""
+[loop] session 0000000000000005 created world=anx:world/test-branch max_iter=8 halt=1 goal=""
+[loop] session 0000000000000006 created world=anx:world/test-branch max_iter=4 halt=1 goal=""
+[loop] branch 0 created 0000000000000006 from parent 0000000000000005
+[loop] session 0000000000000007 created world=anx:world/test-branch-list max_iter=8 halt=1 goal=""
+[loop] session 0000000000000008 created world=anx:world/test-branch-list max_iter=4 halt=1 goal=""
+[loop] branch 0 created 0000000000000008 from parent 0000000000000007
+[loop] session 0000000000000009 created world=anx:world/test-branch-list max_iter=4 halt=1 goal=""
+[loop] branch 1 created 0000000000000009 from parent 0000000000000007
+[loop] session 000000000000000a created world=anx:world/test-jepa-ingest max_iter=4 halt=1 goal="observe"
+[loop-jepa] session 000000000000000a: action=0 obs=ok
+[loop] session 000000000000000b created world=anx:world/test-jepa-nil max_iter=1 halt=1 goal=""
+[loop-jepa] session 000000000000000b: action=0 obs=ok
+[loop] session 000000000000000c created world=anx:world/test-diag max_iter=4 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.4750 act=0 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=2: action=0 (pal-fallback)
+[ebm] iter 2: best_energy=0.5000 act=0 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=3: action=0 (pal-fallback)
+[ebm] iter 3: best_energy=0.5250 act=0 decision=0
+[loop] session 000000000000000c halted on budget at iter 4
+[loop-jepa] session 000000000000000c: action=0 obs=ok
+[pal] updated world=anx:world/test-diag sessions=1
+[memory] consolidated 000000000000000c world=anx:world/test-diag iters=4 energy=0.5250
+[loop] session 000000000000000d created world=anx:world/test-diag2 max_iter=2 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.5000 act=0 decision=0
+[loop] session 000000000000000d halted on budget at iter 2
+[loop-jepa] session 000000000000000d: action=0 obs=ok
+[pal] updated world=anx:world/test-diag2 sessions=1
+[memory] consolidated 000000000000000d world=anx:world/test-diag2 iters=2 energy=0.5000
+  [PASS] ibal
+  [RUN]  ebm
+[jepa] failed to register built-in worlds (-4)
+[loop] session subsystem initialized (max 32 sessions)
+[ebm] initialized: 4 scorers (world/goal/constraint/uncertainty)
+[ebm] initialized: 4 scorers (world/goal/constraint/uncertainty)
+[loop] session 0000000000000001 created world=anx:world/test-ebm max_iter=2 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.5000 act=0 decision=0
+[loop] session 0000000000000002 created world=anx:world/test-ebm2 max_iter=3 halt=1 goal="route network traffic"
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.3633 act=1 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=2: action=0 (pal-fallback)
+[ebm] iter 2: best_energy=0.3967 act=1 decision=0
+[loop] session 0000000000000002 halted on budget at iter 3
+[loop-jepa] session 0000000000000002: action=0 obs=ok
+[pal] updated world=anx:world/test-ebm2 sessions=1
+[memory] consolidated 0000000000000002 world=anx:world/test-ebm2 iters=3 energy=0.3967
+[loop] session 0000000000000003 created world=anx:world/test-ebm3 max_iter=2 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.5000 act=0 decision=0
+[loop] session 0000000000000003 halted on budget at iter 2
+[loop-jepa] session 0000000000000003: action=0 obs=ok
+[pal] updated world=anx:world/test-ebm3 sessions=1
+[memory] consolidated 0000000000000003 world=anx:world/test-ebm3 iters=2 energy=0.5000
+[loop] session 0000000000000004 created world=anx:world/test-ebm3 max_iter=3 halt=1 goal=""
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=1: action=0 (pal-fallback)
+[ebm] iter 1: best_energy=0.4833 act=0 decision=0
+[loop_belief] encode unavailable, using zero latent
+[loop-llm] iter=2: action=0 (pal-fallback)
+[ebm] iter 2: best_energy=0.5167 act=0 decision=0
+[loop] session 0000000000000004 halted on budget at iter 3
+[loop-jepa] session 0000000000000004: action=0 obs=ok
+[pal] updated world=anx:world/test-ebm3 sessions=2
+[memory] consolidated 0000000000000004 world=anx:world/test-ebm3 iters=3 energy=0.5167
+[loop] session 0000000000000005 created world=anx:world/test-llm max_iter=4 halt=1 goal="route network traffic"
+[loop-llm] iter=1: action=0 (pal-fallback)
+  [PASS] ebm
+  [RUN]  kickstart
+wf: subsystem initialized (max 16 workflows)
+[wf-lib] registered 16 built-in workflow templates
+kickstart: applying config (74 bytes)
+kickstart: hostname=anunix-test
+wf: created 'anx:workflow/ibal/lite/v1' (cap 2)
+kickstart: workflow loaded: anx:workflow/ibal/lite/v1
+[pal-prime] kickstart uri=anx:workflow/ibal/lite/v1 → action=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=1
+[pal] updated world=anx:world/workflow-search/v1 sessions=2
+[pal] updated world=anx:world/workflow-search/v1 sessions=3
+[pal] updated world=anx:world/os-default sessions=2
+[pal] updated world=anx:world/os-default sessions=3
+[pal] updated world=anx:world/os-default sessions=4
+kickstart: applying config (46 bytes)
+wf: created 'anx:workflow/ibal/default/v1' (cap 2)
+kickstart: workflow loaded: anx:workflow/ibal/default/v1
+[pal-prime] kickstart uri=anx:workflow/ibal/default/v1 → action=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=5
+[pal] updated world=anx:world/workflow-search/v1 sessions=6
+[pal] updated world=anx:world/os-default sessions=5
+[pal] updated world=anx:world/os-default sessions=6
+[pal] updated world=anx:world/os-default sessions=7
+kickstart: applying config (41 bytes)
+kickstart: workflow load=anx:workflow/no-such/v1 failed (-3)
+kickstart: applying config (50 bytes)
+wf: created 'anx:workflow/ibal/symbolic/v1' (cap 2)
+[pal-prime] kickstart uri=anx:workflow/ibal/symbolic/v1 → action=4
+[pal] updated world=anx:world/workflow-search/v1 sessions=7
+[pal] updated world=anx:world/workflow-search/v1 sessions=8
+[pal] updated world=anx:world/workflow-search/v1 sessions=9
+[pal] updated world=anx:world/os-default sessions=8
+[pal] updated world=anx:world/os-default sessions=9
+[pal] updated world=anx:world/os-default sessions=10
+wf: running 'anx:workflow/ibal/symbolic/v1' (3 nodes, 2 edges, cap 2)
+wf:   dispatch node 1 [start] 'start'
+wf:   dispatch node 2 [ibal-symbolic] 'ibal-symbolic'
+wf:   dispatch node 3 [plan] 'plan'
+wf: 'anx:workflow/ibal/symbolic/v1' completed
+wf: 'anx:workflow/ibal/symbolic/v1' trace sealed
+kickstart: workflow autorunning: anx:workflow/ibal/symbolic/v1
+kickstart: applying config (30 bytes)
+  [PASS] kickstart
+  [RUN]  anxml
+  [PASS] anxml
+  [RUN]  audio
+  [PASS] audio
+  [RUN]  video
+  [PASS] video
+  [RUN]  hda
+  [PASS] hda
+  [RUN]  amacs
+DIAG plus123: rc=0 out="6"
+DIAG mul76: rc=0 out="42"
+DIAG carcons: rc=0 out="1"
+DIAG anxml r1: rc=0 len=16 out="the the the the "
+DIAG anxml r2: rc=0 len=16 out="the the the the "
+  [PASS] amacs
+  [RUN]  uor
+disk: formatting...
+disk: formatted 'uor' (1 MiB)
+  [PASS] uor
+  [RUN]  icm
+  [PASS] icm
+  [RUN]  state_staged_mutation
+  [PASS] state_staged_mutation
+  [RUN]  exec_execution_contract
+  [PASS] exec_execution_contract
+  [RUN]  cap_flow_label
+  [PASS] cap_flow_label
+  [RUN]  cap_effect_protocol
+  [PASS] cap_effect_protocol
+  [RUN]  resourced_twin_simulate
+  [PASS] resourced_twin_simulate
+  [RUN]  regime_detector
+  [PASS] regime_detector
+  [RUN]  sched_cognitive_envelope
+  [PASS] sched_cognitive_envelope
+  [RUN]  cap_measured_null_promotion
+[cap] validated: incumbent v1.0 score=100
+[cap] validated: winner v1.0 score=100
+[cap] validated: fresh v1.0 score=100
+[cap] validated: noisy_challenger v1.0 score=100
+[cap] validated: research-day-004-incumbent v1 score=100
+[cap] validated: research-day-004-candidate v2 score=100
+  [PASS] cap_measured_null_promotion
+
+=== Results: 59 passed, 0 failed ===
+day077 runtime_tokens=8,4 quality_prefix=AAAA rejected_candidates=3 charged_tokens=12
+diagnostic day077 rc=0

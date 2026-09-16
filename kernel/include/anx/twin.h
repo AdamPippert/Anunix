@@ -22,8 +22,10 @@
 #include <anx/engine.h>
 #include <anx/sched.h>
 #include <anx/cell.h>
+#include <anx/engine_lease.h>
 
 #define ANX_TWIN_MAX_ENGINES	32
+#define ANX_ROUTE_WEIGHT_LIMIT	1000
 
 /* --- Readiness (folds the topic plan's Readiness Contract in here) --- */
 
@@ -58,6 +60,7 @@ struct anx_twin_engine_snapshot {
 /* --- Resource Twin --- */
 
 struct anx_resource_twin {
+	struct anx_lease_capacity capacity;
 	struct anx_twin_engine_snapshot engines[ANX_TWIN_MAX_ENGINES];
 	uint32_t engine_count;
 	uint32_t queue_depth[ANX_QUEUE_CLASS_COUNT];
@@ -66,18 +69,15 @@ struct anx_resource_twin {
 
 /* --- Candidate routing weight policy ---
  *
- * Mirrors the scoring dimensions anx_route_score_engine already applies,
- * as tunable weights instead of hardcoded constants. A candidate policy
- * is what an AI proposal would vary; anx_route_weight_policy_incumbent()
- * reproduces the live function's current constants, so simulating with
- * the incumbent policy against a snapshot taken immediately before a
- * live anx_route_plan() call should reproduce the same winner.
+ * These weights control the deterministic score dimensions.
+ * anx_route_weight_policy_incumbent() returns the currently active weights.
+ * Simulation excludes JEPA and escalation, and never activates a policy.
  */
 struct anx_route_weight_policy {
 	int32_t locality_bonus;
 	int32_t local_first_bonus;
-	int32_t gpu_cost_divisor;		/* must be nonzero */
-	int32_t cpu_cost_divisor;		/* must be nonzero */
+	int32_t gpu_cost_divisor;		/* 1..ANX_ROUTE_WEIGHT_LIMIT */
+	int32_t cpu_cost_divisor;		/* 1..ANX_ROUTE_WEIGHT_LIMIT */
 	int32_t degraded_penalty;
 	int32_t private_data_bonus;
 	int32_t topology_overlap_bonus;
@@ -85,6 +85,9 @@ struct anx_route_weight_policy {
 };
 
 void anx_route_weight_policy_incumbent(struct anx_route_weight_policy *out);
+/* Bonuses: 0..LIMIT; penalties: -LIMIT..0; divisors: 1..LIMIT.
+ * These bound simulation and live trials; they are not measured optima. */
+int anx_route_weight_policy_validate(const struct anx_route_weight_policy *policy);
 
 struct anx_twin_simulate_result {
 	uint32_t candidate_count;	/* feasible engines considered */
@@ -108,10 +111,28 @@ void anx_twin_destroy(struct anx_resource_twin *twin);
  * snapshot under `policy`, without touching live state. Returns ANX_OK
  * with candidate_count == 0 (and no winner set) if no snapshot engine
  * is feasible for this cell — that is a valid, non-error outcome.
+ * Malformed policies, snapshots, or routing constraints return ANX_EINVAL
+ * before touching result_out. Simulation never activates a live policy.
  */
 int anx_twin_simulate(struct anx_resource_twin *twin,
 		      struct anx_cell *cell,
 		      const struct anx_route_weight_policy *policy,
 		      struct anx_twin_simulate_result *result_out);
+
+/* Retained storage is distinct from the peak local working set during restoration. */
+struct anx_twin_restore_request {
+	enum anx_mem_tier tier;
+	uint64_t retained_bytes, resident_bytes, restore_peak_bytes;
+	enum anx_accel_type accelerator;
+	uint32_t accelerator_pct;
+};
+struct anx_twin_restore_result {
+	uint64_t additional_memory_bytes;
+	struct anx_twin_simulate_result route;
+};
+/* ENOTSUP without a capacity snapshot; ENOMEM when frozen capacity cannot fit. */
+int anx_twin_simulate_restoration(struct anx_resource_twin *twin, struct anx_cell *cell,
+		const struct anx_route_weight_policy *policy, const struct anx_twin_restore_request *request,
+		struct anx_twin_restore_result *out);
 
 #endif /* ANX_TWIN_H */

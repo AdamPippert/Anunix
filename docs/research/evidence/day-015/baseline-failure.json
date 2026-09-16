@@ -1,0 +1,47 @@
+{
+  "revision": "ca1a41f",
+  "artifact": "/work/day015-baseline/build/x86_64/anunix-qemu.elf",
+  "sha256": "3a877b15209fad3f7b25e59637e06ddb3095f9ab3261d42ee2711cbaacf15826",
+  "qemu_command": [
+    "qemu-system-x86_64",
+    "-enable-kvm",
+    "-cpu",
+    "host",
+    "-m",
+    "1G",
+    "-display",
+    "none",
+    "-no-reboot",
+    "-monitor",
+    "none",
+    "-serial",
+    "file:/work/runs/day015-baseline-vm/serial.log",
+    "-netdev",
+    "user,id=n0,hostfwd=tcp:127.0.0.1:39227-:8080",
+    "-device",
+    "virtio-net-pci,netdev=n0",
+    "-kernel",
+    "/work/day015-baseline/build/x86_64/anunix-qemu.elf"
+  ],
+  "qemu_version": "QEMU emulator version 7.2.22 (Debian 1:7.2+dfsg-7+deb12u18+b3)",
+  "tests": [
+    {
+      "name": "day-015",
+      "passed": false,
+      "response": {
+        "status": "ok",
+        "output": "RESEARCH day-015 FAIL rc=-1501\n"
+      }
+    }
+  ],
+  "passed": false,
+  "expected_failure": true,
+  "health": {
+    "status": "healthy"
+  },
+  "sysinfo": {
+    "status": "ok",
+    "output": "\n=== Anunix System Information ===\n\nCPU:       1 cores\nLAPIC:     0xfee00000\nIOAPICs:   1\nMemory:    11136 KiB free / 16384 KiB total (32% used)\nDisk:      none\nNetwork:   52:54:0:12:34:56 (ip 10.0.2.15)\nPCI:       6 devices\nScheduler: int=0 bg=0 lat=0 batch=0\nEvent Queue: depth=0/256 drops=0 threshold=90%\n  Latency: <1ms=0 1-5ms=0 5-10ms=0 >10ms=0\n\n"
+  },
+  "expected_result_observed": true
+}

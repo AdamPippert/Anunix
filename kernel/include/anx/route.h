@@ -42,6 +42,8 @@ struct anx_route_result {
 	uint32_t selected_index;	/* index of best candidate */
 	enum anx_route_stage decided_at;
 	bool needs_escalation;		/* stage 2/3 recommended */
+	bool profile_applied;
+	int profile_status; /* zero when unused or applied; rejection retains incumbent */
 };
 
 /* --- Route Planner API --- */
@@ -55,11 +57,52 @@ void anx_route_planner_init(void);
  */
 int anx_route_plan(struct anx_cell *cell, struct anx_route_result *result);
 
+/* Caller-owned placement hint for one compatible model backend pool.
+ * Initialize the selected engine and placement count to zero. The caller
+ * supplies unique eligible EIDs and owns logical model compatibility. */
+struct anx_route_session {
+	anx_eid_t eligible_engines[ANX_MAX_ROUTE_CANDIDATES];
+	uint32_t engine_count;
+	uint32_t required_caps;
+	anx_eid_t selected_engine;
+	uint64_t placement_count;
+};
+
+/* Reuse eligible affinity or select a scored fallback; errors preserve both outputs. */
+int anx_route_plan_session(struct anx_cell *cell, struct anx_route_session *session,
+			   struct anx_route_result *result);
+
+#define ANX_CONTINUITY_MAX_HOLD_NS 30000000000ULL
+#define ANX_CONTINUITY_COST_MAX_MS 3600000U
+
+/* Caller-owned advice about a versioned state object in logical L0/L1 residency. */
+struct anx_continuity_hint {
+	uint32_t schema;
+	anx_eid_t engine_id;
+	anx_oid_t state_oid;
+	uint64_t state_version;
+	uint64_t created_at_ns;
+	uint64_t expires_at_ns;
+	uint32_t return_probability_permille;
+	uint32_t restoration_cost_ms;
+	uint32_t reservation_cost_ms;
+	uint32_t interference_cost_ms;
+};
+
+/* Expiring state reuse replaces indefinite affinity for this placement call. */
+int anx_route_plan_continuity(struct anx_cell *cell, struct anx_route_session *session,
+			      const struct anx_continuity_hint *hint, struct anx_route_result *result);
+
 /*
  * Score a single engine against a cell's requirements.
- * Returns a score (higher = better fit), or negative on error.
+ * Valid scores may be negative. Invalid arguments return -1.
  */
 int32_t anx_route_score_engine(struct anx_cell *cell,
 			       struct anx_engine *engine);
+
+struct anx_route_weight_policy;
+/* Score against one copied policy throughout a complete routing decision. */
+int32_t anx_route_score_with_policy(struct anx_cell *cell, struct anx_engine *engine,
+				    const struct anx_route_weight_policy *policy);
 
 #endif /* ANX_ROUTE_H */

@@ -41,7 +41,9 @@ struct anx_icm_view {
 /*
  * Tag an existing object with ICM annotations. Writes only user_meta; cannot
  * touch identity, provenance, or policy. Any field passed as NULL is left
- * unchanged. Returns ANX_OK, or a negative error.
+ * unchanged. Requires WRITE_META for the active caller, including on sealed
+ * objects. Annotation values never grant access. Returns the first error;
+ * earlier field writes may remain after an allocation failure.
  */
 int anx_icm_tag(const anx_oid_t *oid, const char *domain, const char *kind,
 		const char *authority, const char *status,
@@ -52,14 +54,16 @@ int anx_icm_tag(const anx_oid_t *oid, const char *domain, const char *kind,
  * given release URI (e.g. "anx:pkg/foo@1.2.0"). Per ICM "published things are
  * versioned" (RFC-0025 9.3), this is intended for sealed objects; the kernel
  * does not require sealing, but a release marker on a mutable object is a
- * caller error in spirit. Writes user_meta only. Returns ANX_OK, ANX_EINVAL on
+ * caller error in spirit. Requires WRITE_META and writes user_meta only.
+ * Returns ANX_OK, ANX_EPERM on denied access, ANX_EINVAL on
  * a NULL/empty uri, or ANX_ENOENT if the object does not exist.
  */
 int anx_icm_publish(const anx_oid_t *oid, const char *release_uri);
 
 /*
  * Populate `out` from one object's anno.icm.* metadata. Unset keys yield empty
- * strings. Returns ANX_OK, or ANX_ENOENT if the object does not exist.
+ * strings. Requires READ_META; denied access leaves out unchanged.
+ * Returns ANX_OK, ANX_EPERM on denied access, or ANX_ENOENT if absent.
  */
 int anx_icm_read_view(const anx_oid_t *oid, struct anx_icm_view *out);
 
@@ -70,7 +74,7 @@ int anx_icm_read_view(const anx_oid_t *oid, struct anx_icm_view *out);
 typedef int (*anx_icm_visit_fn)(const struct anx_icm_view *view, void *arg);
 
 /*
- * Iterate every artifact in the object store, building an anx_icm_view for
+ * Iterate artifacts readable under READ_META by the active caller, building a view for
  * each and passing it to `cb`. If `domain` is non-NULL, only artifacts whose
  * anno.icm.domain contains that tag are visited. Returns ANX_OK once all
  * artifacts are visited, or the first non-zero value returned by `cb`.

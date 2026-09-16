@@ -26,6 +26,7 @@
 #define ANX_WF_LABEL_MAX	64	/* node display label */
 #define ANX_WF_EXPR_MAX		128	/* expression / template strings */
 #define ANX_WF_MAX_WFS		16	/* max concurrent workflows in registry */
+#define ANX_WF_TOPOLOGY_REVISIONS_MAX 8U
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
@@ -46,6 +47,7 @@ enum anx_wf_node_kind {
 	ANX_WF_NODE_HUMAN_REVIEW,	/* pause for human approval */
 	ANX_WF_NODE_SUBFLOW,		/* nested workflow reference */
 	ANX_WF_NODE_OUTPUT,		/* write result to named object or event */
+	ANX_WF_NODE_CAP_PROMOTION,	/* sealed evidence in port 0, decision out port 1 */
 	ANX_WF_NODE_KIND_COUNT,
 };
 
@@ -174,6 +176,15 @@ struct anx_wf_edge {
 	uint8_t		to_port;
 };
 
+struct anx_wf_topology_control {
+	bool enabled, can_rollback;
+	uint32_t limit, accepted;
+	uint64_t epoch, trace_epoch;
+	anx_oid_t evidence_oid;
+	uint16_t previous_count;
+	struct anx_wf_edge previous[ANX_WF_MAX_EDGES];
+};
+
 /* ------------------------------------------------------------------ */
 /* Trace entry                                                         */
 /* ------------------------------------------------------------------ */
@@ -236,6 +247,7 @@ struct anx_wf_policy {
 	uint32_t	timeout_ms;	/* 0 = no timeout */
 	bool		auto_retry;
 	uint8_t		max_retries;
+	bool		allow_capability_install; /* trusted caller opt-in; false by default */
 };
 
 /* ------------------------------------------------------------------ */
@@ -247,6 +259,8 @@ struct anx_wf_policy {
  * nodes and edges are dynamically allocated (ANX_WF_MAX_NODES /
  * ANX_WF_MAX_EDGES entries respectively) and freed on destroy.
  */
+struct anx_wf_reuse_guard;
+struct anx_wf_semantic_guard;
 struct anx_wf_object {
 	bool		in_use;
 	anx_oid_t	oid;
@@ -257,6 +271,13 @@ struct anx_wf_object {
 	uint16_t		edge_count;
 	struct anx_wf_node	*nodes;	/* ANX_WF_MAX_NODES entries */
 	struct anx_wf_edge	*edges;	/* ANX_WF_MAX_EDGES entries */
+	struct anx_wf_topology_control topology;
+	struct anx_wf_reuse_guard *reuse;
+	struct anx_wf_semantic_guard *semantic;
+	anx_oid_t checkpoint_oid;
+	uint64_t checkpoint_epoch;
+	uint8_t checkpoint_digest[32];
+	bool checkpoint_consumed;
 
 	enum anx_wf_run_state	run_state;
 	anx_cid_t		running_cid;
@@ -277,6 +298,11 @@ struct anx_wf_object {
 	/* Outputs produced by ANX_WF_NODE_OUTPUT nodes */
 	anx_oid_t		output_oids[ANX_WF_MAX_PORTS];
 	uint8_t			output_count;
+
+	/* Executor-owned intermediate liveness; this never grants reuse permission. */
+	anx_oid_t		cache_live_oids[ANX_WF_MAX_EDGES];
+	uint16_t		cache_live_count;
+	bool			cache_liveness_unknown;
 };
 
 /* ------------------------------------------------------------------ */
@@ -307,6 +333,12 @@ int anx_wf_edge_add(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_po
 int anx_wf_edge_remove(const anx_oid_t *wf_oid, uint16_t from_node, uint8_t from_port,
 		       uint16_t to_node, uint8_t to_port);
 
+/* Opt into bounded, controller-owned edge revisions with frozen node interfaces. */
+int anx_wf_topology_enable(const anx_oid_t *oid, uint32_t revision_limit);
+int anx_wf_topology_revise(const anx_oid_t *oid, uint64_t expected_epoch,
+			   const struct anx_wf_edge *edges, uint32_t count);
+int anx_wf_topology_rollback(const anx_oid_t *oid, uint64_t expected_epoch);
+
 /* Run a workflow (topological sort -> Cell sequence). */
 int anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out);
 
@@ -318,6 +350,9 @@ int anx_wf_list(anx_oid_t *results, uint32_t max, uint32_t *count_out);
 
 /* Look up workflow object by OID — returns internal pointer (valid until destroy). */
 struct anx_wf_object *anx_wf_object_get(const anx_oid_t *oid);
+
+/* True while an active or paused workflow still needs this produced input. */
+bool anx_wf_cache_needed(const anx_oid_t *oid);
 
 /* Render the workflow node graph onto a pixel buffer (width x height, 32bpp). */
 int anx_wf_render_canvas(const anx_oid_t *wf_oid, uint32_t *pixels,
@@ -348,6 +383,10 @@ const struct anx_wf_continuation *anx_wf_continuation_get(const anx_oid_t *oid);
  * Returns ANX_ENOENT if no entries were recorded.
  */
 int anx_wf_trace_seal(const anx_oid_t *wf_oid, anx_oid_t *trace_oid_out);
+
+/* Save and unload a suspended continuation; restore only the latest issued image. */
+int anx_wf_checkpoint_save(const anx_oid_t *wf_oid, anx_oid_t *checkpoint_out);
+int anx_wf_checkpoint_restore(const anx_oid_t *wf_oid, const anx_oid_t *checkpoint);
 
 /*
  * Serialize a workflow to a human-readable/editable DSL string.

@@ -18,6 +18,7 @@
 #include <anx/jepa_cell.h>
 #include <anx/workflow_library.h>
 #include <anx/tensor_ops.h>
+#include <anx/research_test.h>
 
 int test_workflow(void)
 {
@@ -251,5 +252,13 @@ int test_workflow(void)
 		}
 	}
 
-	return 0;
+	ret = anx_research_day002();
+	if (ret != ANX_OK)
+		return ret;
+	ret = anx_research_day005();
+	if (ret == ANX_OK) ret = anx_research_day029();
+	if (ret == ANX_OK) ret = anx_research_day037();
+	if (ret == ANX_OK) ret = anx_research_day038();
+	if (ret == ANX_OK) ret = anx_research_day039();
+	return ret == ANX_OK ? anx_research_day043() : ret;
 }
