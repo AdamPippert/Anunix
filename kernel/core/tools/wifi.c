@@ -3,27 +3,40 @@
  *
  * Usage:
  *   wifi status               show driver and association state
+ *   wifi scan                 list networks in range
  *   wifi connect <ssid>       connect to open network
  *   wifi connect <ssid> <psk> connect to WPA2 network
  *   wifi disconnect           disconnect from current network
  *   wifi mac                  print station MAC address
+ *
+ * A successful connect runs DHCP, so the shell can reach the network
+ * without the reboot the boot-time path needs.
  */
 
 #include <anx/types.h>
 #include <anx/tools.h>
 #include <anx/mt7925.h>
+#include <anx/net.h>
 #include <anx/kprintf.h>
 #include <anx/string.h>
 
 void cmd_wifi(int argc, char **argv)
 {
 	if (argc < 2) {
-		kprintf("usage: wifi <status|connect|disconnect|mac>\n");
+		kprintf("usage: wifi <status|scan|connect|disconnect|mac>\n");
 		return;
 	}
 
 	if (anx_strcmp(argv[1], "status") == 0) {
 		anx_mt7925_info();
+		return;
+	}
+
+	if (anx_strcmp(argv[1], "scan") == 0) {
+		int ret = anx_mt7925_scan();
+
+		if (ret != ANX_OK)
+			kprintf("wifi: scan failed (%d)\n", ret);
 		return;
 	}
 
@@ -50,10 +63,12 @@ void cmd_wifi(int argc, char **argv)
 
 		kprintf("wifi: connecting to \"%s\"\n", ssid);
 		int ret = anx_mt7925_connect(ssid, psk);
-		if (ret != ANX_OK)
+		if (ret != ANX_OK) {
 			kprintf("wifi: connect failed (%d)\n", ret);
-		else
-			kprintf("wifi: associated\n");
+			return;
+		}
+		kprintf("wifi: connected\n");
+		anx_net_dhcp();
 		return;
 	}
 

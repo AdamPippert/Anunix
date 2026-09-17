@@ -455,6 +455,15 @@ struct cred_disk_hdr {
 static uint8_t g_cred_disk_buf[sizeof(struct cred_disk_hdr) +
 				CREDSTORE_MAX * sizeof(struct cred_disk_entry)];
 
+/*
+ * Set while anx_credstore_load() replays the disk image. Each replayed
+ * anx_credential_create() would otherwise save, and saving rewrites
+ * g_cred_disk_buf -- the very buffer the load loop is still walking --
+ * with count 1, so only the first credential survived a reboot and the
+ * on-disk set was truncated to it.
+ */
+static bool g_cred_loading;
+
 void anx_credstore_save(void)
 {
 	struct cred_disk_hdr   *hdr;
@@ -463,6 +472,9 @@ void anx_credstore_save(void)
 	uint32_t i, n = 0;
 	uint32_t total;
 	bool irq_state;
+
+	if (g_cred_loading)
+		return;
 
 	hdr     = (struct cred_disk_hdr *)g_cred_disk_buf;
 	entries = (struct cred_disk_entry *)(g_cred_disk_buf +
@@ -506,7 +518,7 @@ void anx_credstore_load(void)
 	struct cred_disk_entry *entries;
 	anx_oid_t oid;
 	uint32_t actual, obj_type;
-	uint32_t i;
+	uint32_t i, count, loaded = 0;
 	int rc;
 
 	oid.hi = CRED_DISK_OID_HI;
@@ -518,20 +530,34 @@ void anx_credstore_load(void)
 		return;
 
 	hdr = (struct cred_disk_hdr *)g_cred_disk_buf;
-	if (hdr->magic != CRED_DISK_MAGIC || hdr->count > CREDSTORE_MAX)
+	if (actual < sizeof(*hdr) || hdr->magic != CRED_DISK_MAGIC ||
+	    hdr->count > CREDSTORE_MAX ||
+	    actual < sizeof(*hdr) + hdr->count * sizeof(struct cred_disk_entry))
 		return;
 
+	count   = hdr->count;
 	entries = (struct cred_disk_entry *)(g_cred_disk_buf +
 					     sizeof(struct cred_disk_hdr));
 
-	for (i = 0; i < hdr->count; i++) {
+	/* The disk already holds exactly this set; replaying it must not save. */
+	g_cred_loading = true;
+	for (i = 0; i < count; i++) {
 		struct cred_disk_entry *d = &entries[i];
 
-		anx_credential_create(d->name, (enum anx_credential_type)d->cred_type,
-				      d->secret, d->secret_len);
-		/* Zero the in-buffer copy after loading */
-		secure_zero(d->secret, sizeof(d->secret));
+		/* A corrupt name or length must not read past the entry. */
+		d->name[sizeof(d->name) - 1] = '\0';
+		if (d->secret_len > CRED_MAX_SECRET)
+			continue;
+		if (anx_credential_create(d->name,
+					  (enum anx_credential_type)d->cred_type,
+					  d->secret, d->secret_len) == ANX_OK)
+			loaded++;
 	}
+	g_cred_loading = false;
 
-	kprintf("credential: loaded %u credential(s) from disk\n", hdr->count);
+	/* The payloads now live in the store; keep no second copy around. */
+	secure_zero(g_cred_disk_buf, sizeof(g_cred_disk_buf));
+
+	kprintf("credential: loaded %u of %u credential(s) from disk\n",
+		loaded, count);
 }

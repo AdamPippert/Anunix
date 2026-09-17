@@ -3,17 +3,21 @@
  *
  * Omarchy (Hyprland) defaults adapted for Anunix:
  *
- *   Meta+1..9    switch workspace
- *   Meta+Q       close focused window
- *   Meta+Return  open shell window
- *   Meta+Space   command search
- *   Meta+F       fullscreen toggle
- *   Meta+Tab     cycle window focus
- *   Meta+W       open workflow designer
- *   Meta+O       open object viewer
- *   Meta+[       tile left
- *   Meta+]       tile right
- *   Meta+Shift+F float (restore from tile)
+ *   Meta+1..9          switch workspace
+ *   Meta+Shift+1..9    send window to workspace
+ *   Meta+Q, Meta+W     close focused window
+ *   Meta+Return        open shell window
+ *   Meta+Space         command search
+ *   Meta+F             fullscreen toggle
+ *   Meta+Shift+F, +T   toggle floating
+ *   Meta+arrows / HJKL focus in a direction
+ *   Meta+Shift+arrows  swap a tiled window (floating: move)
+ *   Meta+Ctrl+arrows   resize (tiled: move the split)
+ *   Meta+[ / Meta+]    swap left / right (floating: snap to a half)
+ *   Meta+Tab           cycle window focus
+ *   Meta+Shift+W       open workflow designer
+ *   Meta+O             open object viewer
+ *   Meta+M             minimize
  *
  * Meta maps to Super (x86) and Cmd (Apple) via ANX_MOD_META.
  * anx_wm_hotkey_dispatch() is called by anx_input_ps2_key /
@@ -77,10 +81,16 @@ bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key)
 	bool flags;
 	anx_hotkey_fn fn = NULL;
 	void *arg = NULL;
+	/*
+	 * Held modifiers must match exactly, so Meta+Shift+W is not Meta+W.
+	 * Lock states must not take part: with CapsLock on, an exact match
+	 * failed for every binding and all hotkeys went dead.
+	 */
+	uint32_t held = mods & ~ANX_MOD_LOCKS;
 
 	anx_spin_lock_irqsave(&g_hk_lock, &flags);
 	for (i = 0; i < g_hotkey_count; i++) {
-		if (g_hotkeys[i].modifiers == mods &&
+		if ((g_hotkeys[i].modifiers & ~ANX_MOD_LOCKS) == held &&
 		    g_hotkeys[i].keycode   == key) {
 			fn  = g_hotkeys[i].fn;
 			arg = g_hotkeys[i].arg;
@@ -165,12 +175,10 @@ static void hk_workspace(uint32_t mods, uint32_t key, void *arg)
 static void hk_send_to_workspace(uint32_t mods, uint32_t key, void *arg)
 {
 	uint32_t ws_id = (uint32_t)(uintptr_t)arg;
-	anx_oid_t focused;
 	struct anx_surface *surf = NULL;
 	(void)mods; (void)key;
 
-	focused = anx_input_focus_get();
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (surf)
 		anx_wm_window_send_to_workspace(surf, ws_id);
 }
@@ -182,66 +190,82 @@ static void hk_send_to_workspace(uint32_t mods, uint32_t key, void *arg)
 
 static void hk_win_move(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t foc;
-	struct anx_surface *surf = NULL;
+	struct anx_surface *surf;
 	int32_t dx = 0, dy = 0;
 	(void)mods; (void)arg;
 
-	foc = anx_input_focus_get();
-	anx_iface_surface_lookup(foc, &surf);
+	surf = anx_wm_focused_window();
 	if (!surf || surf->state != ANX_SURF_VISIBLE)
 		return;
 
 	switch (key) {
-	case ANX_KEY_LEFT:  dx = -WIN_MOVE_STEP; break;
-	case ANX_KEY_RIGHT: dx =  WIN_MOVE_STEP; break;
-	case ANX_KEY_UP:    dy = -WIN_MOVE_STEP; break;
-	case ANX_KEY_DOWN:  dy =  WIN_MOVE_STEP; break;
+	case ANX_KEY_LEFT:  dx = -1; break;
+	case ANX_KEY_RIGHT: dx =  1; break;
+	case ANX_KEY_UP:    dy = -1; break;
+	case ANX_KEY_DOWN:  dy =  1; break;
 	default: return;
 	}
-	anx_iface_surface_move(surf, surf->x + dx, surf->y + dy);
-	anx_iface_surface_commit(surf);
+	/* Tiled: swap with the neighbour (sway "move left"). Floating: nudge. */
+	if (anx_wm_window_is_tiled(surf)) {
+		anx_wm_window_swap_dir(surf, dx, dy);
+		return;
+	}
+	anx_wm_window_set_geometry(surf, surf->x + dx * WIN_MOVE_STEP,
+				   surf->y + dy * WIN_MOVE_STEP,
+				   surf->width, surf->height);
 }
 
 static void hk_win_resize(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t foc;
-	struct anx_surface *surf = NULL;
+	struct anx_surface *surf;
+	uint32_t w, h;
+	int32_t step = (int32_t)anx_wm_tiling.resize_step;
 	(void)mods; (void)arg;
 
-	foc = anx_input_focus_get();
-	anx_iface_surface_lookup(foc, &surf);
+	surf = anx_wm_focused_window();
 	if (!surf || surf->state != ANX_SURF_VISIBLE)
 		return;
 
+	/* Tiled: move the nearest split (sway "resize grow/shrink"). */
+	if (anx_wm_window_is_tiled(surf)) {
+		switch (key) {
+		case ANX_KEY_LEFT:  anx_wm_window_resize_tiled(surf, false, -step); break;
+		case ANX_KEY_RIGHT: anx_wm_window_resize_tiled(surf, false,  step); break;
+		case ANX_KEY_UP:    anx_wm_window_resize_tiled(surf, true,  -step); break;
+		case ANX_KEY_DOWN:  anx_wm_window_resize_tiled(surf, true,   step); break;
+		default: break;
+		}
+		return;
+	}
+
+	w = surf->width;
+	h = surf->height;
 	switch (key) {
 	case ANX_KEY_LEFT:
-		if (surf->width > WIN_RESIZE_STEP)
-			surf->width -= WIN_RESIZE_STEP;
+		if (w > WIN_RESIZE_STEP)
+			w -= WIN_RESIZE_STEP;
 		break;
 	case ANX_KEY_RIGHT:
-		surf->width += WIN_RESIZE_STEP;
+		w += WIN_RESIZE_STEP;
 		break;
 	case ANX_KEY_UP:
-		if (surf->height > WIN_RESIZE_STEP)
-			surf->height -= WIN_RESIZE_STEP;
+		if (h > WIN_RESIZE_STEP)
+			h -= WIN_RESIZE_STEP;
 		break;
 	case ANX_KEY_DOWN:
-		surf->height += WIN_RESIZE_STEP;
+		h += WIN_RESIZE_STEP;
 		break;
 	default: return;
 	}
-	anx_iface_surface_commit(surf);
+	anx_wm_window_set_geometry(surf, surf->x, surf->y, w, h);
 }
 
 static void hk_minimize(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
 	struct anx_surface *surf = NULL;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (!surf)
 		return;
 
@@ -254,40 +278,31 @@ static void hk_minimize(uint32_t mods, uint32_t key, void *arg)
 
 static void hk_close(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
 	struct anx_surface *surf = NULL;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	if (focused.hi == 0 && focused.lo == 0)
-		return;
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (surf)
 		anx_wm_window_close(surf);
 }
 
 static void hk_fullscreen(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
 	struct anx_surface *surf = NULL;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	if (focused.hi == 0 && focused.lo == 0)
-		return;
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (surf)
 		anx_wm_window_fullscreen_toggle(surf);
 }
 
 static void hk_switcher(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t foc;
-	struct anx_surface *s = NULL;
+	struct anx_surface *s;
 	(void)mods; (void)key; (void)arg;
 	anx_wm_focus_cycle();
-	foc = anx_input_focus_get();
-	if (anx_iface_surface_lookup(foc, &s) == ANX_OK && s && s->title[0])
+	s = anx_wm_focused_window();
+	if (s && s->title[0])
 		anx_wm_notify(s->title);
 }
 
@@ -361,38 +376,32 @@ static void hk_cut(uint32_t mods, uint32_t key, void *arg)
 
 static void hk_tile_left(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
 	struct anx_surface *surf = NULL;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (surf)
 		anx_wm_window_tile_left(surf);
 }
 
 static void hk_tile_right(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
 	struct anx_surface *surf = NULL;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (surf)
 		anx_wm_window_tile_right(surf);
 }
 
 static void hk_float(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
-	struct anx_surface *surf = NULL;
+	struct anx_surface *surf;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	anx_iface_surface_lookup(focused, &surf);
+	surf = anx_wm_focused_window();
 	if (surf)
-		anx_wm_window_float(surf);
+		anx_wm_window_float_toggle(surf);
 }
 
 /* Meta+arrows and Meta+HJKL move focus; the switcher uses the same axes. */
@@ -409,26 +418,15 @@ static void hk_focus_dir(uint32_t mods, uint32_t key, void *arg)
 	}
 }
 
-/* Meta+T snaps a floating window to a half, or restores a snapped one. */
+/* Meta+T toggles floating, like Meta+Shift+F (Hyprland togglefloating). */
 static void hk_tile_toggle(uint32_t mods, uint32_t key, void *arg)
 {
-	anx_oid_t focused;
-	struct anx_surface *surf = NULL;
-	const struct anx_fb_info *fb;
+	struct anx_surface *surf;
 	(void)mods; (void)key; (void)arg;
 
-	focused = anx_input_focus_get();
-	anx_iface_surface_lookup(focused, &surf);
-	fb = anx_fb_get_info();
-	if (!surf || !fb || !fb->available)
-		return;
-
-	if (surf->width <= fb->width / 2 + 1)
-		anx_wm_window_float(surf);
-	else if (surf->x < (int32_t)fb->width / 2)
-		anx_wm_window_tile_left(surf);
-	else
-		anx_wm_window_tile_right(surf);
+	surf = anx_wm_focused_window();
+	if (surf)
+		anx_wm_window_float_toggle(surf);
 }
 
 static void hk_power(uint32_t mods, uint32_t key, void *arg)

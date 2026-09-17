@@ -27,6 +27,9 @@
 #define ANX_MOD_CAPSLOCK (1u << 4)
 #define ANX_MOD_NUMLOCK  (1u << 5)
 
+/* Lock states: they toggle, so they never select a chord. */
+#define ANX_MOD_LOCKS    (ANX_MOD_CAPSLOCK | ANX_MOD_NUMLOCK)
+
 /* ------------------------------------------------------------------ */
 /* USB HID keycodes (page 0x07 subset)                                  */
 /* ------------------------------------------------------------------ */

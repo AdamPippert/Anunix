@@ -268,7 +268,13 @@ post_key_event(enum anx_event_type type,
 		return;
 	}
 
+	/*
+	 * Zero it: an unset priority is stack garbage, and the queue refuses
+	 * anything but CRITICAL under backpressure.
+	 */
+	anx_memset(&ev, 0, sizeof(ev));
 	ev.type            = type;
+	ev.priority        = ANX_EVENT_PRIO_CRITICAL;
 	anx_spin_lock_irqsave(&input_lock, &flags);
 	ev.timestamp_ns    = next_timestamp_locked();
 	anx_spin_unlock_irqrestore(&input_lock, flags);
@@ -365,7 +371,9 @@ anx_input_pointer_move(int32_t x, int32_t y, uint32_t buttons)
 
 	/* Always post pointer moves with null target so the WM receives them
 	 * via anx_iface_event_poll_wm(), regardless of focus state. */
+	anx_memset(&ev, 0, sizeof(ev));
 	ev.type                   = ANX_EVENT_POINTER_MOVE;
+	ev.priority               = ANX_EVENT_PRIO_CRITICAL;
 	ev.timestamp_ns           = next_timestamp_locked();
 	ev.target_surf.hi         = 0;
 	ev.target_surf.lo         = 0;
@@ -404,7 +412,9 @@ anx_input_pointer_button(int32_t x, int32_t y,
 	anx_spin_unlock_irqrestore(&input_lock, flags);
 
 	/* Always post button events with null target so the WM sees clicks. */
+	anx_memset(&ev, 0, sizeof(ev));
 	ev.type                   = ANX_EVENT_POINTER_BUTTON;
+	ev.priority               = ANX_EVENT_PRIO_CRITICAL;
 	ev.timestamp_ns           = next_timestamp_locked();
 	ev.target_surf.hi         = 0;
 	ev.target_surf.lo         = 0;
@@ -444,7 +454,9 @@ anx_input_pointer_scroll(int32_t x, int32_t y, int32_t delta)
 	target = focused_surf;
 	anx_spin_unlock_irqrestore(&input_lock, flags);
 
+	anx_memset(&ev, 0, sizeof(ev));
 	ev.type                   = ANX_EVENT_POINTER_SCROLL;
+	ev.priority               = ANX_EVENT_PRIO_CRITICAL;
 	ev.timestamp_ns           = next_timestamp_locked();
 	ev.target_surf.hi         = 0;
 	ev.target_surf.lo         = 0;

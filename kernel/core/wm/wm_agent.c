@@ -536,6 +536,32 @@ void anx_wm_agent_flush_if_dirty(void)
 /* Open                                                                */
 /* ------------------------------------------------------------------ */
 
+/* The window can be closed from the WM; forget it so Open starts afresh. */
+static void agent_on_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	g_agent.surf   = NULL;
+	g_agent.cn     = NULL;
+	g_agent.pixels = NULL;
+}
+
+/* Tiling gave the window a new size: reallocate and redraw. */
+static void agent_on_resize(struct anx_surface *surf)
+{
+	uint32_t *px;
+
+	if (surf->height <= INPUT_H + MARGIN * 2 + LINE_H)
+		return;
+	px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
+	if (!px)
+		return;	/* old buffer stays, shown unscaled */
+	g_agent.pixels    = px;
+	g_agent.w         = surf->width;
+	g_agent.h         = surf->height;
+	g_agent.vis_lines = (g_agent.h - INPUT_H - MARGIN * 2) / LINE_H;
+	agent_redraw();
+}
+
 void anx_wm_agent_open(void)
 {
 	struct anx_content_node *cn;
@@ -549,16 +575,26 @@ void anx_wm_agent_open(void)
 	if (!fb || !fb->available)
 		return;
 
+	/*
+	 * Below the menu bar, with room for the title bar, and small enough
+	 * to allocate. A full-screen canvas at (0,0) covered the menu bar and
+	 * failed to allocate on a 2560x1600 panel, so no window appeared.
+	 */
 	g_agent.w         = fb->width;
-	g_agent.h         = fb->height;
+	g_agent.h         = fb->height - ANX_WM_MENUBAR_H - ANX_WM_DECOR_H -
+			    ANX_WM_TASKBAR_H;
+	anx_wm_window_fit(&g_agent.w, &g_agent.h);
 	g_agent.vis_lines = (g_agent.h > INPUT_H + MARGIN * 2)
 		? (g_agent.h - INPUT_H - MARGIN * 2) / LINE_H
 		: 1;
 
 	buf_size      = g_agent.w * g_agent.h * 4;
 	g_agent.pixels = anx_alloc(buf_size);
-	if (!g_agent.pixels)
+	if (!g_agent.pixels) {
+		kprintf("[agent] no memory for %ux%u window\n",
+			g_agent.w, g_agent.h);
 		return;
+	}
 
 	cn = anx_alloc(sizeof(*cn));
 	if (!cn) {
@@ -581,7 +617,9 @@ void anx_wm_agent_open(void)
 	}
 
 	if (anx_iface_surface_create(ANX_ENGINE_RENDERER_GPU, cn,
-				     0, 0, g_agent.w, g_agent.h,
+				     (int32_t)((fb->width - g_agent.w) / 2),
+				     (int32_t)(ANX_WM_MENUBAR_H + ANX_WM_DECOR_H),
+				     g_agent.w, g_agent.h,
 				     &g_agent.surf) != ANX_OK) {
 		anx_free(cn);
 		anx_free(g_agent.pixels);
@@ -600,6 +638,8 @@ void anx_wm_agent_open(void)
 			ROLE_SYSTEM);
 	hist_append_str_role("", ROLE_SYSTEM);
 
+	g_agent.surf->on_destroy = agent_on_destroy;
+	g_agent.surf->on_resize  = agent_on_resize;
 	anx_iface_surface_set_title(g_agent.surf, "Agent");
 	agent_redraw();
 	anx_iface_surface_map(g_agent.surf);

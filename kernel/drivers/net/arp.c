@@ -8,7 +8,6 @@
 
 #include <anx/types.h>
 #include <anx/net.h>
-#include <anx/virtio_net.h>
 #include <anx/arch.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -78,7 +77,7 @@ static void arp_send_request(uint32_t target_ip)
 	arp.proto_len = 4;
 	arp.opcode = anx_htons(ANX_ARP_OP_REQUEST);
 
-	anx_virtio_net_mac(arp.sender_mac);
+	anx_eth_mac(arp.sender_mac);
 	arp.sender_ip = anx_htonl(our_ip);
 	anx_memset(arp.target_mac, 0, ANX_ETH_ALEN);
 	arp.target_ip = anx_htonl(target_ip);
@@ -114,7 +113,7 @@ void anx_arp_recv(const void *data, uint32_t len)
 		reply.proto_len = 4;
 		reply.opcode = anx_htons(ANX_ARP_OP_REPLY);
 
-		anx_virtio_net_mac(reply.sender_mac);
+		anx_eth_mac(reply.sender_mac);
 		reply.sender_ip = anx_htonl(our_ip);
 		anx_memcpy(reply.target_mac, arp->sender_mac, ANX_ETH_ALEN);
 		reply.target_ip = arp->sender_ip;

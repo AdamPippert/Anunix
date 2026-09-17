@@ -419,7 +419,8 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid)
 
 	anx_iface_surface_set_title(g_am.surf, g_menu_titles[g_am.menu_index]);
 	anx_iface_surface_map(g_am.surf);
-	anx_wm_window_open(g_am.surf);
+	/* A transient panel: floats above the layout. */
+	anx_wm_window_open_floating(g_am.surf);
 	am_render();
 	kprintf("[app_menu] opened panel %u\n", menu_index);
 }

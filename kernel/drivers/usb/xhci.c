@@ -248,7 +248,7 @@ struct xhci_ctrl {
 	uint32_t ctx_size;
 	uint64_t *dcbaa;
 	struct xhci_ring cmd;
-	struct xhci_ring ev;		/* event ring: no link TRB, no cycle toggle */
+	struct xhci_ring ev;		/* event ring: no link TRB; cycle flips on wrap */
 	uint8_t *xfer;			/* bounce page for control data stages */
 	uint64_t xfer_phys;
 	bool     cmd_done;
@@ -419,8 +419,17 @@ static void hc_poll(struct xhci_ctrl *hc)
 			break;
 		handle_event(hc, t);
 		handled++;
-		if (++hc->ev.enq == RING_TRBS)
+		/*
+		 * The controller flips its cycle bit each time it wraps the
+		 * one-segment event ring, and so must we (xHCI 4.9.4; Linux
+		 * inc_deq(), QEMU er_pcs). Without the flip every event after
+		 * the first 256 looked like "no event", and all USB input --
+		 * keyboard and mouse -- died for the rest of the boot.
+		 */
+		if (++hc->ev.enq == RING_TRBS) {
 			hc->ev.enq = 0;
+			hc->ev.cycle ^= 1;
+		}
 	}
 	if (handled)
 		wr64(hc, hc->rt + RT_IR0 + IR_ERDP,

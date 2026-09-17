@@ -60,10 +60,10 @@ void cmd_sysinfo(int argc, char **argv)
 	}
 
 	/* Network */
-	if (anx_virtio_net_ready()) {
+	if (anx_eth_ready()) {
 		uint8_t mac[6];
 
-		anx_virtio_net_mac(mac);
+		anx_eth_mac(mac);
 		kprintf("Network:   %x:%x:%x:%x:%x:%x",
 			(uint32_t)mac[0], (uint32_t)mac[1],
 			(uint32_t)mac[2], (uint32_t)mac[3],

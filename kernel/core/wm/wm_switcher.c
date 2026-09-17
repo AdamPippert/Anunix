@@ -578,6 +578,7 @@ void anx_wm_switcher_open(void)
 
 	sw_populate();
 
+	g_sw.surf->no_focus = true;	/* keys arrive via anx_wm_app_key_route */
 	anx_iface_surface_map(g_sw.surf);
 	anx_iface_surface_raise(g_sw.surf);
 	sw_render();

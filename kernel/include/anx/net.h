@@ -149,10 +149,23 @@ struct anx_net_config {
 /* Initialize the full network stack with the given config */
 void anx_net_stack_init(const struct anx_net_config *cfg);
 
+/* Change addresses on a running stack; sockets and listeners survive. */
+void anx_net_configure(const struct anx_net_config *cfg);
+
+/* Run DHCP on the active NIC and apply the lease. */
+int anx_net_dhcp(void);
+
 /* Ethernet layer */
 void anx_eth_recv(const void *frame, uint32_t len);
 int anx_eth_send(const uint8_t dst[6], uint16_t ethertype,
 		 const void *payload, uint32_t len);
+
+/* True when some NIC can send; anx_eth_mac() gives its address. */
+bool anx_eth_ready(void);
+int anx_eth_mac(uint8_t out[6]);
+
+/* Human-readable name of the active NIC. */
+const char *anx_eth_name(void);
 
 /* ARP layer */
 void anx_arp_init(void);
