@@ -66,15 +66,6 @@ static uint32_t            ev_backpressure_threshold = 230;
 /* Internal helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-/* Compute current ring depth accounting for wraparound */
-static uint32_t ev_ring_depth(uint32_t write, uint32_t read)
-{
-	if (write >= read)
-		return write - read;
-	/* wrapped */
-	return EV_RING_SIZE - (read - write);
-}
-
 /* Bucket a latency value into the histogram */
 static void ev_bucket_latency(uint64_t latency_ns)
 {
@@ -88,10 +79,38 @@ static void ev_bucket_latency(uint64_t latency_ns)
 		ev_latency_hist[3]++;
 }
 
+static uint32_t wm_read_idx;	/* anx_iface_event_poll_wm() cursor */
+
+/*
+ * Unread events for the reader furthest behind: the WM, which consumes all
+ * input, or an active cell subscriber. Called with ev_lock held. This used
+ * to be ev_write - 0, and ev_write never wraps, so after 230 events since
+ * boot every NORMAL or LOW event was refused for good.
+ */
+static uint32_t ev_unread_depth(void)
+{
+	uint32_t floor = ev_write > EV_RING_SIZE ? ev_write - EV_RING_SIZE : 0;
+	uint32_t oldest = wm_read_idx;
+	uint32_t i;
+	bool flags;
+
+	anx_spin_lock_irqsave(&sub_lock, &flags);
+	for (i = 0; i < sub_count; i++)
+		if (subs[i].active && subs[i].read_idx < oldest)
+			oldest = subs[i].read_idx;
+	anx_spin_unlock_irqrestore(&sub_lock, flags);
+
+	if (oldest < floor)
+		oldest = floor;
+	if (oldest > ev_write)
+		oldest = ev_write;
+	return ev_write - oldest;
+}
+
 /* Determine if ring is in backpressure state (>threshold% full) */
 static bool ev_under_backpressure(void)
 {
-	uint32_t depth = ev_ring_depth(ev_write, 0);
+	uint32_t depth = ev_unread_depth();
 	uint32_t threshold = (uint32_t)ev_backpressure_threshold * EV_RING_SIZE / 256;
 	return depth >= threshold;
 }
@@ -129,6 +148,7 @@ anx_iface_event_reset(void)
 	anx_spin_lock_irqsave(&ev_lock, &flags);
 	anx_memset(ev_ring, 0, sizeof(ev_ring));
 	ev_write = 0;
+	wm_read_idx = 0;
 	ev_posted = 0;
 	ev_overflow_drops = 0;
 	ev_critical_posted = 0;
@@ -293,8 +313,6 @@ anx_iface_event_post(struct anx_event *ev)
  *
  * P1-006: latency histogram recorded on each delivery.
  */
-
-static uint32_t wm_read_idx;
 
 int
 anx_iface_event_poll_wm(struct anx_event *out)

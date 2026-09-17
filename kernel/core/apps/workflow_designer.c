@@ -434,6 +434,32 @@ void anx_wm_workflow_designer_key(uint32_t key, uint32_t mods)
 /* Launch                                                              */
 /* ------------------------------------------------------------------ */
 
+/* Tiling gave the window a new size: reallocate and redraw. */
+static void wd_on_resize(struct anx_surface *surf)
+{
+	uint32_t *px;
+
+	/* wd_render() places a 240px toolbar group and fixed panels. */
+	if (surf->width < 300 ||
+	    surf->height < WD_TOOLBAR_H + WD_PROPS_H + 40)
+		return;
+	px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
+	if (!px)
+		return;	/* old buffer stays, shown unscaled */
+	g_wd.pixels = px;
+	g_wd.pix_w  = surf->width;
+	g_wd.pix_h  = surf->height;
+	wd_render();
+}
+
+static void wd_on_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	g_wd.surf   = NULL;
+	g_wd.pixels = NULL;
+	g_wd.loaded = false;
+}
+
 void anx_wm_launch_workflow_designer(void)
 {
 	const struct anx_fb_info *fb;
@@ -454,11 +480,16 @@ void anx_wm_launch_workflow_designer(void)
 
 	w = fb->width  * 3 / 4;
 	h = fb->height * 3 / 4;
+	anx_wm_window_fit(&w, &h);
 
 	buf_size     = w * h * 4;
 	g_wd.pixels  = anx_alloc(buf_size);
-	if (!g_wd.pixels)
+	if (!g_wd.pixels) {
+		kprintf("[workflow-designer] no memory for %ux%u window\n",
+			w, h);
+		anx_wm_notify("Workflow designer: not enough memory");
 		return;
+	}
 
 	cn = anx_alloc(sizeof(*cn));
 	if (!cn) {
@@ -481,6 +512,9 @@ void anx_wm_launch_workflow_designer(void)
 		return;
 	}
 
+	g_wd.surf->on_destroy = wd_on_destroy;
+	g_wd.surf->on_resize  = wd_on_resize;
+	anx_iface_surface_set_title(g_wd.surf, "Workflow Designer");
 	g_wd.pix_w    = w;
 	g_wd.pix_h    = h;
 	g_wd.selected = -1;

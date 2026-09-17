@@ -366,6 +366,31 @@ void anx_wm_object_viewer_key(uint32_t key, uint32_t mods)
 /* Launch                                                              */
 /* ------------------------------------------------------------------ */
 
+/* Tiling gave the window a new size: reallocate and redraw. */
+static void ov_on_resize(struct anx_surface *surf)
+{
+	uint32_t *px;
+
+	/* ov_render() lays out fixed rows; below this it would underflow. */
+	if (surf->width < 240 ||
+	    surf->height < OV_HEADER_H + OV_COL_H + OV_DETAIL_H + OV_ROW_H)
+		return;
+	px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
+	if (!px)
+		return;	/* old buffer stays, shown unscaled */
+	g_ov.pixels = px;
+	g_ov.pix_w  = surf->width;
+	g_ov.pix_h  = surf->height;
+	ov_render();
+}
+
+static void ov_on_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	g_ov.surf   = NULL;
+	g_ov.pixels = NULL;
+}
+
 void anx_wm_launch_object_viewer(void)
 {
 	const struct anx_fb_info *fb;
@@ -385,11 +410,15 @@ void anx_wm_launch_object_viewer(void)
 
 	w = fb->width  * 2 / 3;
 	h = fb->height * 2 / 3;
+	anx_wm_window_fit(&w, &h);
 
 	buf_size    = w * h * 4;
 	g_ov.pixels = anx_alloc(buf_size);
-	if (!g_ov.pixels)
+	if (!g_ov.pixels) {
+		kprintf("[object-viewer] no memory for %ux%u window\n", w, h);
+		anx_wm_notify("Object viewer: not enough memory");
 		return;
+	}
 
 	cn = anx_alloc(sizeof(*cn));
 	if (!cn) {
@@ -412,6 +441,9 @@ void anx_wm_launch_object_viewer(void)
 		return;
 	}
 
+	g_ov.surf->on_destroy = ov_on_destroy;
+	g_ov.surf->on_resize  = ov_on_resize;
+	anx_iface_surface_set_title(g_ov.surf, "Objects");
 	g_ov.pix_w      = w;
 	g_ov.pix_h      = h;
 	g_ov.selected   = 0;

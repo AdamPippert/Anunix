@@ -40,7 +40,7 @@
 #define TERM_LINE_MAX    128	/* max chars per scrollback line */
 #define TERM_INPUT_MAX   256	/* max command input length */
 #define TERM_CMD_BUF     8192	/* kprintf capture buffer */
-#define TERM_TITLE_H     28	/* title bar height in pixels */
+#define TERM_TOP         4	/* space above the scrollback; the WM draws the title bar */
 #define TERM_PAD         6	/* inner padding */
 #define TERM_INPUT_H     (ANX_FONT_HEIGHT + TERM_PAD * 2 + 2)
 
@@ -179,7 +179,6 @@ static void term_render(struct anx_terminal *t)
 	const struct anx_theme *theme = anx_theme_get();
 	uint32_t bg     = theme->palette.background;
 	uint32_t surf_c = theme->palette.surface;
-	uint32_t border = theme->palette.border;
 	uint32_t accent = theme->palette.accent;
 	uint32_t fg     = theme->palette.text_primary;
 	uint32_t fg_dim = theme->palette.text_dim;
@@ -188,18 +187,8 @@ static void term_render(struct anx_terminal *t)
 	uint32_t row;
 	char     prompt_line[TERM_LINE_MAX + 8];
 
-	/* Window body (slightly lighter than desktop background) */
+	/* Window body. The WM draws the title bar ("ansh") and the border. */
 	term_fill(t, 0, 0, t->pix_w, t->pix_h, bg);
-	/* 1px border on all sides except top (title bar covers it) */
-	term_fill(t, 0, 0, 1, t->pix_h, border);
-	term_fill(t, t->pix_w - 1, 0, 1, t->pix_h, border);
-	term_fill(t, 0, t->pix_h - 1, t->pix_w, 1, border);
-
-	/* Title bar */
-	term_fill(t, 0, 0, t->pix_w, TERM_TITLE_H, surf_c);
-	term_fill(t, 0, TERM_TITLE_H - 2, t->pix_w, 2, accent);
-	term_str(t, TERM_PAD, (TERM_TITLE_H - ANX_FONT_HEIGHT) / 2,
-		 "ansh", fg, surf_c);
 
 	/* Input line area */
 	input_y      = t->pix_h - TERM_INPUT_H;
@@ -210,7 +199,7 @@ static void term_render(struct anx_terminal *t)
 	term_str(t, TERM_PAD, input_y + TERM_PAD, prompt_line, fg, surf_c);
 
 	/* Scrollback text area */
-	text_area_y  = TERM_TITLE_H;
+	text_area_y  = TERM_TOP;
 	text_area_h  = input_y - text_area_y;
 	visible_rows = text_area_h / ANX_FONT_HEIGHT;
 
@@ -336,6 +325,48 @@ static void term_on_event(struct anx_surface *surf,
 /* Launch                                                              */
 /* ------------------------------------------------------------------ */
 
+/* Free the slot however the window went away (Esc, Meta+Q, close button). */
+static void term_on_destroy(struct anx_surface *surf)
+{
+	uint32_t i;
+
+	anx_wm_canvas_free(surf);
+	for (i = 0; i < TERM_MAX; i++) {
+		if (g_terms[i].surf == surf) {
+			g_terms[i].surf   = NULL;
+			g_terms[i].pixels = NULL;
+			g_terms[i].active = false;
+		}
+	}
+}
+
+/* The WM tiled or resized the window: redraw at the new size. */
+static void term_on_resize(struct anx_surface *surf)
+{
+	uint32_t i, *px;
+
+	for (i = 0; i < TERM_MAX; i++) {
+		struct anx_terminal *t = &g_terms[i];
+
+		if (!t->active || t->surf != surf)
+			continue;
+		if (surf->width < TERM_PAD * 2 + ANX_FONT_WIDTH ||
+		    surf->height < TERM_TOP + TERM_INPUT_H + ANX_FONT_HEIGHT)
+			return;	/* too small to lay out; keep the old frame */
+		px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
+		if (!px)
+			return;	/* old buffer stays, shown unscaled */
+		t->pixels = px;
+		t->pix_w  = surf->width;
+		t->pix_h  = surf->height;
+		t->cols   = (t->pix_w - TERM_PAD * 2) / ANX_FONT_WIDTH;
+		t->rows   = (t->pix_h - TERM_TOP - TERM_INPUT_H) /
+			    ANX_FONT_HEIGHT;
+		term_render(t);
+		return;
+	}
+}
+
 void anx_wm_launch_terminal(void)
 {
 	const struct anx_fb_info *fb;
@@ -364,11 +395,16 @@ void anx_wm_launch_terminal(void)
 	/* Size: most of the screen below the menubar */
 	w = fb->width  * 4 / 5;
 	h = fb->height - ANX_WM_MENUBAR_H - 20;
+	anx_wm_window_fit(&w, &h);
 
 	buf_size  = w * h * 4;
 	t->pixels = anx_alloc(buf_size);
-	if (!t->pixels)
+	if (!t->pixels) {
+		/* Say so: a silent return looked like a dead Meta+Enter. */
+		kprintf("[terminal] no memory for %ux%u window\n", w, h);
+		anx_wm_notify("Terminal: not enough memory");
 		return;
+	}
 
 	cn = anx_alloc(sizeof(*cn));
 	if (!cn) {
@@ -382,7 +418,7 @@ void anx_wm_launch_terminal(void)
 	cn->data_len = buf_size;
 
 	if (anx_iface_surface_create(ANX_ENGINE_RENDERER_GPU, cn,
-				     (int32_t)(fb->width / 10),
+				     (int32_t)((fb->width - w) / 2),
 				     (int32_t)(ANX_WM_MENUBAR_H + 10),
 				     w, h, &t->surf) != ANX_OK) {
 		anx_free(cn);
@@ -394,14 +430,18 @@ void anx_wm_launch_terminal(void)
 	t->pix_w      = w;
 	t->pix_h      = h;
 	t->cols       = (w - TERM_PAD * 2) / ANX_FONT_WIDTH;
-	t->rows       = (h - TERM_TITLE_H - TERM_INPUT_H) / ANX_FONT_HEIGHT;
+	t->rows       = (h - TERM_TOP - TERM_INPUT_H) / ANX_FONT_HEIGHT;
 	t->line_total = 0;
 	t->input[0]   = '\0';
 	t->input_len  = 0;
 	t->active     = true;
 
 	/* Register event handler */
-	t->surf->on_event = term_on_event;
+	t->surf->on_event   = term_on_event;
+	t->surf->on_destroy = term_on_destroy;
+	t->surf->on_resize  = term_on_resize;
+	/* A title gives it the WM's title bar and window buttons. */
+	anx_iface_surface_set_title(t->surf, "ansh");
 
 	/* Initial welcome lines */
 	term_append_line(t, "Anunix Shell  (type 'help' for commands)", 41);

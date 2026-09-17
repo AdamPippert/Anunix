@@ -475,8 +475,7 @@ clean:
 TEST_CC     := clang
 TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include -DANX_HOST_TEST=1
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
-		  $(filter-out $(CORE_DIR)/agent/%, \
-		  $(filter-out $(CORE_DIR)/tools/wifi.c, $(CORE_C))))
+		  $(filter-out $(CORE_DIR)/agent/%, $(CORE_C)))
 # Exclude hardware-dependent drivers from host-native test builds.
 # PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
 # Exclude hardware-dependent drivers from host-native test builds.
@@ -495,9 +494,14 @@ DRIVER_C_ALL += $(DRIVER_DIR)/storage/blk.c
 # so it is testable on the host alongside blk.c.
 DRIVER_C_ALL += $(DRIVER_DIR)/storage/part.c
 DRIVER_C_ALL += $(DRIVER_DIR)/storage/blk_probe.c
+# The MT7925 driver runs on the host above its DMA rings:
+# tests/harness/mt7925_sim.c replaces mt7925_fw.c with a simulated
+# firmware and access point.
+DRIVER_C_ALL += $(filter-out %/mt7925_fw.c, \
+		  $(wildcard $(DRIVER_DIR)/net/wifi/*.c))
 TEST_SRCS   := tests/harness/test_main.c \
                tests/harness/mock_arch.c \
-               tests/harness/mock_wifi.c \
+               tests/harness/mt7925_sim.c \
                tests/harness/mock_usb.c \
                tests/test_state_object.c \
                tests/test_cell_lifecycle.c \
@@ -565,8 +569,11 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_research_integration.c \
                tests/test_part.c \
                tests/test_cred_class.c \
+               tests/test_wm_hotkey.c \
                tests/test_bootlog_ring.c \
-               tests/test_blk_probe.c
+               tests/test_blk_probe.c \
+               tests/test_mt7925.c \
+               tests/test_mt7925_sta.c
 TEST_BIN    := build/test/anunix_test
 
 test:
@@ -575,6 +582,9 @@ test:
 	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(DRIVER_C_ALL) $(LIB_C) -o $(TEST_BIN)
 	@echo "  Running tests..."
 	@$(TEST_BIN)
+	$(TEST_CC) $(TEST_CFLAGS) tests/page_span_main.c kernel/lib/page.c \
+		kernel/lib/string.c -o build/test/page_span
+	@build/test/page_span
 	@python3 tests/test_kernel_profile.py
 	@python3 tests/test_candidate_gate.py
 	@python3 tools/source_identity.py --label ANUNIX_HOST_SOURCE_V1

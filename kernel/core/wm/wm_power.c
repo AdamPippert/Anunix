@@ -78,7 +78,7 @@ void anx_wm_power_close(void)
 {
 	if (!g_pwr.surf)
 		return;
-	anx_iface_surface_destroy(g_pwr.surf);
+	anx_wm_overlay_destroy(g_pwr.surf);
 	g_pwr.surf = NULL;
 	if (g_pwr.pixels) {
 		anx_free(g_pwr.pixels);
@@ -175,6 +175,7 @@ void anx_wm_power_open(void)
 
 	g_pwr.sel = PWR_CANCEL;		/* the safe choice starts selected */
 	pwr_render();
+	g_pwr.surf->no_focus = true;	/* keys reach it through the hotkey path */
 	anx_iface_surface_map(g_pwr.surf);
 	anx_iface_surface_raise(g_pwr.surf);
 }

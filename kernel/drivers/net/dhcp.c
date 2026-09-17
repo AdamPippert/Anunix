@@ -8,7 +8,6 @@
 
 #include <anx/types.h>
 #include <anx/net.h>
-#include <anx/virtio_net.h>
 #include <anx/alloc.h>
 #include <anx/arch.h>
 #include <anx/string.h>
@@ -23,6 +22,12 @@
  * long enough for a server that exists to reply.
  */
 #define DHCP_WAIT_TICKS		200
+
+/*
+ * DISCOVER and REQUEST are broadcasts, which a wireless AP relays without
+ * any retry; one lost frame must not cost the lease (RFC 2131 4.1).
+ */
+#define DHCP_TRIES		3
 
 /* DHCP ports */
 #define DHCP_CLIENT_PORT	68
@@ -131,7 +136,7 @@ static void build_dhcp_packet(struct dhcp_packet *pkt, uint8_t msg_type)
 	pkt->hlen = 6;
 	pkt->xid = anx_htonl(dhcp_xid);
 	pkt->flags = anx_htons(0x8000);	/* broadcast */
-	anx_virtio_net_mac(pkt->chaddr);
+	anx_eth_mac(pkt->chaddr);
 	pkt->magic = anx_htonl(DHCP_MAGIC);
 
 	p = pkt->options;
@@ -204,14 +209,44 @@ static void dhcp_recv_cb(const void *data, uint32_t len,
 
 /* --- Public API --- */
 
+/* Broadcast one DHCP message from 0.0.0.0 through the active NIC. */
+static int dhcp_send(const struct dhcp_packet *pkt)
+{
+	uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	uint8_t packet[20 + 8 + sizeof(struct dhcp_packet)];
+	struct anx_ipv4_hdr *ip = (struct anx_ipv4_hdr *)packet;
+	struct anx_udp_hdr *udp = (struct anx_udp_hdr *)(packet + 20);
+	uint32_t total_len = sizeof(packet);
+
+	ip->ver_ihl = 0x45;
+	ip->tos = 0;
+	ip->total_len = anx_htons((uint16_t)total_len);
+	ip->id = 0;
+	ip->frag_off = 0;
+	ip->ttl = 64;
+	ip->protocol = ANX_IP_PROTO_UDP;
+	ip->checksum = 0;
+	ip->src_ip = 0;
+	ip->dst_ip = 0xFFFFFFFF;
+	ip->checksum = anx_ip_checksum(ip, 20);
+
+	udp->src_port = anx_htons(DHCP_CLIENT_PORT);
+	udp->dst_port = anx_htons(DHCP_SERVER_PORT);
+	udp->length = anx_htons((uint16_t)(8 + sizeof(struct dhcp_packet)));
+	udp->checksum = 0;
+	anx_memcpy(packet + 28, pkt, sizeof(struct dhcp_packet));
+
+	return anx_eth_send(bcast, ANX_ETH_P_IP, packet, total_len);
+}
+
 int anx_dhcp_discover(struct anx_net_config *cfg)
 {
 	struct dhcp_packet *pkt;
-	uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 	uint64_t start;
+	uint32_t try;
 	int ret;
 
-	if (!anx_virtio_net_ready())
+	if (!anx_eth_ready())
 		return ANX_EIO;
 
 	pkt = anx_zalloc(sizeof(*pkt));
@@ -225,62 +260,21 @@ int anx_dhcp_discover(struct anx_net_config *cfg)
 	/* Bind to DHCP client port */
 	anx_udp_bind(DHCP_CLIENT_PORT, dhcp_recv_cb, NULL);
 
-	/* Send DISCOVER */
 	build_dhcp_packet(pkt, DHCP_DISCOVER);
-	{
-		uint8_t frame[ANX_ETH_FRAME_MAX];
-		struct anx_eth_hdr *eth = (struct anx_eth_hdr *)frame;
-
-		anx_memcpy(eth->dst, bcast, 6);
-		anx_virtio_net_mac(eth->src);
-		eth->ethertype = anx_htons(ANX_ETH_P_IP);
-
-		/* Build IP + UDP + DHCP */
-		{
-			struct anx_ipv4_hdr *ip;
-			struct anx_udp_hdr *udp;
-			uint32_t total_len;
-
-			ip = (struct anx_ipv4_hdr *)(frame + ANX_ETH_HLEN);
-			udp = (struct anx_udp_hdr *)((uint8_t *)ip + 20);
-			total_len = 20 + 8 + sizeof(struct dhcp_packet);
-
-			ip->ver_ihl = 0x45;
-			ip->tos = 0;
-			ip->total_len = anx_htons((uint16_t)total_len);
-			ip->id = 0;
-			ip->frag_off = 0;
-			ip->ttl = 64;
-			ip->protocol = ANX_IP_PROTO_UDP;
-			ip->checksum = 0;
-			ip->src_ip = 0;
-			ip->dst_ip = 0xFFFFFFFF;
-			ip->checksum = anx_ip_checksum(ip, 20);
-
-			udp->src_port = anx_htons(DHCP_CLIENT_PORT);
-			udp->dst_port = anx_htons(DHCP_SERVER_PORT);
-			udp->length = anx_htons((uint16_t)(8 + sizeof(struct dhcp_packet)));
-			udp->checksum = 0;
-
-			anx_memcpy((uint8_t *)udp + 8, pkt,
-				   sizeof(struct dhcp_packet));
-
-			ret = anx_virtio_net_send(frame,
-				ANX_ETH_HLEN + total_len);
+	for (try = 0; try < DHCP_TRIES && !dhcp_got_offer; try++) {
+		ret = dhcp_send(pkt);
+		if (ret != ANX_OK) {
+			anx_free(pkt);
+			anx_udp_unbind(DHCP_CLIENT_PORT);
+			return ret;
 		}
-	}
 
-	if (ret != ANX_OK) {
-		anx_free(pkt);
-		anx_udp_unbind(DHCP_CLIENT_PORT);
-		return ret;
+		/* Wait for OFFER */
+		start = arch_timer_ticks();
+		while (!dhcp_got_offer &&
+		       arch_timer_ticks() - start < DHCP_WAIT_TICKS)
+			anx_net_poll();
 	}
-
-	/* Wait for OFFER */
-	start = arch_timer_ticks();
-	while (!dhcp_got_offer &&
-	       arch_timer_ticks() - start < DHCP_WAIT_TICKS)
-		anx_net_poll();
 
 	if (!dhcp_got_offer) {
 		anx_free(pkt);
@@ -292,54 +286,16 @@ int anx_dhcp_discover(struct anx_net_config *cfg)
 		(offered_ip >> 24) & 0xFF, (offered_ip >> 16) & 0xFF,
 		(offered_ip >> 8) & 0xFF, offered_ip & 0xFF);
 
-	/* Send REQUEST */
 	build_dhcp_packet(pkt, DHCP_REQUEST);
-	{
-		uint8_t frame[ANX_ETH_FRAME_MAX];
-		struct anx_eth_hdr *eth = (struct anx_eth_hdr *)frame;
+	for (try = 0; try < DHCP_TRIES && !dhcp_got_ack; try++) {
+		dhcp_send(pkt);
 
-		anx_memcpy(eth->dst, bcast, 6);
-		anx_virtio_net_mac(eth->src);
-		eth->ethertype = anx_htons(ANX_ETH_P_IP);
-
-		{
-			struct anx_ipv4_hdr *ip;
-			struct anx_udp_hdr *udp;
-			uint32_t total_len;
-
-			ip = (struct anx_ipv4_hdr *)(frame + ANX_ETH_HLEN);
-			udp = (struct anx_udp_hdr *)((uint8_t *)ip + 20);
-			total_len = 20 + 8 + sizeof(struct dhcp_packet);
-
-			ip->ver_ihl = 0x45;
-			ip->tos = 0;
-			ip->total_len = anx_htons((uint16_t)total_len);
-			ip->id = 0;
-			ip->frag_off = 0;
-			ip->ttl = 64;
-			ip->protocol = ANX_IP_PROTO_UDP;
-			ip->checksum = 0;
-			ip->src_ip = 0;
-			ip->dst_ip = 0xFFFFFFFF;
-			ip->checksum = anx_ip_checksum(ip, 20);
-
-			udp->src_port = anx_htons(DHCP_CLIENT_PORT);
-			udp->dst_port = anx_htons(DHCP_SERVER_PORT);
-			udp->length = anx_htons((uint16_t)(8 + sizeof(struct dhcp_packet)));
-			udp->checksum = 0;
-
-			anx_memcpy((uint8_t *)udp + 8, pkt,
-				   sizeof(struct dhcp_packet));
-
-			anx_virtio_net_send(frame, ANX_ETH_HLEN + total_len);
-		}
+		/* Wait for ACK */
+		start = arch_timer_ticks();
+		while (!dhcp_got_ack &&
+		       arch_timer_ticks() - start < DHCP_WAIT_TICKS)
+			anx_net_poll();
 	}
-
-	/* Wait for ACK */
-	start = arch_timer_ticks();
-	while (!dhcp_got_ack &&
-	       arch_timer_ticks() - start < DHCP_WAIT_TICKS)
-		anx_net_poll();
 
 	anx_free(pkt);
 	anx_udp_unbind(DHCP_CLIENT_PORT);

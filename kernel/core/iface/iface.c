@@ -141,6 +141,8 @@ anx_iface_surface_create(int renderer_class,
 	surf->y              = y;
 	surf->width          = width;
 	surf->height         = height;
+	surf->buf_w          = width;
+	surf->buf_h          = height;
 	surf->z_order        = surf_count;  /* new surfaces on top */
 	surf->renderer_ops   = NULL;        /* assigned at map time */
 
@@ -259,6 +261,74 @@ anx_iface_surface_damage_query(struct anx_surface *surf,
 	anx_spin_unlock_irqrestore(&surf->lock, flags);
 }
 
+/*
+ * Decorations (title bar, border) sit outside a surface's own rectangle;
+ * the renderer draws up to this far beyond it. Overlap tests use it so a
+ * repaint never misses a neighbour's title bar.
+ */
+#define DECOR_REACH	40
+
+static bool surf_near(const struct anx_surface *a, const struct anx_surface *b)
+{
+	int32_t ax0 = a->x - DECOR_REACH, ay0 = a->y - DECOR_REACH;
+	int32_t ax1 = a->x + (int32_t)a->width + DECOR_REACH;
+	int32_t ay1 = a->y + (int32_t)a->height + DECOR_REACH;
+	int32_t bx0 = b->x - DECOR_REACH, by0 = b->y - DECOR_REACH;
+	int32_t bx1 = b->x + (int32_t)b->width + DECOR_REACH;
+	int32_t by1 = b->y + (int32_t)b->height + DECOR_REACH;
+
+	return ax0 < bx1 && bx0 < ax1 && ay0 < by1 && by0 < ay1;
+}
+
+static struct anx_surface *g_above[ANX_SURF_MAX];
+static struct anx_surface *g_redrawn[ANX_SURF_MAX + 1];
+static bool                g_in_restack;
+
+/*
+ * A commit paints the whole surface whatever its stacking position, so a
+ * window updating its content (a terminal printing, say) would draw over
+ * a floating window or panel above it. Repaint what lies above it, back
+ * to front, and keep going for anything those repaints overlap.
+ */
+static void restack_above(struct anx_surface *surf)
+{
+	struct anx_list_head *pos;
+	uint32_t n = 0, nred = 1, i, j;
+	bool flags;
+
+	anx_spin_lock_irqsave(&iface_lock, &flags);
+	/* Front of the list is the top; stop on reaching surf. */
+	ANX_LIST_FOR_EACH(pos, &surf_zlist) {
+		struct anx_surface *s =
+			ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
+
+		if (s == surf)
+			break;
+		if (s->state == ANX_SURF_VISIBLE && s->renderer_ops &&
+		    n < ANX_SURF_MAX)
+			g_above[n++] = s;
+	}
+	anx_spin_unlock_irqrestore(&iface_lock, flags);
+
+	g_redrawn[0] = surf;
+	g_in_restack = true;
+	for (i = n; i-- > 0;) {
+		struct anx_surface *s = g_above[i];
+		bool hit = false;
+
+		for (j = 0; j < nred && !hit; j++)
+			hit = surf_near(s, g_redrawn[j]);
+		if (!hit)
+			continue;
+		anx_spin_lock_irqsave(&s->lock, &flags);
+		s->damage_valid = false;
+		anx_spin_unlock_irqrestore(&s->lock, flags);
+		if (s->renderer_ops->commit(s) == ANX_OK)
+			g_redrawn[nred++] = s;
+	}
+	g_in_restack = false;
+}
+
 int
 anx_iface_surface_commit(struct anx_surface *surf)
 {
@@ -278,7 +348,21 @@ anx_iface_surface_commit(struct anx_surface *surf)
 		surf->damage_valid = false;
 		surf->commit_count++;
 		anx_spin_unlock_irqrestore(&surf->lock, flags);
+		if (!g_in_restack)
+			restack_above(surf);
 	}
+	return rc;
+}
+
+int
+anx_iface_surface_commit_flat(struct anx_surface *surf)
+{
+	bool was = g_in_restack;
+	int rc;
+
+	g_in_restack = true;
+	rc = anx_iface_surface_commit(surf);
+	g_in_restack = was;
 	return rc;
 }
 
@@ -307,6 +391,14 @@ anx_iface_surface_destroy(struct anx_surface *surf)
 	if (surf->renderer_ops && surf->renderer_ops->unmap)
 		surf->renderer_ops->unmap(surf);
 
+	/* Clear the hook first so a re-entrant destroy cannot run it twice. */
+	if (surf->on_destroy) {
+		void (*hook)(struct anx_surface *) = surf->on_destroy;
+
+		surf->on_destroy = NULL;
+		hook(surf);
+	}
+
 	anx_spin_lock_irqsave(&iface_lock, &flags);
 	anx_htable_del(&surf_ht, &surf->ht_node);
 	anx_list_del(&surf->z_node);
@@ -325,7 +417,7 @@ anx_iface_surface_destroy(struct anx_surface *surf)
 		ANX_LIST_FOR_EACH(pos, &surf_zlist) {
 			struct anx_surface *s =
 				ANX_LIST_ENTRY(pos, struct anx_surface, z_node);
-			if (s->state == ANX_SURF_VISIBLE &&
+			if (s->state == ANX_SURF_VISIBLE && !s->no_focus &&
 			    anx_uuid_is_nil(&s->parent_oid)) {
 				new_focus = s->oid;
 				break;
@@ -947,10 +1039,15 @@ int anx_iface_surface_raise(struct anx_surface *surf)
 	anx_list_del(&surf->z_node);
 	anx_list_add(&surf->z_node, &surf_zlist);	/* front = highest z */
 	z_renumber();
-	is_toplevel = anx_uuid_is_nil(&surf->parent_oid);
+	is_toplevel = anx_uuid_is_nil(&surf->parent_oid) && !surf->no_focus;
 	anx_spin_unlock_irqrestore(&iface_lock, flags);
 
-	/* Focus follows raise for top-level surfaces. */
+	/*
+	 * Focus follows raise for top-level windows. Panels are excluded: the
+	 * WM raises the menu bar and taskbar after every focus change, and
+	 * that used to move the keyboard to them, so keys and Meta+Q stopped
+	 * reaching the window the user had just clicked.
+	 */
 	if (is_toplevel)
 		anx_input_focus_set(surf->oid);
 	return ANX_OK;

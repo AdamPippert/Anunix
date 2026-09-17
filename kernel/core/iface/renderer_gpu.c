@@ -35,9 +35,21 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 	uint32_t        dst_y;
 	uint32_t        r0, r1, c0, c1;
 	uint32_t        fb_x0, copy_w;
+	uint32_t        bw, bh, vis_w, vis_h;
 
-	if (!node->data || node->data_len < surf->width * surf->height * 4)
+	/*
+	 * The buffer keeps the size it was created with, but the WM may have
+	 * resized the surface since (maximize, tile, drag-resize). Blit with
+	 * the buffer's own stride and only where both overlap: a grown window
+	 * shows its content unscaled instead of going blank, and a shrunk one
+	 * is cropped instead of sheared.
+	 */
+	bw = surf->buf_w ? surf->buf_w : surf->width;
+	bh = surf->buf_h ? surf->buf_h : surf->height;
+	if (!node->data || (uint64_t)node->data_len < (uint64_t)bw * bh * 4)
 		return;
+	vis_w = surf->width  < bw ? surf->width  : bw;
+	vis_h = surf->height < bh ? surf->height : bh;
 
 	fbinfo = anx_fb_get_info();
 	if (!fbinfo || !fbinfo->available)
@@ -53,20 +65,34 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 		int32_t dc1 = dc0 + (int32_t)surf->damage_w;
 		if (dr0 < 0) dr0 = 0;
 		if (dc0 < 0) dc0 = 0;
-		if (dr1 > (int32_t)surf->height) dr1 = (int32_t)surf->height;
-		if (dc1 > (int32_t)surf->width)  dc1 = (int32_t)surf->width;
+		if (dr1 > (int32_t)vis_h) dr1 = (int32_t)vis_h;
+		if (dc1 > (int32_t)vis_w) dc1 = (int32_t)vis_w;
 		if (dr1 <= dr0 || dc1 <= dc0)
 			return;
 		r0 = (uint32_t)dr0;  r1 = (uint32_t)dr1;
 		c0 = (uint32_t)dc0;  c1 = (uint32_t)dc1;
 	} else {
-		r0 = 0;  r1 = surf->height;
-		c0 = 0;  c1 = surf->width;
+		r0 = 0;  r1 = vis_h;
+		c0 = 0;  c1 = vis_w;
 	}
 
 	/* Compute framebuffer x offset and clip to framebuffer width. */
 	if (surf->x < 0 || surf->y < 0)
 		return;
+
+	/* A full repaint of a grown window also paints the part with no content. */
+	if (!surf->damage_valid) {
+		if (surf->width > bw)
+			anx_fb_fill_rect((uint32_t)surf->x + bw, (uint32_t)surf->y,
+					 surf->width - bw, surf->height,
+					 ANX_COLOR_AX_BG);
+		if (surf->height > bh)
+			anx_fb_fill_rect((uint32_t)surf->x,
+					 (uint32_t)surf->y + bh,
+					 vis_w, surf->height - bh,
+					 ANX_COLOR_AX_BG);
+	}
+
 	fb_x0  = (uint32_t)surf->x + c0;
 	copy_w = c1 - c0;
 	if (fb_x0 >= fbinfo->width)
@@ -84,7 +110,7 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 		if (dst_y >= fbinfo->height)
 			break;
 		dst_row = anx_fb_row_ptr(dst_y) + fb_x0;
-		src_row = src + row * surf->width + c0;
+		src_row = src + row * bw + c0;
 		for (col = 0; col < copy_w; col++)
 			dst_row[col] = src_row[col];
 	}
@@ -186,6 +212,16 @@ gpu_commit(struct anx_surface *surf)
 	if (!anx_fb_available())
 		return ANX_EIO;
 
+	/* Everything below paints the surface, its title bar and border. */
+	{
+		uint32_t bw = surf->title[0] ? anx_wm_tiling.border_w : 0;
+
+		anx_wm_cursor_hide_rect(surf->x - (int32_t)bw,
+					surf->y - (int32_t)(ANX_WM_DECOR_H + bw),
+					surf->width + 2 * bw,
+					surf->height + ANX_WM_DECOR_H + 2 * bw);
+	}
+
 	render_node(surf, surf->content_root);
 
 	/* Window decoration: gradient titlebar + traffic-light buttons.
@@ -200,12 +236,12 @@ gpu_commit(struct anx_surface *surf)
 		uint32_t fy  = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
 
 		/* Traffic-light circles: 14px diameter, left side, 8px margin */
-		uint32_t dot_d  = 14;
+		uint32_t dot_d  = ANX_WM_BTN_D;
 		uint32_t dot_r  = dot_d / 2;
 		uint32_t dot_y  = ty + (ANX_WM_DECOR_H - dot_d) / 2;
-		uint32_t dot_cl = tx + 8;		/* close (red) */
-		uint32_t dot_ml = dot_cl + dot_d + 5;	/* minimize (yellow) */
-		uint32_t dot_xl = dot_ml + dot_d + 5;	/* maximize (green) */
+		uint32_t dot_cl = tx + ANX_WM_BTN_LEFT;		/* close (red) */
+		uint32_t dot_ml = dot_cl + dot_d + ANX_WM_BTN_GAP; /* minimize */
+		uint32_t dot_xl = dot_ml + dot_d + ANX_WM_BTN_GAP; /* maximize */
 
 		/* Titlebar background.
 		 * Focused: 135° three-stop diagonal navy-800 → navy-700 → teal-400.
@@ -249,25 +285,36 @@ gpu_commit(struct anx_surface *surf)
 						  : theme->palette.surface, 1);
 	}
 
-	/* Window border: 1px ring around canvas.
-	 * Focused: teal accent.  Unfocused: dim navy-700. */
-	if (surf->title[0] && surf->width && surf->height) {
+	/*
+	 * Window border: a ring outside the title bar and canvas, so it never
+	 * covers content. Width and colours follow the tiling settings and the
+	 * theme: accent when focused (Hyprland col.active_border), the surface
+	 * colour otherwise (col.inactive_border).
+	 */
+	if (surf->title[0] && surf->width && surf->height &&
+	    anx_wm_tiling.border_w) {
 		const struct anx_theme *theme2 = anx_theme_get();
 		anx_oid_t foc2    = anx_input_focus_get();
 		bool      is_foc2 = (foc2.hi == surf->oid.hi &&
 				     foc2.lo == surf->oid.lo);
-		uint32_t  border_col = is_foc2 ? theme2->palette.accent
-					       : 0x001D4470u;
-		uint32_t  bx = (uint32_t)surf->x;
-		uint32_t  by = (uint32_t)surf->y;
+		uint32_t  col = is_foc2 ? theme2->palette.accent
+					: theme2->palette.surface;
+		uint32_t  bw  = anx_wm_tiling.border_w;
+		int32_t   top = surf->y >= (int32_t)ANX_WM_DECOR_H
+				? surf->y - (int32_t)ANX_WM_DECOR_H : surf->y;
+		int32_t   ox  = surf->x - (int32_t)bw;
+		int32_t   oy  = top - (int32_t)bw;
+		uint32_t  ow  = surf->width + 2 * bw;
+		uint32_t  oh  = (uint32_t)(surf->y - top) + surf->height + 2 * bw;
 
-		/* Left + Right 1px strips */
-		anx_fb_fill_rect(bx, by, 1, surf->height, border_col);
-		anx_fb_fill_rect(bx + surf->width - 1, by,
-				 1, surf->height, border_col);
-		/* Bottom 1px strip */
-		anx_fb_fill_rect(bx, by + surf->height - 1,
-				 surf->width, 1, border_col);
+		if (ox >= 0 && oy >= 0) {
+			anx_fb_fill_rect((uint32_t)ox, (uint32_t)oy, ow, bw, col);
+			anx_fb_fill_rect((uint32_t)ox,
+					 (uint32_t)oy + oh - bw, ow, bw, col);
+			anx_fb_fill_rect((uint32_t)ox, (uint32_t)oy, bw, oh, col);
+			anx_fb_fill_rect((uint32_t)ox + ow - bw, (uint32_t)oy,
+					 bw, oh, col);
+		}
 	}
 
 	return ANX_OK;
@@ -285,10 +332,13 @@ static void
 gpu_unmap(struct anx_surface *surf)
 {
 	/* Clear the surface region to background colour */
-	if (anx_fb_available() && surf->width && surf->height)
+	if (anx_fb_available() && surf->width && surf->height) {
+		anx_wm_cursor_hide_rect(surf->x, surf->y,
+					surf->width, surf->height);
 		anx_fb_fill_rect((uint32_t)surf->x, (uint32_t)surf->y,
 		                  surf->width, surf->height,
 		                  ANX_COLOR_SKY_BLUE);
+	}
 }
 
 static const struct anx_renderer_ops gpu_ops = {

@@ -1481,11 +1481,19 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 						bool authorized = false;
 
 						if (anx_credential_exists("ssh-authorized-keys")) {
-							anx_credential_read_system(
+							if (anx_credential_read_system(
 								"ssh-authorized-keys",
 								authkeys,
 								sizeof(authkeys),
-								&ak_len);
+								&ak_len) != ANX_OK)
+								ak_len = 0;
+							/*
+							 * ak_len is the stored length, which
+							 * may exceed what was copied; never
+							 * compare past the copy.
+							 */
+							if (ak_len > sizeof(authkeys))
+								ak_len = sizeof(authkeys);
 							if (ak_len % 32 != 0)
 								ak_len = 0;
 							for (ki = 0; ki + 32 <= ak_len; ki += 32) {
@@ -1500,9 +1508,9 @@ static int sshd_do_service_and_auth(struct sshd_state *s)
 							authorized = true;
 						}
 
+						/* signed_data was already freed after verify. */
 						if (!authorized) {
 							kprintf("sshd: pubkey not in authorized_keys\n");
-							anx_free(signed_data);
 							anx_free(payload);
 							ret = sshd_send_userauth_failure(s);
 							if (ret != ANX_OK)

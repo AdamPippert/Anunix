@@ -10,7 +10,6 @@
 #include <anx/types.h>
 #include <anx/tools.h>
 #include <anx/net.h>
-#include <anx/virtio_net.h>
 #include <anx/kprintf.h>
 
 void cmd_netinfo(int argc, char **argv)
@@ -23,15 +22,15 @@ void cmd_netinfo(int argc, char **argv)
 
 	kprintf("\n=== Network Configuration ===\n\n");
 
-	if (!anx_virtio_net_ready()) {
-		kprintf("  No network interface detected\n\n");
+	if (!anx_eth_ready()) {
+		kprintf("  No network interface is up\n\n");
 		return;
 	}
 
-	anx_virtio_net_mac(mac);
+	anx_eth_mac(mac);
 	ip = anx_ipv4_local_ip();
 
-	kprintf("  Interface:  virtio-net0\n");
+	kprintf("  Interface:  %s\n", anx_eth_name());
 	kprintf("  MAC:        %x:%x:%x:%x:%x:%x\n",
 		(uint32_t)mac[0], (uint32_t)mac[1],
 		(uint32_t)mac[2], (uint32_t)mac[3],

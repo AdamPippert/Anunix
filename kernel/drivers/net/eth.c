@@ -45,6 +45,46 @@ void anx_eth_recv(const void *frame, uint32_t len)
 	}
 }
 
+/*
+ * The active NIC, in the order anx_eth_send() tries them. ARP and DHCP
+ * used to ask virtio-net for the address directly, which left every other
+ * NIC announcing the wrong MAC and made DHCP refuse to run at all.
+ */
+bool anx_eth_ready(void)
+{
+	return anx_virtio_net_ready() || anx_e1000_ready() ||
+	       anx_mt7925_ready();
+}
+
+const char *anx_eth_name(void)
+{
+	if (anx_virtio_net_ready())
+		return "virtio-net0";
+	if (anx_e1000_ready())
+		return "e1000";
+	if (anx_mt7925_ready())
+		return "wlan0 (mt7925)";
+	return "none";
+}
+
+int anx_eth_mac(uint8_t out[6])
+{
+	if (anx_virtio_net_ready()) {
+		anx_virtio_net_mac(out);
+		return ANX_OK;
+	}
+	if (anx_e1000_ready()) {
+		anx_memcpy(out, anx_e1000_mac(), ANX_ETH_ALEN);
+		return ANX_OK;
+	}
+	if (anx_mt7925_ready()) {
+		anx_memcpy(out, anx_mt7925_mac(), ANX_ETH_ALEN);
+		return ANX_OK;
+	}
+	anx_memset(out, 0, ANX_ETH_ALEN);
+	return ANX_EIO;
+}
+
 int anx_eth_send(const uint8_t dst[6], uint16_t ethertype,
 		 const void *payload, uint32_t len)
 {

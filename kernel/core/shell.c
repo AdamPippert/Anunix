@@ -2036,14 +2036,14 @@ static void cmd_hw_inventory(void)
 			(uint32_t)(anx_blk_capacity() * 512 / (1024 * 1024)));
 
 	/* Network */
-	if (anx_virtio_net_ready()) {
+	if (anx_eth_ready()) {
 		uint8_t mac[6];
 
-		anx_virtio_net_mac(mac);
-		kprintf("Network: %x:%x:%x:%x:%x:%x (virtio-net)\n",
+		anx_eth_mac(mac);
+		kprintf("Network: %x:%x:%x:%x:%x:%x (%s)\n",
 			(uint32_t)mac[0], (uint32_t)mac[1],
 			(uint32_t)mac[2], (uint32_t)mac[3],
-			(uint32_t)mac[4], (uint32_t)mac[5]);
+			(uint32_t)mac[4], (uint32_t)mac[5], anx_eth_name());
 	}
 
 	kputs("\n");
@@ -3141,8 +3141,10 @@ static void dispatch(int argc, char **argv)
 	} else if (anx_strcmp(argv[0], "net") == 0) {
 		if (argc >= 2 && anx_strcmp(argv[1], "status") == 0)
 			cmd_net_status();
+		else if (argc >= 2 && anx_strcmp(argv[1], "dhcp") == 0)
+			anx_net_dhcp();
 		else
-			kputs("usage: net status\n");
+			kputs("usage: net <status|dhcp>\n");
 	} else if (anx_strcmp(argv[0], "api") == 0) {
 		cmd_api(argc, argv);
 	} else if (anx_strcmp(argv[0], "secret") == 0) {

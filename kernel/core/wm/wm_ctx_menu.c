@@ -152,7 +152,7 @@ void anx_wm_ctx_menu_close(void)
 {
 	if (!g_ctx.surf)
 		return;
-	anx_iface_surface_destroy(g_ctx.surf);
+	anx_wm_overlay_destroy(g_ctx.surf);
 	g_ctx.surf   = NULL;
 	if (g_ctx.pixels) {
 		anx_free(g_ctx.pixels);
@@ -222,6 +222,7 @@ void anx_wm_ctx_menu_open(struct anx_surface *target, int32_t x, int32_t y)
 				? "Restore" : "Minimize";
 
 	ctx_render();
+	g_ctx.surf->no_focus = true;	/* pointer-only menu */
 	anx_iface_surface_map(g_ctx.surf);
 	anx_iface_surface_raise(g_ctx.surf);
 }

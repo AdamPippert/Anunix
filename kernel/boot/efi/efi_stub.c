@@ -16,6 +16,7 @@ void __chkstk(void) {}
 
 #define BOOT_INFO_ADDR		0x1000
 #define BOOT_INFO_MAGIC		0x414E5846	/* "ANXF" */
+#define ANX_BOOT_FLAG_MEMMAP	(1U << 20)	/* memory_map fields valid */
 
 struct anx_gop_mode_entry {
 	UINT32	width;
@@ -358,6 +359,11 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle,
 	info->memory_map      = (UINT64)(UINTN)mmap;
 	info->memory_map_size = (UINT32)map_size;
 	info->memory_desc_size= (UINT32)desc_size;
+	/*
+	 * qemu_boot.S writes the same block without a map and leaves these
+	 * fields as it found them, so the kernel trusts them only with this.
+	 */
+	info->flags |= ANX_BOOT_FLAG_MEMMAP;
 
 	/* Copy kernel to load address */
 	{

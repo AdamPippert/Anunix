@@ -126,6 +126,12 @@ struct anx_surface {
 	/* Geometry (renderer-specific interpretation) */
 	int32_t                  x, y;
 	uint32_t                 width, height;
+	/*
+	 * Size of a CANVAS pixel buffer, fixed at create. The WM may resize
+	 * the surface afterwards; the buffer does not follow, so the renderer
+	 * needs its real stride.
+	 */
+	uint32_t                 buf_w, buf_h;
 	uint32_t                 z_order;        /* higher = closer to front */
 
 	/* P1-001: Dirty-rect damage tracking (surface-relative coordinates). */
@@ -153,6 +159,31 @@ struct anx_surface {
 
 	/* Optional key event handler — called by WM dispatch for focused surface */
 	void (*on_event)(struct anx_surface *surf, const struct anx_event *ev);
+
+	/*
+	 * Optional: called once by anx_iface_surface_destroy() before the slot
+	 * is reused. The creator owns content_root and its pixel buffer, and
+	 * a window can be destroyed from outside the app (close button,
+	 * Meta+Q), so this is where the app frees them and drops its pointer.
+	 */
+	void (*on_destroy)(struct anx_surface *surf);
+
+	/*
+	 * Optional: called after the WM changes width or height, so the app
+	 * can reallocate its buffer (anx_wm_canvas_realloc) and redraw at
+	 * the new size. Without it the old buffer is shown unscaled.
+	 */
+	void (*on_resize)(struct anx_surface *surf);
+
+	/*
+	 * Panels, toasts and overlays that never take the keyboard (Wayland
+	 * layer-shell keyboard_interactivity = none). Raising one leaves input
+	 * focus alone, and destroying a window never hands focus to one.
+	 */
+	bool                     no_focus;
+
+	/* Window-manager bookkeeping (ANX_WM_SF_*); nothing else reads it. */
+	uint32_t                 wm_flags;
 };
 
 /* ------------------------------------------------------------------ */
@@ -240,6 +271,9 @@ int anx_iface_surface_map(struct anx_surface *surf);
 int anx_iface_surface_damage(struct anx_surface *surf,
                               int32_t x, int32_t y, uint32_t w, uint32_t h);
 int anx_iface_surface_commit(struct anx_surface *surf);
+/* Commit without repainting the surfaces stacked above (for callers that
+ * repaint a whole region in stacking order themselves). */
+int anx_iface_surface_commit_flat(struct anx_surface *surf);
 int anx_iface_surface_destroy(struct anx_surface *surf);
 
 /* Surface queries */

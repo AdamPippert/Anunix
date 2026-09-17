@@ -50,7 +50,7 @@ void     anx_mt7925_wr(uint32_t chip_addr, uint32_t val);
 
 int anx_mt7925_init(void);
 
-/* True if the driver is active and MCU is running. */
+/* True once the station is associated and its keys are installed. */
 bool anx_mt7925_ready(void);
 
 /* Transmit a raw Ethernet frame.  Returns ANX_OK or ANX_EBUSY. */
@@ -74,6 +74,9 @@ int anx_mt7925_connect(const char *ssid, const char *psk);
 
 /* Disconnect from the current network. */
 void anx_mt7925_disconnect(void);
+
+/* Scan all channels and print the networks found. */
+int anx_mt7925_scan(void);
 
 /* WiFi association state */
 typedef enum {

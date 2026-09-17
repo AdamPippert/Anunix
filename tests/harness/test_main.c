@@ -84,9 +84,17 @@ int test_i2c_hid(void);
 int test_research_integration(void);
 int test_part(void);
 int test_cred_class(void);
+int test_cred_persist(void);
+int test_wm_hotkey(void);
+int test_wm_window(void);
+int test_wm_tile(void);
+int test_wm_focus(void);
+int test_wm_restack(void);
 int test_bootlog_ring(void);
 int test_blk_probe(void);
 int test_blk_select(void);
+int test_mt7925(void);
+int test_mt7925_sta(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -155,9 +163,17 @@ static struct test_case tests[] = {
 	{ "research_integration",	test_research_integration },
 	{ "part",		test_part },
 	{ "cred_class",		test_cred_class },
+	{ "cred_persist",	test_cred_persist },
+	{ "wm_hotkey",		test_wm_hotkey },
+	{ "wm_window",		test_wm_window },
+	{ "wm_tile",		test_wm_tile },
+	{ "wm_focus",		test_wm_focus },
+	{ "wm_restack",		test_wm_restack },
 	{ "bootlog_ring",	test_bootlog_ring },
 	{ "blk_probe",		test_blk_probe },
 	{ "blk_select",		test_blk_select },
+	{ "mt7925",		test_mt7925 },
+	{ "mt7925_sta",		test_mt7925_sta },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

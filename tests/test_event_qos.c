@@ -5,6 +5,7 @@
  * - P1-006-U01: backpressure rejects LOW priority when ring is near full
  * - P1-006-I01: overload preserves CRITICAL event delivery
  * - P1-006-I02: telemetry counters match known injected workload
+ * - backpressure follows the reader, not the number of events ever posted
  */
 
 #include <anx/types.h>
@@ -383,6 +384,56 @@ static int test_backpressure_threshold(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Backpressure measures unread events, not events ever posted          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The depth used to be ev_write - 0. ev_write never wraps, so once 230
+ * events had been posted since boot every NORMAL event was refused, even
+ * with the WM draining the ring as fast as events arrived.
+ */
+static int test_backpressure_follows_reader(void)
+{
+	struct anx_event ev, got;
+	uint32_t i, rejected = 0;
+	int rc;
+
+	anx_iface_event_reset();
+	anx_iface_event_set_backpressure_threshold(230);
+
+	/* A reader that keeps up never sees backpressure. */
+	for (i = 0; i < 4 * ANX_IFACE_EVENT_RING_SIZE; i++) {
+		anx_memset(&ev, 0, sizeof(ev));
+		ev.type = ANX_EVENT_KEY_DOWN;
+		ev.priority = ANX_EVENT_PRIO_NORMAL;
+		ASSERT_EQ(anx_iface_event_post(&ev), ANX_OK, -400);
+		ASSERT_EQ(anx_iface_event_poll_wm(&got), ANX_OK, -401);
+	}
+
+	/* A reader that stops does, once the ring is nearly full. */
+	for (i = 0; i < ANX_IFACE_EVENT_RING_SIZE; i++) {
+		anx_memset(&ev, 0, sizeof(ev));
+		ev.type = ANX_EVENT_KEY_DOWN;
+		ev.priority = ANX_EVENT_PRIO_NORMAL;
+		rc = anx_iface_event_post(&ev);
+		if (rc == ANX_EFULL)
+			rejected++;
+	}
+	ASSERT(rejected > 0, -402);
+	ASSERT(rejected < ANX_IFACE_EVENT_RING_SIZE, -403);
+
+	/* Draining clears it again. */
+	while (anx_iface_event_poll_wm(&got) == ANX_OK)
+		;
+	anx_memset(&ev, 0, sizeof(ev));
+	ev.priority = ANX_EVENT_PRIO_NORMAL;
+	ASSERT_EQ(anx_iface_event_post(&ev), ANX_OK, -404);
+
+	anx_iface_event_reset();
+	return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Test suite entry point                                               */
 /* ------------------------------------------------------------------ */
 
@@ -403,6 +454,10 @@ int test_event_qos(void)
 		return rc;
 
 	rc = test_telemetry_counters_match_workload();
+	if (rc != 0)
+		return rc;
+
+	rc = test_backpressure_follows_reader();
 	if (rc != 0)
 		return rc;
 

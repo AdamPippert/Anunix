@@ -65,36 +65,42 @@ struct mt7925_dma_desc {
 
 #define TX_RING_SIZE		32
 #define EVT_RING_SIZE		32
-#define EVT_BUF_SIZE		2048		/* MT_RX_BUF_SIZE, mt76.h line 23 */
+#define DATA_TX_RING_SIZE	64
+#define DATA_RX_RING_SIZE	64
+#define RX_BUF_SIZE		2048		/* MT_RX_BUF_SIZE, mt76.h */
 #define FW_CHUNK_SIZE		4096		/* PCIe max_len, connac_mcu.c */
 
-/* 32 descriptors of 16 bytes fit one page; 32 buffers of 2 KiB need 16. */
+/* 32 or 64 buffers of 2 KiB need 16 or 32 pages. */
 #define EVT_BUF_ORDER		4
+#define DATA_RX_BUF_ORDER	5
+
+/* Command bodies reach a few KiB once a CLC segment is attached. */
+#define CMD_BUF_ORDER		2
+#define CMD_BUF_SIZE		(ANX_PAGE_SIZE << CMD_BUF_ORDER)
 
 struct fw_tx_ring {
 	uint32_t                ring;		/* ring index */
+	uint32_t                count;
 	struct mt7925_dma_desc *desc;
 	uint32_t                head;		/* next slot the host fills */
 };
 
-static struct fw_tx_ring g_wm   = { .ring = MT_MCU_WM_TXRING };
-static struct fw_tx_ring g_fwdl = { .ring = MT_MCU_FWDL_TXRING };
+struct fw_rx_ring {
+	uint32_t                ring;
+	uint32_t                count;
+	uint32_t                order;		/* buffer pages */
+	struct mt7925_dma_desc *desc;
+	uint8_t                *bufs;
+	uint32_t                tail;		/* next slot to read */
+};
 
-/*
- * The MCU event ring. Exported under the names mt7925_mcu.c already uses so
- * that file keeps linking; mt7925_evt_poll() is the one reader both share.
- * Slot i always owns buffer i, so a slot is re-armed in place after it is
- * read.
- */
-struct mt7925_dma_desc *mcu_evt_ring;
-uint8_t  *mcu_evt_bufs;
-uint32_t  mcu_evt_cidx;			/* next slot to read (the tail) */
-uint32_t  mcu_evt_ring_count;
-
-void *mcu_evt_ring_ptr(void)
-{
-	return mcu_evt_ring;
-}
+static struct fw_tx_ring g_wm   = { .ring = MT_MCU_WM_TXRING,   .count = TX_RING_SIZE };
+static struct fw_tx_ring g_fwdl = { .ring = MT_MCU_FWDL_TXRING, .count = TX_RING_SIZE };
+static struct fw_tx_ring g_data_tx = { .ring = MT_DATA_TXRING, .count = DATA_TX_RING_SIZE };
+static struct fw_rx_ring g_evt  = { .ring = MT_MCU_EVENT_RXRING, .count = EVT_RING_SIZE,
+				    .order = EVT_BUF_ORDER };
+static struct fw_rx_ring g_data_rx = { .ring = MT_DATA_RXRING, .count = DATA_RX_RING_SIZE,
+				       .order = DATA_RX_BUF_ORDER };
 
 /* One page for outgoing command headers and payloads. */
 static uint8_t *g_cmd_buf;
@@ -236,38 +242,36 @@ static int tx_ring_setup(struct fw_tx_ring *r)
 		return ANX_ENOMEM;
 	anx_memset((void *)pa, 0, ANX_PAGE_SIZE);
 	r->desc = (struct mt7925_dma_desc *)pa;
-	for (i = 0; i < TX_RING_SIZE; i++)
+	for (i = 0; i < r->count; i++)
 		r->desc[i].ctrl = MT_DMA_CTRL_DMA_DONE;
 
 	wr(MT_WFDMA0_TX_RING_CIDX(r->ring), 0);
 	wr(MT_WFDMA0_TX_RING_DIDX(r->ring), 0);
 	wr(MT_WFDMA0_TX_RING_ADDR(r->ring), (uint32_t)pa);
-	wr(MT_WFDMA0_TX_RING_CNT(r->ring), TX_RING_SIZE);
-	r->head = rr(MT_WFDMA0_TX_RING_DIDX(r->ring)) % TX_RING_SIZE;
+	wr(MT_WFDMA0_TX_RING_CNT(r->ring), r->count);
+	r->head = rr(MT_WFDMA0_TX_RING_DIDX(r->ring)) % r->count;
 	return ANX_OK;
 }
 
-static int evt_ring_setup(void)
+static int rx_ring_setup(struct fw_rx_ring *r)
 {
 	uintptr_t ring = anx_page_alloc(0);
-	uintptr_t bufs = anx_page_alloc(EVT_BUF_ORDER);
+	uintptr_t bufs = anx_page_alloc(r->order);
 	uint32_t i;
 
 	if (!ring || !bufs)
 		return ANX_ENOMEM;
 	anx_memset((void *)ring, 0, ANX_PAGE_SIZE);
+	r->desc = (struct mt7925_dma_desc *)ring;
+	r->bufs = (uint8_t *)bufs;
 
-	mcu_evt_ring       = (struct mt7925_dma_desc *)ring;
-	mcu_evt_bufs       = (uint8_t *)bufs;
-	mcu_evt_ring_count = EVT_RING_SIZE;
+	for (i = 0; i < r->count; i++)
+		r->desc[i].ctrl = MT_DMA_CTRL_DMA_DONE;
 
-	for (i = 0; i < EVT_RING_SIZE; i++)
-		mcu_evt_ring[i].ctrl = MT_DMA_CTRL_DMA_DONE;
-
-	wr(MT_WFDMA0_RX_RING_CIDX(MT_MCU_EVENT_RXRING), 0);
-	wr(MT_WFDMA0_RX_RING_DIDX(MT_MCU_EVENT_RXRING), 0);
-	wr(MT_WFDMA0_RX_RING_ADDR(MT_MCU_EVENT_RXRING), (uint32_t)ring);
-	wr(MT_WFDMA0_RX_RING_CNT(MT_MCU_EVENT_RXRING), EVT_RING_SIZE);
+	wr(MT_WFDMA0_RX_RING_CIDX(r->ring), 0);
+	wr(MT_WFDMA0_RX_RING_DIDX(r->ring), 0);
+	wr(MT_WFDMA0_RX_RING_ADDR(r->ring), (uint32_t)ring);
+	wr(MT_WFDMA0_RX_RING_CNT(r->ring), r->count);
 	return ANX_OK;
 }
 
@@ -280,20 +284,18 @@ static int evt_ring_setup(void)
  * dma_idx up to, not including, cpu_idx. With the reader at slot 0 that is
  * slot count-1, matching mt76 leaving one slot unfilled.
  */
-static void evt_ring_fill(void)
+static void rx_ring_fill(struct fw_rx_ring *r)
 {
-	uint32_t i, n = mcu_evt_ring_count;
+	uint32_t i, n = r->count;
 
 	for (i = 0; i < n; i++) {
-		mcu_evt_ring[i].buf  = (uint32_t)(uintptr_t)
-				       (mcu_evt_bufs + i * EVT_BUF_SIZE);
-		mcu_evt_ring[i].buf1 = 0;
-		mcu_evt_ring[i].info = 0;
-		mcu_evt_ring[i].ctrl = MT_DMA_CTRL_LEN0(EVT_BUF_SIZE);
+		r->desc[i].buf  = (uint32_t)(uintptr_t)(r->bufs + i * RX_BUF_SIZE);
+		r->desc[i].buf1 = 0;
+		r->desc[i].info = 0;
+		r->desc[i].ctrl = MT_DMA_CTRL_LEN0(RX_BUF_SIZE);
 	}
-	mcu_evt_cidx = rr(MT_WFDMA0_RX_RING_DIDX(MT_MCU_EVENT_RXRING)) % n;
-	wr(MT_WFDMA0_RX_RING_CIDX(MT_MCU_EVENT_RXRING),
-	   (mcu_evt_cidx + n - 1) % n);
+	r->tail = rr(MT_WFDMA0_RX_RING_DIDX(r->ring)) % n;
+	wr(MT_WFDMA0_RX_RING_CIDX(r->ring), (r->tail + n - 1) % n);
 }
 
 /* mt792x_dma_enable(), interrupts left masked */
@@ -319,6 +321,11 @@ static void dma_enable(void)
 	set_bits(WFDMA_DUMMY_CR, WFDMA_NEED_REINIT);
 }
 
+/*
+ * mt7925_dma_init(): every ring, data rings included, is programmed while
+ * the DMA is disabled, and only then is the DMA enabled. The index reset in
+ * dma_enable() covers all of them.
+ */
 static int dma_init(void)
 {
 	int ret;
@@ -328,23 +335,26 @@ static int dma_init(void)
 		return ret;
 
 	if (!g_cmd_buf) {
-		uintptr_t pa = anx_page_alloc(0);
+		uintptr_t pa = anx_page_alloc(CMD_BUF_ORDER);
 
 		if (!pa)
 			return ANX_ENOMEM;
 		g_cmd_buf = (uint8_t *)pa;
 	}
 
-	if (tx_ring_setup(&g_wm) || tx_ring_setup(&g_fwdl) ||
-	    evt_ring_setup())
+	if (tx_ring_setup(&g_data_tx) || tx_ring_setup(&g_wm) ||
+	    tx_ring_setup(&g_fwdl) || rx_ring_setup(&g_evt) ||
+	    rx_ring_setup(&g_data_rx))
 		return ANX_ENOMEM;
+	wr(TX_RING_EXT_CTRL(0), 0x4);	/* MT_WFDMA0_TX_RING0_EXT_CTRL */
 
 	dma_enable();
-	evt_ring_fill();
+	rx_ring_fill(&g_evt);
+	rx_ring_fill(&g_data_rx);
 
-	kprintf("mt7925: DMA up, GLO_CFG=0x%08x, WM ring %u, FWDL ring %u, "
-		"event ring %u\n", rr(MT_WFDMA0_GLO_CFG),
-		g_wm.ring, g_fwdl.ring, (uint32_t)MT_MCU_EVENT_RXRING);
+	kprintf("mt7925: DMA up, GLO_CFG=0x%08x, rings tx %u/%u/%u rx %u/%u\n",
+		rr(MT_WFDMA0_GLO_CFG), g_data_tx.ring, g_wm.ring, g_fwdl.ring,
+		g_evt.ring, g_data_rx.ring);
 	return ANX_OK;
 }
 
@@ -352,12 +362,7 @@ static int dma_init(void)
 /* Ring I/O                                                            */
 /* ------------------------------------------------------------------ */
 
-/*
- * mt76_dma_add_buf() and mt76_dma_kick_queue(), then wait for the device
- * to take the descriptor. Waiting gives serial flow control: a slot is
- * never reused before the device has consumed it.
- */
-static int tx_push(struct fw_tx_ring *r, uint32_t phys, uint32_t len)
+static void tx_fill(struct fw_tx_ring *r, uint32_t phys, uint32_t len)
 {
 	struct mt7925_dma_desc *d = &r->desc[r->head];
 
@@ -366,8 +371,18 @@ static int tx_push(struct fw_tx_ring *r, uint32_t phys, uint32_t len)
 	d->info = 0;
 	d->ctrl = MT_DMA_CTRL_LEN0(len) | MT_DMA_CTRL_LAST_SEC0;
 
-	r->head = (r->head + 1) % TX_RING_SIZE;
+	r->head = (r->head + 1) % r->count;
 	wr(MT_WFDMA0_TX_RING_CIDX(r->ring), r->head);
+}
+
+/*
+ * mt76_dma_add_buf() and mt76_dma_kick_queue(), then wait for the device
+ * to take the descriptor. Waiting gives serial flow control: a slot is
+ * never reused before the device has consumed it.
+ */
+static int tx_push(struct fw_tx_ring *r, uint32_t phys, uint32_t len)
+{
+	tx_fill(r, phys, len);
 
 	if (!poll_ms(MT_WFDMA0_TX_RING_DIDX(r->ring), 0xfff, r->head, 3000)) {
 		kprintf("mt7925: ring %u stuck, cpu_idx=%u dma_idx=%u\n",
@@ -378,44 +393,79 @@ static int tx_push(struct fw_tx_ring *r, uint32_t phys, uint32_t len)
 	return ANX_OK;
 }
 
-/*
- * Queue an already-framed buffer on the WM ring. mt7925_mcu.c uses this so
- * the ring has exactly one owner; the buffer is copied into the command
- * page because the caller's storage need not be below 4 GiB.
- */
-int mt7925_wm_push(const uint8_t *buf, uint32_t len)
+uint8_t *mt7925_cmd_buf(uint32_t *cap)
 {
-	if (!g_cmd_buf || !g_wm.desc || len > ANX_PAGE_SIZE)
+	if (cap)
+		*cap = g_cmd_buf ? CMD_BUF_SIZE : 0;
+	return g_cmd_buf;
+}
+
+/*
+ * Queue a command already framed in the command buffer on the WM ring.
+ * The buffer is the ring's only storage, and tx_push() waits until the
+ * device has taken it before the next command may overwrite it.
+ */
+int mt7925_wm_send(uint32_t len)
+{
+	if (!g_cmd_buf || !g_wm.desc || len > CMD_BUF_SIZE)
 		return ANX_EINVAL;
-	anx_memcpy(g_cmd_buf, buf, len);
 	return tx_push(&g_wm, (uint32_t)(uintptr_t)g_cmd_buf, len);
 }
 
-/* mt76_dma_dequeue() for the event ring. NULL when nothing is ready. */
-const uint8_t *mt7925_evt_poll(uint32_t *out_len)
+/*
+ * Data frames do not wait: the frame's storage is owned by its token until
+ * the firmware reports it free, so the descriptor only has to be taken
+ * eventually. A full ring is reported and the frame dropped.
+ */
+int mt7925_data_tx_push(uint32_t txwi_phys, uint32_t len)
 {
-	uint32_t n = mcu_evt_ring_count;
-	uint32_t slot;
-	struct mt7925_dma_desc *d;
-	const uint8_t *buf;
+	struct fw_tx_ring *r = &g_data_tx;
+	uint32_t didx;
 
-	if (!mcu_evt_ring || n == 0)
+	if (!r->desc)
+		return ANX_EIO;
+	didx = rr(MT_WFDMA0_TX_RING_DIDX(r->ring)) % r->count;
+	if ((r->head + 1) % r->count == didx)
+		return ANX_EBUSY;
+	tx_fill(r, txwi_phys, len);
+	return ANX_OK;
+}
+
+/* mt76_dma_dequeue(). NULL when nothing is ready. */
+static const uint8_t *rx_poll(struct fw_rx_ring *r, uint32_t *out_len)
+{
+	struct mt7925_dma_desc *d;
+	uint32_t slot;
+
+	if (!r->desc)
 		return NULL;
 
-	slot = mcu_evt_cidx % n;
-	d = &mcu_evt_ring[slot];
+	slot = r->tail % r->count;
+	d = &r->desc[slot];
 	if (!(d->ctrl & MT_DMA_CTRL_DMA_DONE))
 		return NULL;
 
-	if (out_len)
-		*out_len = MT_DMA_CTRL_GET_LEN0(d->ctrl);
-	buf = mcu_evt_bufs + slot * EVT_BUF_SIZE;
+	if (out_len) {
+		uint32_t len = MT_DMA_CTRL_GET_LEN0(d->ctrl);
+
+		*out_len = len > RX_BUF_SIZE ? RX_BUF_SIZE : len;
+	}
 
 	/* Re-arm this slot and let the device fill up to it. */
-	d->ctrl = MT_DMA_CTRL_LEN0(EVT_BUF_SIZE);
-	mcu_evt_cidx = (slot + 1) % n;
-	wr(MT_WFDMA0_RX_RING_CIDX(MT_MCU_EVENT_RXRING), slot);
-	return buf;
+	d->ctrl = MT_DMA_CTRL_LEN0(RX_BUF_SIZE);
+	r->tail = (slot + 1) % r->count;
+	wr(MT_WFDMA0_RX_RING_CIDX(r->ring), slot);
+	return r->bufs + slot * RX_BUF_SIZE;
+}
+
+const uint8_t *mt7925_evt_poll(uint32_t *out_len)
+{
+	return rx_poll(&g_evt, out_len);
+}
+
+const uint8_t *mt7925_data_rx_poll(uint32_t *out_len)
+{
+	return rx_poll(&g_data_rx, out_len);
 }
 
 /* ------------------------------------------------------------------ */
@@ -441,14 +491,18 @@ const uint8_t *mt7925_evt_poll(uint32_t *out_len)
 #define PATCH_NOT_DL_SEM_SUCCESS	2
 #define PATCH_REL_SEM_SUCCESS		3
 
-/* mt76_connac2_mac.h lines 7-19, 50-61, 346-356 */
+/*
+ * mt76_connac3_mac.h: mt7925/mcu.c includes mac.h, which pulls in the
+ * connac3 layout, so HDR_FORMAT sits at bits 15:14 for every command,
+ * firmware download included.
+ */
 #define TXD0_TX_BYTES_MASK		0xffffU
 #define TXD0_PKT_FMT_SHIFT		23
 #define TXD0_Q_IDX_SHIFT		25
 #define TX_TYPE_CMD			2
 #define TX_MCU_PORT_RX_Q0		0x20
 #define TX_PORT_IDX_MCU			1
-#define TXD1_HDR_FORMAT_SHIFT		16
+#define TXD1_HDR_FORMAT_SHIFT		14
 #define HDR_FORMAT_CMD			1
 #define MCU_PQ_ID(p, q)			((((p) << 15) | ((q) << 10)) & 0xffff)
 
@@ -479,7 +533,7 @@ struct mcu_txd {
 static uint32_t g_msg_seq;
 
 /* 4-bit sequence, never zero (mt7925_mcu_fill_message) */
-static uint8_t next_seq(void)
+uint8_t mt7925_mcu_next_seq(void)
 {
 	uint8_t seq = ++g_msg_seq & 0xf;
 
@@ -503,10 +557,10 @@ static int mcu_cmd(uint8_t cid, const void *payload, uint32_t plen,
 	uint8_t seq;
 	int ret;
 
-	if (total > ANX_PAGE_SIZE)
+	if (total > CMD_BUF_SIZE)
 		return ANX_EINVAL;
 
-	seq = next_seq();
+	seq = mt7925_mcu_next_seq();
 	anx_memset(t, 0, sizeof(*t));
 	t->txd[0] = (total & TXD0_TX_BYTES_MASK) |
 		    ((uint32_t)TX_TYPE_CMD << TXD0_PKT_FMT_SHIFT) |
@@ -547,7 +601,7 @@ static int mcu_cmd(uint8_t cid, const void *payload, uint32_t plen,
 	}
 	kprintf("mt7925: cmd 0x%02x seq %u: no response, event ring "
 		"dma_idx=%u read=%u\n", cid, seq,
-		rr(MT_WFDMA0_RX_RING_DIDX(MT_MCU_EVENT_RXRING)), mcu_evt_cidx);
+		rr(MT_WFDMA0_RX_RING_DIDX(MT_MCU_EVENT_RXRING)), g_evt.tail);
 	return ANX_ETIMEDOUT;
 }
 

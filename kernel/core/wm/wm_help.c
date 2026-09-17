@@ -48,12 +48,11 @@ static const struct {
 	{ "Meta+V",           "Paste"                      },
 	{ "Meta+Z",           "Undo"                       },
 	{ "Meta+X",           "Cut"                        },
-	{ "Meta+[",           "Tile left (snap left half)" },
-	{ "Meta+]",           "Tile right (snap right half)"},
-	{ "Meta+Shift+F",     "Float (restore from tile)"  },
+	{ "Meta+[ / Meta+]",  "Swap left / right"          },
+	{ "Meta+Shift+F",     "Toggle floating"            },
 	{ "Meta+Arrow/HJKL",  "Focus window in direction"  },
-	{ "Meta+T",           "Snap half / restore"        },
-	{ "Meta+Shift+Arrow", "Move window"                },
+	{ "Meta+T",           "Toggle floating"            },
+	{ "Meta+Shift+Arrow", "Swap / move window"         },
 	{ "Meta+Ctrl+Arrow",  "Resize window"              },
 	{ "Meta+Esc",         "Power: restart or halt"     },
 	{ "Ctrl+Alt+Del",     "Power: restart or halt"     },
@@ -105,7 +104,7 @@ void anx_wm_help_close(void)
 {
 	if (!g_help.surf)
 		return;
-	anx_iface_surface_destroy(g_help.surf);
+	anx_wm_overlay_destroy(g_help.surf);
 	g_help.surf = NULL;
 	if (g_help.pixels) {
 		anx_free(g_help.pixels);
@@ -199,6 +198,7 @@ void anx_wm_help_toggle(void)
 		h_draw_str(HELP_COL2_X, ty, help_rows[i].desc, fg,  ANX_FONT_TRANSPARENT);
 	}
 
+	g_help.surf->no_focus = true;	/* the WM loop routes its keys */
 	anx_iface_surface_map(g_help.surf);
 	anx_iface_surface_raise(g_help.surf);
 	anx_iface_surface_commit(g_help.surf);

@@ -1208,6 +1208,36 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 /* Launch / focus                                                      */
 /* ------------------------------------------------------------------ */
 
+/* Closed by the WM or by "exit": free the buffer, keep the history. */
+static void term_on_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	g_term.surf   = NULL;
+	g_term.pixels = NULL;
+	g_term.dirty  = false;
+}
+
+/* Tiling gave the window a new size: reallocate and redraw. */
+static void term_on_resize(struct anx_surface *surf)
+{
+	uint32_t *px;
+
+	if (surf->height <= INPUT_H + 8 + LINE_H)
+		return;
+	px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
+	if (!px)
+		return;	/* old buffer stays, shown unscaled */
+	g_term.pixels    = px;
+	g_term.w         = surf->width;
+	g_term.h         = surf->height;
+	g_term.input_y   = g_term.h - INPUT_H;
+	g_term.vis_lines = (g_term.input_y - 8) / LINE_H;
+	if (g_editor.active)
+		editor_render();
+	else
+		term_render();
+}
+
 void anx_wm_terminal_open(void)
 {
 	struct anx_content_node *cn;
@@ -1231,10 +1261,14 @@ void anx_wm_terminal_open(void)
 
 		if (avail_h > ANX_WM_MENUBAR_H + ANX_WM_TASKBAR_H + 32)
 			avail_h -= ANX_WM_MENUBAR_H + ANX_WM_TASKBAR_H;
+		/* Leave the title bar visible below the menu bar. */
+		if (avail_h > ANX_WM_DECOR_H + 32)
+			avail_h -= ANX_WM_DECOR_H;
 		g_term.w = fb->width;
 		g_term.h = avail_h;
-		g_term.x = 0;
-		g_term.y = ANX_WM_MENUBAR_H;
+		anx_wm_window_fit(&g_term.w, &g_term.h);
+		g_term.x = (fb->width - g_term.w) / 2;
+		g_term.y = ANX_WM_MENUBAR_H + ANX_WM_DECOR_H;
 	} else {
 		g_term.w = 640;
 		g_term.h = 424;
@@ -1246,8 +1280,12 @@ void anx_wm_terminal_open(void)
 
 	buf_size      = g_term.w * g_term.h * 4;
 	g_term.pixels = anx_alloc(buf_size);
-	if (!g_term.pixels)
+	if (!g_term.pixels) {
+		kprintf("[terminal] no memory for %ux%u window\n",
+			g_term.w, g_term.h);
+		anx_wm_notify("Terminal: not enough memory");
 		return;
+	}
 
 	cn = anx_alloc(sizeof(*cn));
 	if (!cn) {
@@ -1278,6 +1316,8 @@ void anx_wm_terminal_open(void)
 	if (g_term.hist_count == 0)
 		hist_append_str("Anunix terminal  -  type 'help' for commands");
 
+	g_term.surf->on_destroy = term_on_destroy;
+	g_term.surf->on_resize  = term_on_resize;
 	anx_iface_surface_set_title(g_term.surf, "Terminal");
 	/* Fill pixels BEFORE mapping so no compositor tick can commit
 	 * uninitialized data.  term_render() sets dirty=true; the main

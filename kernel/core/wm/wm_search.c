@@ -662,6 +662,21 @@ static void dir_render(void)
 	anx_iface_surface_commit(g_dir.surf);
 }
 
+/* Free the overlay's buffers however it closes (Esc, Enter, Meta+Q). */
+static void dir_on_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	g_dir.surf   = NULL;
+	g_dir.pixels = NULL;
+}
+
+static void cs_on_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	g_cs.surf   = NULL;
+	g_cs.pixels = NULL;
+}
+
 static void dir_execute_selected(void)
 {
 	uint32_t idx = (uint32_t)g_dir.selected;
@@ -733,12 +748,14 @@ static void dir_open(void)
 		}
 	}
 
+	g_dir.surf->on_destroy = dir_on_destroy;
 	dir_populate();
 	g_dir.selected = 0;
 	g_dir.scroll   = 0;
 
 	anx_iface_surface_map(g_dir.surf);
-	anx_wm_window_open(g_dir.surf);
+	/* A transient panel: floats above the layout. */
+	anx_wm_window_open_floating(g_dir.surf);
 	dir_render();
 }
 
@@ -888,6 +905,7 @@ void anx_wm_launch_command_search(void)
 		g_cs.pixels = NULL; return;
 	}
 
+	g_cs.surf->on_destroy = cs_on_destroy;
 	g_cs.query[0]  = '\0';
 	g_cs.query_len = 0;
 	g_cs.selected  = 0;
@@ -896,7 +914,8 @@ void anx_wm_launch_command_search(void)
 
 	anx_iface_surface_set_title(g_cs.surf, "Search");
 	anx_iface_surface_map(g_cs.surf);
-	anx_wm_window_open(g_cs.surf);
+	/* A transient panel: floats above the layout. */
+	anx_wm_window_open_floating(g_cs.surf);
 	cs_render();
 	kprintf("[search] opened (agent-driven)\n");
 }

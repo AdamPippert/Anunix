@@ -275,6 +275,11 @@ int anx_httpd_init(uint16_t p) { (void)p; return 0; }
 void anx_httpd_poll(void) {}
 int anx_sshd_init(uint16_t p) { (void)p; return 0; }
 void anx_sshd_poll(void) {}
+void anx_net_configure(const struct anx_net_config *c) { (void)c; }
+int anx_net_dhcp(void) { return ANX_EIO; }
+bool anx_eth_ready(void) { return false; }
+const char *anx_eth_name(void) { return "none"; }
+int anx_eth_mac(uint8_t m[6]) { int i; for (i = 0; i < 6; i++) m[i] = 0; return ANX_EIO; }
 void anx_eth_recv(const void *f, uint32_t l) { (void)f; (void)l; }
 int anx_eth_send(const uint8_t d[6], uint16_t e, const void *p, uint32_t l)
 { (void)d; (void)e; (void)p; (void)l; return ANX_EIO; }
@@ -480,9 +485,6 @@ bool anx_dt_has_compatible(const char *compatible)
 	(void)compatible;
 	return false;
 }
-
-/* Mock MT7925 state — used by kernel_main() post-probe WiFi connect logic */
-anx_mt7925_state_t anx_mt7925_state(void) { return MT7925_STATE_DOWN; }
 
 /* The host has no PAT; tests keep the framebuffer's plain mapping. */
 bool anx_pat_enable_wc(void) { return false; }

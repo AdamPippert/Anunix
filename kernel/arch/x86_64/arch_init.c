@@ -12,15 +12,43 @@
 #include <anx/input.h>
 #include <anx/usb_mouse.h>
 #include <anx/acpi.h>
+#include <anx/posix.h>
+#include <anx/kprintf.h>
 
 /* Boot block GOP mode list layout (mirrors efi_stub.c anx_boot_info) */
 #define MB1_GOP_COUNT_ADDR	0x1040
 #define MB1_GOP_CURRENT_ADDR	0x1041
 #define MB1_GOP_MODES_ADDR	0x1044	/* array of 16 × 16-byte entries */
 
-/* Linker-defined heap region */
+/* Linker-defined heap region, used when there is no firmware memory map */
 extern char _heap_start[];
 extern char _heap_end[];
+
+/* Boot block memory map (efi_stub.c struct anx_boot_info) */
+#define BOOT_MAGIC_ADDR		0x1000
+#define BOOT_MAGIC		0x414E5846	/* "ANXF" */
+#define BOOT_FLAGS_ADDR		0x1004
+#define BOOT_FLAG_MEMMAP	(1U << 20)
+#define BOOT_MMAP_ADDR		0x1030
+#define BOOT_MMAP_SIZE_ADDR	0x1038
+#define BOOT_MMAP_DESC_ADDR	0x103C
+
+#define EFI_CONVENTIONAL_MEMORY	7
+#define HEAP_LIMIT		0x100000000ULL	/* DMA users take 32-bit addresses */
+#define HEAP_MIN_USABLE		(64ULL << 20)
+
+/* EFI_MEMORY_DESCRIPTOR, the fields used here */
+struct efi_desc {
+	uint32_t type;
+	uint32_t pad;
+	uint64_t phys_start;
+	uint64_t virt_start;
+	uint64_t pages;
+	uint64_t attribute;
+};
+
+static uint64_t g_heap_bytes;
+static bool g_heap_from_map;
 
 /* Forward declarations for init helpers defined later in this file */
 static void kbd_init(void);
@@ -80,10 +108,70 @@ void arch_early_init(void)
 
 static void kbd_init(void);
 
+/*
+ * Build the page heap from the firmware memory map: every conventional
+ * region below 4 GiB above the kernel image, less the fixed user exec
+ * window. The linker's 16 MiB region is part of that RAM, so nothing that
+ * used it moves; there is simply more beside it. Returns false when there
+ * is no trustworthy map (the QEMU multiboot path) or it offers too little.
+ */
+static bool heap_from_memmap(void)
+{
+	uint32_t magic = *(volatile uint32_t *)BOOT_MAGIC_ADDR;
+	uint32_t flags = *(volatile uint32_t *)BOOT_FLAGS_ADDR;
+	uint64_t map = *(volatile uint64_t *)BOOT_MMAP_ADDR;
+	uint32_t size = *(volatile uint32_t *)BOOT_MMAP_SIZE_ADDR;
+	uint32_t desc = *(volatile uint32_t *)BOOT_MMAP_DESC_ADDR;
+	uint64_t base = (uintptr_t)_heap_start, top = 0, usable, off;
+
+	if (magic != BOOT_MAGIC || !(flags & BOOT_FLAG_MEMMAP))
+		return false;
+	if (!map || map >= HEAP_LIMIT || desc < sizeof(struct efi_desc) ||
+	    desc > 256 || size == 0 || size % desc || size > (1U << 20))
+		return false;
+
+	for (off = 0; off < size; off += desc) {
+		const struct efi_desc *d =
+			(const struct efi_desc *)(uintptr_t)(map + off);
+		uint64_t end = d->phys_start + d->pages * ANX_PAGE_SIZE;
+
+		if (d->type != EFI_CONVENTIONAL_MEMORY || end <= base)
+			continue;
+		if (end > HEAP_LIMIT)
+			end = HEAP_LIMIT;
+		if (end > top)
+			top = end;
+	}
+	if (top <= base)
+		return false;
+
+	anx_page_init_span((uintptr_t)base, (uintptr_t)top);
+	for (off = 0; off < size; off += desc) {
+		const struct efi_desc *d =
+			(const struct efi_desc *)(uintptr_t)(map + off);
+
+		if (d->type == EFI_CONVENTIONAL_MEMORY)
+			anx_page_add_free((uintptr_t)d->phys_start,
+					  (uintptr_t)(d->phys_start +
+						      d->pages * ANX_PAGE_SIZE));
+	}
+	anx_page_reserve((uintptr_t)ANX_USER_LOAD_MIN,
+			 (uintptr_t)ANX_USER_LOAD_MAX);
+
+	anx_page_stats(&usable, NULL);
+	if (usable * ANX_PAGE_SIZE < HEAP_MIN_USABLE)
+		return false;
+	g_heap_bytes = usable * ANX_PAGE_SIZE;
+	return true;
+}
+
 void arch_init(void)
 {
-	/* Initialize page allocator with linker-defined heap */
-	anx_page_init((uintptr_t)_heap_start, (uintptr_t)_heap_end);
+	g_heap_from_map = heap_from_memmap();
+	if (!g_heap_from_map) {
+		anx_page_init((uintptr_t)_heap_start, (uintptr_t)_heap_end);
+		g_heap_bytes = (uint64_t)(_heap_end - _heap_start);
+	}
 
 	/*
 	 * Enable SSE/SSE2 — required before any float or SIMD instruction.
@@ -110,13 +198,18 @@ void arch_init(void)
 	/* PS/2 keyboard (IRQ1) and mouse (IRQ12) */
 	kbd_init();
 	mouse_init();
+
+	kprintf("mem: page heap %u MiB (%s)\n",
+		(uint32_t)(g_heap_bytes >> 20),
+		g_heap_from_map ? "firmware memory map, below 4 GiB"
+				: "linker region");
 }
 
 void arch_probe_hw(struct anx_hw_inventory *inv)
 {
 	/* QEMU default: 1 CPU, no discrete GPU */
 	inv->cpu_count = 1;
-	inv->ram_bytes = 512ULL * 1024 * 1024;
+	inv->ram_bytes = g_heap_bytes ? g_heap_bytes : 512ULL * 1024 * 1024;
 	inv->accel_count = 0;
 	/* TODO: parse ACPI/CPUID for real hardware */
 }

@@ -105,6 +105,7 @@ int anx_wm_taskbar_create(void)
 		return ANX_ENOMEM;
 	}
 
+	g_taskbar->no_focus = true;
 	anx_iface_surface_map(g_taskbar);
 	anx_iface_surface_raise(g_taskbar);
 	anx_wm_taskbar_refresh();

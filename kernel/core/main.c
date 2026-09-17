@@ -37,6 +37,8 @@
 #include <anx/objstore_disk.h>
 #include <anx/driver_table.h>
 #include <anx/mt7925.h>
+#include <anx/virtio_net.h>
+#include <anx/e1000.h>
 #include <anx/xdna.h>
 #include <anx/net.h>
 #include <anx/splash.h>
@@ -497,12 +499,24 @@ void kernel_main(void)
 			PERF_BEGIN("dhcp_discover");
 			kprintf("dhcp: discovering...\n");
 			leased = anx_dhcp_discover(&net_cfg) == ANX_OK;
-			if (!leased) {
+			if (!leased && (anx_virtio_net_ready() ||
+					anx_e1000_ready())) {
+				/* QEMU user networking's fixed addresses */
 				net_cfg.ip      = ANX_IP4(10, 0, 2, 15);
 				net_cfg.netmask = ANX_IP4(255, 255, 255, 0);
 				net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
 				net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
 				kprintf("dhcp: timeout, using static 10.0.2.15\n");
+			} else if (!leased) {
+				/*
+				 * On Wi-Fi an invented address only hides the
+				 * failure; `net dhcp` retries once connected.
+				 */
+				anx_memset(&net_cfg, 0, sizeof(net_cfg));
+				kprintf("dhcp: no lease; run 'net dhcp' after "
+					"'wifi connect'\n");
+				if (anx_mt7925_ready())
+					anx_mt7925_info();
 			}
 			PERF_END();
 			PERF_BEGIN("net_stack_init");

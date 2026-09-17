@@ -12,6 +12,8 @@
 #include <anx/auth.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/objstore_disk.h>
+#include <anx/mock_blk.h>
 
 #define CHECK(cond, msg)						\
 	do {								\
@@ -195,6 +197,63 @@ int test_cred_class(void)
 		return r;
 
 	/* Leave no session behind for whatever test runs next. */
+	anx_auth_logout();
+	return 0;
+}
+
+/*
+ * Loading the store once replayed every entry through
+ * anx_credential_create(), whose save rewrote the buffer the load loop was
+ * reading. Only the first credential came back, and the disk copy was cut
+ * down to it. Store several, "reboot" twice, and expect all of them both
+ * times: the second reboot proves the first load left the disk intact.
+ */
+int test_cred_persist(void)
+{
+	static const char *const names[] = {
+		"ssh-host-key", "ordinary-key", "ssh-authorized-keys",
+	};
+	static const char *const values[] = {
+		"host-secret", "abc123", "0123456789abcdef0123456789abcdef",
+	};
+	char buf[64];
+	uint32_t i, boot;
+
+	test_mock_blk_init(1024);
+	CHECK(anx_disk_format("credtest") == ANX_OK, "format mock disk");
+
+	anx_credstore_init();
+	anx_auth_init();
+	for (i = 0; i < 3; i++)
+		CHECK(anx_credential_create(names[i], ANX_CRED_OPAQUE,
+					      values[i],
+					      (uint32_t)anx_strlen(values[i]))
+		       == ANX_OK, "create before reboot");
+
+	/* read_back() needs a key session for the connectivity names. */
+	anx_auth_session_begin("adam", ANX_AUTH_BY_KEY);
+	for (boot = 0; boot < 2; boot++) {
+		anx_credstore_init();
+		anx_credstore_load();
+		for (i = 0; i < 3; i++) {
+			CHECK(anx_credential_exists(names[i]),
+			       "credential survives reboot");
+			CHECK(read_back(names[i], buf, sizeof(buf)) == ANX_OK,
+			       "reloaded credential readable");
+			CHECK(anx_strcmp(buf, values[i]) == 0,
+			       "reloaded value intact");
+		}
+	}
+
+	/* A change after load is still persisted. */
+	CHECK(anx_credential_revoke("ordinary-key") == ANX_OK,
+	       "revoke after load");
+	anx_credstore_init();
+	anx_credstore_load();
+	CHECK(!anx_credential_exists("ordinary-key"), "revoke persisted");
+	CHECK(anx_credential_exists("ssh-authorized-keys"),
+	       "others still present after revoke");
+
 	anx_auth_logout();
 	return 0;
 }
