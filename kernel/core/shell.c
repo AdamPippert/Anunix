@@ -2,12 +2,14 @@
  * shell.c — Kernel monitor shell.
  *
  * Interactive command loop for exercising all kernel subsystems
- * over the serial console. Supports line editing (backspace)
+ * over the serial console. Supports cursor-based line editing
  * and dispatches to subsystem-specific command handlers.
  */
 
 #include <anx/types.h>
 #include <anx/shell.h>
+#include <anx/input.h>
+#include <anx/fbcon.h>
 #include <anx/arch.h>
 #include <anx/kprintf.h>
 #include <anx/string.h>
@@ -252,41 +254,122 @@ int anx_shell_history_move(struct anx_shell_history_cursor *cursor,
 	return (int)anx_strlen(input);
 }
 
-/* Clear the current line on the terminal and redraw with new content */
-static void line_replace(char *buf, size_t *pos, size_t size,
-			  const char *new_content)
+uint32_t anx_shell_input_decode(struct anx_shell_escape *escape, uint8_t byte,
+			       uint32_t *unicode)
 {
-	size_t i;
-	size_t new_len;
+	uint8_t parameter;
 
-	/* Erase current line: backspace over every character */
-	for (i = 0; i < *pos; i++)
-		kputs("\b \b");
+	*unicode = 0;
+	if (!escape->state) {
+		if (byte == 0x1b) escape->state = 1;
+		else if (byte == 0x7f || byte == '\b') return ANX_KEY_BACKSPACE;
+		else *unicode = byte;
+		return ANX_KEY_NONE;
+	}
+	if (escape->state == 1) {
+		escape->state = byte == '[' || byte == 'O' ? 2 : 0;
+		escape->parameter = 0;
+		return ANX_KEY_NONE;
+	}
+	if (byte >= '0' && byte <= '9') {
+		escape->parameter = escape->parameter ? 255 : (uint8_t)(byte - '0');
+		return ANX_KEY_NONE;
+	}
+	if (byte < 0x40 || byte > 0x7e) {
+		escape->parameter = 255; /* Unsupported modifiers: consume to final byte. */
+		return ANX_KEY_NONE;
+	}
+	parameter = escape->parameter;
+	escape->state = 0;
+	if (!parameter) {
+		switch (byte) {
+		case 'A': return ANX_KEY_UP;
+		case 'B': return ANX_KEY_DOWN;
+		case 'C': return ANX_KEY_RIGHT;
+		case 'D': return ANX_KEY_LEFT;
+		case 'H': return ANX_KEY_HOME;
+		case 'F': return ANX_KEY_END;
+		default: return ANX_KEY_NONE;
+		}
+	}
+	if (byte == '~') {
+		if (parameter == 1 || parameter == 7) return ANX_KEY_HOME;
+		if (parameter == 4 || parameter == 8) return ANX_KEY_END;
+		if (parameter == 3) return ANX_KEY_DELETE;
+	}
+	return ANX_KEY_NONE;
+}
 
-	/* Copy new content */
-	new_len = anx_strlen(new_content);
-	if (new_len >= size)
-		new_len = size - 1;
-	anx_memcpy(buf, new_content, new_len);
-	buf[new_len] = '\0';
-	*pos = new_len;
+bool anx_shell_input_key(char *buf, uint32_t capacity, uint32_t *len,
+			 uint32_t *pos, struct anx_shell_history_cursor *recall,
+			 uint32_t key, uint32_t unicode)
+{
+	int n;
 
-	/* Display it */
-	for (i = 0; i < new_len; i++)
-		kputc(buf[i]);
+	if (!buf || !len || !pos || !recall || !capacity ||
+	    *len >= capacity || *pos > *len)
+		return false;
+	switch (key) {
+	case ANX_KEY_LEFT:
+		if (*pos) (*pos)--;
+		return true;
+	case ANX_KEY_RIGHT:
+		if (*pos < *len) (*pos)++;
+		return true;
+	case ANX_KEY_HOME:
+		*pos = 0;
+		return true;
+	case ANX_KEY_END:
+		*pos = *len;
+		return true;
+	case ANX_KEY_UP:
+	case ANX_KEY_DOWN:
+		n = anx_shell_history_move(recall, key == ANX_KEY_UP ? -1 : 1,
+					   buf, capacity);
+		if (n >= 0) *pos = *len = (uint32_t)n;
+		return true;
+	case ANX_KEY_BACKSPACE:
+		if (!*pos) return true;
+		(*pos)--;
+		/* fall through */
+	case ANX_KEY_DELETE:
+		if (*pos == *len) return true;
+		anx_memmove(buf + *pos, buf + *pos + 1, *len - *pos);
+		(*len)--;
+		break;
+	default:
+		if (unicode < 0x20 || unicode >= 0x7f) return false;
+		if (*len == capacity - 1) return true;
+		anx_memmove(buf + *pos + 1, buf + *pos, *len - *pos + 1);
+		buf[(*pos)++] = (char)unicode;
+		(*len)++;
+		break;
+	}
+	anx_shell_history_reset(recall);
+	return true;
+}
+
+/* Serial and framebuffer cursor motion must not erase the text under it. */
+static void line_back(uint32_t count)
+{
+	anx_fbcon_move_cursor(-(int32_t)count);
+	while (count--) arch_console_putc('\b');
 }
 
 static int kgetline(char *buf, size_t size)
 {
-	size_t pos = 0;
-	struct anx_shell_history_cursor cursor;
+	uint32_t len = 0, pos = 0;
+	struct anx_shell_history_cursor recall;
+	struct anx_shell_escape escape = {0};
 
-	anx_shell_history_reset(&cursor);
-
-	while (pos < size - 1) {
+	if (!size) return 0;
+	buf[0] = '\0';
+	anx_shell_history_reset(&recall);
+	for (;;) {
 		int c;
+		uint32_t key = ANX_KEY_NONE, unicode = 0, old_len, old_pos, i;
 
-		/* Poll for input, updating clock, repainting, and servicing HTTP */
+		/* Poll for input, updating clock, repainting, and servicing HTTP. */
 		while (!arch_console_has_input()) {
 			anx_gui_update_time();
 			anx_iface_compositor_repaint();
@@ -299,68 +382,45 @@ static int kgetline(char *buf, size_t size)
 			anx_mt7925_poll();
 			anx_browser_cell_tick();
 		}
-
 		c = arch_console_getc();
-		if (c < 0)
-			break;
-
+		if (c < 0) break;
 		if (c == '\r' || c == '\n') {
-			kputc('\r');
-			kputc('\n');
+			/* Advance to the end before starting the command's output. */
+			for (i = pos; i < len; i++) kputc(buf[i]);
+			kputs("\r\n");
 			break;
 		}
-
-		if (c == 0x7F || c == '\b') {
-			if (pos > 0) {
-				pos--;
-				anx_shell_history_reset(&cursor);
-				kputs("\b \b");
-			}
-			continue;
-		}
-
 		if (c == 0x03) {
 			kputs("^C\n");
-			pos = 0;
+			buf[0] = '\0';
+			len = 0;
 			break;
 		}
-
-		/* Arrow key escape sequences: ESC [ A (up), ESC [ B (down) */
-		if (c == 0x1B) {
-			int c2 = arch_console_getc();
-
-			if (c2 < 0)
-				continue;
-			if (c2 == '[') {
-				int c3 = arch_console_getc();
-
-				if (c3 < 0)
-					continue;
-				if (c3 == 'A' || c3 == 'B') {
-					char recalled[MAX_LINE];
-
-					buf[pos] = '\0';
-					anx_strlcpy(recalled, buf, sizeof(recalled));
-					if (anx_shell_history_move(&cursor,
-						c3 == 'A' ? -1 : 1, recalled,
-						sizeof(recalled)) >= 0)
-						line_replace(buf, &pos, size, recalled);
-				}
-				/* Ignore other escape sequences */
-			}
+		key = anx_shell_input_decode(&escape, (uint8_t)c, &unicode);
+		old_len = len;
+		old_pos = pos;
+		if (!anx_shell_input_key(buf, (uint32_t)size, &len, &pos,
+					 &recall, key, unicode)) continue;
+		if (old_pos == old_len && pos == len && len == old_len + 1 &&
+		    unicode >= 0x20 && unicode < 0x7f) {
+			kputc((char)unicode);
 			continue;
 		}
-
-		if (c >= 0x20 && c < 0x7F) {
-			anx_shell_history_reset(&cursor);
-			buf[pos++] = (char)c;
-			kputc((char)c);
-		}
+		/* Redraw the full draft, including any shortened tail. */
+		line_back(old_pos);
+		for (i = 0; i < len; i++) kputc(buf[i]);
+		for (i = len; i < old_len; i++) kputc(' ');
+		line_back((len > old_len ? len : old_len) - pos);
 	}
-
-	buf[pos] = '\0';
-	return (int)pos;
+	return (int)len;
 }
+
+#ifdef ANX_HOST_TEST
+int test_shell_readline(char *buf, size_t size)
+{
+	return kgetline(buf, size);
+}
+#endif
 
 /* --- Argument parsing --- */
 
@@ -411,6 +471,19 @@ static void cmd_help(int argc, char **argv)
 		kputs("  help workflow   Workflow engine\n");
 		kputs("  help security   Credentials, auth\n");
 		kputs("  help shell      Builtins, pipes, history\n");
+		kputs("  help interface  Surfaces, events, environments\n");
+		kputs("\nCommands (including aliases):\n");
+		kputs("  ? agent anx api appendb64 ask bootlog browser browser_init browser_stop\n");
+		kputs("  cap cat cell cells clear colors compctl config cp date disk dns echo edit\n");
+		kputs("  engine envctl evctl exec fb_info fb_test fetch gop_list grep halt head\n");
+		kputs("  help history http-get hw-inventory hwd inspect install kickstart login\n");
+		kputs("  logout loop ls mem memplane meta mode model model-init mv net netinfo ntp\n");
+		kputs("  pci perf ping raid reboot rlm rm sched search secret sort ssh-addkey\n");
+		kputs("  ssh-keygen state store surfctl sysinfo tail tensor theme tz uor useradd\n");
+		kputs("  version vm wallpaper wc wifi workflow world write xdna\n");
+#ifdef ANX_RESEARCH_TEST
+		kputs("  research-test\n");
+#endif
 		return;
 	}
 
@@ -419,6 +492,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  ls [ns:path]               List namespace entries\n");
 		kputs("  cat <oid-or-path>          Read object payload\n");
 		kputs("  write <ns:path> <content>  Create a State Object\n");
+		kputs("  appendb64 [ns:]<path> <base64>  Append binary object data\n");
 		kputs("  cp <src> <dst>             Copy object with provenance\n");
 		kputs("  mv <src> <dst>             Move/rename namespace binding\n");
 		kputs("  rm [-f] <ns:path>          Delete a State Object\n");
@@ -427,6 +501,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET -> object\n");
 		kputs("  state create|show|seal|delete  State object lifecycle\n");
 		kputs("  meta show|set|get <path>   Object metadata editor\n");
+		kputs("  uor inspect|scan|rebuild|project  Object representation index\n");
 		kputs("  store format|mount|stats   Object store management\n");
 		kputs("  disk                       List block devices\n");
 		kputs("  raid list|devs|detail      Software RAID status\n");
@@ -456,7 +531,10 @@ static void cmd_help(int argc, char **argv)
 
 	if (anx_strcmp(topic, "network") == 0) {
 		kputs("Networking, HTTP, WiFi:\n");
-		kputs("  net status                 Show network plane status\n");
+		kputs("  browser_init [host [port]] Connect browser renderer service\n");
+		kputs("  browser <url>|status      Navigate browser / show connection\n");
+		kputs("  browser_stop              Stop browser streaming\n");
+		kputs("  net status|dhcp            Network status / renew DHCP lease\n");
 		kputs("  netinfo                    Network configuration\n");
 		kputs("  ntp [server-ip]            Sync time from NTP server\n");
 		kputs("  ping <ip>                  Send 4 ICMP echo requests\n");
@@ -479,8 +557,9 @@ static void cmd_help(int argc, char **argv)
 		kputs("  vm create|start|stop|list|info  Virtual machine control\n");
 		kputs("  pci                        List PCI devices\n");
 		kputs("  perf                       Show boot performance profile\n");
-		kputs("  reboot                     Reboot the system\n");
-		kputs("  halt                       Halt the system\n");
+		kputs("  bootlog list|show|diff|config  Persistent boot logs\n");
+		kputs("  reboot                     Reboot immediately (no confirmation)\n");
+		kputs("  halt                       Halt immediately (no confirmation)\n");
 		kputs("  version                    Show kernel version\n");
 		kputs("  hwd                        Hardware detection summary\n");
 		kputs("  hw-inventory               Show hardware summary\n");
@@ -488,9 +567,15 @@ static void cmd_help(int argc, char **argv)
 		kputs("  config list|show|set|save|load|apply  Live configuration\n");
 		kputs("  colors                    Palette editor (Meta+Shift+C)\n");
 		kputs("  theme list|use|color|save  Appearance and color schemes\n");
+		kputs("  theme fonts|font [family]  List / select typeface\n");
 		kputs("  wallpaper <ns:path>|none   Desktop wallpaper\n");
 		kputs("  fb_info                    Framebuffer geometry (JSON)\n");
 		kputs("  mode                       Display mode selection\n");
+		kputs("  gop_list                   List boot-time display modes\n");
+		kputs("  fb_test                    Paint display test bars\n");
+#ifdef ANX_RESEARCH_TEST
+		kputs("  research-test             Run research conformance tests\n");
+#endif
 		return;
 	}
 
@@ -513,7 +598,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  login <user>               Login with password\n");
 		kputs("  logout                     End session\n");
 		kputs("  useradd <user> <pass>      Create user account\n");
-		kputs("  ssh-keygen                 Generate Ed25519 keypair; print public key\n");
+		kputs("  ssh-keygen                 Replace identity key; authorize / print public key\n");
 		kputs("  ssh-addkey <b64-blob>      Authorize an SSH public key\n");
 		return;
 	}
@@ -531,11 +616,22 @@ static void cmd_help(int argc, char **argv)
 		kputs("  clear                      Clear terminal output\n");
 		kputs("  edit <ns:path>             Open text editor\n");
 		kputs("  anx [ns:]<path>            Open amacs editor (M-: eval, C-x C-s save, C-x C-c quit)\n");
+		kputs("  exec <path>                Run a POSIX ELF binary\n");
 		kputs("  help [topic]               This help\n");
+		kputs("  ? [topic]                  Alias for help\n");
 		return;
 	}
 
-	kprintf("help: unknown topic '%s'  (objects|model|network|system|workflow|security|shell)\n",
+	if (anx_strcmp(topic, "interface") == 0) {
+		kputs("Surfaces, events, environments:\n");
+		kputs("  surfctl list|commit|headless  Surface listing / paint / creation\n");
+		kputs("  evctl focus|inject-key     Input focus / key event injection\n");
+		kputs("  compctl repaint            Force compositor repaint\n");
+		kputs("  envctl list|define|activate|deactivate  Environment management\n");
+		return;
+	}
+
+	kprintf("help: unknown topic '%s'  (objects|model|network|system|workflow|security|shell|interface)\n",
 		topic);
 }
 

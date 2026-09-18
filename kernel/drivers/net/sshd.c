@@ -157,6 +157,9 @@ struct sshd_state {
 	/* Shell line buffer */
 	char line[SSHD_LINE_MAX];
 	uint32_t line_len;
+	uint32_t line_pos;
+	struct anx_shell_history_cursor recall;
+	struct anx_shell_escape escape;
 };
 
 /* --- Globals --- */
@@ -1708,12 +1711,31 @@ static int sshd_exec_and_send(struct sshd_state *s, const char *cmd)
 	return ret;
 }
 
+/* One packet redraws the editable draft and restores the insertion point. */
+static int sshd_redraw_input(struct sshd_state *s, uint32_t old_len,
+			     uint32_t old_pos)
+{
+	char redraw[3 * SSHD_LINE_MAX];
+	uint32_t n = 0, i, width = old_len > s->line_len ? old_len : s->line_len;
+
+	for (i = 0; i < old_pos; i++) redraw[n++] = '\b';
+	for (i = 0; i < s->line_len; i++) redraw[n++] = s->line[i];
+	for (i = s->line_len; i < old_len; i++) redraw[n++] = ' ';
+	for (i = s->line_pos; i < width; i++) redraw[n++] = '\b';
+	return sshd_send_channel_data(s, redraw, n);
+}
+
 /* Interactive shell loop: read CHANNEL_DATA, assemble lines, execute. */
 static int sshd_shell_loop(struct sshd_state *s)
 {
 	uint8_t *payload;
 	uint32_t payload_len;
 	int ret;
+
+	s->line_len = s->line_pos = 0;
+	s->line[0] = '\0';
+	anx_memset(&s->escape, 0, sizeof(s->escape));
+	anx_shell_history_reset(&s->recall);
 
 	/* Greet the user */
 	{
@@ -1752,6 +1774,7 @@ static int sshd_shell_loop(struct sshd_state *s)
 
 			for (i = 0; i < data_len; i++) {
 				char c = (char)data[i];
+				uint32_t key, unicode, old_len, old_pos;
 
 				if (c == '\r' || c == '\n') {
 					/* Echo newline */
@@ -1761,22 +1784,20 @@ static int sshd_shell_loop(struct sshd_state *s)
 					if (s->line_len > 0) {
 						sshd_exec_and_send(s, s->line);
 					}
-					s->line_len = 0;
+					s->line_len = s->line_pos = 0;
+					s->line[0] = '\0';
+					s->escape.state = 0;
+					anx_shell_history_reset(&s->recall);
 					sshd_send_channel_data(s, "anx> ", 5);
-					continue;
-				}
-				if (c == 0x7F || c == 0x08) {
-					if (s->line_len > 0) {
-						s->line_len--;
-						sshd_send_channel_data(s,
-							"\b \b", 3);
-					}
 					continue;
 				}
 				if (c == 0x03) {
 					/* Ctrl-C: discard line */
 					sshd_send_channel_data(s, "^C\r\n", 4);
-					s->line_len = 0;
+					s->line_len = s->line_pos = 0;
+					s->line[0] = '\0';
+					s->escape.state = 0;
+					anx_shell_history_reset(&s->recall);
 					sshd_send_channel_data(s, "anx> ", 5);
 					continue;
 				}
@@ -1790,11 +1811,20 @@ static int sshd_shell_loop(struct sshd_state *s)
 					s->channel_open = false;
 					break;
 				}
-				if (s->line_len + 1 < SSHD_LINE_MAX &&
-				    (uint8_t)c >= 0x20) {
-					s->line[s->line_len++] = c;
-					/* Echo character */
-					sshd_send_channel_data(s, &c, 1);
+				key = anx_shell_input_decode(&s->escape, (uint8_t)c, &unicode);
+				old_len = s->line_len;
+				old_pos = s->line_pos;
+				if (!anx_shell_input_key(s->line, sizeof(s->line),
+							 &s->line_len, &s->line_pos,
+							 &s->recall, key, unicode)) continue;
+				if (old_pos == old_len && s->line_pos == s->line_len &&
+				    s->line_len == old_len + 1 && unicode >= 0x20 && unicode < 0x7f)
+					ret = sshd_send_channel_data(s, &c, 1);
+				else
+					ret = sshd_redraw_input(s, old_len, old_pos);
+				if (ret != ANX_OK) {
+					anx_free(payload);
+					return ret;
 				}
 			}
 			break;

@@ -299,6 +299,19 @@ static void terminal_newline(void)
 	}
 }
 
+void anx_gui_terminal_move_cursor(int32_t cells)
+{
+	int64_t offset;
+
+	if (!gui_ready || !term_cols || !term_rows) return;
+	offset = (int64_t)cur_row * term_cols + cur_col + cells;
+	if (offset < 0) offset = 0;
+	if (offset >= (int64_t)term_rows * term_cols)
+		offset = (int64_t)term_rows * term_cols - 1;
+	cur_row = (uint32_t)offset / term_cols;
+	cur_col = (uint32_t)offset % term_cols;
+}
+
 void anx_gui_terminal_putc(char c)
 {
 	uint32_t px, py;

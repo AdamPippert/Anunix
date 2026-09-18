@@ -32,7 +32,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.9.18-2
+ANX_VERSION := 2026.9.18-3
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -611,6 +611,7 @@ test: build/wallpaper-default.anwp
 	@python3 tests/test_kernel_profile.py
 	@python3 tests/test_candidate_gate.py
 	@python3 tests/test_embed_wallpaper.py
+	@CC="$(TEST_CC)" python3 tests/test_shell_help.py
 	@python3 tools/source_identity.py --label ANUNIX_HOST_SOURCE_V1
 
 conformance:
