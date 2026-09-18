@@ -85,7 +85,12 @@ The generic model-server inference path remains a stub.
   Omarchy templates select coordinated themes, fonts, window controls,
   wallpaper, and tiling behavior.
 - **Pretty windows default to 80% opacity.** Set `opacity` from 0 through
-  255, or disable transparency, then save the theme configuration.
+  255, or disable transparency, then save the theme configuration. Window
+  transparency remains active while the focused application redraws or you
+  type into a terminal.
+- **Shell discovery follows UNIX conventions.** `help` is a short orientation,
+  `cmdlist [category]` browses the hierarchy, and `man <command>` opens the
+  command's manual page.
 - **The window manager supports dwindle tiling.** Directional focus, swaps,
   resize operations, floating windows, gaps, and correct repaint ordering
   work through the same hotkey layer.

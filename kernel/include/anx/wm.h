@@ -316,6 +316,14 @@ uint32_t anx_wm_minimized_list(anx_oid_t *out, uint32_t max);
 /* Repaint the desktop and every visible window within a screen rectangle. */
 void anx_wm_expose(int32_t x, int32_t y, uint32_t w, uint32_t h);
 
+/*
+ * Recompose a window over freshly painted content beneath it. Transparent
+ * windows must use this for incremental commits; blending a new frame over
+ * the previous frame would accumulate opacity, while copying it directly
+ * would make the window opaque.
+ */
+void anx_wm_surface_recompose(struct anx_surface *surf);
+
 /* Move and resize a window, repainting whatever it uncovers. */
 int anx_wm_window_set_geometry(struct anx_surface *surf, int32_t x,
 			       int32_t y, uint32_t w, uint32_t h);

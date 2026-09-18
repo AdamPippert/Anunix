@@ -700,7 +700,7 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 				"cap", "cat", "cell", "cells", "clear", "compctl",
 				"cp", "disk", "dns", "echo", "edit", "engine",
 				"envctl", "evctl", "fetch", "fb_info", "fb_test",
-				"gop_list", "grep", "halt", "head", "help",
+				"gop_list", "grep", "halt", "head", "help", "cmdlist", "man",
 				"history", "hwd", "hw-inventory", "http-get",
 				"if", "inspect", "install", "kickstart",
 				"login", "logout", "loop", "ls", "mem",
