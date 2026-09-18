@@ -53,6 +53,11 @@ struct anx_driver {
  * Net class: calls all matches. */
 void anx_drivers_probe(void);
 
+struct anx_pci_device;
+
+/* Name of the table driver that binds dev, or NULL when none does. */
+const char *anx_driver_for_pci(const struct anx_pci_device *dev);
+
 /*
  * Bring up partitions, RAID, the object store and the boot-log ring. The
  * probe calls it once the storage drivers have run; defined in main.c.

@@ -1,11 +1,5 @@
-/*
- * anx/font.h — Bitmap font for framebuffer console.
- *
- * ANX Schoolbook 12×24: Century Schoolbook-inspired design with
- * bracketed half-serifs and moderate stroke contrast.
- * Covers printable ASCII (0x20–0x7E, 95 glyphs).
- * Each glyph row is a uint16_t; bit 11 (0x800) = leftmost pixel.
- */
+/* Theme-selectable fonts share a 12x24 cell. ASCII has coverage masks;
+ * the bitmap API and registered Unicode fallbacks retain their 12-bit rows. */
 
 #ifndef ANX_FONT_H
 #define ANX_FONT_H
@@ -14,6 +8,19 @@
 
 #define ANX_FONT_WIDTH		12
 #define ANX_FONT_HEIGHT		24
+
+enum anx_font_family {
+	ANX_FONT_ATKINSON = 0,
+	ANX_FONT_CASCADIA,
+	ANX_FONT_JETBRAINS,
+	ANX_FONT_SPLEEN,
+	ANX_FONT_FAMILY_COUNT,
+};
+
+/* Canonical family name, or NULL for an invalid family. */
+const char *anx_font_family_name(enum anx_font_family family);
+/* Parse a canonical name without changing output on failure. */
+int anx_font_family_parse(const char *name, enum anx_font_family *family);
 
 /* Return pointer to 24-element uint16_t glyph bitmap for character c.
  * Characters outside 0x20–0x7E return a filled-block fallback. */
@@ -71,6 +78,21 @@ int anx_font_draw_str(uint32_t x, uint32_t y,
 void anx_font_blit_char(uint32_t *buf, uint32_t buf_w, uint32_t buf_h,
                          uint32_t x, uint32_t y, char c,
                          uint32_t fg, uint32_t bg);
+
+/* Blit with a row stride independent of the clipped width. */
+void anx_font_blit_char_stride(uint32_t *buf, uint32_t stride,
+                              uint32_t clip_w, uint32_t clip_h,
+                              uint32_t x, uint32_t y, char c,
+                              uint32_t fg, uint32_t bg);
+
+/* Draw a nearest-neighbor scaled glyph with the theme's coverage rendering. */
+void anx_font_draw_char_scaled(uint32_t x, uint32_t y, char c,
+                              uint32_t fg, uint32_t bg, uint32_t scale);
+
+/* Render a clipped string at 100..400 percent of the 12x24 metrics. */
+void anx_font_blit_str_scaled(uint32_t *buf, uint32_t buf_w, uint32_t buf_h,
+                             uint32_t x, uint32_t y, const char *s,
+                             uint32_t fg, uint32_t bg, uint32_t scale_percent);
 
 /* Blit a NUL-terminated ASCII string into a caller-supplied pixel buffer.
  * Background pixels are skipped when bg == ANX_FONT_TRANSPARENT. */

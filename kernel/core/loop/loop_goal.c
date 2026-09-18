@@ -2,40 +2,40 @@
  * loop_goal.c — Goal alignment energy computation (RFC-0020, Phase 3).
  *
  * Translates a natural-language goal_text into an energy score for a
- * given JEPA action by keyword-to-action-category matching.
+ * given world action by keyword-to-action-category matching.
  *
  * Energy semantics: 0.0 = perfect goal alignment, 1.0 = misaligned.
  * Returns 0.5 (neutral) when goal_text is empty or no keyword matches.
  */
 
 #include <anx/loop.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/memory.h>
 #include <anx/string.h>
 
 /* ------------------------------------------------------------------ */
-/* Action category bitmasks (one bit per ANX_JEPA_ACT_*)              */
+/* Action category bitmasks (one bit per ANX_WORLD_ACT_*)              */
 /* ------------------------------------------------------------------ */
 
 #define ACTBIT(a)	(1u << (a))
 
 /* Grouped action sets for scoring */
-#define ACT_ROUTE   (ACTBIT(ANX_JEPA_ACT_ROUTE_LOCAL) | \
-		     ACTBIT(ANX_JEPA_ACT_ROUTE_REMOTE) | \
-		     ACTBIT(ANX_JEPA_ACT_ROUTE_FALLBACK))
+#define ACT_ROUTE   (ACTBIT(ANX_WORLD_ACT_ROUTE_LOCAL) | \
+		     ACTBIT(ANX_WORLD_ACT_ROUTE_REMOTE) | \
+		     ACTBIT(ANX_WORLD_ACT_ROUTE_FALLBACK))
 
-#define ACT_MEM     (ACTBIT(ANX_JEPA_ACT_MEM_PROMOTE) | \
-		     ACTBIT(ANX_JEPA_ACT_MEM_DEMOTE) | \
-		     ACTBIT(ANX_JEPA_ACT_MEM_FORGET))
+#define ACT_MEM     (ACTBIT(ANX_WORLD_ACT_MEM_PROMOTE) | \
+		     ACTBIT(ANX_WORLD_ACT_MEM_DEMOTE) | \
+		     ACTBIT(ANX_WORLD_ACT_MEM_FORGET))
 
-#define ACT_CELL    (ACTBIT(ANX_JEPA_ACT_CELL_SPAWN) | \
-		     ACTBIT(ANX_JEPA_ACT_CELL_CANCEL))
+#define ACT_CELL    (ACTBIT(ANX_WORLD_ACT_CELL_SPAWN) | \
+		     ACTBIT(ANX_WORLD_ACT_CELL_CANCEL))
 
-#define ACT_SEC     (ACTBIT(ANX_JEPA_ACT_CAP_VALIDATE) | \
-		     ACTBIT(ANX_JEPA_ACT_CAP_SUSPEND) | \
-		     ACTBIT(ANX_JEPA_ACT_SECURITY_ALERT))
+#define ACT_SEC     (ACTBIT(ANX_WORLD_ACT_CAP_VALIDATE) | \
+		     ACTBIT(ANX_WORLD_ACT_CAP_SUSPEND) | \
+		     ACTBIT(ANX_WORLD_ACT_SECURITY_ALERT))
 
-#define ACT_IDLE    ACTBIT(ANX_JEPA_ACT_IDLE)
+#define ACT_IDLE    ACTBIT(ANX_WORLD_ACT_IDLE)
 
 /* ------------------------------------------------------------------ */
 /* Keyword table                                                       */
@@ -59,18 +59,18 @@ static const struct kw_entry g_kw_table[] = {
 	/* Memory keywords */
 	{ "memory",    ACT_MEM, ACT_ROUTE | ACT_SEC },
 	{ "mem",       ACT_MEM, ACT_ROUTE | ACT_SEC },
-	{ "cache",     ACTBIT(ANX_JEPA_ACT_MEM_PROMOTE), ACTBIT(ANX_JEPA_ACT_MEM_FORGET) },
-	{ "promote",   ACTBIT(ANX_JEPA_ACT_MEM_PROMOTE), ACTBIT(ANX_JEPA_ACT_MEM_DEMOTE) },
-	{ "evict",     ACTBIT(ANX_JEPA_ACT_MEM_FORGET),  ACTBIT(ANX_JEPA_ACT_MEM_PROMOTE) },
-	{ "forget",    ACTBIT(ANX_JEPA_ACT_MEM_FORGET),  ACTBIT(ANX_JEPA_ACT_MEM_PROMOTE) },
-	{ "demote",    ACTBIT(ANX_JEPA_ACT_MEM_DEMOTE),  ACTBIT(ANX_JEPA_ACT_MEM_PROMOTE) },
+	{ "cache",     ACTBIT(ANX_WORLD_ACT_MEM_PROMOTE), ACTBIT(ANX_WORLD_ACT_MEM_FORGET) },
+	{ "promote",   ACTBIT(ANX_WORLD_ACT_MEM_PROMOTE), ACTBIT(ANX_WORLD_ACT_MEM_DEMOTE) },
+	{ "evict",     ACTBIT(ANX_WORLD_ACT_MEM_FORGET),  ACTBIT(ANX_WORLD_ACT_MEM_PROMOTE) },
+	{ "forget",    ACTBIT(ANX_WORLD_ACT_MEM_FORGET),  ACTBIT(ANX_WORLD_ACT_MEM_PROMOTE) },
+	{ "demote",    ACTBIT(ANX_WORLD_ACT_MEM_DEMOTE),  ACTBIT(ANX_WORLD_ACT_MEM_PROMOTE) },
 
 	/* Cell / process keywords */
 	{ "cell",      ACT_CELL,  ACT_MEM | ACT_SEC },
-	{ "spawn",     ACTBIT(ANX_JEPA_ACT_CELL_SPAWN),  ACTBIT(ANX_JEPA_ACT_CELL_CANCEL) },
-	{ "launch",    ACTBIT(ANX_JEPA_ACT_CELL_SPAWN),  0 },
-	{ "cancel",    ACTBIT(ANX_JEPA_ACT_CELL_CANCEL), ACTBIT(ANX_JEPA_ACT_CELL_SPAWN) },
-	{ "stop",      ACTBIT(ANX_JEPA_ACT_CELL_CANCEL) | ACT_IDLE, 0 },
+	{ "spawn",     ACTBIT(ANX_WORLD_ACT_CELL_SPAWN),  ACTBIT(ANX_WORLD_ACT_CELL_CANCEL) },
+	{ "launch",    ACTBIT(ANX_WORLD_ACT_CELL_SPAWN),  0 },
+	{ "cancel",    ACTBIT(ANX_WORLD_ACT_CELL_CANCEL), ACTBIT(ANX_WORLD_ACT_CELL_SPAWN) },
+	{ "stop",      ACTBIT(ANX_WORLD_ACT_CELL_CANCEL) | ACT_IDLE, 0 },
 	{ "task",      ACT_CELL,  0 },
 	{ "process",   ACT_CELL,  0 },
 	{ "execute",   ACT_CELL,  ACT_IDLE },
@@ -79,12 +79,12 @@ static const struct kw_entry g_kw_table[] = {
 	/* Security / capability keywords */
 	{ "security",  ACT_SEC,   ACT_MEM | ACT_ROUTE },
 	{ "secure",    ACT_SEC,   0 },
-	{ "validate",  ACTBIT(ANX_JEPA_ACT_CAP_VALIDATE), 0 },
+	{ "validate",  ACTBIT(ANX_WORLD_ACT_CAP_VALIDATE), 0 },
 	{ "capability",ACT_SEC,   ACT_MEM | ACT_ROUTE },
 	{ "cap",       ACT_SEC,   0 },
-	{ "suspend",   ACTBIT(ANX_JEPA_ACT_CAP_SUSPEND),  ACTBIT(ANX_JEPA_ACT_CELL_SPAWN) },
-	{ "alert",     ACTBIT(ANX_JEPA_ACT_SECURITY_ALERT), ACT_IDLE },
-	{ "threat",    ACTBIT(ANX_JEPA_ACT_SECURITY_ALERT), ACT_IDLE },
+	{ "suspend",   ACTBIT(ANX_WORLD_ACT_CAP_SUSPEND),  ACTBIT(ANX_WORLD_ACT_CELL_SPAWN) },
+	{ "alert",     ACTBIT(ANX_WORLD_ACT_SECURITY_ALERT), ACT_IDLE },
+	{ "threat",    ACTBIT(ANX_WORLD_ACT_SECURITY_ALERT), ACT_IDLE },
 
 	/* Idle / wait keywords */
 	{ "idle",      ACT_IDLE,  ACT_CELL | ACT_ROUTE },
@@ -163,7 +163,7 @@ float anx_loop_goal_alignment_energy(const char *goal_text, uint32_t action_id)
 	if (!goal_text || goal_text[0] == '\0')
 		return 0.5f;	/* no goal → neutral */
 
-	if (action_id >= (uint32_t)ANX_JEPA_ACT_COUNT)
+	if (action_id >= (uint32_t)ANX_WORLD_ACT_COUNT)
 		return 0.5f;
 
 	action_bit = ACTBIT(action_id);

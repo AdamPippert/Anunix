@@ -100,7 +100,7 @@ int anx_jepa_tool_world_state(char *out_buf, uint32_t buf_size)
 {
 	struct anx_jepa_ctx *ctx = anx_jepa_ctx_get();
 	const struct anx_jepa_world_profile *world;
-	struct anx_jepa_obs obs;
+	struct anx_world_obs obs;
 	uint32_t pos = 0;
 	int rc;
 
@@ -158,7 +158,7 @@ int anx_jepa_tool_predict(const char *action_name,
 			  char *out_buf, uint32_t buf_size)
 {
 	const struct anx_jepa_world_profile *world;
-	struct anx_jepa_obs obs;
+	struct anx_world_obs obs;
 	anx_oid_t obs_oid, latent_oid, pred_oid;
 	uint32_t action_id, i;
 	uint32_t pos = 0;

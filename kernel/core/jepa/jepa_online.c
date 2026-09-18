@@ -35,7 +35,7 @@ uint32_t anx_jepa_get_action_divergences(float *out, uint32_t max)
 	const struct anx_jepa_world_profile *world = anx_jepa_world_get_active();
 	uint32_t act_count = (world && world->action_count > 0)
 				? world->action_count
-				: (uint32_t)ANX_JEPA_ACT_COUNT;
+				: (uint32_t)ANX_WORLD_ACT_COUNT;
 	uint32_t n = (max < act_count) ? max : act_count;
 	uint32_t i;
 
@@ -49,7 +49,7 @@ uint32_t anx_jepa_get_action_divergences(float *out, uint32_t max)
 
 	{
 		const struct anx_jepa_world_profile *world;
-		struct anx_jepa_obs obs;
+		struct anx_world_obs obs;
 		float z_ctx[ANX_JEPA_LATENT_DIM_DEFAULT];
 		float z_pred[ANX_JEPA_LATENT_DIM_DEFAULT];
 		uint32_t dim;

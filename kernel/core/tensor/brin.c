@@ -17,6 +17,19 @@
 /* Epsilon for sparsity: elements with |x| < epsilon are "zero" */
 #define SPARSITY_EPSILON_BITS	0x3727C5ACUL	/* ~1e-5 as float32 */
 
+/* variance = E[x^2] - E[x]^2 and l2 = sqrt(sum x^2), from sum x^2 */
+static void finish_moments(struct anx_tensor_meta *meta, uint32_t sf_sum_sq,
+			   uint64_t count)
+{
+	uint32_t mean_sq = anx_sf_mul(meta->stat_mean_bits,
+				      meta->stat_mean_bits);
+
+	meta->stat_variance_bits = anx_sf_add(
+		anx_sf_div(sf_sum_sq, anx_sf_from_int((int64_t)count)),
+		mean_sq ^ 0x80000000U);		/* negate */
+	meta->stat_l2_norm_bits = anx_sf_sqrt(sf_sum_sq);
+}
+
 int anx_tensor_compute_brin(struct anx_state_object *obj,
 			     struct anx_tensor_meta *meta)
 {
@@ -72,11 +85,14 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 		int64_t sum = 0;
 		int64_t min_val = p[0], max_val = p[0];
 		uint64_t zero_count = 0;
+		uint32_t sf_sum_sq = anx_sf_zero();
 
 		for (i = 0; i < count; i++) {
 			int64_t v = (int64_t)p[i];
+			uint32_t fv = anx_sf_from_int(v);
 
 			sum += v;
+			sf_sum_sq = anx_sf_add(sf_sum_sq, anx_sf_mul(fv, fv));
 			if (v < min_val) min_val = v;
 			if (v > max_val) max_val = v;
 			if (v == 0) zero_count++;
@@ -85,6 +101,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 		meta->stat_mean_bits = anx_sf_div(
 			anx_sf_from_int(sum),
 			anx_sf_from_int((int64_t)count));
+		finish_moments(meta, sf_sum_sq, count);
 		meta->stat_min_bits = anx_sf_from_int(min_val);
 		meta->stat_max_bits = anx_sf_from_int(max_val);
 		meta->stat_sparsity_bits = anx_sf_div(
@@ -93,7 +110,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 
 	} else if (meta->dtype == ANX_DTYPE_UINT8) {
 		const uint8_t *p = data;
-		uint64_t sum = 0;
+		uint64_t sum = 0, sum_sq = 0;
 		uint64_t min_val = p[0], max_val = p[0];
 		uint64_t zero_count = 0;
 
@@ -101,6 +118,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 			uint64_t v = (uint64_t)p[i];
 
 			sum += v;
+			sum_sq += v * v;
 			if (v < min_val) min_val = v;
 			if (v > max_val) max_val = v;
 			if (v == 0) zero_count++;
@@ -109,6 +127,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 		meta->stat_mean_bits = anx_sf_div(
 			anx_sf_from_int((int64_t)sum),
 			anx_sf_from_int((int64_t)count));
+		finish_moments(meta, anx_sf_from_int((int64_t)sum_sq), count);
 		meta->stat_min_bits = anx_sf_from_int((int64_t)min_val);
 		meta->stat_max_bits = anx_sf_from_int((int64_t)max_val);
 		meta->stat_sparsity_bits = anx_sf_div(
@@ -119,6 +138,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 		/* Float32: read bit patterns, use softfloat */
 		const uint32_t *p = (const uint32_t *)data;
 		uint32_t sf_sum = anx_sf_zero();
+		uint32_t sf_sum_sq = anx_sf_zero();
 		uint32_t sf_min = p[0], sf_max = p[0];
 		uint64_t zero_count = 0;
 
@@ -126,6 +146,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 			uint32_t v = p[i];
 
 			sf_sum = anx_sf_add(sf_sum, v);
+			sf_sum_sq = anx_sf_add(sf_sum_sq, anx_sf_mul(v, v));
 			if (anx_sf_lt(v, sf_min)) sf_min = v;
 			if (anx_sf_gt(v, sf_max)) sf_max = v;
 			if (anx_sf_lt(anx_sf_abs(v), SPARSITY_EPSILON_BITS))
@@ -134,6 +155,7 @@ int anx_tensor_compute_brin(struct anx_state_object *obj,
 
 		meta->stat_mean_bits = anx_sf_div(
 			sf_sum, anx_sf_from_int((int64_t)count));
+		finish_moments(meta, sf_sum_sq, count);
 		meta->stat_min_bits = sf_min;
 		meta->stat_max_bits = sf_max;
 		meta->stat_sparsity_bits = anx_sf_div(

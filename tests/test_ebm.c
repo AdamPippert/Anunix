@@ -55,10 +55,10 @@ int test_ebm(void)
 
 	/* Test 5: run_iteration on an active session succeeds */
 	{
-		struct anx_loop_session_action_stats stats[ANX_JEPA_ACT_COUNT];
+		struct anx_loop_session_action_stats stats[ANX_WORLD_ACT_COUNT];
 
 		anx_memset(stats, 0, sizeof(stats));
-		rc = anx_ebm_run_iteration(sid, stats, (uint32_t)ANX_JEPA_ACT_COUNT);
+		rc = anx_ebm_run_iteration(sid, stats, (uint32_t)ANX_WORLD_ACT_COUNT);
 		if (rc != ANX_OK) return -7;
 	}
 
@@ -93,14 +93,14 @@ int test_ebm(void)
 	/* Test 8: goal alignment energy — matching action gets low energy */
 	{
 		float e = anx_loop_goal_alignment_energy("route traffic",
-							 ANX_JEPA_ACT_ROUTE_LOCAL);
+							 ANX_WORLD_ACT_ROUTE_LOCAL);
 		if (e >= 0.3f) return -13;
 	}
 
 	/* Test 9: goal alignment energy — opposed action gets high energy */
 	{
 		float e = anx_loop_goal_alignment_energy("route traffic",
-							 ANX_JEPA_ACT_MEM_FORGET);
+							 ANX_WORLD_ACT_MEM_FORGET);
 		if (e <= 0.5f) return -14;
 	}
 

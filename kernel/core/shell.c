@@ -17,6 +17,7 @@
 #include <anx/cell_plan.h>
 #include <anx/cell_trace.h>
 #include <anx/memplane.h>
+#include <anx/civil.h>
 #include <anx/engine.h>
 #include <anx/route.h>
 #include <anx/sched.h>
@@ -40,6 +41,8 @@
 #include <anx/io.h>
 #include <anx/perf.h>
 #include <anx/tools.h>
+#include <anx/config.h>
+#include <anx/color_editor.h>
 #include <anx/installer.h>
 #include <anx/acpi.h>
 #include <anx/httpd.h>
@@ -55,7 +58,7 @@
 #include <anx/vm.h>
 #include <anx/loop.h>
 #include <anx/rlm.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/memory.h>
 #include <anx/wm.h>
 #include <anx/amacs.h>
@@ -80,6 +83,7 @@ static uint32_t    g_pipe_stdin_len;
 static char history[HISTORY_SIZE][MAX_LINE];
 static uint32_t history_count;
 static uint32_t history_write;	/* next slot to write */
+static bool history_loaded;
 
 static void kputs(const char *s)
 {
@@ -116,69 +120,136 @@ static void history_save_to_disk(void)
 
 	oid.hi = HIST_DISK_OID_HI;
 	oid.lo = HIST_DISK_OID_LO;
-	anx_disk_delete_obj(&oid);
+	/* Replacement is atomic in the object store; retain old history on failure. */
 	anx_disk_write_obj(&oid, HIST_DISK_TYPE, &disk, sizeof(disk));
+}
+
+/* Match sensitive command tokens even after quotes, pipes, or whitespace.
+ * Omit the whole line rather than leave a recallable partial credential command. */
+static bool history_safe(const char *line)
+{
+	const char *p = line;
+	bool nonempty = false;
+
+	while (*p) {
+		const char *start;
+		size_t n;
+
+		while (*p && (*p == ' ' || *p == '\t' || *p == '\n' ||
+		       *p == '\r' || *p == '\'' || *p == '"' ||
+		       *p == '|' || *p == ';'))
+			p++;
+		start = p;
+		while (*p && *p != ' ' && *p != '\t' && *p != '\n' &&
+		       *p != '\r' && *p != '\'' && *p != '"' &&
+		       *p != '|' && *p != ';')
+			p++;
+		n = (size_t)(p - start);
+		if ((n == 6 && anx_strncmp(start, "secret", 6) == 0) ||
+		    (n == 7 && anx_strncmp(start, "useradd", 7) == 0))
+			return false;
+		if (n)
+			nonempty = true;
+	}
+	return nonempty;
 }
 
 static void history_load_from_disk(void)
 {
 	static struct history_disk disk;
-	anx_oid_t oid;
-	uint32_t actual = 0, obj_type = 0;
+	anx_oid_t oid = {HIST_DISK_OID_HI, HIST_DISK_OID_LO};
+	uint32_t actual = 0, obj_type = 0, i;
 
+	if (history_loaded)
+		return;
+	history_loaded = true;
 	if (!anx_blk_ready())
 		return;
-
-	oid.hi = HIST_DISK_OID_HI;
-	oid.lo = HIST_DISK_OID_LO;
 	if (anx_disk_read_obj(&oid, &disk, sizeof(disk), &actual, &obj_type)
 	    != ANX_OK)
 		return;
-	if (disk.magic != HIST_MAGIC || actual < sizeof(disk))
+	if (disk.magic != HIST_MAGIC || actual != sizeof(disk) ||
+	    obj_type != HIST_DISK_TYPE || disk.count > HISTORY_SIZE ||
+	    disk.write_idx >= HISTORY_SIZE)
 		return;
 
-	anx_memcpy(history, disk.entries, sizeof(history));
-	history_count = disk.count;
-	history_write = disk.write_idx;
+	/* Rebuild active entries, discarding unsafe/unterminated legacy records.
+	 * Zero tails too: old versions hid values after NUL but kept their bytes. */
+	for (i = 0; i < disk.count; i++) {
+		uint32_t idx = (disk.write_idx + HISTORY_SIZE - disk.count + i)
+			       % HISTORY_SIZE;
+		uint32_t n = 0;
 
-	/* Clamp to valid range */
-	if (history_count > HISTORY_SIZE)
-		history_count = HISTORY_SIZE;
-	if (history_write >= HISTORY_SIZE)
-		history_write = 0;
+		while (n < MAX_LINE && disk.entries[idx][n])
+			n++;
+		if (n == MAX_LINE || !history_safe(disk.entries[idx]))
+			continue;
+		anx_memset(history[history_write], 0, MAX_LINE);
+		anx_strlcpy(history[history_write], disk.entries[idx], MAX_LINE);
+		history_write = (history_write + 1) % HISTORY_SIZE;
+		history_count++;
+	}
+	anx_memset(&disk, 0, sizeof(disk));
+	history_save_to_disk();
 }
 
-static void history_add(const char *line)
+void anx_shell_history_record(const char *line)
 {
-	if (line[0] == '\0')
+	history_load_from_disk();
+	if (!line || !history_safe(line))
 		return;
-	/* Don't duplicate the last entry */
+	/* Don't truncate: a recalled command must be the one actually submitted. */
+	if (anx_strlen(line) >= MAX_LINE)
+		return;
 	if (history_count > 0) {
-		uint32_t prev = (history_write + HISTORY_SIZE - 1) %
-				HISTORY_SIZE;
+		uint32_t prev = (history_write + HISTORY_SIZE - 1) % HISTORY_SIZE;
+
 		if (anx_strcmp(history[prev], line) == 0)
 			return;
 	}
+	anx_memset(history[history_write], 0, MAX_LINE);
 	anx_strlcpy(history[history_write], line, MAX_LINE);
-
-	/* Scrub 'secret set' values from history */
-	if (anx_strncmp(history[history_write], "secret set ", 11) == 0) {
-		/* Keep "secret set <name>" but erase the value */
-		char *p = history[history_write] + 11;
-
-		/* Skip the name */
-		while (*p && *p != ' ')
-			p++;
-		/* Zero everything after the name */
-		if (*p)
-			*p = '\0';
-	}
-
 	history_write = (history_write + 1) % HISTORY_SIZE;
 	if (history_count < HISTORY_SIZE)
 		history_count++;
-
 	history_save_to_disk();
+}
+
+void anx_shell_history_reset(struct anx_shell_history_cursor *cursor)
+{
+	if (!cursor)
+		return;
+	anx_memset(cursor, 0, sizeof(*cursor));
+	cursor->offset = -1;
+}
+
+int anx_shell_history_move(struct anx_shell_history_cursor *cursor,
+			   int direction, char *input, uint32_t capacity)
+{
+	const char *entry;
+
+	if (!cursor || !input || !capacity ||
+	    (direction != -1 && direction != 1))
+		return -1;
+	history_load_from_disk();
+	if (!history_count)
+		return -1;
+	if (direction == -1) {
+		if (cursor->offset >= (int32_t)history_count - 1)
+			return -1;
+		if (cursor->offset < 0)
+			anx_strlcpy(cursor->draft, input, sizeof(cursor->draft));
+		cursor->offset++;
+	} else {
+		if (cursor->offset < 0)
+			return -1;
+		cursor->offset--;
+	}
+	entry = cursor->offset < 0 ? cursor->draft :
+		history[(history_write + HISTORY_SIZE - 1 -
+			 (uint32_t)cursor->offset) % HISTORY_SIZE];
+	anx_strlcpy(input, entry, capacity);
+	return (int)anx_strlen(input);
 }
 
 /* Clear the current line on the terminal and redraw with new content */
@@ -208,10 +279,9 @@ static void line_replace(char *buf, size_t *pos, size_t size,
 static int kgetline(char *buf, size_t size)
 {
 	size_t pos = 0;
-	uint32_t hist_idx = history_count;	/* past the end = current input */
-	char saved[MAX_LINE];			/* save in-progress input */
+	struct anx_shell_history_cursor cursor;
 
-	saved[0] = '\0';
+	anx_shell_history_reset(&cursor);
 
 	while (pos < size - 1) {
 		int c;
@@ -243,6 +313,7 @@ static int kgetline(char *buf, size_t size)
 		if (c == 0x7F || c == '\b') {
 			if (pos > 0) {
 				pos--;
+				anx_shell_history_reset(&cursor);
 				kputs("\b \b");
 			}
 			continue;
@@ -265,54 +336,15 @@ static int kgetline(char *buf, size_t size)
 
 				if (c3 < 0)
 					continue;
-				if (c3 == 'A') {
-					/* Up arrow */
-					if (history_count == 0)
-						continue;
-					if (hist_idx == history_count) {
-						/* Save current input */
-						buf[pos] = '\0';
-						anx_strlcpy(saved, buf,
-							     MAX_LINE);
-					}
-					if (hist_idx > 0)
-						hist_idx--;
-					/* Map hist_idx to ring buffer */
-					{
-						uint32_t ri;
+				if (c3 == 'A' || c3 == 'B') {
+					char recalled[MAX_LINE];
 
-						if (history_count < HISTORY_SIZE)
-							ri = hist_idx;
-						else
-							ri = (history_write +
-							      hist_idx) %
-							     HISTORY_SIZE;
-						line_replace(buf, &pos,
-							     size,
-							     history[ri]);
-					}
-				} else if (c3 == 'B') {
-					/* Down arrow */
-					if (hist_idx >= history_count)
-						continue;
-					hist_idx++;
-					if (hist_idx == history_count) {
-						/* Restore saved input */
-						line_replace(buf, &pos,
-							     size, saved);
-					} else {
-						uint32_t ri;
-
-						if (history_count < HISTORY_SIZE)
-							ri = hist_idx;
-						else
-							ri = (history_write +
-							      hist_idx) %
-							     HISTORY_SIZE;
-						line_replace(buf, &pos,
-							     size,
-							     history[ri]);
-					}
+					buf[pos] = '\0';
+					anx_strlcpy(recalled, buf, sizeof(recalled));
+					if (anx_shell_history_move(&cursor,
+						c3 == 'A' ? -1 : 1, recalled,
+						sizeof(recalled)) >= 0)
+						line_replace(buf, &pos, size, recalled);
 				}
 				/* Ignore other escape sequences */
 			}
@@ -320,6 +352,7 @@ static int kgetline(char *buf, size_t size)
 		}
 
 		if (c >= 0x20 && c < 0x7F) {
+			anx_shell_history_reset(&cursor);
 			buf[pos++] = (char)c;
 			kputc((char)c);
 		}
@@ -414,8 +447,9 @@ static void cmd_help(int argc, char **argv)
 		kputs("  rlm run [prompt]           Run a rollout with current adapter\n");
 		kputs("  rlm pal <i> <world> [s] [a]  Feed rollout score to PAL\n");
 		kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
-		kputs("  loop status|run            IBAL training loop\n");
-		kputs("  jepa                       JEPA world-model status\n");
+		kputs("  loop run|status <id>       IBAL loop ('loop' for usage)\n");
+		kputs("  world [status|list|active] World model (Anunix-world)\n");
+		kputs("  world set <uri> | traj    Select world; trajectory buffer\n");
 		kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
 		return;
 	}
@@ -425,7 +459,7 @@ static void cmd_help(int argc, char **argv)
 		kputs("  net status                 Show network plane status\n");
 		kputs("  netinfo                    Network configuration\n");
 		kputs("  ntp [server-ip]            Sync time from NTP server\n");
-		kputs("  ping <ip>                  Send ICMP echo request\n");
+		kputs("  ping <ip>                  Send 4 ICMP echo requests\n");
 		kputs("  dns <hostname>             Resolve hostname to IP\n");
 		kputs("  wifi status|connect|disconnect|mac  WiFi management\n");
 		kputs("  http-get <host> [port] [path]  HTTP GET request\n");
@@ -451,7 +485,10 @@ static void cmd_help(int argc, char **argv)
 		kputs("  hwd                        Hardware detection summary\n");
 		kputs("  hw-inventory               Show hardware summary\n");
 		kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
-		kputs("  theme                      Theme selector\n");
+		kputs("  config list|show|set|save|load|apply  Live configuration\n");
+		kputs("  colors                    Palette editor (Meta+Shift+C)\n");
+		kputs("  theme list|use|color|save  Appearance and color schemes\n");
+		kputs("  wallpaper <ns:path>|none   Desktop wallpaper\n");
 		kputs("  fb_info                    Framebuffer geometry (JSON)\n");
 		kputs("  mode                       Display mode selection\n");
 		return;
@@ -506,7 +543,7 @@ static void cmd_version(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Anunix 2026.4.29 (kernel monitor)\n");
+	kprintf("Anunix %s\n", ANX_VERSION);
 }
 
 /* --- Memory commands --- */
@@ -526,6 +563,9 @@ static void cmd_mem_stats(void)
 /* Track created objects for the shell */
 #define MAX_SHELL_OBJECTS 32
 static anx_oid_t shell_oids[MAX_SHELL_OBJECTS];
+
+/* $?: 0 unless the last command reported a failure. echo reads it. */
+static int last_return_code;
 static uint32_t shell_oid_count;
 
 static const char *obj_type_name(enum anx_object_type t)
@@ -558,16 +598,11 @@ static const char *obj_state_name(enum anx_object_state s)
 
 static struct anx_state_object *find_obj_by_prefix(const char *prefix)
 {
-	uint32_t i;
-	char buf[37];
+	anx_oid_t oid;
 
-	for (i = 0; i < shell_oid_count; i++) {
-		anx_uuid_to_string(&shell_oids[i], buf, sizeof(buf));
-		if (anx_strncmp(buf, prefix, anx_strlen(prefix)) == 0) {
-			return anx_objstore_lookup(&shell_oids[i]);
-		}
-	}
-	return NULL;
+	if (anx_so_resolve(prefix, &oid) != ANX_OK)
+		return NULL;
+	return anx_objstore_lookup(&oid);
 }
 
 static void cmd_state(int argc, char **argv)
@@ -738,7 +773,7 @@ static struct anx_cell *find_cell_by_prefix(const char *prefix)
 static void cmd_cell(int argc, char **argv)
 {
 	if (argc < 2) {
-		kputs("usage: cell <create|run|show> [args]\n");
+		kputs("usage: cell <create|run|show|list> [args]\n");
 		return;
 	}
 
@@ -834,8 +869,12 @@ static void cmd_cell(int argc, char **argv)
 					cell->error_code, cell->error_msg);
 			anx_cell_store_release(cell);
 		}
+	} else if (anx_strcmp(argv[1], "list") == 0) {
+		char *cells_argv[] = { "cells", NULL };
+
+		cmd_cells(1, cells_argv);
 	} else {
-		kputs("usage: cell <create|run|show>\n");
+		kputs("usage: cell <create|run|show|list>\n");
 	}
 }
 
@@ -854,7 +893,7 @@ static void cmd_memplane(int argc, char **argv)
 		int ret;
 
 		if (argc < 3) {
-			kputs("usage: memplane admit <oid-prefix>\n");
+			kputs("usage: memplane admit <oid-or-path>\n");
 			return;
 		}
 		obj = find_obj_by_prefix(argv[2]);
@@ -876,7 +915,7 @@ static void cmd_memplane(int argc, char **argv)
 		struct anx_mem_entry *entry;
 
 		if (argc < 3) {
-			kputs("usage: memplane show <oid-prefix>\n");
+			kputs("usage: memplane show <oid-or-path>\n");
 			return;
 		}
 		obj = find_obj_by_prefix(argv[2]);
@@ -1095,169 +1134,122 @@ static void cmd_cap(int argc, char **argv)
 
 /* --- JEPA commands --- */
 
-static void cmd_jepa(int argc, char **argv)
+/*
+ * world — the world model behind Anunix-world.
+ *
+ * Talks only to anx/world_model.h: JEPA is today's backend, Arboris or a
+ * later architecture may replace it, and the backend is a field in the
+ * output rather than the name of the command.
+ */
+static void world_status(void)
 {
-	if (argc < 2) {
-		kputs("usage: jepa <status|world|traj> [args]\n");
+	struct anx_world_info w;
+
+	kprintf("world: model=%s status=%s available=%s train_steps=%u\n",
+		anx_world_model_name(),
+		anx_world_status_name(anx_world_status_get()),
+		anx_world_available() ? "yes" : "no",
+		anx_world_train_steps());
+	if (anx_world_available() && anx_world_info_get(NULL, &w) == ANX_OK)
+		kprintf("world: active=%s obs_dim=%u latent_dim=%u "
+			"actions=%u\n", w.uri, w.obs_dim, w.latent_dim,
+			w.action_count);
+}
+
+static void world_active(void)
+{
+	struct anx_world_info w;
+
+	if (anx_world_info_get(NULL, &w) != ANX_OK) {
+		kputs("world: no active world\n");
+		return;
+	}
+	kprintf("world: active=%s\n", w.uri);
+	kprintf("  display_name=%s\n", w.display_name);
+	kprintf("  obs_dim=%u latent_dim=%u action_count=%u\n",
+		w.obs_dim, w.latent_dim, w.action_count);
+	kprintf("  collect_obs=%s\n", w.collects_obs ? "registered" : "(stub)");
+}
+
+/* world traj [count|reset|dump] */
+static void world_traj(const char *sub)
+{
+	uint32_t entries = 0, bytes = 0;
+	char oid_str[37];
+	anx_oid_t oid;
+	int ret;
+
+	if (anx_strcmp(sub, "reset") == 0) {
+		anx_world_traj_reset();
+		kputs("world: trajectory buffer cleared\n");
+		return;
+	}
+	if (anx_strcmp(sub, "count") == 0)
+		ret = anx_world_traj_count(&entries, &bytes);
+	else if (anx_strcmp(sub, "dump") == 0)
+		ret = anx_world_traj_dump(&oid, &bytes);
+	else {
+		kputs("usage: world traj [count|reset|dump]\n");
+		last_return_code = ANX_EINVAL;
 		return;
 	}
 
-	/* jepa status */
-	if (anx_strcmp(argv[1], "status") == 0) {
-		static const char *const status_names[] = {
-			"uninitialized", "initializing", "ready",
-			"training", "degraded", "unavailable",
-		};
-		enum anx_jepa_status st = anx_jepa_status_get();
-		const char *st_name = ((unsigned)st < 6) ? status_names[st] : "?";
-
-		kprintf("jepa: status=%s available=%s train_steps=%u\n",
-			st_name,
-			anx_jepa_available() ? "yes" : "no",
-			anx_jepa_get_train_step_count());
-
-		if (anx_jepa_available()) {
-			const struct anx_jepa_world_profile *w =
-				anx_jepa_world_get_active();
-			if (w)
-				kprintf("jepa: world=%s obs_dim=%u "
-					"latent_dim=%u actions=%u\n",
-					w->uri, w->arch.obs_dim,
-					w->arch.latent_dim, w->action_count);
-		}
+	if (ret == ANX_ENOENT) {
+		kputs("world: trajectory buffer is empty\n");
 		return;
 	}
-
-	/* jepa world [list|active|set <uri>] */
-	if (anx_strcmp(argv[1], "world") == 0) {
-		if (argc < 3 || anx_strcmp(argv[2], "list") == 0) {
-			const char *uris[ANX_JEPA_MAX_WORLDS];
-			uint32_t found = 0, i;
-
-			anx_jepa_world_list(uris, ANX_JEPA_MAX_WORLDS, &found);
-			kprintf("jepa: %u registered world(s):\n", found);
-			for (i = 0; i < found; i++)
-				kprintf("  %s\n", uris[i]);
-			return;
-		}
-
-		if (anx_strcmp(argv[2], "active") == 0) {
-			const struct anx_jepa_world_profile *w =
-				anx_jepa_world_get_active();
-			if (!w) {
-				kputs("jepa: no active world\n");
-				return;
-			}
-			kprintf("jepa: active world=%s\n", w->uri);
-			kprintf("  display_name=%s\n", w->display_name);
-			kprintf("  obs_dim=%u latent_dim=%u "
-				"action_count=%u\n",
-				w->arch.obs_dim, w->arch.latent_dim,
-				w->action_count);
-			kprintf("  collect_obs=%s\n",
-				w->collect_obs ? "registered" : "(stub)");
-			return;
-		}
-
-		if (anx_strcmp(argv[2], "set") == 0) {
-			int ret;
-
-			if (argc < 4) {
-				kputs("usage: jepa world set <uri>\n");
-				return;
-			}
-			ret = anx_jepa_world_set_active(argv[3]);
-			if (ret != ANX_OK)
-				kprintf("jepa: world set failed (%d)\n", ret);
-			else
-				kprintf("jepa: active world → %s\n", argv[3]);
-			return;
-		}
-
-		kputs("usage: jepa world [list|active|set <uri>]\n");
+	if (ret != ANX_OK) {
+		kprintf("world: trajectory %s failed (%d)\n", sub, ret);
+		last_return_code = ret;
 		return;
 	}
-
-	/* jepa traj [count|reset|dump] */
-	if (anx_strcmp(argv[1], "traj") == 0) {
-		const char *sub = (argc >= 3) ? argv[2] : "count";
-
-		if (anx_strcmp(sub, "reset") == 0) {
-			anx_jepa_traj_reset();
-			kputs("jepa: trajectory ring buffer cleared\n");
-			return;
-		}
-
-		if (anx_strcmp(sub, "count") == 0 ||
-		    anx_strcmp(sub, "dump") == 0) {
-			uint8_t  *buf;
-			uint32_t  written = 0;
-			uint32_t  buf_size = 32768;
-			int ret;
-
-			buf = (uint8_t *)anx_alloc(buf_size);
-			if (!buf) {
-				kputs("jepa: out of memory\n");
-				return;
-			}
-
-			ret = anx_jepa_export_trajectory(buf, buf_size,
-							  &written);
-
-			if (ret == ANX_ENOENT) {
-				kputs("jepa: trajectory ring buffer is empty\n");
-				anx_free(buf);
-				return;
-			}
-			if (ret != ANX_OK) {
-				kprintf("jepa: export failed (%d)\n", ret);
-				anx_free(buf);
-				return;
-			}
-
-			if (anx_strcmp(sub, "count") == 0) {
-				const struct anx_jepa_traj_header *h =
-					(const struct anx_jepa_traj_header *)buf;
-				kprintf("jepa: trajectory entries=%u "
-					"(%u bytes)\n",
-					h->entry_count, written);
-				anx_free(buf);
-				return;
-			}
-
-			/* dump: store as state object, print OID */
-			{
-				struct anx_so_create_params params;
-				struct anx_state_object     *obj;
-
-				anx_memset(&params, 0, sizeof(params));
-				params.object_type  = ANX_OBJ_BYTE_DATA;
-				params.schema_uri   = "anx:schema/jepa-trajectory/v1";
-				params.payload      = buf;
-				params.payload_size = written;
-
-				ret = anx_so_create(&params, &obj);
-				anx_free(buf);
-				if (ret != ANX_OK) {
-					kprintf("jepa: store failed (%d)\n",
-						ret);
-					return;
-				}
-				kprintf("jepa: trajectory stored: "
-					"%016llx%016llx (%u bytes)\n",
-					(unsigned long long)obj->oid.hi,
-					(unsigned long long)obj->oid.lo,
-					written);
-				anx_objstore_release(obj);
-			}
-			return;
-		}
-
-		kputs("usage: jepa traj [count|reset|dump]\n");
+	if (anx_strcmp(sub, "count") == 0) {
+		kprintf("world: trajectory entries=%u (%u bytes)\n",
+			entries, bytes);
 		return;
 	}
+	anx_uuid_to_string(&oid, oid_str, sizeof(oid_str));
+	kprintf("world: trajectory stored: %s (%u bytes)\n", oid_str, bytes);
+}
 
-	kputs("usage: jepa <status|world|traj> [args]\n");
+static void cmd_world(int argc, char **argv)
+{
+	const char *sub = argc >= 2 ? argv[1] : "status";
+
+	if (anx_strcmp(sub, "status") == 0) {
+		world_status();
+	} else if (anx_strcmp(sub, "list") == 0) {
+		const char *uris[ANX_WORLD_MAX];
+		uint32_t found = 0, i;
+
+		anx_world_list(uris, ANX_WORLD_MAX, &found);
+		kprintf("world: %u registered world(s):\n", found);
+		for (i = 0; i < found; i++)
+			kprintf("  %s\n", uris[i]);
+	} else if (anx_strcmp(sub, "active") == 0) {
+		world_active();
+	} else if (anx_strcmp(sub, "set") == 0) {
+		int ret;
+
+		if (argc < 3) {
+			kputs("usage: world set <uri>\n");
+			last_return_code = ANX_EINVAL;
+			return;
+		}
+		ret = anx_world_set_active(argv[2]);
+		if (ret != ANX_OK) {
+			kprintf("world: set failed (%d)\n", ret);
+			last_return_code = ret;
+		} else {
+			kprintf("world: active world -> %s\n", argv[2]);
+		}
+	} else if (anx_strcmp(sub, "traj") == 0) {
+		world_traj(argc >= 3 ? argv[2] : "count");
+	} else {
+		kputs("usage: world [status|list|active|set <uri>|traj "
+		      "[count|reset|dump]]\n");
+		last_return_code = ANX_EINVAL;
+	}
 }
 
 /* --- RLM commands --- */
@@ -1383,6 +1375,32 @@ static void cmd_net_status(void)
 }
 
 /* --- Network helpers --- */
+
+/* True for a dotted quad of four decimal fields, each 0..255. */
+static bool is_ipv4(const char *s)
+{
+	uint32_t fields = 0, digits = 0, val = 0;
+
+	for (;; s++) {
+		if (*s >= '0' && *s <= '9') {
+			val = val * 10 + (uint32_t)(*s - '0');
+			if (++digits > 3 || val > 255)
+				return false;
+		} else if (*s == '.' || *s == '\0') {
+			if (!digits)
+				return false;
+			fields++;
+			digits = 0;
+			val = 0;
+			if (*s == '\0')
+				return fields == 4;
+			if (fields == 4)
+				return false;
+		} else {
+			return false;
+		}
+	}
+}
 
 static uint32_t parse_ip(const char *s)
 {
@@ -1546,15 +1564,31 @@ static void cmd_dns(const char *hostname)
 static void cmd_ping(const char *target)
 {
 	uint32_t ip = parse_ip(target);
+	uint32_t seq, rtt, received = 0;
+	int ret;
 
-	kprintf("ping %u.%u.%u.%u...\n",
+	if (!is_ipv4(target)) {
+		kprintf("ping: '%s' is not an IPv4 address\n", target);
+		last_return_code = ANX_EINVAL;
+		return;
+	}
+	kprintf("PING %u.%u.%u.%u\n",
 		(ip >> 24) & 0xFF, (ip >> 16) & 0xFF,
 		(ip >> 8) & 0xFF, ip & 0xFF);
 
-	if (anx_icmp_ping(ip, 1) == ANX_OK)
-		kputs("ping sent\n");
-	else
-		kputs("ping failed\n");
+	for (seq = 1; seq <= 4; seq++) {
+		ret = anx_icmp_ping(ip, (uint16_t)seq, &rtt);
+		if (ret == ANX_OK) {
+			received++;
+			kprintf("reply seq=%u time=%u ms\n", seq, rtt);
+		} else if (ret == ANX_ETIMEDOUT) {
+			kprintf("no reply seq=%u\n", seq);
+		} else {
+			kprintf("send failed seq=%u (%d)\n", seq, ret);
+		}
+	}
+	kprintf("4 sent, %u received\n", received);
+	last_return_code = received ? ANX_OK : ANX_ETIMEDOUT;
 }
 
 /* --- Secret commands (RFC-0008) --- */
@@ -1727,7 +1761,8 @@ static void cmd_secret(int argc, char **argv)
 			kprintf("secret: revoke failed (%d)\n", ret);
 
 	} else {
-		kputs("usage: secret <set|list|show|rotate|revoke>\n");
+		kputs("usage: secret <set|list|show|fetch|rotate|revoke|"
+		      "wipe-connectivity>\n");
 	}
 }
 
@@ -1739,14 +1774,42 @@ static void cmd_model_init(int argc, char **argv)
 {
 	struct anx_model_endpoint ep;
 
-	if (argc < 4) {
-		kputs("usage: model-init <cred-name> <host> <port>\n");
+	if (argc == 2 && !anx_strcmp(argv[1], "clear")) {
+		last_return_code = anx_model_client_clear();
+		if (last_return_code)
+			kprintf("model-init clear: failed (%d)\n", last_return_code);
+		return;
+	}
+	if (argc != 4) {
+		last_return_code = ANX_EINVAL;
+		kputs("usage: model-init <cred-name> <host> <port> | clear\n");
+		return;
+	}
+	if (!anx_credential_exists(argv[1])) {
+		kprintf("model-init: no credential '%s' "
+			"(secret set %s <api-key>)\n", argv[1], argv[1]);
+		last_return_code = ANX_ENOENT;
 		return;
 	}
 	ep.cred_name = argv[1];
 	ep.host = argv[2];
-	ep.port = parse_port(argv[3]);
-	anx_model_client_init(&ep);
+{
+		const char *p = argv[3];
+		uint32_t port = 0;
+		if (!*p) { last_return_code = ANX_EINVAL; return; }
+		for (; *p; p++) {
+			if (*p < '0' || *p > '9' || port > (65535u - (*p - '0')) / 10u) {
+				kputs("model-init: invalid port\n");
+				last_return_code = ANX_EINVAL;
+				return;
+			}
+			port = port * 10 + (*p - '0');
+		}
+		ep.port = (uint16_t)port;
+	}
+	last_return_code = anx_model_client_init(&ep);
+	if (last_return_code)
+		kprintf("model-init: failed (%d)\n", last_return_code);
 }
 
 static void cmd_ask(int argc, char **argv)
@@ -2032,8 +2095,9 @@ static void cmd_hw_inventory(void)
 
 	/* Block device */
 	if (anx_blk_ready())
-		kprintf("\nBlock:   %u MiB (virtio-blk)\n",
-			(uint32_t)(anx_blk_capacity() * 512 / (1024 * 1024)));
+		kprintf("\nBlock:   %u MiB (%s)\n",
+			(uint32_t)(anx_blk_capacity() * 512 / (1024 * 1024)),
+			anx_blk_active_name());
 
 	/* Network */
 	if (anx_eth_ready()) {
@@ -2723,9 +2787,6 @@ static void cmd_pci(int argc, char **argv)
 	}
 }
 
-/* --- Shell variables --- */
-
-static int last_return_code;	/* $? */
 
 /* --- Pipe-aware filter commands --- */
 
@@ -3006,6 +3067,8 @@ static void dispatch(int argc, char **argv)
 {
 	if (argc == 0)
 		return;
+	if (anx_strcmp(argv[0], "echo") != 0)
+		last_return_code = 0;
 
 	if (anx_strcmp(argv[0], "help") == 0 ||
 	    anx_strcmp(argv[0], "?") == 0) {
@@ -3314,12 +3377,18 @@ static void dispatch(int argc, char **argv)
 		cmd_workflow(argc, argv);
 	} else if (anx_strcmp(argv[0], "rlm") == 0) {
 		cmd_rlm(argc, argv);
-	} else if (anx_strcmp(argv[0], "jepa") == 0) {
-		cmd_jepa(argc, argv);
+	} else if (anx_strcmp(argv[0], "world") == 0) {
+		cmd_world(argc, argv);
 	} else if (anx_strcmp(argv[0], "loop") == 0) {
 		anx_loop_shell_dispatch(argc, (const char *const *)argv);
+	} else if (anx_strcmp(argv[0], "wallpaper") == 0) {
+		cmd_wallpaper(argc, argv);
+	} else if (anx_strcmp(argv[0], "config") == 0) {
+		last_return_code = cmd_config(argc, argv);
+	} else if (anx_strcmp(argv[0], "colors") == 0) {
+		anx_wm_launch_color_editor();
 	} else if (anx_strcmp(argv[0], "theme") == 0) {
-		cmd_theme(argc, argv);
+		last_return_code = cmd_theme(argc, argv);
 	} else if (anx_strcmp(argv[0], "clear") == 0) {
 		cmd_clear(argc, argv);
 	} else if (anx_strcmp(argv[0], "mode") == 0) {
@@ -3337,16 +3406,26 @@ static void dispatch(int argc, char **argv)
 	} else if (anx_strcmp(argv[0], "sort") == 0) {
 		cmd_sort(argc, argv);
 	} else if (anx_strcmp(argv[0], "date") == 0) {
-		char time_buf[16];
-		char date_buf[16];
 		uint32_t unix_ts = anx_ntp_unix_time();
+		int32_t tz = anx_gui_get_tz_offset();
 
-		anx_gui_get_time(time_buf, sizeof(time_buf));
-		anx_gui_get_date(date_buf, sizeof(date_buf));
-		if (unix_ts)
-			kprintf("%s %s  (unix %u)\n", date_buf, time_buf, unix_ts);
-		else
-			kprintf("%s %s\n", date_buf, time_buf);
+		if (unix_ts) {
+			struct anx_civil c;
+
+			anx_civil_from_unix(unix_ts, tz, &c);
+			kprintf("%s %04d-%02u-%02u %02u:%02u:%02u UTC%s%d  "
+				"(unix %u)\n", anx_civil_day_name(c.wday),
+				c.year, c.month, c.day, c.hour, c.min, c.sec,
+				tz < 0 ? "" : "+", tz, unix_ts);
+		} else {
+			char time_buf[16];
+			char date_buf[16];
+
+			anx_gui_get_time(time_buf, sizeof(time_buf));
+			anx_gui_get_date(date_buf, sizeof(date_buf));
+			kprintf("%s %s  (RTC; no NTP sync yet)\n", date_buf,
+				time_buf);
+		}
 	} else if (anx_strcmp(argv[0], "history") == 0) {
 		uint32_t i;
 		uint32_t start = history_write >= history_count
@@ -3461,14 +3540,9 @@ static void execute_line(const char *input)
 
 void anx_shell_execute(const char *command)
 {
-	static bool history_loaded;
-
-	if (!history_loaded) {
-		history_loaded = true;
-		history_load_from_disk();
-	}
-	if (command && command[0])
-		history_add(command);
+	if (!command)
+		return;
+	anx_shell_history_record(command);
 	execute_line(command);
 }
 
@@ -3488,7 +3562,7 @@ void anx_shell_run(void)
 		if (line[0] == '\0')
 			continue;
 
-		history_add(line);
+		anx_shell_history_record(line);
 
 		/* Check for if/then/end construct */
 		if (anx_strncmp(line, "if ", 3) == 0) {

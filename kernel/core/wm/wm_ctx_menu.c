@@ -70,17 +70,7 @@ static struct {
 static void ctx_draw_char(uint32_t x, uint32_t y, char c,
 			   uint32_t fg, uint32_t bg)
 {
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	for (row = 0; row < ANX_FONT_HEIGHT && (y + row) < (uint32_t)CTX_H; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < ANX_FONT_WIDTH &&
-		     (x + col) < (uint32_t)CTX_W; col++)
-			g_ctx.pixels[(y + row) * CTX_W + x + col] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
+	anx_font_blit_char(g_ctx.pixels, CTX_W, CTX_H, x, y, c, fg, bg);
 }
 
 static void ctx_draw_str(uint32_t x, uint32_t y, const char *s,

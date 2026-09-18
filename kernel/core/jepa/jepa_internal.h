@@ -15,11 +15,11 @@ struct anx_jepa_ctx *anx_jepa_ctx_get(void);
 int anx_jepa_obs_collect_os_default(void *obs_buf, uint32_t obs_buf_size);
 
 /*
- * Linearize an anx_jepa_obs snapshot into a flat float vector.
+ * Linearize an anx_world_obs snapshot into a flat float vector.
  * out_vec must have capacity >= world->arch.obs_dim floats.
  * Returns the number of floats written, or negative on error.
  */
-int anx_jepa_obs_linearize(const struct anx_jepa_obs *obs,
+int anx_jepa_obs_linearize(const struct anx_world_obs *obs,
 			   float *out_vec, uint32_t max_dim);
 
 /*

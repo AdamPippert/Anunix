@@ -135,11 +135,13 @@ void anx_wm_taskbar_refresh(void)
 	btn_fg  = theme->palette.text_primary;
 	btn_hov = theme->palette.accent;
 
-	/* Background */
-	tb_fill_rect(0, 0, tb_width, tb_height, bg);
-
-	/* Separator line at top edge */
-	tb_fill_rect(0, 0, tb_width, 2, sep);
+	/* The bar itself: a gradient with the accent line along its top */
+	anx_wm_buf_gradient(g_taskbar_pixels, tb_width, tb_height,
+			    0, 0, tb_width, tb_height, NULL,
+			    theme->palette.bar_from, theme->palette.bar_to);
+	tb_fill_rect(0, 0, tb_width, 1, sep);
+	anx_wm_buf_blend(g_taskbar_pixels, tb_width, tb_height,
+			 0, 1, tb_width, 1, 0x00FFFFFF, 30);
 
 	count  = anx_wm_minimized_list(oids, TASKBAR_MAX_BTN);
 	text_y = (tb_height > ANX_FONT_HEIGHT)
@@ -159,9 +161,31 @@ void anx_wm_taskbar_refresh(void)
 
 		bg_i = (g_tb_hover == (int32_t)i) ? btn_hov : btn_bg;
 
-		/* Button background, with 2px right gap */
-		tb_fill_rect(bx, 2, TASKBAR_BTN_W - TASKBAR_BTN_GAP,
-			     tb_height - 2, bg_i);
+		/*
+		 * Each tab is a small window: the same corner treatment,
+		 * a gradient, and a light bevel along the top.
+		 */
+		{
+			uint32_t tw = TASKBAR_BTN_W - TASKBAR_BTN_GAP;
+			uint32_t th = tb_height - 3;
+			struct anx_shape tab =
+				anx_theme_window_shape(th / 2 > 7 ? 7
+							         : th / 2);
+
+			if (g_tb_hover == (int32_t)i)
+				anx_wm_buf_gradient(g_taskbar_pixels, tb_width,
+						    tb_height, bx, 2, tw, th,
+						    &tab, btn_hov, btn_hov);
+			else
+				anx_wm_buf_gradient(g_taskbar_pixels, tb_width,
+						    tb_height, bx, 2, tw, th,
+						    &tab,
+						    theme->palette.tab_from,
+						    theme->palette.tab_to);
+			anx_wm_buf_blend(g_taskbar_pixels, tb_width, tb_height,
+					 bx + 7, 2, tw - 14, 1,
+					 0x00FFFFFF, 45);
+		}
 
 		/* Truncate title */
 		llen = (uint32_t)anx_strlen(s->title);
@@ -171,9 +195,19 @@ void anx_wm_taskbar_refresh(void)
 			label[k] = s->title[k];
 		label[llen] = '\0';
 
-		tb_draw_str(bx + 4, text_y, label,
-			    (g_tb_hover == (int32_t)i) ? bg : btn_fg,
-			    bg_i);
+		/* Text sits on the tab, so its backdrop is the tab's own
+		 * mid tone rather than the panel color. */
+		{
+			uint32_t f = theme->palette.tab_from;
+			uint32_t t = theme->palette.tab_to;
+			uint32_t mid = ((((f >> 16) & 0xFF) + ((t >> 16) & 0xFF)) / 2) << 16 |
+				       ((((f >> 8) & 0xFF) + ((t >> 8) & 0xFF)) / 2) << 8 |
+				       (((f & 0xFF) + (t & 0xFF)) / 2);
+
+			tb_draw_str(bx + 8, text_y, label,
+				    (g_tb_hover == (int32_t)i) ? bg : btn_fg,
+				    (g_tb_hover == (int32_t)i) ? bg_i : mid);
+		}
 
 		bx += TASKBAR_BTN_W;
 		if (bx + TASKBAR_BTN_W > tb_width)

@@ -70,6 +70,11 @@ const struct anx_meta_value *anx_meta_get(struct anx_meta_store *store,
 /* Delete a key. Returns 0 on success, ANX_ENOENT if not found. */
 int anx_meta_delete(struct anx_meta_store *store, const char *key);
 
+/* Call cb for every entry, in no particular order. */
+void anx_meta_iterate(struct anx_meta_store *store,
+		      void (*cb)(const struct anx_meta_entry *e, void *arg),
+		      void *arg);
+
 /* Destroy a metadata store and all entries */
 void anx_meta_destroy(struct anx_meta_store *store);
 

@@ -53,6 +53,7 @@
 #include <anx/workflow.h>
 #include <anx/workflow_library.h>
 #include <anx/theme.h>
+#include <anx/config.h>
 #include <anx/kickstart.h>
 #include <anx/httpd.h>
 #include <anx/sshd.h>
@@ -400,8 +401,8 @@ void kernel_main(void)
 	 * organic session data from prior boots is not overwritten by priming */
 	anx_pal_persist_load();
 	anx_credstore_load();
-	anx_model_client_load();
 	anx_uobj_load();
+	anx_model_client_load();
 
 	/* Prime PAL cross-session priors from detected hardware */
 	anx_pal_prime_hardware();
@@ -551,6 +552,11 @@ void kernel_main(void)
 	anx_bootlog_ring_flush();
 
 	/* Start HTTP API server (after network init) */
+	{
+		int rc = anx_config_load_network();
+		if (rc != ANX_OK && rc != ANX_ENOENT)
+			kprintf("config: network load failed (%d)\n", rc);
+	}
 	anx_httpd_init(8080);
 
 	/* Start SSH server (after network + credential store) */
@@ -561,6 +567,7 @@ void kernel_main(void)
 		anx_wm_init();
 		kprintf("window manager initialized\n");
 	}
+	anx_config_load_desktop();
 
 	kprintf("kernel init complete -- all subsystems online\n");
 

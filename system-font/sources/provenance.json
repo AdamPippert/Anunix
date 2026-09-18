@@ -1,0 +1,50 @@
+{
+  "retrieved": "2026-09-18",
+  "fonts": [
+    {
+      "file": "AtkinsonHyperlegibleMono-Regular.ttf",
+      "sha256": "2c9a7b9fabebd5c746a808d8a1ef2f52e618850caad6ec4fd9f5c48f56e1c1af",
+      "names": {
+        "1": "Atkinson Hyperlegible Mono",
+        "2": "Regular",
+        "4": "Atkinson Hyperlegible Mono Regular",
+        "5": "Version 2.001; ttfautohint (v1.8.4.7-5d5b)"
+      },
+      "is_fixed_pitch": 1,
+      "weight": 400,
+      "bytes": 52020,
+      "source_url": "https://raw.githubusercontent.com/googlefonts/atkinson-hyperlegible-next-mono/154d50362016cc3e873eb21d242cd0772384c8f9/fonts/ttf/AtkinsonHyperlegibleMono-Regular.ttf"
+    },
+    {
+      "file": "CascadiaMono-Regular.ttf",
+      "sha256": "06520d032ec274fa5040b22c6f4a1d829081b24ba40b2da56dae89bf10c7b481",
+      "names": {
+        "1": "Cascadia Mono",
+        "2": "Regular",
+        "4": "Cascadia Mono Regular",
+        "5": "Version 2407.024; ttfautohint (v1.8.4)"
+      },
+      "is_fixed_pitch": 1,
+      "weight": 400,
+      "bytes": 575912,
+      "source_url": "https://github.com/microsoft/cascadia-code/releases/download/v2407.24/CascadiaCode-2407.24.zip",
+      "archive_member": "ttf/static/CascadiaMono-Regular.ttf",
+      "archive_sha256": "e67a68ee3386db63f48b9054bd196ea752bc6a4ebb4df35adce6733da50c8474"
+    },
+    {
+      "file": "JetBrainsMonoNerdFont-Regular.ttf",
+      "sha256": "1c680e8cde9fcf8b88a5605ce8d1fb94dd3fb15841f7ca7bf4c55664855e5611",
+      "names": {
+        "1": "JetBrainsMono NF",
+        "2": "Regular",
+        "4": "JetBrainsMono NF Regular",
+        "5": "Version 2.304; ttfautohint (v1.8.4.7-5d5b);Nerd Fonts 3.5.1",
+        "16": "JetBrainsMono Nerd Font"
+      },
+      "is_fixed_pitch": 0,
+      "weight": 400,
+      "bytes": 2571596,
+      "source_url": "https://raw.githubusercontent.com/ryanoasis/nerd-fonts/b894ea7803af6aade63d60a4381e006098ec9c4d/patched-fonts/JetBrainsMono/Ligatures/JetBrainsMonoNerdFont-Regular.ttf"
+    }
+  ]
+}

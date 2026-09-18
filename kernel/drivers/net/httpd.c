@@ -553,10 +553,10 @@ static void handle_jepa_status(struct anx_tcp_conn *conn)
 	}
 
 	switch (anx_jepa_status_get()) {
-	case ANX_JEPA_READY:        status_str = "ready";        break;
-	case ANX_JEPA_TRAINING:     status_str = "training";     break;
-	case ANX_JEPA_DEGRADED:     status_str = "degraded";     break;
-	case ANX_JEPA_UNAVAILABLE:  status_str = "unavailable";  break;
+	case ANX_WORLD_READY:        status_str = "ready";        break;
+	case ANX_WORLD_TRAINING:     status_str = "training";     break;
+	case ANX_WORLD_DEGRADED:     status_str = "degraded";     break;
+	case ANX_WORLD_UNAVAILABLE:  status_str = "unavailable";  break;
 	default:                    status_str = "initializing"; break;
 	}
 

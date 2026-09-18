@@ -13,11 +13,13 @@
 #include <anx/fb.h>
 #include <anx/font.h>
 #include <anx/theme.h>
+#include <anx/color_editor.h>
 #include <anx/alloc.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/input.h>
 #include <anx/theme.h>
+#include <anx/color_editor.h>
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -59,11 +61,9 @@ static const struct menu_item g_edit_items[] = {
 };
 
 static const struct menu_item g_view_items[] = {
-	{ "Fullscreen",      "Meta+F11"     },
-	{ "Zoom In",         "Meta+="       },
-	{ "Zoom Out",        "Meta+-"       },
+	{ "Fullscreen",      "Meta+F"       },
 	{ "Theme Toggle",    ""             },
-	{ "Show Panels",     ""             },
+	{ "Open Colors",     "Meta+Shift+C" },
 	{ NULL, NULL }
 };
 
@@ -131,16 +131,7 @@ static void am_fill(uint32_t x, uint32_t y,
 static void am_draw_char(uint32_t x, uint32_t y, char c,
 			  uint32_t fg, uint32_t bg)
 {
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col;
-
-	for (row = 0; row < (uint32_t)FONT_H && (y + row) < AM_H; row++) {
-		uint16_t bits = glyph[row];
-
-		for (col = 0; col < (uint32_t)FONT_W && (x + col) < AM_W; col++)
-			g_am.pixels[(y + row) * AM_W + (x + col)] =
-				(bits & (0x800u >> col)) ? fg : bg;
-	}
+	anx_font_blit_char(g_am.pixels, AM_W, AM_H, x, y, c, fg, bg);
 }
 
 static void am_draw_str(uint32_t x, uint32_t y, const char *s,
@@ -235,7 +226,7 @@ static void am_render(void)
 		uint32_t fy = AM_H - FONT_H - 6;
 
 		am_fill(0, fy - 2, AM_W, 1, text_dim);
-		am_draw_str(8, fy, "Up/Down: select   Enter: run   Esc: close",
+		am_draw_str(8, fy, "Arrows: select  Enter: run  Esc: close",
 			    text_dim, panel_bg);
 	}
 
@@ -283,12 +274,16 @@ static void am_execute(uint32_t menu_idx, uint32_t item_idx)
 			if (surf)
 				anx_wm_window_fullscreen_toggle(surf);
 			break;
-		case 3: /* Theme Toggle */
+		case 2: /* Palette editor */
+			anx_wm_launch_color_editor();
+			break;
+		case 1: /* Theme Toggle */
 			{
 				enum anx_theme_mode m = anx_theme_get_mode();
 				anx_theme_set_mode(m == ANX_THEME_PRETTY
 						   ? ANX_THEME_BORING
 						   : ANX_THEME_PRETTY);
+				anx_wm_repaint_all();
 			}
 			break;
 		}
@@ -358,6 +353,12 @@ bool anx_wm_app_menu_active(void)
 	return g_am.surf != NULL;
 }
 
+static void am_destroy(struct anx_surface *surf)
+{
+	anx_wm_canvas_free(surf);
+	anx_memset(&g_am, 0, sizeof(g_am));
+}
+
 void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid)
 {
 	struct anx_content_node *cn;
@@ -406,6 +407,7 @@ void anx_wm_app_menu_open(uint32_t menu_index, anx_oid_t invocation_oid)
 		}
 	}
 
+	g_am.surf->on_destroy = am_destroy;
 	g_am.menu_index     = menu_index < MENU_COUNT ? menu_index : 0;
 	g_am.invocation_oid = invocation_oid;
 	g_am.target_oid     = anx_input_focus_get();
@@ -446,7 +448,10 @@ static void am_switch_panel(uint32_t new_index)
 
 void anx_wm_app_menu_key_event(struct anx_key_event *ev)
 {
-	uint32_t key = ev->keycode;
+	uint32_t key;
+
+	if (!ev || !g_am.surf) return;
+	key = ev->keycode;
 
 	switch (key) {
 	case ANX_KEY_ESC:

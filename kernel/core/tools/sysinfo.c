@@ -17,6 +17,7 @@
 #include <anx/net.h>
 #include <anx/virtio_net.h>
 #include <anx/virtio_blk.h>
+#include <anx/blk.h>
 #include <anx/sched.h>
 #include <anx/interface_plane.h>
 #include <anx/kprintf.h>
@@ -52,9 +53,9 @@ void cmd_sysinfo(int argc, char **argv)
 
 	/* Storage */
 	if (anx_blk_ready()) {
-		kprintf("Disk:      %u MiB (virtio-blk)\n",
+		kprintf("Disk:      %u MiB (%s)\n",
 			(uint32_t)(anx_blk_capacity() * 512 /
-				   (1024 * 1024)));
+				   (1024 * 1024)), anx_blk_active_name());
 	} else {
 		kprintf("Disk:      none\n");
 	}

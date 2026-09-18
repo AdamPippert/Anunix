@@ -226,28 +226,32 @@ uint32_t anx_strtoul(const char *s, char **endp, int base)
 	return (uint32_t)anx_strtoull(s, endp, base);
 }
 
-/* Write decimal representation of val into buf[size]. Returns chars written. */
-static uint32_t fmt_uint64(char *buf, uint32_t size, uint64_t val)
+/* Append one formatted field to buf, padded to width. */
+static uint32_t snp_field(char *buf, uint32_t pos, uint32_t size,
+			  const char *digits, uint32_t n, bool neg,
+			  uint32_t width, char pad, bool left)
 {
-	char tmp[20];
-	uint32_t n = 0, i;
+	uint32_t len = n + (neg ? 1 : 0), i;
 
-	if (size == 0)
-		return 0;
-	if (val == 0) {
-		tmp[n++] = '0';
-	} else {
-		while (val > 0 && n < sizeof(tmp)) {
-			tmp[n++] = (char)('0' + val % 10);
-			val /= 10;
-		}
-	}
-	for (i = 0; i < n && i < size - 1; i++)
-		buf[i] = tmp[n - 1 - i];
-	buf[i] = '\0';
-	return i;
+	if (neg && pad == '0' && pos + 1 < size)
+		buf[pos++] = '-';
+	for (i = len; !left && i < width && pos + 1 < size; i++)
+		buf[pos++] = pad;
+	if (neg && pad != '0' && pos + 1 < size)
+		buf[pos++] = '-';
+	for (i = 0; i < n && pos + 1 < size; i++)
+		buf[pos++] = digits[i];
+	for (i = len; left && i < width && pos + 1 < size; i++)
+		buf[pos++] = ' ';
+	return pos;
 }
 
+/*
+ * A subset of snprintf: flags '-' and '0', a field width, a precision
+ * for strings (".N" or ".*"), the length modifiers l and ll, and the
+ * conversions d u x s c %. Output is always
+ * NUL-terminated; the return value is the length written.
+ */
 int anx_snprintf(char *buf, uint32_t size, const char *fmt, ...)
 {
 	__builtin_va_list ap;
@@ -259,51 +263,107 @@ int anx_snprintf(char *buf, uint32_t size, const char *fmt, ...)
 
 	__builtin_va_start(ap, fmt);
 	while (*p && pos + 1 < size) {
+		char digits[24];
+		uint32_t n = 0, width = 0, lng = 0;
+		int32_t prec = -1;
+		bool left = false, neg = false;
+		char pad = ' ';
+		uint64_t v = 0;
+
 		if (*p != '%') {
 			buf[pos++] = *p++;
 			continue;
 		}
 		p++;
-		if (*p == 'u') {
-			uint32_t v = __builtin_va_arg(ap, unsigned int);
-			pos += fmt_uint64(buf + pos, size - pos, (uint64_t)v);
+		if (*p == '-') {
+			left = true;
 			p++;
-		} else if (*p == 'd') {
-			int v = __builtin_va_arg(ap, int);
-			if (v < 0 && pos + 1 < size) {
-				buf[pos++] = '-';
-				pos += fmt_uint64(buf + pos, size - pos,
-						  (uint64_t)(-(int64_t)v));
-			} else {
-				pos += fmt_uint64(buf + pos, size - pos,
-						  (uint64_t)v);
-			}
+		}
+		if (*p == '0' && !left) {
+			pad = '0';
 			p++;
-		} else if (p[0] == 'l' && p[1] == 'l' && p[2] == 'u') {
-			uint64_t v = __builtin_va_arg(ap, unsigned long long);
-			pos += fmt_uint64(buf + pos, size - pos, v);
-			p += 3;
-		} else if (p[0] == 'l' && p[1] == 'l' && p[2] == 'd') {
-			long long v = __builtin_va_arg(ap, long long);
-			if (v < 0 && pos + 1 < size) {
-				buf[pos++] = '-';
-				pos += fmt_uint64(buf + pos, size - pos,
-						  (uint64_t)(-v));
-			} else {
-				pos += fmt_uint64(buf + pos, size - pos,
-						  (uint64_t)v);
+		}
+		while (*p >= '0' && *p <= '9')
+			width = width * 10 + (uint32_t)(*p++ - '0');
+		if (*p == '.') {
+			p++;
+			prec = 0;
+			if (*p == '*') {
+				prec = __builtin_va_arg(ap, int);
+				p++;
 			}
-			p += 3;
-		} else if (*p == 's') {
+			while (*p >= '0' && *p <= '9')
+				prec = prec * 10 + (int32_t)(*p++ - '0');
+		}
+		while (*p == 'l') {
+			lng++;
+			p++;
+		}
+
+		switch (*p) {
+		case 'd': {
+			int64_t sv = lng >= 2 ? (int64_t)__builtin_va_arg(ap, long long) :
+				     lng == 1 ? (int64_t)__builtin_va_arg(ap, long) :
+				     (int64_t)__builtin_va_arg(ap, int);
+
+			neg = sv < 0;
+			v = neg ? (uint64_t)0 - (uint64_t)sv : (uint64_t)sv;
+			goto decimal;
+		}
+		case 'u':
+			v = lng >= 2 ? (uint64_t)__builtin_va_arg(ap, unsigned long long) :
+			    lng == 1 ? (uint64_t)__builtin_va_arg(ap, unsigned long) :
+			    (uint64_t)__builtin_va_arg(ap, unsigned int);
+decimal:
+			do {
+				digits[sizeof(digits) - 1 - n++] =
+					(char)('0' + v % 10);
+				v /= 10;
+			} while (v);
+			pos = snp_field(buf, pos, size,
+					digits + sizeof(digits) - n, n, neg,
+					width, pad, left);
+			break;
+		case 'x':
+			v = lng >= 2 ? (uint64_t)__builtin_va_arg(ap, unsigned long long) :
+			    lng == 1 ? (uint64_t)__builtin_va_arg(ap, unsigned long) :
+			    (uint64_t)__builtin_va_arg(ap, unsigned int);
+			do {
+				digits[sizeof(digits) - 1 - n++] =
+					"0123456789abcdef"[v & 0xf];
+				v >>= 4;
+			} while (v);
+			pos = snp_field(buf, pos, size,
+					digits + sizeof(digits) - n, n, false,
+					width, pad, left);
+			break;
+		case 's': {
 			const char *s = __builtin_va_arg(ap, const char *);
-			while (*s && pos + 1 < size)
-				buf[pos++] = *s++;
-			p++;
-		} else {
+
+			if (!s)
+				s = "(null)";
+			while (s[n] && (prec < 0 || n < (uint32_t)prec))
+				n++;
+			pos = snp_field(buf, pos, size, s, n, false,
+					width, ' ', left);
+			break;
+		}
+		case 'c':
+			digits[0] = (char)__builtin_va_arg(ap, int);
+			pos = snp_field(buf, pos, size, digits, 1, false,
+					width, ' ', left);
+			break;
+		case '%':
+			buf[pos++] = '%';
+			break;
+		default:
 			buf[pos++] = '%';
 			if (*p && pos + 1 < size)
-				buf[pos++] = *p++;
+				buf[pos++] = *p;
+			break;
 		}
+		if (*p)
+			p++;
 	}
 	__builtin_va_end(ap);
 	buf[pos] = '\0';

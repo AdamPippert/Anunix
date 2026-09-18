@@ -8,6 +8,20 @@
 #ifndef ANX_SHELL_H
 #define ANX_SHELL_H
 
+#include <anx/types.h>
+
+/* Each input surface owns a cursor; history itself is shared and persisted. */
+struct anx_shell_history_cursor {
+	int32_t offset; /* -1: live draft, 0: newest entry */
+	char draft[256];
+};
+void anx_shell_history_reset(struct anx_shell_history_cursor *cursor);
+/* direction -1: older, +1: newer. Returns copied length or -1 if unchanged. */
+int anx_shell_history_move(struct anx_shell_history_cursor *cursor,
+			   int direction, char *input, uint32_t capacity);
+/* Consecutive duplicates and credential-bearing commands are omitted. */
+void anx_shell_history_record(const char *line);
+
 /* Enter the interactive shell (does not return) */
 void anx_shell_run(void) __attribute__((noreturn));
 

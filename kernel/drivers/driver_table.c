@@ -93,6 +93,18 @@ static bool pci_matches(const struct anx_driver *drv,
 	       drv->pci_prog_if  == dev->prog_if;
 }
 
+const char *anx_driver_for_pci(const struct anx_pci_device *dev)
+{
+	uint32_t i;
+
+	for (i = 0; i < DRIVER_TABLE_SIZE; i++) {
+		if (driver_table[i].bus == ANX_BUS_PCI &&
+		    pci_matches(&driver_table[i], dev))
+			return driver_table[i].name;
+	}
+	return NULL;
+}
+
 /* --- Probe --- */
 
 void anx_drivers_probe(void)

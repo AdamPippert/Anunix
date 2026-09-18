@@ -29,6 +29,7 @@
 #include <anx/state_object.h>
 #include <anx/engine.h>
 #include <anx/route.h>
+#include <anx/world_model.h>
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -51,22 +52,10 @@
 /* Observation dimensions for the os-default profile.
  * Build-time asserts in jepa.c verify these match the scheduler and
  * memory-plane constants they mirror. */
-#define ANX_JEPA_OBS_SCHED_CLASSES	6	/* mirrors ANX_QUEUE_CLASS_COUNT */
-#define ANX_JEPA_OBS_MEM_TIERS		6	/* mirrors ANX_MEM_TIER_COUNT */
 
 /* ------------------------------------------------------------------ */
 /* Enumerations                                                        */
 /* ------------------------------------------------------------------ */
-
-/* Subsystem lifecycle state. */
-enum anx_jepa_status {
-	ANX_JEPA_UNINITIALIZED,
-	ANX_JEPA_INITIALIZING,
-	ANX_JEPA_READY,		/* encoder loaded, can encode + predict */
-	ANX_JEPA_TRAINING,	/* training loop active */
-	ANX_JEPA_DEGRADED,	/* CPU fallback only (no NPU/GPU) */
-	ANX_JEPA_UNAVAILABLE,	/* no tensor capability at all */
-};
 
 /* Operating mode. */
 enum anx_jepa_mode {
@@ -76,63 +65,11 @@ enum anx_jepa_mode {
 };
 
 /*
- * Core action vocabulary for the os-default world profile.
- * World profiles may define their own action sets; this enum covers
- * the actions available to any Anunix OS agent.
+ * The observation (struct anx_world_obs), the action vocabulary
+ * (ANX_WORLD_ACT_*) and the status enum are the OS's, not JEPA's: they
+ * live in anx/world_model.h, and JEPA is one backend behind that
+ * interface (anx_jepa_world_model_register()).
  */
-enum anx_jepa_action {
-	ANX_JEPA_ACT_IDLE = 0,
-	ANX_JEPA_ACT_ROUTE_LOCAL,
-	ANX_JEPA_ACT_ROUTE_REMOTE,
-	ANX_JEPA_ACT_ROUTE_FALLBACK,
-	ANX_JEPA_ACT_MEM_PROMOTE,
-	ANX_JEPA_ACT_MEM_DEMOTE,
-	ANX_JEPA_ACT_MEM_FORGET,
-	ANX_JEPA_ACT_CELL_SPAWN,
-	ANX_JEPA_ACT_CELL_CANCEL,
-	ANX_JEPA_ACT_CAP_VALIDATE,
-	ANX_JEPA_ACT_CAP_SUSPEND,
-	ANX_JEPA_ACT_SECURITY_ALERT,
-	ANX_JEPA_ACT_COUNT,
-};
-
-/* ------------------------------------------------------------------ */
-/* Observation struct — os-default world profile                       */
-/* ------------------------------------------------------------------ */
-
-/*
- * Snapshot of Anunix runtime state collected from kernel subsystems.
- * This is the observation type for "anx:world/os-default".  Other world
- * profiles define their own observation structs; the collect_obs callback
- * in anx_jepa_world_profile casts obs_buf to the appropriate type.
- */
-struct anx_jepa_obs {
-	uint64_t timestamp_ns;
-
-	/* Scheduler (one depth counter per queue class) */
-	uint32_t sched_queue_depths[ANX_JEPA_OBS_SCHED_CLASSES];
-	uint32_t active_cell_count;
-
-	/* Memory control plane (one entry per tier) */
-	uint32_t mem_decay_score_avg[ANX_JEPA_OBS_MEM_TIERS];
-	uint32_t mem_entry_counts[ANX_JEPA_OBS_MEM_TIERS];
-
-	/* Routing plane */
-	uint32_t route_fallback_count;	/* since last observation */
-	float    route_avg_score;	/* average planner score (0-100) */
-
-	/* Tensor compute utilization (0.0-1.0) */
-	float    tensor_cpu_util;
-	float    tensor_npu_util;	/* 0 if no NPU present */
-
-	/* Capability validation */
-	float    cap_validation_avg;	/* average validation score (0-100) */
-	uint32_t cap_failures;		/* since last observation */
-
-	/* Error and security counters since last observation */
-	uint32_t error_count;
-	uint32_t security_event_count;
-};
 
 /* ------------------------------------------------------------------ */
 /* State Object payloads                                               */
@@ -202,7 +139,7 @@ struct anx_jepa_train_config {
  *
  * collect_obs: called by anx_jepa_observe() when this profile is active.
  * obs_buf receives a world-specific observation struct (e.g.
- * anx_jepa_obs for os-default); obs_buf_size is the buffer capacity.
+ * anx_world_obs for os-default); obs_buf_size is the buffer capacity.
  * Returns ANX_OK on success, negative on error.
  *
  * Encoder and predictor weights for this world are stored as
@@ -244,7 +181,7 @@ struct anx_jepa_world_profile {
 /* ------------------------------------------------------------------ */
 
 struct anx_jepa_ctx {
-	enum anx_jepa_status status;
+	enum anx_world_status status;
 	enum anx_jepa_mode   mode;
 
 	struct anx_engine *engine;		/* LOCAL_MODEL engine handle */
@@ -272,24 +209,27 @@ struct anx_jepa_ctx {
 
 /*
  * Initialize the JEPA subsystem.  Non-fatal: if no tensor-capable
- * engine is available, status is set to ANX_JEPA_UNAVAILABLE and all
+ * engine is available, status is set to ANX_WORLD_UNAVAILABLE and all
  * integration hooks become no-ops.  Registers four built-in world
  * profiles and activates "anx:world/os-default".
  */
 int  anx_jepa_init(void);
 void anx_jepa_shutdown(void);
+
+/* Install JEPA behind anx/world_model.h (anx_jepa_init() does this). */
+void anx_jepa_world_model_register(void);
 bool anx_jepa_available(void);
-enum anx_jepa_status anx_jepa_status_get(void);
+enum anx_world_status anx_jepa_status_get(void);
 
 /* ------------------------------------------------------------------ */
 /* Observation                                                         */
 /* ------------------------------------------------------------------ */
 
 /* Collect a snapshot from kernel subsystems into obs (os-default). */
-int anx_jepa_observe(struct anx_jepa_obs *obs_out);
+int anx_jepa_observe(struct anx_world_obs *obs_out);
 
 /* Collect + persist as ANX_OBJ_JEPA_OBS, return OID. */
-int anx_jepa_observe_store(const struct anx_jepa_obs *obs,
+int anx_jepa_observe_store(const struct anx_world_obs *obs,
 			   anx_oid_t *oid_out);
 
 /* ------------------------------------------------------------------ */
@@ -300,7 +240,7 @@ int anx_jepa_observe_store(const struct anx_jepa_obs *obs,
 int anx_jepa_encode(const anx_oid_t *obs_oid, anx_oid_t *latent_oid_out);
 
 /* Convenience: observe + encode in one call. */
-int anx_jepa_encode_obs(const struct anx_jepa_obs *obs,
+int anx_jepa_encode_obs(const struct anx_world_obs *obs,
 			anx_oid_t *latent_oid_out);
 
 /* ------------------------------------------------------------------ */
@@ -529,7 +469,7 @@ int anx_jepa_export_trajectory(void *buf_out, uint32_t buf_size,
  * buffer paired with action_id.  No-op if JEPA is unavailable.
  * This is the preferred call site for modules outside kernel/core/jepa/.
  */
-int anx_jepa_traj_ingest(const struct anx_jepa_obs *obs, uint32_t action_id,
+int anx_jepa_traj_ingest(const struct anx_world_obs *obs, uint32_t action_id,
 			  const char *world_uri);
 
 /* Clear the trajectory ring buffer. */
@@ -549,7 +489,7 @@ uint32_t anx_jepa_get_train_step_count(void);
  * Compute cosine divergence for each action in the os-default vocabulary.
  * Observes current system state, encodes it, then for each action predicts
  * a future latent and measures divergence from the context latent.
- * Fills out[0..min(max, ANX_JEPA_ACT_COUNT)-1] with values in [0, 1].
+ * Fills out[0..min(max, ANX_WORLD_ACT_COUNT)-1] with values in [0, 1].
  * Returns the number of entries written.  All zeros when JEPA unavailable.
  */
 uint32_t anx_jepa_get_action_divergences(float *out, uint32_t max);

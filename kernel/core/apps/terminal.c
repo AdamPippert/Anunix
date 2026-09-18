@@ -5,15 +5,9 @@
  * and renders a scrollable text grid. Key events arrive via the WM
  * dispatch loop through surf->on_event.
  *
- * Layout:
- *   ┌──────────────────────────────────────────────────┐
- *   │ ansh                                             │  ← title bar
- *   ├──────────────────────────────────────────────────┤
- *   │ scrollback lines ...                             │
- *   │ ...                                              │
- *   ├──────────────────────────────────────────────────┤
- *   │ anx> command_                                    │  ← input line
- *   └──────────────────────────────────────────────────┘
+ * Output and the editable prompt share one top-down viewport. Long lines
+ * reflow on resize; PageUp/PageDown scroll retained output. Up/Down use
+ * the common shell history with a draft cursor owned by each terminal.
  *
  * Multiple terminals can be opened — each gets its own static slot.
  */
@@ -42,7 +36,6 @@
 #define TERM_CMD_BUF     8192	/* kprintf capture buffer */
 #define TERM_TOP         4	/* space above the scrollback; the WM draws the title bar */
 #define TERM_PAD         6	/* inner padding */
-#define TERM_INPUT_H     (ANX_FONT_HEIGHT + TERM_PAD * 2 + 2)
 
 /* ------------------------------------------------------------------ */
 /* Per-terminal state                                                  */
@@ -58,13 +51,15 @@ struct anx_terminal {
 	uint32_t            cols;
 	uint32_t            rows;
 
-	/* Scrollback ring: lines[write_idx % TERM_SCROLLBACK] is next write slot */
+	/* Bounded logical lines; wrapping is computed at draw time. */
 	char     lines[TERM_SCROLLBACK][TERM_LINE_MAX];
-	uint32_t line_total;	/* total lines ever written (not capped) */
+	uint32_t line_count, line_head;
+	uint32_t scroll_rows;
 
 	/* Input */
 	char     input[TERM_INPUT_MAX];
 	uint32_t input_len;
+	struct anx_shell_history_cursor recall;
 
 	/* Command output capture */
 	char     cmd_buf[TERM_CMD_BUF];
@@ -91,23 +86,7 @@ static void term_fill(struct anx_terminal *t, uint32_t x, uint32_t y,
 static void term_char(struct anx_terminal *t, uint32_t x, uint32_t y,
 		       char ch, uint32_t fg, uint32_t bg)
 {
-	const uint16_t *glyph = anx_font_glyph(ch);
-	uint32_t r, c;
-
-	for (r = 0; r < ANX_FONT_HEIGHT; r++) {
-		uint32_t py = y + r;
-
-		if (py >= t->pix_h)
-			break;
-		for (c = 0; c < ANX_FONT_WIDTH; c++) {
-			uint32_t px = x + c;
-
-			if (px >= t->pix_w)
-				break;
-			t->pixels[py * t->pix_w + px] =
-				(glyph[r] & (0x800u >> c)) ? fg : bg;
-		}
-	}
+	anx_font_blit_char(t->pixels, t->pix_w, t->pix_h, x, y, ch, fg, bg);
 }
 
 static void term_str(struct anx_terminal *t, uint32_t x, uint32_t y,
@@ -124,50 +103,57 @@ static void term_str(struct anx_terminal *t, uint32_t x, uint32_t y,
 static void term_append_line(struct anx_terminal *t, const char *line,
 			       uint32_t len)
 {
-	uint32_t slot = t->line_total % TERM_SCROLLBACK;
-	uint32_t copy = (len < TERM_LINE_MAX - 1) ? len : TERM_LINE_MAX - 1;
+	uint32_t slot = (t->line_head + t->line_count) % TERM_SCROLLBACK;
 
-	anx_memcpy(t->lines[slot], line, copy);
-	t->lines[slot][copy] = '\0';
-	t->line_total++;
+	anx_memcpy(t->lines[slot], line, len);
+	t->lines[slot][len] = '\0';
+	if (t->line_count < TERM_SCROLLBACK)
+		t->line_count++;
+	else
+		t->line_head = (t->line_head + 1) % TERM_SCROLLBACK;
 }
 
-/* Split a multi-line string and append each line, wrapping at cols. */
 static void term_append_text(struct anx_terminal *t, const char *text)
 {
-	const char *p = text;
-	char wrap_buf[TERM_LINE_MAX];
+	while (*text) {
+		uint32_t len = 0;
 
-	while (*p) {
-		const char *nl = p;
-		uint32_t    len;
-
-		while (*nl && *nl != '\n')
-			nl++;
-		len = (uint32_t)(nl - p);
-
-		/* Word-wrap long lines */
-		if (len == 0) {
-			term_append_line(t, "", 0);
-		} else {
-			uint32_t off = 0;
-
-			while (off < len) {
-				uint32_t chunk = len - off;
-
-				if (chunk > t->cols)
-					chunk = t->cols;
-				anx_memcpy(wrap_buf, p + off, chunk);
-				wrap_buf[chunk] = '\0';
-				term_append_line(t, wrap_buf, chunk);
-				off += chunk;
-			}
-		}
-
-		p = nl;
-		if (*p == '\n')
-			p++;
+		while (text[len] && text[len] != '\n' && len < TERM_LINE_MAX - 1)
+			len++;
+		term_append_line(t, text, len);
+		text += len;
+		if (*text == '\n') text++;
 	}
+}
+
+static void term_set_grid(struct anx_terminal *t)
+{
+	t->cols = t->pix_w >= TERM_PAD * 2 + ANX_FONT_WIDTH
+		? (t->pix_w - TERM_PAD * 2) / ANX_FONT_WIDTH : 1;
+	t->rows = t->pix_h >= TERM_TOP + TERM_PAD + ANX_FONT_HEIGHT
+		? (t->pix_h - TERM_TOP - TERM_PAD) / ANX_FONT_HEIGHT : 1;
+}
+
+/* Draw wrapped rows that intersect the current viewport. */
+static void term_draw_rows(struct anx_terminal *t, const char *text,
+			   uint32_t first, uint32_t *row, uint32_t fg, uint32_t bg)
+{
+	uint32_t len = (uint32_t)anx_strlen(text), pos = 0;
+
+	do {
+		uint32_t n = len - pos;
+		char line[TERM_INPUT_MAX + 5];
+
+		if (n > t->cols) n = t->cols;
+		if (*row >= first && *row - first < t->rows) {
+			anx_memcpy(line, text + pos, n);
+			line[n] = '\0';
+			term_str(t, TERM_PAD, TERM_TOP + (*row - first) * ANX_FONT_HEIGHT,
+				 line, fg, bg);
+		}
+		(*row)++;
+		pos += n;
+	} while (pos < len);
 }
 
 /* ------------------------------------------------------------------ */
@@ -177,56 +163,35 @@ static void term_append_text(struct anx_terminal *t, const char *text)
 static void term_render(struct anx_terminal *t)
 {
 	const struct anx_theme *theme = anx_theme_get();
-	uint32_t bg     = theme->palette.background;
-	uint32_t surf_c = theme->palette.surface;
-	uint32_t accent = theme->palette.accent;
-	uint32_t fg     = theme->palette.text_primary;
-	uint32_t fg_dim = theme->palette.text_dim;
-	uint32_t text_area_y, text_area_h, input_y;
-	uint32_t visible_rows, first_line;
-	uint32_t row;
-	char     prompt_line[TERM_LINE_MAX + 8];
+	uint32_t bg = theme->palette.background;
+	uint32_t fg = theme->palette.text_primary;
+	uint32_t i, output = 0, first, row = 0, cursor_row;
+	char prompt[TERM_INPUT_MAX + 5];
 
-	/* Window body. The WM draws the title bar ("ansh") and the border. */
+	if (!t->active || !t->surf || !t->pixels)
+		return;
 	term_fill(t, 0, 0, t->pix_w, t->pix_h, bg);
+	for (i = 0; i < t->line_count; i++) {
+		uint32_t slot = (t->line_head + i) % TERM_SCROLLBACK;
+		uint32_t len = (uint32_t)anx_strlen(t->lines[slot]);
 
-	/* Input line area */
-	input_y      = t->pix_h - TERM_INPUT_H;
-	term_fill(t, 0, input_y, t->pix_w, 1, accent);
-	term_fill(t, 0, input_y + 1, t->pix_w, TERM_INPUT_H - 1, surf_c);
-
-	anx_snprintf(prompt_line, sizeof(prompt_line), "anx> %s_", t->input);
-	term_str(t, TERM_PAD, input_y + TERM_PAD, prompt_line, fg, surf_c);
-
-	/* Scrollback text area */
-	text_area_y  = TERM_TOP;
-	text_area_h  = input_y - text_area_y;
-	visible_rows = text_area_h / ANX_FONT_HEIGHT;
-
-	/* Determine which lines to show (last visible_rows lines) */
-	{
-		uint32_t total_vis  = visible_rows;
-		uint32_t skip_rows;	/* empty rows above text (bottom-align) */
-
-		if (t->line_total <= total_vis) {
-			first_line = 0;
-			visible_rows = t->line_total;
-			skip_rows = total_vis - visible_rows;
-		} else {
-			first_line = t->line_total - total_vis;
-			skip_rows  = 0;
-		}
-
-		for (row = 0; row < visible_rows; row++) {
-			uint32_t line_idx = (first_line + row) % TERM_SCROLLBACK;
-			uint32_t y = text_area_y + (skip_rows + row) * ANX_FONT_HEIGHT;
-
-			(void)fg_dim;
-			term_str(t, TERM_PAD, y, t->lines[line_idx], fg, bg);
-		}
+		output += len ? (len + t->cols - 1) / t->cols : 1;
 	}
+	cursor_row = output + (t->input_len + 5) / t->cols;
+	first = cursor_row + 1 > t->rows ? cursor_row + 1 - t->rows : 0;
+	if (t->scroll_rows > first) t->scroll_rows = first;
+	first -= t->scroll_rows;
+	for (i = 0; i < t->line_count; i++) {
+		uint32_t slot = (t->line_head + i) % TERM_SCROLLBACK;
 
-	/* Commit canvas to framebuffer */
+		term_draw_rows(t, t->lines[slot], first, &row, fg, bg);
+	}
+	anx_snprintf(prompt, sizeof(prompt), "anx> %s", t->input);
+	term_draw_rows(t, prompt, first, &row, fg, bg);
+	if (cursor_row >= first && cursor_row - first < t->rows)
+		term_fill(t, TERM_PAD + ((t->input_len + 5) % t->cols) * ANX_FONT_WIDTH,
+			  TERM_TOP + (cursor_row - first) * ANX_FONT_HEIGHT,
+			  2, ANX_FONT_HEIGHT, theme->palette.accent);
 	if (t->surf->state == ANX_SURF_VISIBLE)
 		anx_iface_surface_commit(t->surf);
 }
@@ -238,27 +203,35 @@ static void term_render(struct anx_terminal *t)
 static void term_exec(struct anx_terminal *t)
 {
 	uint32_t n;
-	char prompt_echo[TERM_LINE_MAX];
+	char command[TERM_INPUT_MAX], echo[TERM_INPUT_MAX + 5];
+	struct anx_capture_state saved;
 
-	if (t->input_len == 0)
+	anx_strlcpy(command, t->input, sizeof(command));
+	t->input[0] = '\0';
+	t->input_len = 0;
+	t->scroll_rows = 0;
+	anx_shell_history_reset(&t->recall);
+	anx_shell_history_record(command);
+	if (!anx_strcmp(command, "clear")) {
+		t->line_count = 0;
+		t->line_head = 0;
 		return;
-
-	/* Echo the command */
-	anx_snprintf(prompt_echo, sizeof(prompt_echo), "anx> %s", t->input);
-	term_append_line(t, prompt_echo, anx_strlen(prompt_echo));
-
-	/* Capture command output */
+	}
+	if (!anx_strcmp(command, "exit") || !anx_strcmp(command, "quit")) {
+		anx_wm_window_close(t->surf);
+		return;
+	}
+	anx_snprintf(echo, sizeof(echo), "anx> %s", command);
+	term_append_text(t, echo);
+	if (!command[0])
+		return;
+	anx_kprintf_capture_save(&saved);
 	anx_kprintf_capture_start(t->cmd_buf, TERM_CMD_BUF);
-	anx_shell_execute(t->input);
+	anx_shell_execute(command);
 	n = anx_kprintf_capture_stop();
-
-	/* Append output to scrollback */
+	anx_kprintf_capture_restore(&saved);
 	if (n > 0)
 		term_append_text(t, t->cmd_buf);
-
-	/* Clear input */
-	t->input[0]  = '\0';
-	t->input_len = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,6 +260,8 @@ static void term_on_event(struct anx_surface *surf,
 		uint32_t ucp  = ev->data.key.unicode;
 
 		(void)mods;
+		if (key != ANX_KEY_PAGEUP && key != ANX_KEY_PAGEDOWN)
+			t->scroll_rows = 0;
 
 		switch (key) {
 		case ANX_KEY_ENTER:
@@ -298,13 +273,27 @@ static void term_on_event(struct anx_surface *surf,
 				t->input_len--;
 				t->input[t->input_len] = '\0';
 			}
+			anx_shell_history_reset(&t->recall);
+			break;
+
+		case ANX_KEY_UP:
+		case ANX_KEY_DOWN: {
+			int n = anx_shell_history_move(&t->recall,
+				key == ANX_KEY_UP ? -1 : 1, t->input, sizeof(t->input));
+
+			if (n >= 0) t->input_len = (uint32_t)n;
+			break;
+		}
+		case ANX_KEY_PAGEUP:
+			t->scroll_rows += t->rows;
+			break;
+		case ANX_KEY_PAGEDOWN:
+			t->scroll_rows = t->scroll_rows > t->rows ? t->scroll_rows - t->rows : 0;
 			break;
 
 		case ANX_KEY_ESC:
 			/* Close the terminal */
 			anx_wm_window_close(surf);
-			t->surf   = NULL;
-			t->active = false;
 			return;
 
 		default:
@@ -313,6 +302,7 @@ static void term_on_event(struct anx_surface *surf,
 			    t->input_len < TERM_INPUT_MAX - 1) {
 				t->input[t->input_len++] = (char)ucp;
 				t->input[t->input_len]   = '\0';
+				anx_shell_history_reset(&t->recall);
 			}
 			break;
 		}
@@ -350,21 +340,25 @@ static void term_on_resize(struct anx_surface *surf)
 
 		if (!t->active || t->surf != surf)
 			continue;
-		if (surf->width < TERM_PAD * 2 + ANX_FONT_WIDTH ||
-		    surf->height < TERM_TOP + TERM_INPUT_H + ANX_FONT_HEIGHT)
-			return;	/* too small to lay out; keep the old frame */
 		px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
 		if (!px)
 			return;	/* old buffer stays, shown unscaled */
 		t->pixels = px;
 		t->pix_w  = surf->width;
 		t->pix_h  = surf->height;
-		t->cols   = (t->pix_w - TERM_PAD * 2) / ANX_FONT_WIDTH;
-		t->rows   = (t->pix_h - TERM_TOP - TERM_INPUT_H) /
-			    ANX_FONT_HEIGHT;
+		term_set_grid(t);
 		term_render(t);
 		return;
 	}
+}
+
+void anx_wm_native_terminals_redraw(void)
+{
+	uint32_t i;
+
+	for (i = 0; i < TERM_MAX; i++)
+		if (g_terms[i].active)
+			term_render(&g_terms[i]);
 }
 
 void anx_wm_launch_terminal(void)
@@ -372,7 +366,7 @@ void anx_wm_launch_terminal(void)
 	const struct anx_fb_info *fb;
 	struct anx_content_node  *cn;
 	struct anx_terminal      *t = NULL;
-	uint32_t i, w, h, buf_size;
+	uint32_t i, w, h, buf_size, top, bottom;
 
 	fb = anx_fb_get_info();
 	if (!fb || !fb->available) {
@@ -394,7 +388,9 @@ void anx_wm_launch_terminal(void)
 
 	/* Size: most of the screen below the menubar */
 	w = fb->width  * 4 / 5;
-	h = fb->height - ANX_WM_MENUBAR_H - 20;
+	top = ANX_WM_MENUBAR_H + ANX_WM_DECOR_H + anx_wm_tiling.border_w + 10;
+	bottom = ANX_WM_TASKBAR_H + anx_wm_tiling.border_w + 10;
+	h = fb->height > top + bottom ? fb->height - top - bottom : fb->height;
 	anx_wm_window_fit(&w, &h);
 
 	buf_size  = w * h * 4;
@@ -419,7 +415,7 @@ void anx_wm_launch_terminal(void)
 
 	if (anx_iface_surface_create(ANX_ENGINE_RENDERER_GPU, cn,
 				     (int32_t)((fb->width - w) / 2),
-				     (int32_t)(ANX_WM_MENUBAR_H + 10),
+				     (int32_t)top,
 				     w, h, &t->surf) != ANX_OK) {
 		anx_free(cn);
 		anx_free(t->pixels);
@@ -429,9 +425,11 @@ void anx_wm_launch_terminal(void)
 
 	t->pix_w      = w;
 	t->pix_h      = h;
-	t->cols       = (w - TERM_PAD * 2) / ANX_FONT_WIDTH;
-	t->rows       = (h - TERM_TOP - TERM_INPUT_H) / ANX_FONT_HEIGHT;
-	t->line_total = 0;
+	term_set_grid(t);
+	t->line_count = 0;
+	t->line_head = 0;
+	t->scroll_rows = 0;
+	anx_shell_history_reset(&t->recall);
 	t->input[0]   = '\0';
 	t->input_len  = 0;
 	t->active     = true;
@@ -444,12 +442,17 @@ void anx_wm_launch_terminal(void)
 	anx_iface_surface_set_title(t->surf, "ansh");
 
 	/* Initial welcome lines */
-	term_append_line(t, "Anunix Shell  (type 'help' for commands)", 41);
-	term_append_line(t, "Meta+Q to close  |  Meta+Enter for new terminal", 47);
+	term_append_text(t, "Anunix Shell (type 'help' for commands)");
+	term_append_text(t, "Up/Down: history  |  PgUp/PgDn: scroll");
 	term_append_line(t, "", 0);
 
-	anx_iface_surface_map(t->surf);
-	anx_wm_window_open(t->surf);
+	term_render(t);
+	if (anx_iface_surface_map(t->surf) != ANX_OK ||
+	    anx_wm_window_open(t->surf) != ANX_OK) {
+		anx_iface_surface_destroy(t->surf);
+		anx_wm_notify("Terminal: cannot open window");
+		return;
+	}
 	term_render(t);
 	kprintf("[terminal] opened %ux%u cols=%u rows=%u\n",
 		w, h, t->cols, t->rows);

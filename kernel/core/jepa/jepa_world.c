@@ -37,12 +37,12 @@
 /*
  * os-default: small transformer stand-in (MLP 2-layer, 256-dim).
  * Sized for real-time inference on AMD XDNA NPU (50 INT8 TOPS).
- * obs_dim is the flattened size of anx_jepa_obs; kept in sync with
+ * obs_dim is the flattened size of anx_world_obs; kept in sync with
  * anx_jepa_obs_linearize() in jepa_encoder.c.
  */
 #define OS_DEFAULT_OBS_DIM	\
-	(ANX_JEPA_OBS_SCHED_CLASSES + 1 +	/* scheduler + cell count */   \
-	 ANX_JEPA_OBS_MEM_TIERS * 2 +		/* decay avg + entry count */  \
+	(ANX_WORLD_OBS_SCHED_CLASSES + 1 +	/* scheduler + cell count */   \
+	 ANX_WORLD_OBS_MEM_TIERS * 2 +		/* decay avg + entry count */  \
 	 2 + 2 + 2 + 2)				/* routing, compute, cap, err */
 
 static const struct anx_jepa_arch_config arch_os_default = {
@@ -52,7 +52,7 @@ static const struct anx_jepa_arch_config arch_os_default = {
 	.encoder_heads   = 4,
 	.predictor_layers = 2,
 	.predictor_heads = 4,
-	.action_count    = ANX_JEPA_ACT_COUNT,
+	.action_count    = ANX_WORLD_ACT_COUNT,
 	.action_embed_dim = 32,
 };
 
@@ -135,7 +135,7 @@ static struct anx_jepa_world_profile g_world_os_default = {
 		"error_count", "security_events",
 	},
 
-	.action_count = ANX_JEPA_ACT_COUNT,
+	.action_count = ANX_WORLD_ACT_COUNT,
 	.action_names = {
 		"idle",
 		"route_local",    "route_remote",   "route_fallback",

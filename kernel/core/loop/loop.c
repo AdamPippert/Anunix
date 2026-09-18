@@ -3,7 +3,7 @@
  *
  * Phase 1: session CRUD, iteration advance, halting, and introspection.
  * Static flat-array registry (pattern mirrors workflow_object.c).
- * EBM and JEPA integration deferred to Phase 2+.
+ * EBM and world model integration deferred to Phase 2+.
  */
 
 #include <anx/loop.h>
@@ -11,7 +11,7 @@
 #include <anx/kprintf.h>
 #include <anx/spinlock.h>
 #include <anx/string.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include "loop_internal.h"
 
 /* ------------------------------------------------------------------ */
@@ -346,19 +346,19 @@ int anx_loop_session_record_score(anx_oid_t session_oid, float best_energy,
 				 * Trigger a world model rebuild when the loop
 				 * converges.  The model may have drifted; fresh
 				 * training on recently accumulated traces keeps
-				 * the JEPA predictions aligned with current
+				 * the model's predictions aligned with current
 				 * system behaviour.  Non-fatal: failures are
 				 * logged but do not block the halt.
 				 */
-				if (anx_jepa_available() &&
+				if (anx_world_available() &&
 				    s->world_uri[0] != '\0') {
 					anx_oid_t ckpt;
-					int rrc = anx_jepa_world_rebuild(
+					int rrc = anx_world_rebuild(
 						s->world_uri,
 						64, &ckpt);
 
 					if (rrc == ANX_OK)
-						anx_jepa_world_activate(
+						anx_world_activate(
 							s->world_uri,
 							&ckpt);
 					else

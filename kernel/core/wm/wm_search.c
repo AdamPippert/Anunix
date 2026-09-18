@@ -65,7 +65,7 @@ static const char *const g_builtins[] = {
 	"ls", "cat", "cp", "mv", "inspect", "search",
 	"meta", "tensor", "model", "workflow", "kickstart",
 	"fetch", "netinfo", "sysinfo", "hwd", "wifi",
-	"cells", "vm", "display", "theme", "conform",
+	"cells", "vm", "display", "theme", "colors", "config", "conform",
 	NULL
 };
 
@@ -92,23 +92,23 @@ static bool str_contains(const char *hay, const char *needle)
 
 static uint32_t uri_to_action(const char *uri)
 {
-	if (!uri) return ANX_JEPA_ACT_IDLE;
+	if (!uri) return ANX_WORLD_ACT_IDLE;
 	if (str_contains(uri, "ibal")   || str_contains(uri, "loop") ||
 	    str_contains(uri, "memory") || str_contains(uri, "pal"))
-		return ANX_JEPA_ACT_MEM_PROMOTE;
+		return ANX_WORLD_ACT_MEM_PROMOTE;
 	if (str_contains(uri, "browser") || str_contains(uri, "fetch") ||
 	    str_contains(uri, "remote"))
-		return ANX_JEPA_ACT_ROUTE_REMOTE;
+		return ANX_WORLD_ACT_ROUTE_REMOTE;
 	if (str_contains(uri, "model")  || str_contains(uri, "infer") ||
 	    str_contains(uri, "agent")  || str_contains(uri, "rag"))
-		return ANX_JEPA_ACT_CAP_VALIDATE;
+		return ANX_WORLD_ACT_CAP_VALIDATE;
 	if (str_contains(uri, "cell")   || str_contains(uri, "system") ||
 	    str_contains(uri, "vm")     || str_contains(uri, "spawn"))
-		return ANX_JEPA_ACT_CELL_SPAWN;
+		return ANX_WORLD_ACT_CELL_SPAWN;
 	if (str_contains(uri, "route")  || str_contains(uri, "net") ||
 	    str_contains(uri, "local"))
-		return ANX_JEPA_ACT_ROUTE_LOCAL;
-	return ANX_JEPA_ACT_IDLE;
+		return ANX_WORLD_ACT_ROUTE_LOCAL;
+	return ANX_WORLD_ACT_IDLE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -178,16 +178,7 @@ static void px_char(uint32_t *pixels, uint32_t stride,
 		    uint32_t fg, uint32_t bg,
 		    uint32_t clip_w, uint32_t clip_h)
 {
-	const uint16_t *glyph = anx_font_glyph(ch);
-	uint32_t r, c;
-
-	for (r = 0; r < (uint32_t)FONT_H && y + r < clip_h; r++) {
-		uint16_t bits = glyph[r];
-
-		for (c = 0; c < (uint32_t)FONT_W && x + c < clip_w; c++)
-			pixels[(y + r) * stride + (x + c)] =
-				(bits & (0x800u >> c)) ? fg : bg;
-	}
+	anx_font_blit_char_stride(pixels, stride, clip_w, clip_h, x, y, ch, fg, bg);
 }
 
 static void px_str(uint32_t *pixels, uint32_t stride,
@@ -248,7 +239,7 @@ static void cs_populate(void)
 		 * a baseline score.  No float arithmetic needed.
 		 */
 		uint32_t pal_act = anx_loop_select_action_by_prior(
-					SEARCH_WORLD, ANX_JEPA_ACT_COUNT);
+					SEARCH_WORLD, ANX_WORLD_ACT_COUNT);
 
 		for (i = 0; i < wf_count && g_cs.result_count < MAX_RESULTS; i++) {
 			uint32_t act   = uri_to_action(wf_uris[i]);
@@ -305,7 +296,7 @@ static void cs_populate(void)
 	 */
 	{
 		uint32_t pal_act = anx_loop_select_action_by_prior(
-					SEARCH_WORLD, ANX_JEPA_ACT_COUNT);
+					SEARCH_WORLD, ANX_WORLD_ACT_COUNT);
 
 		for (i = 0; i < wf_matches_count && g_cs.result_count < MAX_RESULTS; i++) {
 			uint32_t act   = uri_to_action(wf_matches[i].uri);
@@ -491,7 +482,7 @@ static void cs_record_selection(uint32_t idx)
 	if (!g_cs.agent_active) return;
 
 	act = g_cs.results[idx].is_builtin
-		? ANX_JEPA_ACT_IDLE
+		? ANX_WORLD_ACT_IDLE
 		: uri_to_action(g_cs.results[idx].uri);
 
 	anx_memset(&mp, 0, sizeof(mp));

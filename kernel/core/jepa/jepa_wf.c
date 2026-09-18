@@ -47,15 +47,15 @@ static uint32_t node_kind_to_action(uint8_t kind)
 	case ANX_WF_NODE_AGENT_CALL:
 	case ANX_WF_NODE_TRANSFORM:
 	case ANX_WF_NODE_SUBFLOW:
-		return ANX_JEPA_ACT_CELL_SPAWN;
+		return ANX_WORLD_ACT_CELL_SPAWN;
 	case ANX_WF_NODE_MODEL_CALL:
-		return ANX_JEPA_ACT_ROUTE_LOCAL;
+		return ANX_WORLD_ACT_ROUTE_LOCAL;
 	case ANX_WF_NODE_RETRIEVAL:
-		return ANX_JEPA_ACT_MEM_PROMOTE;
+		return ANX_WORLD_ACT_MEM_PROMOTE;
 	case ANX_WF_NODE_HUMAN_REVIEW:
-		return ANX_JEPA_ACT_CAP_VALIDATE;
+		return ANX_WORLD_ACT_CAP_VALIDATE;
 	default:
-		return ANX_JEPA_ACT_IDLE;
+		return ANX_WORLD_ACT_IDLE;
 	}
 }
 
@@ -66,21 +66,21 @@ static uint32_t node_kind_to_action(uint8_t kind)
 static uint32_t dominant_action(const struct anx_wf_trace_entry *entries,
 				uint32_t count)
 {
-	uint32_t tally[ANX_JEPA_ACT_COUNT];
+	uint32_t tally[ANX_WORLD_ACT_COUNT];
 	uint32_t i, best_action, best_count;
 
 	anx_memset(tally, 0, sizeof(tally));
 
 	for (i = 0; i < count; i++) {
 		uint32_t a = node_kind_to_action(entries[i].node_kind);
-		if (a < ANX_JEPA_ACT_COUNT)
+		if (a < ANX_WORLD_ACT_COUNT)
 			tally[a]++;
 	}
 
 	/* Prefer the most frequent non-IDLE action. */
-	best_action = ANX_JEPA_ACT_IDLE;
+	best_action = ANX_WORLD_ACT_IDLE;
 	best_count  = 0;
-	for (i = 1; i < ANX_JEPA_ACT_COUNT; i++) {
+	for (i = 1; i < ANX_WORLD_ACT_COUNT; i++) {
 		if (tally[i] > best_count) {
 			best_count  = tally[i];
 			best_action = i;

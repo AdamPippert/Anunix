@@ -219,7 +219,8 @@ void anx_gui_get_time(char *buf, uint32_t buflen)
 { if (buf && buflen >= 6) { buf[0]='0';buf[1]='0';buf[2]=':';buf[3]='0';buf[4]='0';buf[5]='\0'; } }
 void anx_gui_get_date(char *buf, uint32_t buflen)
 { if (buf && buflen >= 8) { buf[0]='M';buf[1]='o';buf[2]='n';buf[3]=' ';buf[4]='0';buf[5]='1';buf[6]='\0'; } }
-void anx_gui_set_tz_offset(int32_t h) { (void)h; }
+static int32_t mock_tz_offset;
+void anx_gui_set_tz_offset(int32_t h) { mock_tz_offset = h; }
 void anx_gui_draw_char_scaled(uint32_t x, uint32_t y, char c,
     uint32_t fg, uint32_t bg, uint32_t scale)
 { (void)x;(void)y;(void)c;(void)fg;(void)bg;(void)scale; }
@@ -228,19 +229,11 @@ void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
 { (void)x;(void)y;(void)s;(void)fg;(void)bg;(void)scale; }
 void anx_gui_terminal_clear(void) {}
 void anx_gui_disable(void) {}
-int32_t anx_gui_get_tz_offset(void) { return 0; }
+int32_t anx_gui_get_tz_offset(void) { return mock_tz_offset; }
 
 /* Mock JPEG splash data (real jpeg.c from lib/ is compiled) */
 const uint8_t _splash_jpg_start[1] = {0};
 const uint8_t _splash_jpg_end[1] = {0};
-
-/* Mock model client */
-void anx_model_client_init(const struct anx_model_endpoint *ep) { (void)ep; }
-bool anx_model_client_ready(void) { return false; }
-int anx_model_call(const struct anx_model_request *r, struct anx_model_response *resp)
-{ (void)r; resp->content=NULL; resp->stop_reason=NULL; resp->content_len=0;
-  resp->input_tokens=0; resp->output_tokens=0; resp->status_code=0; return ANX_EIO; }
-void anx_model_response_free(struct anx_model_response *r) { (void)r; }
 
 /* Mock ACPI */
 static struct anx_acpi_info mock_acpi = { .valid = false };
@@ -275,7 +268,9 @@ int anx_httpd_init(uint16_t p) { (void)p; return 0; }
 void anx_httpd_poll(void) {}
 int anx_sshd_init(uint16_t p) { (void)p; return 0; }
 void anx_sshd_poll(void) {}
-void anx_net_configure(const struct anx_net_config *c) { (void)c; }
+static struct anx_net_config mock_net_config;
+void anx_net_configure(const struct anx_net_config *c) { mock_net_config = *c; }
+void anx_ipv4_get_config(struct anx_net_config *out) { if (out) *out = mock_net_config; }
 int anx_net_dhcp(void) { return ANX_EIO; }
 bool anx_eth_ready(void) { return false; }
 const char *anx_eth_name(void) { return "none"; }
@@ -295,7 +290,7 @@ uint16_t anx_ip_checksum(const void *d, uint32_t l) { (void)d; (void)l; return 0
 uint32_t anx_ipv4_local_ip(void) { return 0; }
 uint32_t anx_ipv4_dns(void) { return 0; }
 void anx_icmp_recv(const void *d, uint32_t l, uint32_t s) { (void)d; (void)l; (void)s; }
-int anx_icmp_ping(uint32_t ip, uint16_t s) { (void)ip; (void)s; return ANX_EIO; }
+int anx_icmp_ping(uint32_t ip, uint16_t s, uint32_t *r) { (void)ip; (void)s; (void)r; return ANX_EIO; }
 void anx_udp_init(void) {}
 void anx_udp_recv(const void *d, uint32_t l, uint32_t s) { (void)d; (void)l; (void)s; }
 int anx_udp_send(uint32_t dst, uint16_t sp, uint16_t dp, const void *d, uint32_t l)
@@ -477,6 +472,8 @@ void anx_xdna_info(void) {}
  * references from test_main.c / kernel_main(). */
 void anx_drivers_probe(void) {}
 bool anx_net_probe_ok(void) { return false; }
+struct anx_pci_device;
+const char *anx_driver_for_pci(const struct anx_pci_device *d) { (void)d; return NULL; }
 
 /* Mock device tree — architecture init provides the real implementation;
  * mock_arch.c provides it for test builds where arch_init.c is not compiled. */

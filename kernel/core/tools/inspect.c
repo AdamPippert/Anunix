@@ -48,29 +48,6 @@ static const char *state_name(enum anx_object_state s)
 	}
 }
 
-static int resolve_arg(const char *arg, anx_oid_t *oid)
-{
-	const char *colon = arg;
-	int ret;
-
-	while (*colon && *colon != ':')
-		colon++;
-	if (*colon == ':') {
-		char ns_buf[64];
-		uint32_t ns_len = (uint32_t)(colon - arg);
-
-		if (ns_len < sizeof(ns_buf)) {
-			anx_memcpy(ns_buf, arg, ns_len);
-			ns_buf[ns_len] = '\0';
-			return anx_ns_resolve(ns_buf, colon + 1, oid);
-		}
-	}
-	ret = anx_ns_resolve("default", arg, oid);
-	if (ret == ANX_OK)
-		return ANX_OK;
-	return anx_ns_resolve("posix", arg, oid);
-}
-
 void cmd_inspect(int argc, char **argv)
 {
 	const char *target = NULL;
@@ -95,7 +72,7 @@ void cmd_inspect(int argc, char **argv)
 		return;
 	}
 
-	ret = resolve_arg(target, &oid);
+	ret = anx_so_resolve(target, &oid);
 	if (ret != ANX_OK) {
 		kprintf("inspect: '%s' not found\n", target);
 		return;

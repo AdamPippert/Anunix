@@ -20,6 +20,12 @@ void anx_uobj_load(void);
 /* Record/update a user object in the disk journal */
 void uobj_record(const char *ns, const char *path,
 		  const void *payload, uint32_t payload_len);
+/* Persist without truncation; return disk errors to the caller. */
+int anx_uobj_record_checked(const char *ns, const char *path,
+			    const void *payload, uint32_t payload_len);
+/* Overwrite an existing named object's bytes, then persist it. */
+int anx_uobj_write_at(const char *name, uint32_t offset,
+		      const void *data, uint32_t len);
 /* Remove a user object from the disk journal (called by rm) */
 void uobj_remove(const char *ns, const char *path);
 void cmd_cp(int argc, char **argv);
@@ -73,6 +79,13 @@ int cmd_workflow(int argc, char **argv);
 
 /* Theme control (RFC-0019) */
 int cmd_theme(int argc, char **argv);
+
+/* Desktop wallpaper: an ARGB State Object, or "none" for the gradient. */
+int cmd_wallpaper(int argc, char **argv);
+
+/* Save the appearance to system:config/theme, and load it back. */
+int anx_theme_save(void);
+int anx_theme_load(void);
 
 /* Clear the terminal */
 void cmd_clear(int argc, char **argv);

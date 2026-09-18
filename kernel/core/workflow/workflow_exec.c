@@ -778,7 +778,7 @@ anx_wf_run(const anx_oid_t *wf_oid, anx_cid_t *run_cid_out)
 	uint32_t i, j;
 	int ret;
 
-	struct anx_jepa_obs obs_before, obs_after;
+	struct anx_world_obs obs_before, obs_after;
 	anx_oid_t obs_before_oid, obs_after_oid, trace_oid;
 	bool jepa_obs_ok = false;
 

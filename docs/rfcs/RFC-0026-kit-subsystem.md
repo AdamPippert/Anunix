@@ -412,7 +412,7 @@ This RFC supersedes ad-hoc loading in three subsystems. Migration happens after 
 
 Phases 1–2 ship without changing any existing subsystem behavior; the kit registry exists but is empty (except for a placeholder boot kit used for self-test).
 
-Phases 3–5 each migrate one subsystem. Each migration ships the kit and the consumer change *and* keeps the existing shell/API surfaces working as thin wrappers over the new path. `browser_init` still works; under the hood it calls `kit enable`. `jepa world set` still works; under the hood it calls `kit enable` on the named jepa-world kit. No external behavior breaks during migration.
+Phases 3–5 each migrate one subsystem. Each migration ships the kit and the consumer change *and* keeps the existing shell/API surfaces working as thin wrappers over the new path. `browser_init` still works; under the hood it calls `kit enable`. `world set` (formerly `jepa world set`) still works; under the hood it calls `kit enable` on the named world-model kit. No external behavior breaks during migration.
 
 Phase 6 retires the manual `socat`/`anxbproxy` invocation from documentation; failure to launch the proxy becomes a one-click fix.
 

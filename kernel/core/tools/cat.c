@@ -19,37 +19,6 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 
-/* Resolve an argument to an OID — try namespace first, then OID prefix */
-static int resolve_oid(const char *arg, anx_oid_t *oid)
-{
-	/* Check for namespace:path format */
-	const char *colon = arg;
-	int ret;
-
-	while (*colon && *colon != ':')
-		colon++;
-
-	if (*colon == ':') {
-		char ns_buf[64];
-		uint32_t ns_len = (uint32_t)(colon - arg);
-
-		if (ns_len < sizeof(ns_buf)) {
-			anx_memcpy(ns_buf, arg, ns_len);
-			ns_buf[ns_len] = '\0';
-			return anx_ns_resolve(ns_buf, colon + 1, oid);
-		}
-	}
-
-	/* Try default namespace */
-	ret = anx_ns_resolve("default", arg, oid);
-	if (ret == ANX_OK)
-		return ANX_OK;
-
-	/* Try as OID prefix — iterate objects to find match */
-	/* For now, just try posix namespace too */
-	return anx_ns_resolve("posix", arg, oid);
-}
-
 static void hex_dump(const uint8_t *data, uint32_t len)
 {
 	uint32_t i, j;
@@ -93,7 +62,7 @@ void cmd_cat(int argc, char **argv)
 		return;
 	}
 
-	ret = resolve_oid(target, &oid);
+	ret = anx_so_resolve(target, &oid);
 	if (ret != ANX_OK) {
 		kprintf("cat: '%s' not found (%d)\n", target, ret);
 		return;

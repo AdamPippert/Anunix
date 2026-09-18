@@ -152,6 +152,9 @@ void anx_net_stack_init(const struct anx_net_config *cfg);
 /* Change addresses on a running stack; sockets and listeners survive. */
 void anx_net_configure(const struct anx_net_config *cfg);
 
+/* Copy the active IPv4 address configuration. */
+void anx_ipv4_get_config(struct anx_net_config *out);
+
 /* Run DHCP on the active NIC and apply the lease. */
 int anx_net_dhcp(void);
 
@@ -181,7 +184,11 @@ uint16_t anx_ip_checksum(const void *data, uint32_t len);
 
 /* ICMP layer */
 void anx_icmp_recv(const void *data, uint32_t len, uint32_t src_ip);
-int anx_icmp_ping(uint32_t dst_ip, uint16_t seq);
+/*
+ * Send one echo request and wait up to 2 s for its reply. Returns ANX_OK
+ * with the round trip in *rtt_ms (10 ms resolution), or ANX_ETIMEDOUT.
+ */
+int anx_icmp_ping(uint32_t dst_ip, uint16_t seq, uint32_t *rtt_ms);
 
 /* Set the local IP for ARP replies (called by stack init) */
 void anx_arp_set_ip(uint32_t ip);
@@ -235,7 +242,7 @@ int anx_dhcp_discover(struct anx_net_config *cfg);
 
 /* NTP time sync */
 int anx_ntp_sync(uint32_t server_ip);
-uint32_t anx_ntp_unix_time(void);	/* last synced UNIX timestamp, 0 if never */
+uint32_t anx_ntp_unix_time(void);	/* current UNIX time from the last sync, 0 if never */
 
 /* Poll the network device and process any received packets */
 void anx_net_poll(void);

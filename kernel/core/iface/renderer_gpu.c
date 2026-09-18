@@ -10,9 +10,11 @@
 
 #include <anx/interface_plane.h>
 #include <anx/fb.h>
+#include <anx/kprintf.h>
 #include <anx/gui.h>
 #include <anx/font.h>
 #include <anx/theme.h>
+#include <anx/window_chrome.h>
 #include <anx/string.h>
 #include <anx/types.h>
 #include <anx/wm.h>
@@ -26,6 +28,81 @@
 #define BUTTON_PAD_Y   4u
 #define BUTTON_BORDER  2u
 
+/* Same integer circle as the framebuffer's rounded corners. */
+static uint32_t isqrt_corner(uint32_t r, uint32_t dy)
+{
+	uint32_t v = r * r - dy * dy, rem = 0, root = 0, i;
+
+	for (i = 0; i < 16; i++) {
+		root <<= 1;
+		rem = (rem << 2) | (v >> 30);
+		v <<= 2;
+		if (root < rem) {
+			rem -= root | 1;
+			root += 2;
+		}
+	}
+	return root >> 1;
+}
+
+/*
+ * The frame shape the canvas is being drawn inside, so the blit can stop
+ * at a rounded or mitred corner instead of squaring it off.
+ */
+static struct {
+	bool             on;
+	int32_t          x, y;
+	uint32_t         w, h;
+	struct anx_shape shape;
+} g_clip;
+
+/* Absolute x range the frame allows on this screen row. */
+static bool clip_row(uint32_t abs_y, uint32_t *x0, uint32_t *x1)
+{
+	uint32_t r, row_off, left = 0, right = 0, depth;
+	uint8_t cl, cr;
+
+	if (!g_clip.on)
+		return false;
+	if ((int32_t)abs_y < g_clip.y ||
+	    abs_y >= (uint32_t)(g_clip.y + (int32_t)g_clip.h))
+		return false;
+
+	r = g_clip.shape.radius;
+	if (r > g_clip.w / 2)
+		r = g_clip.w / 2;
+	if (r > g_clip.h / 2)
+		r = g_clip.h / 2;
+	if (r == 0)
+		return false;
+
+	row_off = abs_y - (uint32_t)g_clip.y;
+	if (row_off < r) {
+		depth = row_off;
+		cl = g_clip.shape.corner[0];
+		cr = g_clip.shape.corner[1];
+	} else if (row_off + r >= g_clip.h) {
+		depth = g_clip.h - 1 - row_off;
+		cl = g_clip.shape.corner[3];
+		cr = g_clip.shape.corner[2];
+	} else {
+		return false;
+	}
+
+	if (cl == ANX_CORNER_MITRE)
+		left = r - depth;
+	else if (cl == ANX_CORNER_ROUND)
+		left = r - isqrt_corner(r, r - depth);
+	if (cr == ANX_CORNER_MITRE)
+		right = r - depth;
+	else if (cr == ANX_CORNER_ROUND)
+		right = r - isqrt_corner(r, r - depth);
+
+	*x0 = (uint32_t)g_clip.x + left;
+	*x1 = (uint32_t)g_clip.x + g_clip.w - right;
+	return true;
+}
+
 static void
 render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 {
@@ -36,6 +113,8 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 	uint32_t        r0, r1, c0, c1;
 	uint32_t        fb_x0, copy_w;
 	uint32_t        bw, bh, vis_w, vis_h;
+	uint32_t        clip_x0 = 0, clip_x1 = 0;
+	uint8_t         blend_alpha;
 
 	/*
 	 * The buffer keeps the size it was created with, but the WM may have
@@ -93,12 +172,38 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 					 ANX_COLOR_AX_BG);
 	}
 
+	/*
+	 * Transparency. A panel (the menu bar, the task bar) sits on the
+	 * desktop, so the desktop under it is repainted and the canvas is
+	 * blended over it; without that the blend would darken a little
+	 * more on every commit. Windows are only blended during a full
+	 * repaint, when what is under them is freshly drawn.
+	 */
+	{
+		const struct anx_theme *th = anx_theme_get();
+		bool panel = surf->no_focus;
+
+		blend_alpha = 255;
+		if (panel && th->deco.bar_opacity < 255) {
+			blend_alpha = th->deco.bar_opacity;
+			anx_wm_desktop_paint((uint32_t)surf->x,
+					     (uint32_t)surf->y,
+					     surf->width, surf->height);
+		} else if (!panel && th->deco.transparency_enabled &&
+			   th->deco.window_opacity < 255 &&
+			   anx_wm_in_repaint()) {
+			blend_alpha = th->deco.window_opacity;
+		}
+	}
+
 	fb_x0  = (uint32_t)surf->x + c0;
 	copy_w = c1 - c0;
 	if (fb_x0 >= fbinfo->width)
 		return;
 	if (fb_x0 + copy_w > fbinfo->width)
 		copy_w = fbinfo->width - fb_x0;
+
+	anx_fb_mark_dirty(fb_x0, (uint32_t)surf->y + r0, copy_w, r1 - r0);
 
 	/* Row-at-a-time blit using 32-bit pixel writes (avoids 64-bit MMIO issues). */
 	for (row = r0; row < r1; row++) {
@@ -111,6 +216,20 @@ render_canvas(struct anx_surface *surf, struct anx_content_node *node)
 			break;
 		dst_row = anx_fb_row_ptr(dst_y) + fb_x0;
 		src_row = src + row * bw + c0;
+		if (blend_alpha != 255 && !clip_row(dst_y, &clip_x0, &clip_x1)) {
+			anx_fb_blend_row(fb_x0, dst_y, copy_w, src_row,
+					 blend_alpha);
+			continue;
+		}
+		if (clip_row(dst_y, &clip_x0, &clip_x1)) {
+			for (col = 0; col < copy_w; col++) {
+				uint32_t px = fb_x0 + col;
+
+				if (px >= clip_x0 && px < clip_x1)
+					dst_row[col] = src_row[col];
+			}
+			continue;
+		}
 		for (col = 0; col < copy_w; col++)
 			dst_row[col] = src_row[col];
 	}
@@ -206,115 +325,217 @@ gpu_map(struct anx_surface *surf)
 	return ANX_OK;
 }
 
+/*
+ * The frame a window paints: its title bar, border ring and the shadow
+ * around them, in screen coordinates.
+ */
+struct frame_rect {
+	int32_t  x, y;
+	uint32_t w, h;
+	uint32_t title_h;	/* 0 when the window has no title bar */
+	uint32_t border;
+};
+
+static void frame_of(const struct anx_surface *surf, struct frame_rect *f)
+{
+	const struct anx_theme *theme = anx_theme_get();
+	bool titled = surf->title[0] && surf->y >= (int32_t)ANX_WM_DECOR_H;
+
+	f->border  = surf->title[0] ? anx_wm_tiling.border_w : 0;
+	f->title_h = titled ? ANX_WM_DECOR_H : 0;
+	f->x = surf->x - (int32_t)f->border;
+	f->y = surf->y - (int32_t)(f->title_h + f->border);
+	f->w = surf->width + 2 * f->border;
+	f->h = surf->height + f->title_h + 2 * f->border;
+	(void)theme;
+}
+
+/*
+ * The shadow is translucent, so it may only be laid on freshly painted
+ * background: during a full repaint the WM paints the desktop and the
+ * windows below this one first. Outside that pass whatever shadow is
+ * already on screen stays, which keeps it from darkening on every
+ * commit.
+ */
+static void draw_shadow(const struct frame_rect *f,
+			const struct anx_shape *shape)
+{
+	const struct anx_theme *theme = anx_theme_get();
+
+	if (!theme->deco.shadow_enabled || !anx_wm_in_repaint())
+		return;
+	if (f->x < 0 || f->y < 0)
+		return;
+
+	anx_fb_shadow_shape((uint32_t)f->x, (uint32_t)f->y, f->w, f->h, shape,
+			    (int32_t)theme->deco.shadow_offset_x,
+			    (int32_t)theme->deco.shadow_offset_y,
+			    theme->deco.shadow_blur,
+			    theme->palette.shadow & 0x00FFFFFFu, 190);
+}
+
+/* Caption glyphs use the titlebar's shape and screen bounds. */
+static void chrome_fill_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+			     uint32_t color)
+{
+	const struct anx_fb_info *fb = anx_fb_get_info();
+	uint32_t row;
+
+	if (x >= fb->width || y >= fb->height)
+		return;
+	if (w > fb->width - x) w = fb->width - x;
+	if (h > fb->height - y) h = fb->height - y;
+	for (row = y; row < y + h; row++) {
+		uint32_t x0 = x, x1 = x + w, left, right;
+
+		if (clip_row(row, &left, &right)) {
+			if (x0 < left) x0 = left;
+			if (x1 > right) x1 = right;
+		}
+		if (x1 > x0)
+			anx_fb_fill_rect(x0, row, x1 - x0, 1, color);
+	}
+}
+
+static void draw_caption_button(uint32_t tx, uint32_t ty,
+				const struct anx_chrome_rect *r,
+				enum anx_window_button button,
+				uint32_t background, uint32_t glyph)
+{
+	uint32_t x = tx + r->x, y = ty + r->y, i;
+
+	if (!r->w || !r->h)
+		return;
+	chrome_fill_rect(x, y, r->w, r->h, background);
+	if (r->w < 12 || r->h < 12)
+		return;
+	x += (r->w - 10) / 2;
+	y += (r->h - 10) / 2;
+	if (button == ANX_WINDOW_BUTTON_MINIMIZE) {
+		chrome_fill_rect(x, y + 5, 10, 1, glyph);
+	} else if (button == ANX_WINDOW_BUTTON_MAXIMIZE) {
+		chrome_fill_rect(x, y, 10, 1, glyph);
+		chrome_fill_rect(x, y + 9, 10, 1, glyph);
+		chrome_fill_rect(x, y, 1, 10, glyph);
+		chrome_fill_rect(x + 9, y, 1, 10, glyph);
+	} else {
+		for (i = 0; i < 10; i++) {
+			chrome_fill_rect(x + i, y + i, 1, 1, glyph);
+			chrome_fill_rect(x + i, y + 9 - i, 1, 1, glyph);
+		}
+	}
+}
+
+static void draw_signature_button(uint32_t tx, uint32_t ty,
+				  const struct anx_chrome_rect *r,
+				  bool close, uint32_t color, uint32_t glyph)
+{
+	uint32_t x = tx + r->x, y = ty + r->y, i;
+
+	if (!r->w || !r->h)
+		return;
+	anx_fb_fill_rounded_rect(x, y, r->w, r->h, r->w / 2, color);
+	if (r->w < 14 || r->h < 14)
+		return;
+	anx_fb_blend_rect(x + 2, y + 2, 5, 4, 0x00FFFFFF, 90);
+	if (close)
+		for (i = 0; i < 6; i++) {
+			chrome_fill_rect(x + 4 + i, y + 4 + i, 2, 1, glyph);
+			chrome_fill_rect(x + 4 + i, y + 9 - i, 2, 1, glyph);
+		}
+}
+
 static int
 gpu_commit(struct anx_surface *surf)
 {
+	const struct anx_theme *theme = anx_theme_get();
+	struct anx_shape shape;
+	struct frame_rect f;
+	bool decorated;
+
 	if (!anx_fb_available())
 		return ANX_EIO;
 
+	frame_of(surf, &f);
+	decorated = surf->title[0] != '\0';
+	shape = decorated ? anx_theme_window_shape(0)
+			  : anx_fb_shape_uniform(0, ANX_CORNER_SQUARE);
+
 	/* Everything below paints the surface, its title bar and border. */
 	{
-		uint32_t bw = surf->title[0] ? anx_wm_tiling.border_w : 0;
+		int32_t reach = (int32_t)anx_wm_shadow_reach();
 
-		anx_wm_cursor_hide_rect(surf->x - (int32_t)bw,
-					surf->y - (int32_t)(ANX_WM_DECOR_H + bw),
-					surf->width + 2 * bw,
-					surf->height + ANX_WM_DECOR_H + 2 * bw);
+		anx_wm_cursor_hide_rect(f.x - reach, f.y - reach,
+					f.w + 2 * (uint32_t)reach,
+					f.h + 2 * (uint32_t)reach);
 	}
+
+	if (decorated)
+		draw_shadow(&f, &shape);
 
 	render_node(surf, surf->content_root);
 
-	/* Window decoration: gradient titlebar + traffic-light buttons.
-	 * Skipped for untitled surfaces and surfaces flush with the top. */
-	if (surf->title[0] && surf->y >= (int32_t)ANX_WM_DECOR_H) {
-		const struct anx_theme *theme = anx_theme_get();
-		anx_oid_t foc    = anx_input_focus_get();
-		bool      is_foc = (foc.hi == surf->oid.hi && foc.lo == surf->oid.lo);
-		uint32_t  tfg    = is_foc ? 0x00FFFFFFu : theme->palette.text_dim;
-		uint32_t tx  = (uint32_t)surf->x;
-		uint32_t ty  = (uint32_t)(surf->y - (int32_t)ANX_WM_DECOR_H);
-		uint32_t fy  = ty + (ANX_WM_DECOR_H - ANX_FONT_HEIGHT) / 2;
+	/* Untitled surfaces and surfaces flush with the top have no caption. */
+	if (f.title_h) {
+		anx_oid_t foc = anx_input_focus_get();
+		bool is_foc = foc.hi == surf->oid.hi && foc.lo == surf->oid.lo;
+		bool windows = theme->deco.controls == ANX_CONTROLS_WINDOWS;
+		uint32_t tfg = is_foc ? theme->palette.text_primary : theme->palette.text_dim;
+		uint32_t tx = (uint32_t)surf->x;
+		uint32_t ty = (uint32_t)(surf->y - (int32_t)f.title_h);
+		uint32_t fy = ty + (f.title_h - ANX_FONT_HEIGHT) / 2;
+		uint32_t bg_from = is_foc ? theme->palette.title_from : theme->palette.title_idle;
+		uint32_t bg_to = is_foc ? theme->palette.title_to : theme->palette.title_idle;
+		uint32_t colors[] = { theme->palette.btn_close, theme->palette.btn_min,
+				      theme->palette.btn_max };
+		struct anx_shape top = shape;
+		struct anx_window_chrome chrome;
+		char title[sizeof(surf->title)];
+		uint32_t i, max_chars;
 
-		/* Traffic-light circles: 14px diameter, left side, 8px margin */
-		uint32_t dot_d  = ANX_WM_BTN_D;
-		uint32_t dot_r  = dot_d / 2;
-		uint32_t dot_y  = ty + (ANX_WM_DECOR_H - dot_d) / 2;
-		uint32_t dot_cl = tx + ANX_WM_BTN_LEFT;		/* close (red) */
-		uint32_t dot_ml = dot_cl + dot_d + ANX_WM_BTN_GAP; /* minimize */
-		uint32_t dot_xl = dot_ml + dot_d + ANX_WM_BTN_GAP; /* maximize */
-
-		/* Titlebar background.
-		 * Focused: 135° three-stop diagonal navy-800 → navy-700 → teal-400.
-		 * Unfocused: flat surface with 1px top inset highlight. */
-		if (is_foc) {
-			anx_fb_fill_gradient3(tx, ty, surf->width, ANX_WM_DECOR_H,
-					      theme->palette.surface,
-					      0x001D4470u,
-					      theme->palette.border,
-					      true);
-			/* Inset top-edge highlight */
-			anx_fb_fill_rect(tx, ty, surf->width, 1, 0x002A6080u);
-		} else {
-			anx_fb_fill_rect(tx, ty, surf->width, ANX_WM_DECOR_H,
-					 theme->palette.surface);
-			/* Subtle top bevel on unfocused */
-			anx_fb_fill_rect(tx, ty, surf->width, 1, 0x001D4470u);
+		top.corner[2] = ANX_CORNER_SQUARE;
+		top.corner[3] = ANX_CORNER_SQUARE;
+		if (top.radius > surf->width / 2) top.radius = surf->width / 2;
+		if (top.radius > f.title_h / 2) top.radius = f.title_h / 2;
+		anx_window_chrome_layout(theme->deco.controls, surf->width, f.title_h, &chrome);
+		anx_fb_fill_shape_gradient(tx, ty, surf->width, f.title_h,
+					   &top, bg_from, bg_to, true);
+		g_clip.on = true;
+		g_clip.x = surf->x;
+		g_clip.y = (int32_t)ty;
+		g_clip.w = surf->width;
+		g_clip.h = f.title_h;
+		g_clip.shape = top;
+		if (!windows) {
+			/* Keep the signature theme's light bevel and shaded seam. */
+			anx_fb_blend_rect(tx + top.radius, ty, surf->width - 2 * top.radius,
+					  1, 0x00FFFFFF, is_foc ? 40 : 20);
+			anx_fb_blend_rect(tx, ty + f.title_h - 1, surf->width, 1,
+					  0x00000000, is_foc ? 90 : 50);
 		}
-
-		/* 1px bottom separator */
-		anx_fb_fill_rect(tx, ty + ANX_WM_DECOR_H - 1, surf->width, 1,
-				 is_foc ? 0x000A1E30u : theme->palette.surface);
-
-		/* Traffic-light circles — base color + top-left highlight sphere */
-		anx_fb_fill_rounded_rect(dot_cl, dot_y, dot_d, dot_d, dot_r,
-					 theme->palette.error);
-		anx_fb_fill_rounded_rect(dot_cl, dot_y, 8, 8, 4, 0x00FF8B7Au);
-
-		anx_fb_fill_rounded_rect(dot_ml, dot_y, dot_d, dot_d, dot_r,
-					 theme->palette.warning);
-		anx_fb_fill_rounded_rect(dot_ml, dot_y, 8, 8, 4, 0x00F0C65Au);
-
-		anx_fb_fill_rounded_rect(dot_xl, dot_y, dot_d, dot_d, dot_r,
-					 theme->palette.success);
-		anx_fb_fill_rounded_rect(dot_xl, dot_y, 8, 8, 4, 0x007FD08Au);
-
-		/* Title: left-aligned after traffic lights */
-		anx_gui_draw_string_scaled(dot_xl + dot_d + 8, fy,
-					   surf->title, tfg,
-					   is_foc ? 0x001D4470u
-						  : theme->palette.surface, 1);
-	}
-
-	/*
-	 * Window border: a ring outside the title bar and canvas, so it never
-	 * covers content. Width and colours follow the tiling settings and the
-	 * theme: accent when focused (Hyprland col.active_border), the surface
-	 * colour otherwise (col.inactive_border).
-	 */
-	if (surf->title[0] && surf->width && surf->height &&
-	    anx_wm_tiling.border_w) {
-		const struct anx_theme *theme2 = anx_theme_get();
-		anx_oid_t foc2    = anx_input_focus_get();
-		bool      is_foc2 = (foc2.hi == surf->oid.hi &&
-				     foc2.lo == surf->oid.lo);
-		uint32_t  col = is_foc2 ? theme2->palette.accent
-					: theme2->palette.surface;
-		uint32_t  bw  = anx_wm_tiling.border_w;
-		int32_t   top = surf->y >= (int32_t)ANX_WM_DECOR_H
-				? surf->y - (int32_t)ANX_WM_DECOR_H : surf->y;
-		int32_t   ox  = surf->x - (int32_t)bw;
-		int32_t   oy  = top - (int32_t)bw;
-		uint32_t  ow  = surf->width + 2 * bw;
-		uint32_t  oh  = (uint32_t)(surf->y - top) + surf->height + 2 * bw;
-
-		if (ox >= 0 && oy >= 0) {
-			anx_fb_fill_rect((uint32_t)ox, (uint32_t)oy, ow, bw, col);
-			anx_fb_fill_rect((uint32_t)ox,
-					 (uint32_t)oy + oh - bw, ow, bw, col);
-			anx_fb_fill_rect((uint32_t)ox, (uint32_t)oy, bw, oh, col);
-			anx_fb_fill_rect((uint32_t)ox + ow - bw, (uint32_t)oy,
-					 bw, oh, col);
+		for (i = 0; i < 3; i++) {
+			if (windows)
+				draw_caption_button(tx, ty, &chrome.draw[i],
+					(enum anx_window_button)(ANX_WINDOW_BUTTON_CLOSE + i),
+					is_foc ? colors[i] : theme->palette.title_idle,
+					is_foc ? theme->palette.btn_glyph : theme->palette.text_dim);
+			else
+				draw_signature_button(tx, ty, &chrome.draw[i], i == 0,
+						      colors[i], theme->palette.btn_glyph);
 		}
+		if (windows)
+			chrome_fill_rect(tx, ty + f.title_h - 1, surf->width, 1,
+					 is_foc ? theme->palette.accent : theme->palette.border);
+		g_clip.on = false;
+		/* A long title must stop before controls and the far window edge. */
+		max_chars = chrome.title_width / ANX_FONT_WIDTH;
+		if (max_chars >= sizeof(title)) max_chars = sizeof(title) - 1;
+		for (i = 0; i < max_chars && surf->title[i]; i++)
+			title[i] = surf->title[i];
+		title[i] = '\0';
+		if (i)
+			anx_gui_draw_string_scaled(tx + chrome.title_x, fy,
+						   title, tfg, bg_from, 1);
 	}
 
 	return ANX_OK;
@@ -328,16 +549,28 @@ gpu_damage(struct anx_surface *surf,
 	(void)surf; (void)x; (void)y; (void)w; (void)h;
 }
 
+/* Clearing on unmap has to cover the shadow too, or it stays behind. */
 static void
 gpu_unmap(struct anx_surface *surf)
 {
-	/* Clear the surface region to background colour */
+	/* Repaint the desktop over the frame and everything it cast */
 	if (anx_fb_available() && surf->width && surf->height) {
-		anx_wm_cursor_hide_rect(surf->x, surf->y,
-					surf->width, surf->height);
-		anx_fb_fill_rect((uint32_t)surf->x, (uint32_t)surf->y,
-		                  surf->width, surf->height,
-		                  ANX_COLOR_SKY_BLUE);
+		struct frame_rect f;
+		int32_t reach = (int32_t)anx_wm_shadow_reach();
+		int32_t x, y;
+
+		frame_of(surf, &f);
+		x = f.x - reach;
+		y = f.y - reach;
+		anx_wm_cursor_hide_rect(x, y, f.w + 2 * (uint32_t)reach,
+					f.h + 2 * (uint32_t)reach);
+		if (x < 0)
+			x = 0;
+		if (y < 0)
+			y = 0;
+		anx_wm_desktop_paint((uint32_t)x, (uint32_t)y,
+				     f.w + 2 * (uint32_t)reach,
+				     f.h + 2 * (uint32_t)reach);
 	}
 }
 

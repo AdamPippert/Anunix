@@ -12,6 +12,7 @@
 #define ANX_WM_H
 
 #include <anx/types.h>
+#include <anx/fb.h>
 #include <anx/interface_plane.h>
 
 /* ------------------------------------------------------------------ */
@@ -21,18 +22,53 @@
 #define ANX_WM_WORKSPACES	9	/* number of virtual workspaces */
 #define ANX_WM_WS_SURFS		32	/* max surfaces per workspace */
 #define ANX_WM_HOTKEYS		64	/* max registered hotkeys */
-#define ANX_WM_MENUBAR_H	34	/* menu bar height in pixels */
+#define ANX_WM_MENUBAR_H	51	/* 150% of the original 34-pixel bar */
 #define ANX_WM_TASKBAR_H	22	/* taskbar height in pixels */
 #define ANX_WM_DECOR_H		28	/* window titlebar decoration height */
 
 /*
- * Titlebar buttons: close, minimize, maximize, left to right from the
- * window's left edge. The renderer draws them and the WM hit-tests them
- * from these same numbers, so the two cannot drift apart again.
+ * The desktop behind the windows (wm_desktop.c). Paint only the region
+ * asked for: repaints are regional, and a gradient or image must line up
+ * with the parts already on screen.
  */
-#define ANX_WM_BTN_D		14	/* button diameter */
-#define ANX_WM_BTN_LEFT		8	/* window edge to first button */
-#define ANX_WM_BTN_GAP		5	/* space between buttons */
+void anx_wm_desktop_paint(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
+/* Repaint the whole screen: the desktop, then every visible window. */
+void anx_wm_repaint_all(void);
+
+/*
+ * Draw a shape with a vertical gradient into a panel's own pixel buffer
+ * (wm_paint.c), so a tab looks like a window frame. shape may be NULL
+ * for a plain rectangle.
+ */
+void anx_wm_buf_gradient(uint32_t *buf, uint32_t bw, uint32_t bh,
+			 uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+			 const struct anx_shape *shape,
+			 uint32_t from, uint32_t to);
+
+/* Blend one color over a rectangle of a panel's buffer. */
+void anx_wm_buf_blend(uint32_t *buf, uint32_t bw, uint32_t bh,
+		      uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+		      uint32_t color, uint8_t alpha);
+
+/*
+ * True while anx_wm_expose() repaints a region back to front. Anything
+ * translucent -- a shadow, a see-through panel -- may only paint during
+ * that pass, when the background beneath it is freshly drawn.
+ */
+bool anx_wm_in_repaint(void);
+
+/*
+ * How far a window's shadow reaches past its frame. Repaint and hit
+ * bookkeeping add this to every window rectangle, so it is 0 when the
+ * theme has shadows off.
+ */
+uint32_t anx_wm_shadow_reach(void);
+
+/* Use a validated State Object image; an empty path selects the built-in image. */
+int  anx_wm_wallpaper_set(const char *path);
+/* True when either a selected object or the built-in image is valid. */
+bool anx_wm_wallpaper_ready(void);
 
 /*
  * Largest pixel buffer one window may own. A large allocation takes a
@@ -256,6 +292,8 @@ bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode);
 
 /* ---- Menu bar ---- */
 void anx_wm_menubar_refresh(void);
+/* Bar-local hit: -1 logo, -2 power, 1..9 workspace, 0 empty. */
+int anx_wm_menubar_hit(int32_t x, int32_t y);
 
 /* Power dialog: confirms restart or halt before anything happens. */
 void anx_wm_power_open(void);
@@ -335,6 +373,9 @@ void anx_wm_terminal_flush_if_dirty(void);
 void anx_wm_terminal_redraw(void);
 
 /* ---- Boot-time AI agent surface ---- */
+/* Refresh cached shell canvases after changing the theme font. */
+void anx_wm_native_terminals_redraw(void);
+void anx_wm_agent_redraw(void);
 void anx_wm_agent_open(void);
 void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode);
 void anx_wm_agent_flush_if_dirty(void);

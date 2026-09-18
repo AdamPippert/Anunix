@@ -339,6 +339,11 @@ static void cmd_tensor_fill(int argc, char **argv)
 	}
 
 	ret = anx_tensor_fill(&oid, argv[3]);
+	if (ret == ANX_EINVAL) {
+		kprintf("error: unknown pattern '%s' (zeros, ones, range)\n",
+			argv[3]);
+		return;
+	}
 	if (ret != ANX_OK) {
 		kprintf("error: fill failed (%d)\n", ret);
 		return;
@@ -557,6 +562,11 @@ static void cmd_tensor_search(int argc, char **argv)
 	}
 
 	ret = anx_tensor_search(argv[2], results, 32, &count);
+	if (ret == ANX_EINVAL) {
+		kprintf("error: bad predicate '%s' "
+			"(e.g. sparsity>0.5, dtype==int8)\n", argv[2]);
+		return;
+	}
 	if (ret != ANX_OK) {
 		kprintf("error: search failed (%d)\n", ret);
 		return;

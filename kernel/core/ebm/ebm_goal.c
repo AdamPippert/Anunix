@@ -2,7 +2,7 @@
  * ebm_goal.c — Goal alignment energy scorer (RFC-0020 Phase 3).
  *
  * Delegates to anx_loop_goal_alignment_energy() (loop_goal.c), which
- * matches keywords in the session's goal_text against JEPA action
+ * matches keywords in the session's goal_text against world action
  * categories.  Returns neutral 0.5 when the session has no goal.
  */
 

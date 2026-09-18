@@ -23,7 +23,7 @@
 #include <anx/types.h>
 #include <anx/memory.h>
 #include <anx/loop.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/xdna.h>
@@ -67,14 +67,14 @@ static void prime_action(const char *world, uint32_t action_id,
 }
 
 /* ------------------------------------------------------------------ */
-/* URI → JEPA action mapping (mirrors wm_search.c's uri_to_action)    */
+/* URI → world action mapping (mirrors wm_search.c's uri_to_action)    */
 /* ------------------------------------------------------------------ */
 
 static uint32_t uri_to_action(const char *uri)
 {
 	const char *p;
 
-	if (!uri) return ANX_JEPA_ACT_IDLE;
+	if (!uri) return ANX_WORLD_ACT_IDLE;
 
 	/* simple substring walk without anx_strstr */
 #define CONTAINS(needle) \
@@ -87,21 +87,21 @@ static uint32_t uri_to_action(const char *uri)
 
 	if (CONTAINS("ibal") || CONTAINS("loop") || CONTAINS("memory") ||
 	    CONTAINS("pal"))
-		return ANX_JEPA_ACT_MEM_PROMOTE;
+		return ANX_WORLD_ACT_MEM_PROMOTE;
 	if (CONTAINS("browser") || CONTAINS("fetch") || CONTAINS("remote"))
-		return ANX_JEPA_ACT_ROUTE_REMOTE;
+		return ANX_WORLD_ACT_ROUTE_REMOTE;
 	if (CONTAINS("model") || CONTAINS("infer") || CONTAINS("agent") ||
 	    CONTAINS("rag"))
-		return ANX_JEPA_ACT_CAP_VALIDATE;
+		return ANX_WORLD_ACT_CAP_VALIDATE;
 	if (CONTAINS("cell") || CONTAINS("system") || CONTAINS("vm") ||
 	    CONTAINS("spawn"))
-		return ANX_JEPA_ACT_CELL_SPAWN;
+		return ANX_WORLD_ACT_CELL_SPAWN;
 	if (CONTAINS("route") || CONTAINS("net") || CONTAINS("local"))
-		return ANX_JEPA_ACT_ROUTE_LOCAL;
+		return ANX_WORLD_ACT_ROUTE_LOCAL;
 
 #undef CONTAINS
 	(void)p;
-	return ANX_JEPA_ACT_IDLE;
+	return ANX_WORLD_ACT_IDLE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -124,9 +124,9 @@ void anx_pal_prime_hardware(void)
 	 * immediately relevant.  Give them a strong preference (low energy).
 	 */
 	if (has_npu) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_MEM_PROMOTE, 0.1f, 0.9f);
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_CAP_VALIDATE, 0.15f, 0.8f);
-		prime_action(AGENT_WORLD,  ANX_JEPA_ACT_MEM_PROMOTE,  0.1f, 0.9f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_MEM_PROMOTE, 0.1f, 0.9f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_CAP_VALIDATE, 0.15f, 0.8f);
+		prime_action(AGENT_WORLD,  ANX_WORLD_ACT_MEM_PROMOTE,  0.1f, 0.9f);
 	}
 
 	/*
@@ -134,25 +134,25 @@ void anx_pal_prime_hardware(void)
 	 * No framebuffer → system/headless workflows preferred.
 	 */
 	if (has_fb) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_CELL_SPAWN, 0.2f, 0.7f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_CELL_SPAWN, 0.2f, 0.7f);
 	} else {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_ROUTE_LOCAL, 0.2f, 0.7f);
-		prime_action(AGENT_WORLD,  ANX_JEPA_ACT_ROUTE_LOCAL,  0.2f, 0.7f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_ROUTE_LOCAL, 0.2f, 0.7f);
+		prime_action(AGENT_WORLD,  ANX_WORLD_ACT_ROUTE_LOCAL,  0.2f, 0.7f);
 	}
 
 	/*
 	 * WiFi present → network/browser workflows immediately useful.
 	 */
 	if (has_wifi) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_ROUTE_REMOTE, 0.2f, 0.7f);
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_ROUTE_LOCAL,  0.3f, 0.6f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_ROUTE_REMOTE, 0.2f, 0.7f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_ROUTE_LOCAL,  0.3f, 0.6f);
 	}
 
 	/*
 	 * Storage → object/file workflows available.
 	 */
 	if (has_storage) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_MEM_DEMOTE, 0.3f, 0.5f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_MEM_DEMOTE, 0.3f, 0.5f);
 	}
 }
 
@@ -189,17 +189,17 @@ void anx_pal_prime_install(uint32_t hardware_flags)
 	kprintf("[pal-prime] install: hw_flags=0x%x\n", hardware_flags);
 
 	if (hardware_flags & (ANX_PAL_PRIME_HW_NPU | ANX_PAL_PRIME_HW_GPU)) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_MEM_PROMOTE,  0.1f, 0.9f);
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_CAP_VALIDATE, 0.15f, 0.8f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_MEM_PROMOTE,  0.1f, 0.9f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_CAP_VALIDATE, 0.15f, 0.8f);
 	}
 	if (hardware_flags & ANX_PAL_PRIME_HW_WIFI) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_ROUTE_REMOTE, 0.2f, 0.7f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_ROUTE_REMOTE, 0.2f, 0.7f);
 	}
 	if (hardware_flags & ANX_PAL_PRIME_HW_ETHERNET) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_ROUTE_LOCAL,  0.2f, 0.7f);
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_ROUTE_REMOTE, 0.25f, 0.65f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_ROUTE_LOCAL,  0.2f, 0.7f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_ROUTE_REMOTE, 0.25f, 0.65f);
 	}
 	if (hardware_flags & ANX_PAL_PRIME_HW_STORAGE) {
-		prime_action(SEARCH_WORLD, ANX_JEPA_ACT_MEM_DEMOTE, 0.3f, 0.5f);
+		prime_action(SEARCH_WORLD, ANX_WORLD_ACT_MEM_DEMOTE, 0.3f, 0.5f);
 	}
 }

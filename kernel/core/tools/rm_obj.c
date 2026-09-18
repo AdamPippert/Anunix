@@ -56,7 +56,9 @@ void cmd_rm_obj(int argc, char **argv)
 	/* Resolve path to OID */
 	ret = anx_ns_resolve(ns_name, path, &oid);
 	if (ret != ANX_OK) {
-		kprintf("rm: '%s:%s' not found\n", ns_name, path);
+		/* -f, as in POSIX rm, makes a missing target no error */
+		if (!force)
+			kprintf("rm: '%s:%s' not found\n", ns_name, path);
 		return;
 	}
 

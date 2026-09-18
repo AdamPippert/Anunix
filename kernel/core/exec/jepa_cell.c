@@ -84,7 +84,7 @@ int anx_jepa_cell_dispatch(const char *intent,
 	 * (same non-fatal pattern as loop_belief.c) so downstream nodes
 	 * always receive a valid OBS OID. */
 	if (anx_strcmp(intent, "jepa-observe") == 0) {
-		struct anx_jepa_obs obs;
+		struct anx_world_obs obs;
 		int rc;
 
 		anx_memset(&obs, 0, sizeof(obs));
@@ -107,7 +107,7 @@ int anx_jepa_cell_dispatch(const char *intent,
 	/* jepa-observe-encode: observe + encode in one shot.
 	 * Same zero-obs fallback as jepa-observe. */
 	if (anx_strcmp(intent, "jepa-observe-encode") == 0) {
-		struct anx_jepa_obs obs;
+		struct anx_world_obs obs;
 		int rc;
 
 		anx_memset(&obs, 0, sizeof(obs));

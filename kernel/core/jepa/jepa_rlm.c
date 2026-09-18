@@ -48,7 +48,7 @@ int anx_jepa_rlm_inject_context(char *system_buf, uint32_t buf_size)
 {
 	struct anx_jepa_ctx              *ctx;
 	const struct anx_jepa_world_profile *world;
-	struct anx_jepa_obs               obs;
+	struct anx_world_obs               obs;
 	uint32_t                          existing_len;
 	uint32_t                          remaining;
 	char                             *p;
