@@ -29,6 +29,7 @@
 
 #include <anx/workflow.h>
 #include <anx/string.h>
+#include <anx/uuid.h>
 
 /* ------------------------------------------------------------------ */
 /* Internal helpers                                                    */
@@ -148,6 +149,20 @@ int anx_wf_serialize(const anx_oid_t *wf_oid, char *buf, uint32_t size)
 				wf_puts(&p, &rem, n->params.trigger.schedule);
 			}
 			break;
+
+		case ANX_WF_NODE_STATE_REF: {
+			char oid[37];
+
+			if (!anx_uuid_is_nil(&n->params.state_ref.obj_oid)) {
+				anx_uuid_to_string(&n->params.state_ref.obj_oid, oid,
+						   sizeof(oid));
+				wf_puts(&p, &rem, " object ");
+				wf_puts(&p, &rem, oid);
+				wf_puts(&p, &rem, n->params.state_ref.write_mode ?
+					" mode write" : " mode read");
+			}
+			break;
+		}
 
 		case ANX_WF_NODE_CELL_CALL:
 			if (n->params.cell_call.intent[0]) {

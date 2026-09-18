@@ -19,6 +19,10 @@
 #include <anx/workflow_library.h>
 #include <anx/tensor_ops.h>
 #include <anx/research_test.h>
+#include <anx/namespace.h>
+#include <anx/tools.h>
+#include <anx/uuid.h>
+#include <anx/anxml.h>
 
 int test_workflow(void)
 {
@@ -33,6 +37,7 @@ int test_workflow(void)
 	anx_wf_init();
 	anx_objstore_init();
 	anx_cell_store_init();
+	anx_ns_init();
 
 	/* Test 1: create a workflow */
 	ret = anx_wf_create("test-flow", "a test workflow", &wf_oid);
@@ -179,6 +184,162 @@ int test_workflow(void)
 	ret = anx_wf_destroy(&wf_oid);
 	if (ret != ANX_OK) return -29;
 	if (anx_wf_object_get(&wf_oid) != NULL) return -30;
+
+	/* Shell-created state bindings must reach native workflow execution. */
+	{
+		struct anx_so_create_params params;
+		struct anx_state_object *input;
+		char serialized[1024];
+		char oid_text[37];
+		char *create_argv[] = { "workflow", "create", "native-bind" };
+		char *state_argv[] = { "workflow", "add-node", "native-bind",
+			"state_ref", "input", "default:pluralea/input" };
+		char *output_argv[] = { "workflow", "add-node", "native-bind",
+			"output", "result" };
+		char *edge_argv[] = { "workflow", "add-edge", "native-bind", "1", "2" };
+		char *run_argv[] = { "workflow", "run", "native-bind" };
+		char *bad_ref_argv[] = { "workflow", "add-node", "native-bind",
+			"state_ref", "missing", "default:pluralea/missing" };
+		char *write_mode_argv[] = { "workflow", "add-node", "native-bind",
+			"state_ref", "write-mode", "default:pluralea/input", "write" };
+		char *legacy_state_argv[] = { "workflow", "add-node", "native-bind",
+			"state_ref", "unbound" };
+		char *legacy_cell_argv[] = { "workflow", "add-node", "native-bind",
+			"cell_call", "compute" };
+		char *cell_argv[] = { "workflow", "add-node", "native-bind",
+			"cell_call", "sum", "pluralea-sum" };
+		anx_oid_t workflows[ANX_WF_MAX_WFS];
+		uint32_t workflow_count, workflow_i;
+		uint16_t before;
+
+		anx_memset(&params, 0, sizeof(params));
+		params.object_type = ANX_OBJ_BYTE_DATA;
+		params.payload = "36";
+		params.payload_size = 2;
+		if (anx_so_create(&params, &input) != ANX_OK) return -103;
+		if (anx_ns_bind("default", "pluralea/input", &input->oid) != ANX_OK)
+			return -104;
+
+		if (cmd_workflow(3, create_argv) != ANX_OK) return -105;
+		if (cmd_workflow(6, state_argv) != ANX_OK) return -106;
+		if (cmd_workflow(5, output_argv) != ANX_OK) return -107;
+		if (cmd_workflow(6, edge_argv) != ANX_OK) return -108;
+		if (anx_wf_list(workflows, ANX_WF_MAX_WFS, &workflow_count) != ANX_OK)
+			return -109;
+		for (workflow_i = 0; workflow_i < workflow_count; workflow_i++) {
+			wf = anx_wf_object_get(&workflows[workflow_i]);
+			if (wf && anx_strcmp(wf->name, "native-bind") == 0) {
+				wf2_oid = workflows[workflow_i];
+				break;
+			}
+		}
+		if (workflow_i == workflow_count) return -109;
+		wf = anx_wf_object_get(&wf2_oid);
+		if (!wf || wf->node_count != 2 ||
+		    anx_uuid_compare(&wf->nodes[0].params.state_ref.obj_oid,
+				     &input->oid) != 0 ||
+		    wf->nodes[0].params.state_ref.write_mode)
+			return -110;
+		if (wf->nodes[0].port_count != 1 ||
+		    wf->nodes[0].ports[0].dir != ANX_WF_PORT_OUT ||
+		    wf->nodes[1].port_count != 1 ||
+		    wf->nodes[1].ports[0].dir != ANX_WF_PORT_IN)
+			return -120;
+
+		anx_uuid_to_string(&input->oid, oid_text, sizeof(oid_text));
+		if (anx_wf_serialize(&wf2_oid, serialized, sizeof(serialized)) != ANX_OK ||
+		    !anx_strstr(serialized, oid_text) ||
+		    !anx_strstr(serialized, "mode read"))
+			return -111;
+
+		if (cmd_workflow(4, run_argv) != ANX_OK ||
+		    wf->run_state != ANX_WF_RUN_COMPLETED || wf->output_count != 1 ||
+		    anx_uuid_compare(&wf->output_oids[0], &input->oid) != 0)
+			return -112;
+
+		before = wf->node_count;
+		if (cmd_workflow(6, bad_ref_argv) == ANX_OK || wf->node_count != before)
+			return -113;
+		if (cmd_workflow(7, write_mode_argv) == ANX_OK || wf->node_count != before)
+			return -114;
+		if (cmd_workflow(5, legacy_state_argv) != ANX_OK ||
+		    wf->node_count != before + 1 ||
+		    !anx_uuid_is_nil(&wf->nodes[2].params.state_ref.obj_oid))
+			return -115;
+		if (cmd_workflow(5, legacy_cell_argv) != ANX_OK ||
+		    wf->node_count != before + 2 ||
+		    wf->nodes[3].params.cell_call.intent[0] != '\0')
+			return -116;
+		if (cmd_workflow(6, cell_argv) != ANX_OK || wf->node_count != before + 3 ||
+		    anx_strcmp(wf->nodes[4].params.cell_call.intent, "pluralea-sum") != 0)
+			return -117;
+		if (anx_wf_serialize(&wf2_oid, serialized, sizeof(serialized)) != ANX_OK ||
+		    !anx_strstr(serialized, "intent pluralea-sum"))
+			return -118;
+
+		if (anx_wf_destroy(&wf2_oid) != ANX_OK) return -119;
+
+		/* The live showcase shape must deliver one input to local anxml. */
+		{
+			struct anx_state_object *model_input, *model_output;
+			anx_oid_t model_wf_oid;
+			char *model_create[] = { "workflow", "create", "native-anxml" };
+			char *model_state[] = { "workflow", "add-node", "native-anxml",
+				"state_ref", "prompt", "default:showcase/prompt" };
+			char *model_cell[] = { "workflow", "add-node", "native-anxml",
+				"cell_call", "local-model", "anxml-generate" };
+			char *model_output_argv[] = { "workflow", "add-node", "native-anxml",
+				"output", "generated" };
+			char *model_edge_a[] = { "workflow", "add-edge", "native-anxml", "1", "2" };
+			char *model_edge_b[] = { "workflow", "add-edge", "native-anxml", "2", "3" };
+			char *model_run[] = { "workflow", "run", "native-anxml" };
+
+			anx_memset(&params, 0, sizeof(params));
+			params.object_type = ANX_OBJ_BYTE_DATA;
+			params.payload = "anunix is ";
+			params.payload_size = 10;
+			if (anx_so_create(&params, &model_input) != ANX_OK) return -121;
+			if (anx_ns_bind("default", "showcase/prompt", &model_input->oid) != ANX_OK)
+				return -122;
+			anx_anxml_init();
+			if (cmd_workflow(3, model_create) != ANX_OK ||
+			    cmd_workflow(6, model_state) != ANX_OK ||
+			    cmd_workflow(6, model_cell) != ANX_OK ||
+			    cmd_workflow(5, model_output_argv) != ANX_OK ||
+			    cmd_workflow(6, model_edge_a) != ANX_OK ||
+			    cmd_workflow(6, model_edge_b) != ANX_OK)
+				return -123;
+			if (anx_wf_list(workflows, ANX_WF_MAX_WFS, &workflow_count) != ANX_OK)
+				return -124;
+			for (workflow_i = 0; workflow_i < workflow_count; workflow_i++) {
+				wf = anx_wf_object_get(&workflows[workflow_i]);
+				if (wf && anx_strcmp(wf->name, "native-anxml") == 0) {
+					model_wf_oid = workflows[workflow_i];
+					break;
+				}
+			}
+			if (workflow_i == workflow_count) return -125;
+			wf = anx_wf_object_get(&model_wf_oid);
+			if (!wf || wf->nodes[1].port_count != 2 ||
+			    wf->nodes[1].ports[0].dir != ANX_WF_PORT_IN ||
+			    wf->nodes[1].ports[1].dir != ANX_WF_PORT_OUT ||
+			    wf->edges[0].from_port != 0 || wf->edges[0].to_port != 0 ||
+			    wf->edges[1].from_port != 1 || wf->edges[1].to_port != 0)
+				return -126;
+			if (cmd_workflow(4, model_run) != ANX_OK ||
+			    wf->run_state != ANX_WF_RUN_COMPLETED || wf->output_count != 1)
+				return -127;
+			model_output = anx_objstore_lookup(&wf->output_oids[0]);
+			if (!model_output || model_output->object_type != ANX_OBJ_MODEL_OUTPUT ||
+			    !model_output->payload_size)
+				return -128;
+			anx_objstore_release(model_output);
+			anx_objstore_release(model_input);
+			if (anx_wf_destroy(&model_wf_oid) != ANX_OK) return -129;
+		}
+
+		anx_objstore_release(input);
+	}
 
 	/* ---------------------------------------------------------------- */
 	/* Tests 18-22: JEPA cell dispatch (via anx_jepa_cell_dispatch)     */

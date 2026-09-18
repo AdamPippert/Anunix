@@ -113,6 +113,8 @@ int test_theme(void)
 	if (!t) return -2;
 	if (t->deco.corner_radius == 0) return -3;
 	if (!t->deco.shadow_enabled) return -4;
+	if (!t->deco.transparency_enabled || t->deco.window_opacity != 204)
+		return -33;
 	if (anx_strcmp(anx_theme_current_scheme(), "default")) return -13;
 	if (anx_strcmp(anx_theme_scheme_name(0), "default")) return -14;
 	blue = *t;
@@ -128,6 +130,8 @@ int test_theme(void)
 	if (anx_strcmp(anx_theme_current_scheme(), "default")) return -20;
 	if (anx_theme_serialize(text, sizeof(text)) <= 0) return -21;
 	if (!anx_strstr(text, "scheme=default\n")) return -22;
+	if (!anx_strstr(text, "transparency=true\n") ||
+	    !anx_strstr(text, "opacity=204\n")) return -34;
 
 	/* Test 2: switch to boring */
 	anx_theme_set_mode(ANX_THEME_BORING);

@@ -25,6 +25,10 @@ Credentials remain in the credential store. A model configuration contains a
 credential name, never the API key. Use the existing `secret` commands to manage
 credentials; do not write secret values into ordinary configuration objects.
 
+Pretty windows default to `opacity=204`, which is 20% transparent. Adjust and
+persist the setting with `config set theme 'transparency=true;opacity=204'` and
+`config save theme`. Set `transparency=false` for opaque windows.
+
 ## Change and save settings
 
 For example, change the accent color and tiling gaps:
@@ -184,6 +188,6 @@ still needs a valid credential and a reachable service to make model calls.
 ## Current limits
 
 The theme stores settings that some renderers do not yet implement, including
-font scaling. General UI scaling and transparent-window repaint corrections are
-separate work. An image wallpaper's selected object path is not part of these
+font scaling. General UI scaling remains separate work. An image wallpaper's
+selected object path is not part of these
 configuration documents; gradient and solid wallpaper modes are persisted.

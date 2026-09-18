@@ -7,6 +7,7 @@
 
 #include <anx/types.h>
 #include <anx/workflow.h>
+#include <anx/state_object.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
 
@@ -21,7 +22,7 @@ static void wf_usage(void)
 	kprintf("  list\n");
 	kprintf("  run      <name>\n");
 	kprintf("  status   <name>\n");
-	kprintf("  add-node <wf-name> <kind> <label>\n");
+	kprintf("  add-node <wf-name> <kind> <label> [parameter]\n");
 	kprintf("  add-edge <wf-name> <from-node-id> <to-node-id>\n");
 	kprintf("  show     <name>   — serialize to DSL text\n");
 	kprintf("  graph    <name>   — ASCII DAG diagram\n");
@@ -31,6 +32,8 @@ static void wf_usage(void)
 	kprintf("  kinds: trigger state_ref cell_call model_call agent_call\n");
 	kprintf("         retrieval condition fan_out fan_in transform\n");
 	kprintf("         human_review subflow output\n");
+	kprintf("  state_ref parameter: optional <oid-or-path> (read-only)\n");
+	kprintf("  cell_call parameter: optional <intent>\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -88,6 +91,107 @@ static int wf_parse_kind(const char *s, enum anx_wf_node_kind *out)
 	if (anx_strcmp(s, "output")       == 0) { *out = ANX_WF_NODE_OUTPUT;       return 0; }
 	if (anx_strcmp(s, "cap_promotion") == 0) { *out = ANX_WF_NODE_CAP_PROMOTION; return 0; }
 	return -1;
+}
+
+static void wf_set_port(struct anx_wf_node *node, uint8_t index,
+			const char *name, enum anx_wf_port_dir dir,
+			uint8_t type_tag, bool required)
+{
+	anx_strlcpy(node->ports[index].name, name,
+		    sizeof(node->ports[index].name));
+	node->ports[index].dir = dir;
+	node->ports[index].type_tag = type_tag;
+	node->ports[index].required = required;
+}
+
+/* Give shell-created nodes the same usable port shapes as library templates. */
+static void wf_set_default_ports(struct anx_wf_node *node)
+{
+	switch (node->kind) {
+	case ANX_WF_NODE_TRIGGER:
+		wf_set_port(node, 0, "out", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 1;
+		break;
+	case ANX_WF_NODE_STATE_REF:
+		wf_set_port(node, 0, "out", ANX_WF_PORT_OUT, 1, false);
+		node->port_count = 1;
+		break;
+	case ANX_WF_NODE_CELL_CALL:
+	case ANX_WF_NODE_MODEL_CALL:
+	case ANX_WF_NODE_RETRIEVAL:
+	case ANX_WF_NODE_TRANSFORM:
+	case ANX_WF_NODE_SUBFLOW:
+		wf_set_port(node, 0, "in", ANX_WF_PORT_IN, 0, true);
+		wf_set_port(node, 1, "out", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 2;
+		break;
+	case ANX_WF_NODE_AGENT_CALL:
+		wf_set_port(node, 0, "out", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 1;
+		break;
+	case ANX_WF_NODE_CONDITION:
+		wf_set_port(node, 0, "in", ANX_WF_PORT_IN, 0, true);
+		wf_set_port(node, 1, "true", ANX_WF_PORT_OUT, 0, false);
+		wf_set_port(node, 2, "false", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 3;
+		break;
+	case ANX_WF_NODE_FAN_OUT:
+		wf_set_port(node, 0, "in", ANX_WF_PORT_IN, 0, true);
+		wf_set_port(node, 1, "a", ANX_WF_PORT_OUT, 0, false);
+		wf_set_port(node, 2, "b", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 3;
+		break;
+	case ANX_WF_NODE_FAN_IN:
+		wf_set_port(node, 0, "a", ANX_WF_PORT_IN, 0, true);
+		wf_set_port(node, 1, "b", ANX_WF_PORT_IN, 0, true);
+		wf_set_port(node, 2, "out", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 3;
+		break;
+	case ANX_WF_NODE_HUMAN_REVIEW:
+		wf_set_port(node, 0, "in", ANX_WF_PORT_IN, 0, true);
+		wf_set_port(node, 1, "out", ANX_WF_PORT_OUT, 0, false);
+		node->port_count = 2;
+		break;
+	case ANX_WF_NODE_OUTPUT:
+		wf_set_port(node, 0, "in", ANX_WF_PORT_IN, 0, true);
+		node->port_count = 1;
+		break;
+	case ANX_WF_NODE_CAP_PROMOTION:
+		wf_set_port(node, 0, "evidence", ANX_WF_PORT_IN, 1, true);
+		wf_set_port(node, 1, "decision", ANX_WF_PORT_OUT, 1, false);
+		node->port_count = 2;
+		break;
+	default:
+		break;
+	}
+}
+
+static int wf_first_port(const struct anx_wf_object *wf, uint16_t node_id,
+			 enum anx_wf_port_dir dir, uint8_t *port_out)
+{
+	uint32_t i;
+	uint8_t p;
+
+	if (!wf || !port_out)
+		return ANX_EINVAL;
+	for (i = 0; i < ANX_WF_MAX_NODES; i++) {
+		const struct anx_wf_node *node = &wf->nodes[i];
+
+		if (node->id != node_id)
+			continue;
+		/* Preserve pre-port shell workflows created by earlier builds. */
+		if (node->port_count == 0) {
+			*port_out = 0;
+			return ANX_OK;
+		}
+		for (p = 0; p < node->port_count; p++)
+			if (node->ports[p].dir == dir) {
+				*port_out = p;
+				return ANX_OK;
+			}
+		return ANX_EINVAL;
+	}
+	return ANX_ENOENT;
 }
 
 /* ------------------------------------------------------------------ */
@@ -368,7 +472,7 @@ static int cmd_workflow_add_node(int argc, char **argv)
 	int ret;
 
 	if (argc < 3) {
-		kprintf("workflow add-node: <wf-name> <kind> <label>\n");
+		kprintf("workflow add-node: <wf-name> <kind> <label> [parameter]\n");
 		return ANX_EINVAL;
 	}
 
@@ -386,6 +490,30 @@ static int cmd_workflow_add_node(int argc, char **argv)
 	anx_memset(&spec, 0, sizeof(spec));
 	spec.kind = kind;
 	anx_strlcpy(spec.label, argv[2], ANX_WF_LABEL_MAX);
+	wf_set_default_ports(&spec);
+
+	if (kind == ANX_WF_NODE_STATE_REF) {
+		if (argc > 4) {
+			kprintf("workflow add-node: state_ref accepts one <oid-or-path> (read-only)\n");
+			return ANX_EINVAL;
+		}
+		if (argc == 4) {
+			ret = anx_so_resolve(argv[3], &spec.params.state_ref.obj_oid);
+			if (ret != ANX_OK) {
+				kprintf("workflow add-node: state object '%s' not found or ambiguous (%d)\n",
+					argv[3], ret);
+				return ret;
+			}
+		}
+	} else if (kind == ANX_WF_NODE_CELL_CALL) {
+		if (argc > 4) {
+			kprintf("workflow add-node: cell_call accepts one <intent>\n");
+			return ANX_EINVAL;
+		}
+		if (argc == 4)
+			anx_strlcpy(spec.params.cell_call.intent, argv[3],
+				    sizeof(spec.params.cell_call.intent));
+	}
 
 	/*
 	 * Auto-layout: place the new node to the right of all existing nodes.
@@ -412,7 +540,9 @@ static int cmd_workflow_add_node(int argc, char **argv)
 static int cmd_workflow_add_edge(int argc, char **argv)
 {
 	anx_oid_t oid;
+	struct anx_wf_object *wf;
 	uint16_t from_id, to_id;
+	uint8_t from_port, to_port;
 	int ret;
 
 	if (argc < 3) {
@@ -428,8 +558,16 @@ static int cmd_workflow_add_edge(int argc, char **argv)
 
 	from_id = (uint16_t)anx_strtoul(argv[1], NULL, 10);
 	to_id   = (uint16_t)anx_strtoul(argv[2], NULL, 10);
+	wf = anx_wf_object_get(&oid);
+	ret = wf_first_port(wf, from_id, ANX_WF_PORT_OUT, &from_port);
+	if (ret == ANX_OK)
+		ret = wf_first_port(wf, to_id, ANX_WF_PORT_IN, &to_port);
+	if (ret != ANX_OK) {
+		kprintf("workflow add-edge: incompatible nodes (%d)\n", ret);
+		return ret;
+	}
 
-	ret = anx_wf_edge_add(&oid, from_id, 0, to_id, 0);
+	ret = anx_wf_edge_add(&oid, from_id, from_port, to_id, to_port);
 	if (ret != ANX_OK) {
 		kprintf("workflow add-edge: failed (%d)\n", ret);
 		return ret;

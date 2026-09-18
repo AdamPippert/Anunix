@@ -64,12 +64,14 @@ jobs:
 
       - name: Build ISO
         run: |
+          set -o pipefail
           # The ISO needs isolinux and the GRUB EFI modules under tools/grub,
           # which no runner has on a fresh checkout. Fetch them, then build.
           # Without this the step printed "ISO build skipped (missing deps)"
           # and the release shipped no bootable image.
-          make iso-deps 2>&1 | tail -5 || echo "iso-deps failed"
-          make iso ARCH=x86_64 2>&1 | tail -10 || echo "ISO build failed"
+          make iso-deps 2>&1 | tail -5
+          make iso ARCH=x86_64 2>&1 | tail -10
+          test -s build/anunix-x86_64.iso
 
       - name: Draft release notes (agent)
         env:
@@ -110,11 +112,12 @@ jobs:
           mkdir -p release-artifacts
           VERSION="${{ steps.version.outputs.VERSION }}"
 
-          # Kernel ELF
-          cp build/x86_64/anunix.elf "release-artifacts/anunix-${VERSION}-x86_64.elf" 2>/dev/null || true
+          # Required boot artifacts. Missing files must fail the release.
+          test -s build/x86_64/anunix.elf
+          test -s build/anunix-x86_64.iso
+          cp build/x86_64/anunix.elf "release-artifacts/anunix-${VERSION}-x86_64.elf"
 
-          # ISO if it exists
-          cp build/anunix-x86_64.iso "release-artifacts/anunix-${VERSION}-x86_64.iso" 2>/dev/null || true
+          cp build/anunix-x86_64.iso "release-artifacts/anunix-${VERSION}-x86_64.iso"
 
           # Release notes
           NOTES="RELEASE-${VERSION}.md"

@@ -21,7 +21,7 @@ add a macOS dock or an always-visible Windows taskbar.
 | Outer gap | 12 pixels | 0 pixels | 10 pixels |
 | Tiled border | 1 pixel | 1 pixel | 1 pixel |
 | Panel opacity | 225 / 255 | 255 / 255 | 245 / 255 |
-| Window opacity | 255 / 255 | 255 / 255 | 255 / 255 |
+| Window opacity | 204 / 255 | 204 / 255 | 204 / 255 |
 | Wallpaper | Default photograph | Default photograph | Default photograph |
 
 All templates select Pretty mode and reset the complete theme before applying
@@ -45,6 +45,9 @@ Existing windows keep their tiled or floating state. Gap changes resize tiled
 windows on the active workspace. The tiling default controls newly opened windows.
 The inner gap separates adjacent tiled windows by twice the listed value.
 Floating windows do not use the tiling gaps.
+
+Pretty windows default to 80% opacity. Set `transparency=false` for opaque
+windows, or set `opacity` from 0 through 255 and save the theme configuration.
 
 ## Commands and persistence
 
