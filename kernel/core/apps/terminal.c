@@ -59,6 +59,7 @@ struct anx_terminal {
 	/* Input */
 	char     input[TERM_INPUT_MAX];
 	uint32_t input_len;
+	uint32_t input_pos;
 	struct anx_shell_history_cursor recall;
 
 	/* Command output capture */
@@ -177,7 +178,7 @@ static void term_render(struct anx_terminal *t)
 
 		output += len ? (len + t->cols - 1) / t->cols : 1;
 	}
-	cursor_row = output + (t->input_len + 5) / t->cols;
+	cursor_row = output + (t->input_pos + 5) / t->cols;
 	first = cursor_row + 1 > t->rows ? cursor_row + 1 - t->rows : 0;
 	if (t->scroll_rows > first) t->scroll_rows = first;
 	first -= t->scroll_rows;
@@ -189,7 +190,7 @@ static void term_render(struct anx_terminal *t)
 	anx_snprintf(prompt, sizeof(prompt), "anx> %s", t->input);
 	term_draw_rows(t, prompt, first, &row, fg, bg);
 	if (cursor_row >= first && cursor_row - first < t->rows)
-		term_fill(t, TERM_PAD + ((t->input_len + 5) % t->cols) * ANX_FONT_WIDTH,
+		term_fill(t, TERM_PAD + ((t->input_pos + 5) % t->cols) * ANX_FONT_WIDTH,
 			  TERM_TOP + (cursor_row - first) * ANX_FONT_HEIGHT,
 			  2, ANX_FONT_HEIGHT, theme->palette.accent);
 	if (t->surf->state == ANX_SURF_VISIBLE)
@@ -209,6 +210,7 @@ static void term_exec(struct anx_terminal *t)
 	anx_strlcpy(command, t->input, sizeof(command));
 	t->input[0] = '\0';
 	t->input_len = 0;
+	t->input_pos = 0;
 	t->scroll_rows = 0;
 	anx_shell_history_reset(&t->recall);
 	anx_shell_history_record(command);
@@ -263,27 +265,17 @@ static void term_on_event(struct anx_surface *surf,
 		if (key != ANX_KEY_PAGEUP && key != ANX_KEY_PAGEDOWN)
 			t->scroll_rows = 0;
 
+		if (anx_shell_input_key(t->input, sizeof(t->input),
+					 &t->input_len, &t->input_pos,
+					 &t->recall, key, ucp)) {
+			term_render(t);
+			return;
+		}
 		switch (key) {
 		case ANX_KEY_ENTER:
 			term_exec(t);
 			break;
 
-		case ANX_KEY_BACKSPACE:
-			if (t->input_len > 0) {
-				t->input_len--;
-				t->input[t->input_len] = '\0';
-			}
-			anx_shell_history_reset(&t->recall);
-			break;
-
-		case ANX_KEY_UP:
-		case ANX_KEY_DOWN: {
-			int n = anx_shell_history_move(&t->recall,
-				key == ANX_KEY_UP ? -1 : 1, t->input, sizeof(t->input));
-
-			if (n >= 0) t->input_len = (uint32_t)n;
-			break;
-		}
 		case ANX_KEY_PAGEUP:
 			t->scroll_rows += t->rows;
 			break;
@@ -297,13 +289,6 @@ static void term_on_event(struct anx_surface *surf,
 			return;
 
 		default:
-			/* Append printable ASCII */
-			if (ucp >= 0x20 && ucp < 0x7F &&
-			    t->input_len < TERM_INPUT_MAX - 1) {
-				t->input[t->input_len++] = (char)ucp;
-				t->input[t->input_len]   = '\0';
-				anx_shell_history_reset(&t->recall);
-			}
 			break;
 		}
 
@@ -432,6 +417,7 @@ void anx_wm_launch_terminal(void)
 	anx_shell_history_reset(&t->recall);
 	t->input[0]   = '\0';
 	t->input_len  = 0;
+	t->input_pos = 0;
 	t->active     = true;
 
 	/* Register event handler */

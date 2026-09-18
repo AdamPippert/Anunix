@@ -152,6 +152,39 @@ int test_native_terminal(void)
 	CHECK(cursor_at(first, 4, 0));
 	for (i = 0; i < 49; i++) key(first, ANX_KEY_BACKSPACE, 0);
 
+	/* Cursor editing must execute the changed command, not merely move pixels. */
+	resize(first, 640, 200);
+	submit(first, "clear");
+	type(first, "echo AXC");
+	key(first, ANX_KEY_LEFT, 0);
+	key(first, ANX_KEY_LEFT, 0);
+	CHECK(cursor_at(first, 0, 11));
+	key(first, ANX_KEY_DELETE, 0);
+	type(first, "B");
+	key(first, ANX_KEY_HOME, 0);
+	key(first, ANX_KEY_BACKSPACE, 0);
+	for (i = 0; i < 5; i++) key(first, ANX_KEY_RIGHT, 0);
+	type(first, "Z");
+	key(first, ANX_KEY_BACKSPACE, 0);
+	key(first, ANX_KEY_END, 0);
+	key(first, ANX_KEY_DELETE, 0);
+	key(first, ANX_KEY_ENTER, 0);
+	CHECK(row_is(first, 1, "ABC"));
+	key(first, ANX_KEY_UP, 0);
+	key(first, ANX_KEY_LEFT, 0);
+	key(first, ANX_KEY_BACKSPACE, 0);
+	type(first, "D");
+	key(first, ANX_KEY_ENTER, 0);
+	CHECK(row_is(first, 3, "ADC"));
+	submit(first, "clear");
+	resize(first, 84, 140);
+	for (i = 0; i < 50; i++) type(first, "x");
+	key(first, ANX_KEY_HOME, 0);
+	CHECK(cursor_at(first, 0, 5));
+	key(first, ANX_KEY_END, 0);
+	CHECK(cursor_at(first, 4, 1));
+	for (i = 0; i < 50; i++) key(first, ANX_KEY_BACKSPACE, 0);
+
 	/* Discarded output must never reappear after paging past ring capacity. */
 	resize(first, 640, 200);
 	submit(first, "echo OLD_OUTPUT");

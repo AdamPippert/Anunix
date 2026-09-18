@@ -83,6 +83,22 @@ int test_workflow(void)
 	wf = anx_wf_object_get(&wf_oid);
 	if (wf->edge_count != 1) return -12;
 
+	/* Graph boxes must contain labels, with padding and bounded truncation. */
+	{
+		char graph[1024];
+		if (anx_wf_render_ascii(&wf_oid, graph, sizeof(graph)) != ANX_OK)
+			return -100;
+		if (!anx_strstr(graph, "[trigger:start   ]") ||
+		    !anx_strstr(graph, "[model:infer     ]"))
+			return -101;
+		anx_strlcpy(wf->nodes[model_id - 1].label,
+			    "long-label-truncated", ANX_WF_LABEL_MAX);
+		if (anx_wf_render_ascii(&wf_oid, graph, sizeof(graph)) != ANX_OK ||
+		    !anx_strstr(graph, "[model:long-label]"))
+			return -102;
+		anx_strlcpy(wf->nodes[model_id - 1].label, "infer", ANX_WF_LABEL_MAX);
+	}
+
 	/* Test 9: self-loop rejected */
 	ret = anx_wf_edge_add(&wf_oid, trigger_id, 0, trigger_id, 0);
 	if (ret == ANX_OK) return -13;

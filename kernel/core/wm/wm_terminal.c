@@ -55,6 +55,7 @@ static struct {
 
 	char     input[256];
 	uint32_t input_len;
+	uint32_t input_pos;
 
 	struct anx_shell_history_cursor recall;
 } g_term;
@@ -190,7 +191,7 @@ static void term_render(void)
 	cols = term_columns();
 	output = term_output_rows(cols);
 	anx_snprintf(prompt, sizeof(prompt), "> %s", g_term.input);
-	cursor_row = output + (g_term.input_len + 2) / cols;
+	cursor_row = output + (g_term.input_pos + 2) / cols;
 	total = cursor_row + 1;
 	first = total > g_term.vis_lines ? total - g_term.vis_lines : 0;
 	if ((uint32_t)g_term.scroll_off > first)
@@ -203,7 +204,7 @@ static void term_render(void)
 	}
 	term_draw_rows(prompt, cols, first, &row, fg, bg);
 	if (cursor_row >= first && cursor_row - first < g_term.vis_lines)
-		term_fill(4 + ((g_term.input_len + 2) % cols) * FONT_W,
+		term_fill(4 + ((g_term.input_pos + 2) % cols) * FONT_W,
 			  8 + (cursor_row - first) * LINE_H, 2, FONT_H,
 			  theme->palette.accent);
 	/* The WM loop commits once; key handlers only update RAM pixels. */
@@ -665,6 +666,12 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		return;
 	if (key != ANX_KEY_PAGEUP && key != ANX_KEY_PAGEDOWN)
 		g_term.scroll_off = 0;
+	if (anx_shell_input_key(g_term.input, sizeof(g_term.input),
+				 &g_term.input_len, &g_term.input_pos,
+				 &g_term.recall, key, unicode)) {
+		term_render();
+		return;
+	}
 	switch (key) {
 	case ANX_KEY_ESC:
 		anx_wm_window_close(g_term.surf);
@@ -676,26 +683,15 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 			anx_strlcpy(cmd, g_term.input, sizeof(cmd));
 			g_term.input[0] = '\0';
 			g_term.input_len = 0;
+			g_term.input_pos = 0;
 			anx_shell_history_reset(&g_term.recall);
 			term_run_command(cmd);
 		} else {
 			hist_append_str("> ");
 		}
 		break;
-	case ANX_KEY_BACKSPACE:
-		if (g_term.input_len > 0)
-			g_term.input[--g_term.input_len] = '\0';
-		anx_shell_history_reset(&g_term.recall);
-		break;
-	case ANX_KEY_UP:
-	case ANX_KEY_DOWN: {
-		int n = anx_shell_history_move(&g_term.recall,
-			key == ANX_KEY_UP ? -1 : 1, g_term.input, sizeof(g_term.input));
-
-		if (n >= 0) g_term.input_len = (uint32_t)n;
-		break;
-	}
 	case ANX_KEY_TAB:
+		if (g_term.input_pos != g_term.input_len) break;
 		anx_shell_history_reset(&g_term.recall);
 		{
 			/* Command name table */
@@ -1111,7 +1107,8 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 				line[pos] = '\0';
 				hist_append_str(line);
 			}
-			tab_done:;
+			tab_done:
+			g_term.input_pos = g_term.input_len;
 		}
 		break;
 
@@ -1124,12 +1121,6 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		break;
 
 	default:
-		if (unicode >= 0x20 && unicode < 0x7F &&
-		    g_term.input_len < sizeof(g_term.input) - 1) {
-			anx_shell_history_reset(&g_term.recall);
-			g_term.input[g_term.input_len++] = (char)unicode;
-			g_term.input[g_term.input_len]   = '\0';
-		}
 		break;
 	}
 
@@ -1237,6 +1228,7 @@ void anx_wm_terminal_open(void)
 
 	g_term.input[0]     = '\0';
 	g_term.input_len    = 0;
+	g_term.input_pos = 0;
 	g_term.scroll_off   = 0;
 	anx_shell_history_reset(&g_term.recall);
 	g_term.dirty        = false;
@@ -1283,7 +1275,9 @@ void anx_wm_terminal_paste(const char *text, uint32_t len)
 
 		if (c < 0x20 || c >= 0x7F)
 			continue;
-		g_term.input[g_term.input_len++] = c;
+		anx_shell_input_key(g_term.input, sizeof(g_term.input),
+				     &g_term.input_len, &g_term.input_pos,
+				     &g_term.recall, ANX_KEY_NONE, (uint8_t)c);
 	}
 	g_term.input[g_term.input_len] = '\0';
 	term_render();
@@ -1305,6 +1299,7 @@ void anx_wm_terminal_clear_input(void)
 		return;
 	g_term.input[0]  = '\0';
 	g_term.input_len = 0;
+	g_term.input_pos = 0;
 	g_term.scroll_off = 0;
 	anx_shell_history_reset(&g_term.recall);
 	term_render();

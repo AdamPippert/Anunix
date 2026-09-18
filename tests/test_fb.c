@@ -486,6 +486,32 @@ static int test_fbcon_tab(void)
 	return 0;
 }
 
+static int test_fbcon_cursor_motion(void)
+{
+	uint32_t before[TEST_FB_WIDTH / ANX_FONT_WIDTH * ANX_FONT_WIDTH * ANX_FONT_HEIGHT];
+	uint32_t i, count = sizeof(before) / sizeof(before[0]);
+
+	anx_fbcon_init();
+	anx_fbcon_clear();
+	anx_fbcon_puts("editing");
+	for (i = 0; i < count; i++) before[i] = ((uint32_t *)test_fb_mem)[i];
+	anx_fbcon_move_cursor(-3);
+	ASSERT(anx_fbcon_cursor_x() == 4, "move left without deleting");
+	for (i = 0; i < count; i++)
+		ASSERT(before[i] == ((uint32_t *)test_fb_mem)[i], "cursor motion preserves pixels");
+	anx_fbcon_move_cursor((int32_t)anx_fbcon_cols());
+	ASSERT(anx_fbcon_cursor_y() == 1 && anx_fbcon_cursor_x() == 4, "move across row");
+	anx_fbcon_move_cursor(-5);
+	ASSERT(anx_fbcon_cursor_y() == 0 && anx_fbcon_cursor_x() == anx_fbcon_cols() - 1,
+	       "move left through row boundary");
+	anx_fbcon_move_cursor(-2147483647);
+	ASSERT(anx_fbcon_cursor_x() == 0 && anx_fbcon_cursor_y() == 0, "clamp before origin");
+	anx_fbcon_move_cursor(2147483647);
+	ASSERT(anx_fbcon_cursor_x() == anx_fbcon_cols() - 1 &&
+	       anx_fbcon_cursor_y() == anx_fbcon_rows() - 1, "clamp after screen");
+	return 0;
+}
+
 /* --- Test runner --- */
 
 typedef int (*test_fn)(void);
@@ -496,6 +522,7 @@ struct fb_test {
 };
 
 static struct fb_test fb_tests[] = {
+	{ "fbcon_cursor_motion", test_fbcon_cursor_motion },
 	{ "fb_init_sets_available",		test_fb_init_sets_available },
 	{ "fb_putpixel_writes_correct_color",	test_fb_putpixel_writes_correct_color },
 	{ "fb_putpixel_bounds_check",		test_fb_putpixel_bounds_check },

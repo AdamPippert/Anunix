@@ -260,25 +260,17 @@ int anx_wf_serialize(const anx_oid_t *wf_oid, char *buf, uint32_t size)
 static void ascii_node_box(char out[ASCII_BOX_W + 1],
 			   const struct anx_wf_node *n)
 {
-	/* "kind:label" truncated to ASCII_BOX_INNER chars, padded with spaces */
 	char inner[ASCII_BOX_INNER + 1];
-	const char *k = kind_token(n->kind);
-	uint32_t klen = (uint32_t)anx_strlen(k);
-	uint32_t llen = (uint32_t)anx_strlen(n->label);
-	uint32_t avail = ASCII_BOX_INNER;
+	uint32_t len;
 
-	if (klen + 1 + llen <= avail) {
-		anx_snprintf(inner, sizeof(inner), "%s:%s", k, n->label);
-	} else if (klen + 1 < avail) {
-		uint32_t room = avail - klen - 1;
-		anx_snprintf(inner, sizeof(inner), "%s:%.*s",
-			     k, (int)room, n->label);
-	} else {
-		anx_snprintf(inner, sizeof(inner), "%.*s", (int)avail, k);
-	}
-
-	anx_snprintf(out, ASCII_BOX_W + 1, "[%-*s]",
-		     ASCII_BOX_INNER, inner);
+	/* The kernel formatter supports fixed widths, not dynamic %*s widths. */
+	anx_snprintf(inner, sizeof(inner), "%s:%s", kind_token(n->kind), n->label);
+	len = (uint32_t)anx_strlen(inner);
+	anx_memset(out, ' ', ASCII_BOX_W);
+	out[0] = '[';
+	anx_memcpy(out + 1, inner, len);
+	out[ASCII_BOX_W - 1] = ']';
+	out[ASCII_BOX_W] = '\0';
 }
 
 int anx_wf_render_ascii(const anx_oid_t *wf_oid, char *buf, uint32_t size)

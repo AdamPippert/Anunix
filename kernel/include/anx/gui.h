@@ -50,6 +50,9 @@ void anx_gui_update_time(void);
 /* Write a character to the GUI terminal (fbcon replacement) */
 void anx_gui_terminal_putc(char c);
 
+/* Move the console cursor by cells without erasing existing text. */
+void anx_gui_terminal_move_cursor(int32_t cells);
+
 /* Set UTC offset in hours (e.g., -7 for PDT, -8 for PST) */
 void anx_gui_set_tz_offset(int32_t hours);
 

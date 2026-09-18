@@ -1,11 +1,86 @@
 /* Shared history recall, bounded ring, draft restoration, and credential exclusion. */
 #include <anx/shell.h>
+#include <anx/input.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
 #include <anx/objstore_disk.h>
 #include <anx/mock_blk.h>
 
 #define CHECK(c) do { if (!(c)) { kprintf("history failed at %u\n", __LINE__); return -1; } } while (0)
+
+extern void test_mock_console_input(const char *input);
+extern int test_shell_readline(char *buf, size_t size);
+
+static int test_console_editing(void)
+{
+	char input[256], overflow[270];
+	uint32_t i;
+
+	/* CSI, SS3, tilde Home/End and Delete arrive one byte at a time. */
+	test_mock_console_input("echo AXC\033[D\033[D\033[3~B\033[H\b\033[F\r");
+	CHECK(test_shell_readline(input, sizeof(input)) == 8);
+	CHECK(!anx_strcmp(input, "echo ABC"));
+	test_mock_console_input("AXC\033OH\033[C\033[3~B\033OF\bD\033[1~\033[4~\r");
+	CHECK(test_shell_readline(input, sizeof(input)) == 3);
+	CHECK(!anx_strcmp(input, "ABD"));
+	/* Unsupported CSI must not leak its suffix into a command. */
+	test_mock_console_input("ok\033[1;5D!\r");
+	CHECK(test_shell_readline(input, sizeof(input)) == 3);
+	CHECK(!anx_strcmp(input, "ok!"));
+	for (i = 0; i < 260; i++) overflow[i] = 'x';
+	anx_strlcpy(overflow + 260, "\bZ\r", sizeof(overflow) - 260);
+	test_mock_console_input(overflow);
+	CHECK(test_shell_readline(input, sizeof(input)) == 255);
+	CHECK(input[254] == 'Z' && !input[255]);
+	test_mock_console_input("ab\003");
+	CHECK(test_shell_readline(input, sizeof(input)) == 0 && !input[0]);
+	test_mock_console_input(NULL);
+	return 0;
+}
+
+static int test_input_editing(void)
+{
+	struct anx_shell_history_cursor recall;
+	struct { char input[8]; char guard[4]; } draft = {"AC", "XYZ"};
+	uint32_t len = 2, pos = 2;
+
+#define EDIT(k, u) anx_shell_input_key(draft.input, sizeof(draft.input), \
+					&len, &pos, &recall, (k), (u))
+	anx_shell_history_reset(&recall);
+	CHECK(EDIT(ANX_KEY_LEFT, 0) && pos == 1);
+	CHECK(EDIT(ANX_KEY_NONE, 'B') && !anx_strcmp(draft.input, "ABC"));
+	CHECK(len == 3 && pos == 2);
+	CHECK(EDIT(ANX_KEY_HOME, 0) && pos == 0);
+	CHECK(EDIT(ANX_KEY_BACKSPACE, 0) && pos == 0 && len == 3);
+	CHECK(EDIT(ANX_KEY_LEFT, 0) && pos == 0);
+	CHECK(EDIT(ANX_KEY_DELETE, 0) && !anx_strcmp(draft.input, "BC"));
+	CHECK(EDIT(ANX_KEY_RIGHT, 0) && pos == 1);
+	CHECK(EDIT(ANX_KEY_BACKSPACE, 0) && !anx_strcmp(draft.input, "C"));
+	CHECK(pos == 0 && len == 1);
+	CHECK(EDIT(ANX_KEY_END, 0) && pos == 1);
+	CHECK(EDIT(ANX_KEY_DELETE, 0) && len == 1);
+	CHECK(EDIT(ANX_KEY_RIGHT, 0) && pos == 1);
+	while (len < 7) CHECK(EDIT(ANX_KEY_NONE, 'x'));
+	CHECK(EDIT(ANX_KEY_NONE, 'y') && len == 7 && pos == 7);
+	CHECK(EDIT(ANX_KEY_HOME, 0));
+	CHECK(EDIT(ANX_KEY_NONE, 'z') && len == 7 && pos == 0);
+	CHECK(EDIT(ANX_KEY_DELETE, 0) && len == 6 && pos == 0);
+	CHECK(EDIT(ANX_KEY_NONE, 'z') && !anx_strcmp(draft.input, "zxxxxxx"));
+	CHECK(!anx_strcmp(draft.guard, "XYZ"));
+	CHECK(!EDIT(ANX_KEY_NONE, 0x100));
+	CHECK(!EDIT(ANX_KEY_ENTER, 0));
+	CHECK(EDIT(ANX_KEY_UP, 0) && pos == len);
+	CHECK(EDIT(ANX_KEY_LEFT, 0));
+	CHECK(EDIT(ANX_KEY_DOWN, 0) && !anx_strcmp(draft.input, "zxxxxxx"));
+	CHECK(pos == len);
+	CHECK(EDIT(ANX_KEY_UP, 0));
+	CHECK(EDIT(ANX_KEY_BACKSPACE, 0) && recall.offset == -1);
+	CHECK(EDIT(ANX_KEY_UP, 0));
+	CHECK(EDIT(ANX_KEY_DOWN, 0) && !anx_strcmp(draft.input, "echo i"));
+	CHECK(!anx_strcmp(draft.guard, "XYZ"));
+#undef EDIT
+	return 0;
+}
 
 int test_shell_history(void)
 {
@@ -77,5 +152,6 @@ int test_shell_history(void)
 		for (j = (uint32_t)anx_strlen(disk.entries[i]); j < 256; j++)
 			CHECK(disk.entries[i][j] == 0);
 	}
-	return 0;
+	CHECK(test_input_editing() == 0);
+	return test_console_editing();
 }

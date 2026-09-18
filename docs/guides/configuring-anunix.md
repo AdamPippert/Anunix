@@ -113,10 +113,15 @@ Atkinson default. Unknown font names return an error without changing the theme.
 The terminal and the Agent window's shell mode place the prompt below output,
 starting at the top and scrolling when the viewport fills. Long input wraps;
 resizing reflows visible output. Page Up and Page Down browse scrollback.
+Left and Right move the input cursor; Home and End move to the start and end.
+Typing inserts at the cursor. Backspace removes the preceding character and
+Delete removes the following character. These controls also work in serial
+and interactive SSH shells. Terminal paste inserts at the cursor; Tab
+completion operates at the end of the line.
 
 Up recalls an older command and Down moves toward newer commands, restoring
-unfinished input when it reaches the current draft. The desktop and serial
-shell share a 32-command history. Consecutive duplicates and lines containing
+unfinished input when it reaches the current draft. The desktop, serial, and SSH
+shells share a 32-command history. Consecutive duplicates and lines containing
 `secret` or `useradd` tokens are omitted. History persists when the object store
 is available.
 

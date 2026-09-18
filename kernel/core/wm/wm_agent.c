@@ -80,6 +80,7 @@ static struct {
 	/* Input */
 	char     input[256];
 	uint32_t input_len;
+	uint32_t input_pos;
 	struct anx_shell_history_cursor recall;
 
 	/* Conversation context passed to the model */
@@ -223,7 +224,7 @@ static void agent_redraw(void)
 
 		output += len ? (len + cols - 1) / cols : 1;
 	}
-	prompt_len = (uint32_t)anx_strlen(prompt) + g_agent.input_len;
+	prompt_len = (uint32_t)anx_strlen(prompt) + g_agent.input_pos;
 	cursor_row = output + prompt_len / cols;
 	first = cursor_row + 1 > g_agent.vis_lines
 		? cursor_row + 1 - g_agent.vis_lines : 0;
@@ -444,12 +445,19 @@ void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		return;
 	if (key != ANX_KEY_PAGEUP && key != ANX_KEY_PAGEDOWN)
 		g_agent.scroll_off = 0;
+	if (anx_shell_input_key(g_agent.input, sizeof(g_agent.input),
+				 &g_agent.input_len, &g_agent.input_pos,
+				 &g_agent.recall, key, unicode)) {
+		mark_dirty();
+		return;
+	}
 	switch (key) {
 	case ANX_KEY_ENTER: {
 		char input[sizeof(g_agent.input)];
 
 		anx_strlcpy(input, g_agent.input, sizeof(input));
 		g_agent.input_len = 0;
+		g_agent.input_pos = 0;
 		g_agent.input[0] = '\0';
 		anx_shell_history_reset(&g_agent.recall);
 		if (input[0])
@@ -458,24 +466,12 @@ void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 			hist_append_role("", 0, ROLE_USER);
 		break;
 	}
-	case ANX_KEY_BACKSPACE:
-		if (g_agent.input_len > 0)
-			g_agent.input[--g_agent.input_len] = '\0';
-		anx_shell_history_reset(&g_agent.recall);
-		break;
 	case ANX_KEY_ESC:
 		g_agent.input_len = 0;
+		g_agent.input_pos = 0;
 		g_agent.input[0] = '\0';
 		anx_shell_history_reset(&g_agent.recall);
 		break;
-	case ANX_KEY_UP:
-	case ANX_KEY_DOWN: {
-		int n = anx_shell_history_move(&g_agent.recall,
-			key == ANX_KEY_UP ? -1 : 1, g_agent.input, sizeof(g_agent.input));
-
-		if (n >= 0) g_agent.input_len = (uint32_t)n;
-		break;
-	}
 	case ANX_KEY_PAGEUP:
 		g_agent.scroll_off += (int32_t)g_agent.vis_lines;
 		break;
@@ -484,12 +480,6 @@ void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		if (g_agent.scroll_off < 0) g_agent.scroll_off = 0;
 		break;
 	default:
-		if (unicode >= 0x20 && unicode < 0x7F &&
-		    g_agent.input_len < sizeof(g_agent.input) - 1) {
-			g_agent.input[g_agent.input_len++] = (char)unicode;
-			g_agent.input[g_agent.input_len] = '\0';
-			anx_shell_history_reset(&g_agent.recall);
-		}
 		break;
 	}
 	mark_dirty();
@@ -528,6 +518,7 @@ static void agent_on_destroy(struct anx_surface *surf)
 	g_agent.conv = NULL;
 	g_agent.conv_len = 0;
 	g_agent.input_len = 0;
+	g_agent.input_pos = 0;
 	g_agent.input[0] = '\0';
 	anx_shell_history_reset(&g_agent.recall);
 }

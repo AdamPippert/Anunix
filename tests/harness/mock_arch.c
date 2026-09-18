@@ -101,15 +101,22 @@ void arch_console_puts(const char *s)
 	}
 }
 
+static const char *console_input;
+
+void test_mock_console_input(const char *input)
+{
+	console_input = input;
+}
+
 int arch_console_getc(void)
 {
-	/* In test builds, return EOF-like value — no interactive input */
-	return -1;
+	return console_input && *console_input ? (uint8_t)*console_input++ : -1;
 }
 
 bool arch_console_has_input(void)
 {
-	return false;
+	/* A supplied empty stream allows a read to report EOF without polling. */
+	return console_input != NULL;
 }
 
 void arch_exception_init(void)
@@ -212,6 +219,7 @@ void anx_irq_mask(uint8_t irq) { (void)irq; }
 void anx_gui_init(void) {}
 bool anx_gui_active(void) { return false; }
 void anx_gui_terminal_putc(char c) { (void)c; }
+void anx_gui_terminal_move_cursor(int32_t cells) { (void)cells; }
 void anx_gui_set_paging(bool paging) { (void)paging; }
 void anx_gui_benchmark(void) { }
 void anx_gui_update_time(void) {}

@@ -21,6 +21,9 @@ bool anx_fbcon_active(void);
 /* Write a single character at current cursor, advance cursor */
 void anx_fbcon_putc(char c);
 
+/* Move the console cursor by cells without erasing existing text. */
+void anx_fbcon_move_cursor(int32_t cells);
+
 /* Write a string */
 void anx_fbcon_puts(const char *s);
 

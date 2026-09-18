@@ -156,6 +156,63 @@ int test_shell_ui(void)
 	CHECK(cursor_at(agent, 12 + (52 % 5) * ANX_FONT_WIDTH, 12 + 3 * ROW_H));
 	key(true, ANX_KEY_ESC, 0);
 
+	/* Real key routing edits the middle, preserves suffixes, and recalls edits. */
+	for (i = 0; i < 2; i++) {
+		bool is_agent = i != 0;
+		struct anx_surface *surf = is_agent ? agent : term;
+		uint32_t margin = is_agent ? 12 : 4;
+		uint32_t top = is_agent ? 12 : 8;
+		uint32_t j;
+
+		resize(surf, 640, 220);
+		submit(is_agent, "clear");
+		type(is_agent, "echo AXC");
+		key(is_agent, ANX_KEY_LEFT, 0);
+		key(is_agent, ANX_KEY_LEFT, 0);
+		flush(is_agent);
+		CHECK(cursor_at(surf, margin + 8 * ANX_FONT_WIDTH, top));
+		key(is_agent, ANX_KEY_DELETE, 0);
+		type(is_agent, "B");
+		key(is_agent, ANX_KEY_HOME, 0);
+		key(is_agent, ANX_KEY_BACKSPACE, 0);
+		for (j = 0; j < 5; j++) key(is_agent, ANX_KEY_RIGHT, 0);
+		type(is_agent, "Z");
+		key(is_agent, ANX_KEY_BACKSPACE, 0);
+		key(is_agent, ANX_KEY_END, 0);
+		key(is_agent, ANX_KEY_DELETE, 0);
+		key(is_agent, ANX_KEY_ENTER, 0);
+		flush(is_agent);
+		CHECK(row_is(surf, margin, top + ROW_H, "ABC", fg));
+		key(is_agent, ANX_KEY_UP, 0);
+		key(is_agent, ANX_KEY_LEFT, 0);
+		key(is_agent, ANX_KEY_BACKSPACE, 0);
+		type(is_agent, "D");
+		key(is_agent, ANX_KEY_ENTER, 0);
+		flush(is_agent);
+		CHECK(row_is(surf, margin, top + 3 * ROW_H, "ADC", fg));
+		submit(is_agent, "clear");
+		resize(surf, 88, 140);
+		for (j = 0; j < 50; j++) type(is_agent, "x");
+		key(is_agent, ANX_KEY_HOME, 0);
+		flush(is_agent);
+		CHECK(cursor_at(surf, margin + 2 * ANX_FONT_WIDTH, top));
+		key(is_agent, ANX_KEY_END, 0);
+		flush(is_agent);
+		CHECK(cursor_at(surf, margin + (52 % (is_agent ? 5 : 6)) *
+				ANX_FONT_WIDTH, top + 3 * ROW_H));
+		if (is_agent) key(true, ANX_KEY_ESC, 0);
+		else anx_wm_terminal_clear_input();
+	}
+	resize(term, 640, 220);
+	type(false, "echo AC");
+	key(false, ANX_KEY_LEFT, 0);
+	anx_wm_terminal_paste("B", 1);
+	key(false, ANX_KEY_TAB, 0); /* A mid-line Tab must retain the suffix. */
+	key(false, ANX_KEY_ENTER, 0);
+	flush(false);
+	CHECK(row_is(term, 4, 8 + ROW_H, "ABC", fg));
+	submit(false, "clear");
+
 	/* Ring wrap retains only the newest 200 terminal/300 Agent logical lines. */
 	resize(term, 640, 200);
 	for (i = 0; i < 210; i++) {

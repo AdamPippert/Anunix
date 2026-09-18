@@ -1,9 +1,9 @@
 /*
  * iface_tools.c — Interface Plane CLI tools.
  *
- * surfctl  — manage surfaces (list, create, destroy, commit)
+ * surfctl  — list surfaces, create headless surfaces, repaint
  * evctl    — inspect and inject events
- * compctl  — compositor control (repaint, focus)
+ * compctl  — compositor repaint
  * envctl   — manage environments (define, activate, query)
  */
 
@@ -59,10 +59,8 @@ static void surfctl_usage(void)
 {
 	kprintf("%s", "usage: surfctl <subcommand>\n");
 	kprintf("%s", "  list                     list all surfaces\n");
-	kprintf("%s", "  show <oid-prefix>        show surface details\n");
-	kprintf("%s", "  commit <oid-prefix>      force commit (repaint) a surface\n");
-	kprintf("%s", "  destroy <oid-prefix>     destroy a surface\n");
-	kprintf("%s", "  headless <w> <h>         create a headless test surface\n");
+	kprintf("%s", "  commit                   repaint all pending surfaces\n");
+	kprintf("%s", "  headless [<w> <h>]       create a headless surface (default 320x240)\n");
 }
 
 void
@@ -204,8 +202,7 @@ cmd_evctl(int argc, char **argv)
 static void compctl_usage(void)
 {
 	kprintf("%s", "usage: compctl <subcommand>\n");
-	kprintf("%s", "  repaint                  force full compositor repaint\n");
-	kprintf("%s", "  focus <oid-prefix>       (not yet implemented)\n");
+	kprintf("%s", "  repaint                  repaint all pending surfaces\n");
 }
 
 void

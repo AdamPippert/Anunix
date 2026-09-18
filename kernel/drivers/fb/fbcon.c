@@ -136,6 +136,23 @@ static void fbcon_draw_at_cursor(char c)
 	anx_font_draw_char(px, py, c, FBCON_FG, FBCON_BG);
 }
 
+void anx_fbcon_move_cursor(int32_t cells)
+{
+	int64_t offset;
+
+	if (!fbcon_ready || !con_cols || !con_rows) return;
+	if (anx_gui_active()) {
+		anx_gui_terminal_move_cursor(cells);
+		return;
+	}
+	offset = (int64_t)cur_y * con_cols + cur_x + cells;
+	if (offset < 0) offset = 0;
+	if (offset >= (int64_t)con_rows * con_cols)
+		offset = (int64_t)con_rows * con_cols - 1;
+	cur_y = (uint32_t)offset / con_cols;
+	cur_x = (uint32_t)offset % con_cols;
+}
+
 void anx_fbcon_putc(char c)
 {
 	if (!fbcon_ready)
