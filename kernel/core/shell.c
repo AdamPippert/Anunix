@@ -457,182 +457,225 @@ static int parse_args(char *line, char **argv, int max_args)
 
 /* --- Command handlers --- */
 
+struct shell_man_entry {
+	const char *name;
+	const char *synopsis;
+	const char *summary;
+	const char *category;
+};
+
+#define MAN(n, syn, desc, cat) { n, syn, desc, cat }
+static const struct shell_man_entry shell_manual[] = {
+	MAN("appendb64", "appendb64 [ns:]<path> <base64>", "Append decoded binary data to an object.", "objects"),
+	MAN("cat", "cat <oid-or-path>", "Print an object's payload.", "objects"),
+	MAN("cells", "cells", "List execution cells.", "objects"),
+	MAN("cp", "cp <source> <destination>", "Copy an object with provenance.", "objects"),
+	MAN("disk", "disk", "List block devices.", "objects"),
+	MAN("fetch", "fetch <host> <port> [path] [ns:name]", "Fetch HTTP content into an object.", "objects"),
+	MAN("inspect", "inspect <oid-or-path>", "Show a complete object inspection.", "objects"),
+	MAN("ls", "ls [ns:path]", "List namespace entries.", "objects"),
+	MAN("meta", "meta <show|set|get> <path> [args]", "Read or edit object metadata.", "objects"),
+	MAN("mv", "mv <source> <destination>", "Move or rename a namespace binding.", "objects"),
+	MAN("raid", "raid <list|devs|detail|create|add|fail|resync|stop|zero> [args]", "Inspect or administer software RAID.", "objects"),
+	MAN("rm", "rm [-f] <ns:path>", "Delete a state object.", "objects"),
+	MAN("search", "search [-i] <pattern>", "Search object payloads.", "objects"),
+	MAN("state", "state <create|show|seal|delete> [args]", "Manage the state-object lifecycle.", "objects"),
+	MAN("store", "store <format|mount|stats>", "Manage the persistent object store.", "objects"),
+	MAN("uor", "uor <inspect|scan|rebuild|project> [args]", "Manage the unified object representation index.", "objects"),
+	MAN("write", "write <ns:path> <content>", "Create a state object.", "objects"),
+
+	MAN("agent", "agent <goal...>", "Run the AI agent loop.", "model"),
+	MAN("api", "api <credential> <host> <port> [path]", "Make an authenticated API call.", "model"),
+	MAN("ask", "ask <message...>", "Send a question to the configured model endpoint.", "model"),
+	MAN("loop", "loop <run|status> [id]", "Run or inspect an IBAL loop.", "model"),
+	MAN("model", "model <info|layers|diff|import> [args]", "Inspect or import model objects.", "model"),
+	MAN("model-init", "model-init <credential> <host> <port>", "Configure the model endpoint.", "model"),
+	MAN("rlm", "rlm <run|pal> [args]", "Run rollouts and feed scores to PAL.", "model"),
+	MAN("tensor", "tensor <create|info|stats|fill|slice|diff|quantize|search> [args]", "Create and operate on tensor objects.", "model"),
+	MAN("world", "world [status|list|active|set|traj] [args]", "Inspect or select the active world model.", "model"),
+	MAN("xdna", "xdna [load]", "Inspect the AMD XDNA NPU or load firmware.", "model"),
+
+	MAN("browser", "browser <url|status>", "Navigate the browser renderer or show status.", "network"),
+	MAN("browser_init", "browser_init [host [port]]", "Connect the browser renderer service.", "network"),
+	MAN("browser_stop", "browser_stop", "Stop browser streaming.", "network"),
+	MAN("dns", "dns <hostname>", "Resolve a hostname to an IPv4 address.", "network"),
+	MAN("http-get", "http-get <host> [port] [path]", "Make an HTTP GET request.", "network"),
+	MAN("net", "net <status|dhcp>", "Show network status or renew DHCP.", "network"),
+	MAN("netinfo", "netinfo", "Show active network configuration.", "network"),
+	MAN("ntp", "ntp [server-ip]", "Synchronize the system clock with NTP.", "network"),
+	MAN("ping", "ping <ip>", "Send four ICMP echo requests.", "network"),
+	MAN("wifi", "wifi <status|connect|disconnect|mac> [args]", "Manage the Wi-Fi interface.", "network"),
+
+	MAN("bootlog", "bootlog <list|show|diff|config> [args]", "Inspect persistent boot logs.", "system"),
+	MAN("cap", "cap <create|list|validate|install> [args]", "Manage capability objects.", "system"),
+	MAN("cell", "cell <create|run|show|list> [args]", "Manage execution cells.", "system"),
+	MAN("colors", "colors", "Open the palette editor.", "system"),
+	MAN("config", "config <list|show|set|save|load|apply> [args]", "Manage live and persistent configuration.", "system"),
+	MAN("engine", "engine <register|list> [args]", "Manage the tool-engine registry.", "system"),
+	MAN("fb_info", "fb_info", "Print framebuffer geometry as JSON.", "system"),
+	MAN("fb_test", "fb_test", "Paint display test bars.", "system"),
+	MAN("gop_list", "gop_list", "List boot-time display modes.", "system"),
+	MAN("halt", "halt", "Halt immediately without confirmation.", "system"),
+	MAN("hw-inventory", "hw-inventory", "Show the hardware inventory.", "system"),
+	MAN("hwd", "hwd", "Show the hardware-detection summary.", "system"),
+	MAN("mem", "mem stats", "Show page-allocator statistics.", "system"),
+	MAN("memplane", "memplane <admit|show> [args]", "Manage the memory control plane.", "system"),
+	MAN("mode", "mode", "Select a display mode.", "system"),
+	MAN("pci", "pci", "List PCI devices.", "system"),
+	MAN("perf", "perf", "Show the boot performance profile.", "system"),
+	MAN("reboot", "reboot", "Reboot immediately without confirmation.", "system"),
+	MAN("sched", "sched status", "Show scheduler queue depths.", "system"),
+	MAN("sysinfo", "sysinfo", "Show a system overview.", "system"),
+	MAN("theme", "theme <list|use|color|save|fonts|font> [args]", "Manage appearance, colors, and fonts.", "system"),
+	MAN("tz", "tz <UTC-offset>", "Set the display timezone offset.", "system"),
+	MAN("version", "version", "Show the Anunix version.", "system"),
+	MAN("vm", "vm <create|start|stop|list|info|config|destroy|exec> [args]", "Manage virtual-machine objects.", "system"),
+	MAN("wallpaper", "wallpaper <ns:path|none>", "Set or clear the desktop wallpaper.", "system"),
+#ifdef ANX_RESEARCH_TEST
+	MAN("research-test", "research-test", "Run research conformance tests.", "system"),
+#endif
+
+	MAN("install", "install -i", "Run the interactive OS installer.", "workflow"),
+	MAN("kickstart", "kickstart [help|apply] [args]", "Run kickstart provisioning.", "workflow"),
+	MAN("workflow", "workflow <run|list|show|create|graph|dump|add-node|add-edge|destroy> [args]", "Manage workflow objects.", "workflow"),
+
+	MAN("login", "login <user>", "Log in with a password.", "security"),
+	MAN("logout", "logout", "End the current authenticated session.", "security"),
+	MAN("secret", "secret <set|list|show|fetch|revoke|wipe-connectivity> [args]", "Manage credential objects without listing values.", "security"),
+	MAN("ssh-addkey", "ssh-addkey <base64-public-key>", "Authorize an SSH public key.", "security"),
+	MAN("ssh-keygen", "ssh-keygen", "Replace the SSH identity key and print its public key.", "security"),
+	MAN("useradd", "useradd <user> <password>", "Create a user account.", "security"),
+
+	MAN("?", "? [command|category]", "Alias for help.", "shell"),
+	MAN("anx", "anx [ns:]<path>", "Open a state object in amacs.", "shell"),
+	MAN("clear", "clear", "Clear terminal output.", "shell"),
+	MAN("cmdlist", "cmdlist [category]", "List commands by category.", "shell"),
+	MAN("date", "date", "Show the current date and time.", "shell"),
+	MAN("echo", "echo <text...>", "Print text; $? expands to the last return code.", "shell"),
+	MAN("edit", "edit <ns:path>", "Open a state object in the text editor.", "shell"),
+	MAN("exec", "exec <path>", "Run a POSIX ELF binary.", "shell"),
+	MAN("grep", "grep [-v] [-i] <pattern>", "Filter input lines by pattern.", "shell"),
+	MAN("head", "head [-n count]", "Print the first input lines.", "shell"),
+	MAN("help", "help [command|category]", "Show orientation or command help.", "shell"),
+	MAN("history", "history", "Show shell command history.", "shell"),
+	MAN("man", "man <command>", "Show a command manual page.", "shell"),
+	MAN("sort", "sort [-r]", "Sort input lines.", "shell"),
+	MAN("tail", "tail [-n count]", "Print the last input lines.", "shell"),
+	MAN("wc", "wc [-l] [-w] [-c]", "Count input lines, words, or bytes.", "shell"),
+
+	MAN("compctl", "compctl repaint", "Force a compositor repaint.", "interface"),
+	MAN("envctl", "envctl <list|define|activate|deactivate> [args]", "Manage interface environments.", "interface"),
+	MAN("evctl", "evctl <focus|inject-key> [args]", "Inspect focus or inject a key event.", "interface"),
+	MAN("surfctl", "surfctl <list|commit|headless> [args]", "Inspect or control interface surfaces.", "interface"),
+};
+#undef MAN
+
+static const char *shell_categories[] = {
+	"objects", "model", "network", "system", "workflow", "security",
+	"shell", "interface",
+};
+
+static const struct shell_man_entry *shell_man_find(const char *name)
+{
+	uint32_t i;
+
+	for (i = 0; i < sizeof(shell_manual) / sizeof(shell_manual[0]); i++)
+		if (anx_strcmp(shell_manual[i].name, name) == 0)
+			return &shell_manual[i];
+	return NULL;
+}
+
+static bool shell_category_valid(const char *category)
+{
+	uint32_t i;
+
+	for (i = 0; i < sizeof(shell_categories) / sizeof(shell_categories[0]); i++)
+		if (anx_strcmp(shell_categories[i], category) == 0)
+			return true;
+	return false;
+}
+
+static void cmd_cmdlist(int argc, char **argv)
+{
+	const char *only = argc >= 2 ? argv[1] : NULL;
+	uint32_t category, i;
+
+	if (only && !shell_category_valid(only)) {
+		kprintf("cmdlist: unknown category '%s'\n", only);
+		kputs("categories: objects model network system workflow security shell interface\n");
+		return;
+	}
+	kputs("Commands by category (use 'man <command>' for details):\n");
+	for (category = 0;
+	     category < sizeof(shell_categories) / sizeof(shell_categories[0]);
+	     category++) {
+		const char *name = shell_categories[category];
+		uint32_t column = 2;
+
+		if (only && anx_strcmp(only, name) != 0)
+			continue;
+		kprintf("\n%s:\n  ", name);
+		for (i = 0; i < sizeof(shell_manual) / sizeof(shell_manual[0]); i++) {
+			uint32_t len;
+
+			if (anx_strcmp(shell_manual[i].category, name) != 0)
+				continue;
+			len = (uint32_t)anx_strlen(shell_manual[i].name);
+			if (column > 2 && column + len + 1 > 76) {
+				kputs("\n  ");
+				column = 2;
+			}
+			kprintf("%s ", shell_manual[i].name);
+			column += len + 1;
+		}
+		kputs("\n");
+	}
+}
+
+static void cmd_man(int argc, char **argv)
+{
+	const struct shell_man_entry *entry;
+
+	if (argc < 2) {
+		kputs("usage: man <command>\n");
+		return;
+	}
+	entry = shell_man_find(argv[1]);
+	if (!entry) {
+		kprintf("man: no entry for '%s'\n", argv[1]);
+		kputs("Use 'cmdlist' to list commands.\n");
+		return;
+	}
+	kprintf("NAME\n  %s - %s\n\n", entry->name, entry->summary);
+	kprintf("SYNOPSIS\n  %s\n\n", entry->synopsis);
+	kprintf("DESCRIPTION\n  %s\n\n", entry->summary);
+	kprintf("CATEGORY\n  %s\n\n", entry->category);
+	kprintf("SEE ALSO\n  cmdlist %s\n", entry->category);
+}
+
 static void cmd_help(int argc, char **argv)
 {
-	const char *topic = (argc >= 2) ? argv[1] : NULL;
+	char *man_argv[2];
+	char *list_argv[2];
 
-	if (!topic) {
-		kputs("ansh — Anunix Shell.  Type 'help <topic>' for details.\n\n");
-		kputs("Topics:\n");
-		kputs("  help objects    State objects, namespaces\n");
-		kputs("  help model      AI models, agents, tensors\n");
-		kputs("  help network    Networking, HTTP, WiFi\n");
-		kputs("  help system     System info, hardware, scheduler\n");
-		kputs("  help workflow   Workflow engine\n");
-		kputs("  help security   Credentials, auth\n");
-		kputs("  help shell      Builtins, pipes, history\n");
-		kputs("  help interface  Surfaces, events, environments\n");
-		kputs("\nCommands (including aliases):\n");
-		kputs("  ? agent anx api appendb64 ask bootlog browser browser_init browser_stop\n");
-		kputs("  cap cat cell cells clear colors compctl config cp date disk dns echo edit\n");
-		kputs("  engine envctl evctl exec fb_info fb_test fetch gop_list grep halt head\n");
-		kputs("  help history http-get hw-inventory hwd inspect install kickstart login\n");
-		kputs("  logout loop ls mem memplane meta mode model model-init mv net netinfo ntp\n");
-		kputs("  pci perf ping raid reboot rlm rm sched search secret sort ssh-addkey\n");
-		kputs("  ssh-keygen state store surfctl sysinfo tail tensor theme tz uor useradd\n");
-		kputs("  version vm wallpaper wc wifi workflow world write xdna\n");
-#ifdef ANX_RESEARCH_TEST
-		kputs("  research-test\n");
-#endif
+	if (argc < 2) {
+		kputs("ansh — Anunix shell\n\n");
+		kputs("  cmdlist [category]  list commands by category\n");
+		kputs("  man <command>       show a command manual page\n");
+		kputs("  help <command>      shortcut for man\n");
+		kputs("  help <category>     shortcut for cmdlist\n\n");
+		kputs("categories: objects model network system workflow security shell interface\n");
 		return;
 	}
-
-	if (anx_strcmp(topic, "objects") == 0) {
-		kputs("State objects and namespaces:\n");
-		kputs("  ls [ns:path]               List namespace entries\n");
-		kputs("  cat <oid-or-path>          Read object payload\n");
-		kputs("  write <ns:path> <content>  Create a State Object\n");
-		kputs("  appendb64 [ns:]<path> <base64>  Append binary object data\n");
-		kputs("  cp <src> <dst>             Copy object with provenance\n");
-		kputs("  mv <src> <dst>             Move/rename namespace binding\n");
-		kputs("  rm [-f] <ns:path>          Delete a State Object\n");
-		kputs("  inspect <oid-or-path>      Full object inspection\n");
-		kputs("  search [-i] <pattern>      Search object payloads\n");
-		kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET -> object\n");
-		kputs("  state create|show|seal|delete  State object lifecycle\n");
-		kputs("  meta show|set|get <path>   Object metadata editor\n");
-		kputs("  uor inspect|scan|rebuild|project  Object representation index\n");
-		kputs("  store format|mount|stats   Object store management\n");
-		kputs("  disk                       List block devices\n");
-		kputs("  raid list|devs|detail      Software RAID status\n");
-		kputs("  raid create <0|1> <chunkKiB|-> <dev>...  Build an array\n");
-		kputs("  raid add|fail|resync|stop|zero  RAID administration\n");
-		kputs("  cells                      List execution cells\n");
+	if (shell_category_valid(argv[1])) {
+		list_argv[0] = "cmdlist";
+		list_argv[1] = argv[1];
+		cmd_cmdlist(2, list_argv);
 		return;
 	}
-
-	if (anx_strcmp(topic, "model") == 0) {
-		kputs("AI models, agents, tensors:\n");
-		kputs("  ask <message...>           Ask Claude a question\n");
-		kputs("  agent <goal...>            Run AI agent loop\n");
-		kputs("  model-init <cred> <host> <port>  Configure model endpoint\n");
-		kputs("  model info|layers|diff|import  Model namespace\n");
-		kputs("  tensor create|info|stats|fill  Tensor operations\n");
-		kputs("  tensor slice|diff|quantize|search  Tensor ops (Phase 2)\n");
-		kputs("  rlm run [prompt]           Run a rollout with current adapter\n");
-		kputs("  rlm pal <i> <world> [s] [a]  Feed rollout score to PAL\n");
-		kputs("  xdna [load]                AMD XDNA NPU info / load firmware\n");
-		kputs("  loop run|status <id>       IBAL loop ('loop' for usage)\n");
-		kputs("  world [status|list|active] World model (Anunix-world)\n");
-		kputs("  world set <uri> | traj    Select world; trajectory buffer\n");
-		kputs("  api <cred> <host> <port> [path]  Authenticated API call\n");
-		return;
-	}
-
-	if (anx_strcmp(topic, "network") == 0) {
-		kputs("Networking, HTTP, WiFi:\n");
-		kputs("  browser_init [host [port]] Connect browser renderer service\n");
-		kputs("  browser <url>|status      Navigate browser / show connection\n");
-		kputs("  browser_stop              Stop browser streaming\n");
-		kputs("  net status|dhcp            Network status / renew DHCP lease\n");
-		kputs("  netinfo                    Network configuration\n");
-		kputs("  ntp [server-ip]            Sync time from NTP server\n");
-		kputs("  ping <ip>                  Send 4 ICMP echo requests\n");
-		kputs("  dns <hostname>             Resolve hostname to IP\n");
-		kputs("  wifi status|connect|disconnect|mac  WiFi management\n");
-		kputs("  http-get <host> [port] [path]  HTTP GET request\n");
-		kputs("  fetch <host> <port> [path] [ns:name]  HTTP GET -> object\n");
-		return;
-	}
-
-	if (anx_strcmp(topic, "system") == 0) {
-		kputs("System info, hardware, scheduler:\n");
-		kputs("  sysinfo                    System overview\n");
-		kputs("  mem stats                  Page allocator statistics\n");
-		kputs("  sched status               Show scheduler queue depths\n");
-		kputs("  engine register|list       Tool engine registry\n");
-		kputs("  memplane admit|show        Memory control plane\n");
-		kputs("  cap create|list|validate|install  Capability objects\n");
-		kputs("  cell create|run|show|list  Execution cell runtime\n");
-		kputs("  vm create|start|stop|list|info  Virtual machine control\n");
-		kputs("  pci                        List PCI devices\n");
-		kputs("  perf                       Show boot performance profile\n");
-		kputs("  bootlog list|show|diff|config  Persistent boot logs\n");
-		kputs("  reboot                     Reboot immediately (no confirmation)\n");
-		kputs("  halt                       Halt immediately (no confirmation)\n");
-		kputs("  version                    Show kernel version\n");
-		kputs("  hwd                        Hardware detection summary\n");
-		kputs("  hw-inventory               Show hardware summary\n");
-		kputs("  tz <offset>                Set UTC offset (e.g., -7 for PDT)\n");
-		kputs("  config list|show|set|save|load|apply  Live configuration\n");
-		kputs("  colors                    Palette editor (Meta+Shift+C)\n");
-		kputs("  theme list|use|color|save  Appearance and color schemes\n");
-		kputs("  theme fonts|font [family]  List / select typeface\n");
-		kputs("  wallpaper <ns:path>|none   Desktop wallpaper\n");
-		kputs("  fb_info                    Framebuffer geometry (JSON)\n");
-		kputs("  mode                       Display mode selection\n");
-		kputs("  gop_list                   List boot-time display modes\n");
-		kputs("  fb_test                    Paint display test bars\n");
-#ifdef ANX_RESEARCH_TEST
-		kputs("  research-test             Run research conformance tests\n");
-#endif
-		return;
-	}
-
-	if (anx_strcmp(topic, "workflow") == 0) {
-		kputs("Workflow engine:\n");
-		kputs("  workflow run|list|show|create  Workflow management\n");
-		kputs("  kickstart                  Kickstart provisioning agent\n");
-		kputs("  install -i                 Interactive OS installer\n");
-		return;
-	}
-
-	if (anx_strcmp(topic, "security") == 0) {
-		kputs("Credentials and auth:\n");
-		kputs("  secret set <name> <value>  Store a credential\n");
-		kputs("  secret list                List credentials (no values)\n");
-		kputs("  secret show <name>         Show credential metadata\n");
-		kputs("  secret fetch <name> <host> <port> [path]  Fetch from HTTP\n");
-		kputs("  secret revoke <name>       Revoke a credential\n");
-		kputs("  secret wipe-connectivity   Remove Wi-Fi/SSH/tunnel secrets (key session only)\n");
-		kputs("  login <user>               Login with password\n");
-		kputs("  logout                     End session\n");
-		kputs("  useradd <user> <pass>      Create user account\n");
-		kputs("  ssh-keygen                 Replace identity key; authorize / print public key\n");
-		kputs("  ssh-addkey <b64-blob>      Authorize an SSH public key\n");
-		return;
-	}
-
-	if (anx_strcmp(topic, "shell") == 0) {
-		kputs("Shell builtins, pipes, history:\n");
-		kputs("  echo <text...>             Print text ($? for return code)\n");
-		kputs("  grep [-v] [-i] <pattern>   Filter lines\n");
-		kputs("  head [-n N]                First N lines (default 10)\n");
-		kputs("  tail [-n N]                Last N lines (default 10)\n");
-		kputs("  wc [-l] [-w] [-c]          Count lines, words, chars\n");
-		kputs("  sort [-r]                  Sort piped lines (r=reverse)\n");
-		kputs("  history                    Show command history\n");
-		kputs("  date                       Show current date and time\n");
-		kputs("  clear                      Clear terminal output\n");
-		kputs("  edit <ns:path>             Open text editor\n");
-		kputs("  anx [ns:]<path>            Open amacs editor (M-: eval, C-x C-s save, C-x C-c quit)\n");
-		kputs("  exec <path>                Run a POSIX ELF binary\n");
-		kputs("  help [topic]               This help\n");
-		kputs("  ? [topic]                  Alias for help\n");
-		return;
-	}
-
-	if (anx_strcmp(topic, "interface") == 0) {
-		kputs("Surfaces, events, environments:\n");
-		kputs("  surfctl list|commit|headless  Surface listing / paint / creation\n");
-		kputs("  evctl focus|inject-key     Input focus / key event injection\n");
-		kputs("  compctl repaint            Force compositor repaint\n");
-		kputs("  envctl list|define|activate|deactivate  Environment management\n");
-		return;
-	}
-
-	kprintf("help: unknown topic '%s'  (objects|model|network|system|workflow|security|shell|interface)\n",
-		topic);
+	man_argv[0] = "man";
+	man_argv[1] = argv[1];
+	cmd_man(2, man_argv);
 }
 
 static void cmd_version(int argc, char **argv)
@@ -3169,6 +3212,10 @@ static void dispatch(int argc, char **argv)
 	if (anx_strcmp(argv[0], "help") == 0 ||
 	    anx_strcmp(argv[0], "?") == 0) {
 		cmd_help(argc, argv);
+	} else if (anx_strcmp(argv[0], "cmdlist") == 0) {
+		cmd_cmdlist(argc, argv);
+	} else if (anx_strcmp(argv[0], "man") == 0) {
+		cmd_man(argc, argv);
 	} else if (anx_strcmp(argv[0], "ls") == 0) {
 		cmd_ls(argc, argv);
 	} else if (anx_strcmp(argv[0], "cat") == 0) {
@@ -3532,7 +3579,8 @@ static void dispatch(int argc, char **argv)
 			kprintf("%3u  %s\n", (unsigned)(i + 1), history[idx]);
 		}
 	} else {
-		kprintf("unknown command: %s (type 'help')\n", argv[0]);
+		kprintf("unknown command: %s (try 'cmdlist' or 'man <command>')\n",
+			argv[0]);
 		last_return_code = -1;
 	}
 }
@@ -3649,7 +3697,7 @@ void anx_shell_run(void)
 	int argc;
 
 	history_load_from_disk();
-	kputs("\nansh ready. Type 'help' for commands.\n\n");
+	kputs("\nansh ready. Type 'help' for guidance.\n\n");
 
 	for (;;) {
 		kputs("anx> ");

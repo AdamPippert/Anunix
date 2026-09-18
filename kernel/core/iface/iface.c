@@ -7,6 +7,7 @@
 
 #include <anx/interface_plane.h>
 #include <anx/wm.h>
+#include <anx/theme.h>
 #include <anx/clipboard.h>
 #include <anx/input.h>
 #include <anx/cell.h>
@@ -343,6 +344,7 @@ static void restack_above(struct anx_surface *surf)
 int
 anx_iface_surface_commit(struct anx_surface *surf)
 {
+	const struct anx_theme *theme;
 	bool flags;
 	int rc;
 
@@ -352,6 +354,23 @@ anx_iface_surface_commit(struct anx_surface *surf)
 		return ANX_EINVAL;
 	if (!surf->renderer_ops)
 		return ANX_ENOENT;
+
+	/*
+	 * A transparent canvas cannot be committed over its previous pixels:
+	 * blending would accumulate opacity, while the GPU renderer's safe
+	 * fallback is an opaque copy. Rebuild the whole painted extent from the
+	 * desktop and lower windows instead. The ordered repaint re-enters here
+	 * through commit_flat() with anx_wm_in_repaint() set, so it terminates in
+	 * the renderer and preserves normal damage/commit accounting.
+	 */
+	theme = anx_theme_get();
+	if (surf->state == ANX_SURF_VISIBLE &&
+	    surf->renderer_class == ANX_ENGINE_RENDERER_GPU &&
+	    !surf->no_focus && theme->deco.transparency_enabled &&
+	    theme->deco.window_opacity < 255 && !anx_wm_in_repaint()) {
+		anx_wm_surface_recompose(surf);
+		return ANX_OK;
+	}
 
 	rc = surf->renderer_ops->commit(surf);
 	if (rc == ANX_OK) {

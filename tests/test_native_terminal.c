@@ -78,7 +78,7 @@ int test_native_terminal(void)
 	};
 	struct anx_wm_tiling_config old_tiling = anx_wm_tiling;
 	struct anx_surface *first = NULL, *second = NULL;
-	uint32_t i;
+	uint32_t i, sample_x, sample_y, transparent_pixel;
 	int rc = 0;
 
 	CHECK(anx_fb_init(&fb) == ANX_OK);
@@ -95,6 +95,19 @@ int test_native_terminal(void)
 	      (int32_t)ANX_WM_MENUBAR_H);
 	CHECK((uint32_t)first->y + first->height + anx_wm_tiling.border_w <=
 	      fb.height - ANX_WM_TASKBAR_H);
+	/*
+	 * A key press is an incremental surface commit. It must recompose the
+	 * background before blending, or the first typed character turns the
+	 * whole canvas opaque.
+	 */
+	anx_wm_repaint_all();
+	sample_x = (uint32_t)first->x + first->width - 4;
+	sample_y = (uint32_t)first->y + first->height - 4;
+	transparent_pixel = native_fb[sample_y * fb.width + sample_x];
+	CHECK(transparent_pixel != anx_theme_get()->palette.background);
+	key(first, ANX_KEY_NONE, 'x');
+	CHECK(native_fb[sample_y * fb.width + sample_x] == transparent_pixel);
+	key(first, ANX_KEY_BACKSPACE, 0);
 	resize(first, 640, 200);
 	submit(first, "clear");
 	CHECK(cursor_at(first, 0, 5));

@@ -873,6 +873,17 @@ void anx_wm_expose(int32_t x, int32_t y, uint32_t w, uint32_t h)
 	g_in_repaint = false;
 }
 
+void anx_wm_surface_recompose(struct anx_surface *surf)
+{
+	int32_t x, y;
+	uint32_t w, h;
+
+	if (!surf)
+		return;
+	surf_outer_rect(surf, &x, &y, &w, &h);
+	anx_wm_expose(x, y, w, h);
+}
+
 void anx_wm_repaint_all(void)
 {
 	const struct anx_fb_info *fb = anx_fb_get_info();

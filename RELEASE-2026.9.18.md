@@ -76,7 +76,18 @@ theme name remains an alias for `default`.
 Pretty-mode windows now default to `transparency=true` and `opacity=204`.
 That is 80% opacity, or 20% transparency. Existing configurations can set a
 different value or disable transparency, then persist it with
-`config save theme`. Boring mode remains opaque by design.
+`config save theme`. Boring mode remains opaque by design. Incremental
+application commits are recomposed against the desktop and lower windows, so
+focusing a window or typing in a terminal no longer makes its background
+opaque.
+
+### UNIX-style command discovery
+
+The shell's startup help is deliberately short. `cmdlist` groups commands
+under objects, model, network, system, workflow, security, shell, and interface
+categories; `cmdlist <category>` narrows the list. Every compiled command has a
+`man <command>` page with a synopsis and category, while `help <command>` and
+`help <category>` provide convenient shortcuts.
 
 The desktop uses the selected photographic wallpaper. Its checked-in PNG and
 embedded framebuffer data reproduce from the retained source conversion.
