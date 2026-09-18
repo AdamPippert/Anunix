@@ -308,8 +308,8 @@ apply_pretty_defaults(struct anx_theme *theme)
 	theme->deco.shadow_blur         = 12;
 	theme->deco.animation_enabled   = true;
 	theme->deco.animation_ms        = 150;   /* 0.15 s transitions */
-	theme->deco.transparency_enabled = false;
-	theme->deco.window_opacity      = 255;
+	theme->deco.transparency_enabled = true;
+	theme->deco.window_opacity      = 204;
 	theme->deco.titlebar_height     = 34;    /* --ax-title-h: 34 px */
 	theme->deco.show_titlebar       = true;
 	theme->deco.wallpaper           = ANX_WALLPAPER_IMAGE;

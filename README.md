@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2026.9.15-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-2026.9.18-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-64%20suites-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/RFCs-30-blueviolet" alt="RFCs">
+  <img src="https://img.shields.io/badge/tests-90%20suites-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/RFCs-33-blueviolet" alt="RFCs">
 </p>
 
 ---
@@ -55,52 +55,63 @@ Anunix replaces classical UNIX abstractions with primitives designed for AI-nati
 
 ---
 
-## Release: 2026.9.15
+## Release: 2026.9.18
 
-### Milestone: Anunix has a keyboard and a mouse of its own
+### Milestone: Anunix is a networked, configurable workstation on its target laptop
 
-The Framework Laptop 16 keyboard is a USB device behind an internal hub.
-Anunix had no USB input stack, so the machine lost its keyboard the moment
-it left the firmware console. This release adds one.
+Anunix now brings up the Framework Laptop 16's MT7925 adapter, joins a
+WPA2-PSK network, leases an address, synchronizes time, and serves SSH.
+The running system on Jekyll is reachable without Fedora underneath it.
 
-It also fixes the defect that stopped the kernel booting on real UEFI
-hardware at all. The EFI stub links at `0x140000000` and carries no
-`.reloc` section, so firmware loads it near 5 GiB. The stub then switched
-`CR3` to a map that covered 0 to 4 GiB, and the next instruction fetch
-faulted.
+This release also turns the graphical shell into a practical desktop.
+It adds persistent configuration templates, tiled and floating layouts,
+real font families, a photographic wallpaper, complete line editing, and
+adjustable window transparency. Pretty windows default to 20% transparent.
 
-**What is new in 2026.9.15**
+A shell-created workflow can now bind a State Object and pass it through a
+local `anxml` cell. The regression runs a prompt through
+`state_ref -> cell_call -> output` and checks for a nonempty Model Output.
+The generic model-server inference path remains a stub.
 
-- **The UEFI loader maps the whole image before it leaves boot services.**
-  `build_identity_map()` in `kernel/boot/efi/efi_stub.c` maps 1 GiB pages
-  up to the higher of the memory map top and the framebuffer end.
-  `make test-uefi-highmem` boots the ISO at 1 GiB and at 4 GiB and fails
-  if firmware placed `ANUNIX.EFI` below 4 GiB.
-- **A polled xHCI driver and a HID boot-protocol keyboard and mouse.**
-  `kernel/drivers/usb/xhci.c` takes the controller from firmware, resets
-  it, enumerates the root ports and hubs, and feeds
-  `kernel/drivers/input/hid_boot.c`.
-- **HID over I2C, with ACPI and AML behind it.** The loader hands the RSDP
-  to the kernel, `kernel/lib/aml_res.c` walks the DSDT for `PNP0C50`
-  devices, and `kernel/drivers/i2c/dw_i2c.c` drives the DesignWare master.
-- **The power button asks first.** Clicking the menu bar power icon used to
-  halt the machine with no warning. It now opens a modal dialog offering
-  Restart, Halt and Cancel, with Cancel selected.
-- **Omarchy-style hotkeys**, including `Meta+Escape` and `Ctrl+Alt+Delete`
-  for the power dialog, and focus by direction on `Meta`+arrows or
-  `Meta+HJKL`.
-- **NVMe owns its DMA buffer** and times out on the TSC rather than on a
-  loop count.
-- **Research days 001 to 082 are merged into `main`**, together with four
-  new tests that cover the seams between days 077 and 082.
-- **64 host-native suites pass, 0 fail.**
+**What is new in 2026.9.18**
 
-See [`RELEASE-2026.9.15.md`](RELEASE-2026.9.15.md) for the full account,
-including what has never run on real hardware.
+- **MT7925 Wi-Fi works on the target hardware.** The driver covers firmware
+  bring-up, scan, association, WPA2 key exchange, data transfer, rekeying,
+  beacon loss, and deauthentication.
+- **The network stack follows the active NIC.** ARP, DHCP, diagnostics, and
+  tools no longer assume virtio-net. `net dhcp` and `wifi scan` support
+  recovery and inspection.
+- **The desktop is configurable and persistent.** macOS, Windows, and
+  Omarchy templates select coordinated themes, fonts, window controls,
+  wallpaper, and tiling behavior.
+- **Pretty windows default to 80% opacity.** Set `opacity` from 0 through
+  255, or disable transparency, then save the theme configuration.
+- **The window manager supports dwindle tiling.** Directional focus, swaps,
+  resize operations, floating windows, gaps, and correct repaint ordering
+  work through the same hotkey layer.
+- **The shell behaves like an editor.** Console, native terminal, Agent,
+  WM terminal, and SSH share cursor movement, insertion, deletion, history,
+  draft restoration, and bounded escape-sequence handling.
+- **Local object-bound model workflows execute.** Shell-created nodes receive
+  usable ports, State Object references resolve by path or OID, and
+  `anxml-generate` produces a Model Output object.
+- **90 host-native suites pass, 0 fail.** The page-span test and Python
+  validation suites also pass.
+
+See [`RELEASE-2026.9.18.md`](RELEASE-2026.9.18.md) for validation evidence,
+compatibility notes, and remaining limitations.
 
 ---
 
 ## Earlier releases
+
+### 2026.9.15 — UEFI boot and physical input stacks
+
+The UEFI loader maps its complete high-memory image before switching page
+tables. A polled xHCI stack, USB HID keyboard and mouse support, ACPI and AML
+discovery, and HID over I2C establish the physical input path. The release
+also added a modal power dialog, directional focus hotkeys, and safer NVMe
+DMA handling. See [`RELEASE-2026.9.15.md`](RELEASE-2026.9.15.md).
 
 ### 2026.8.30 — Prism support
 
@@ -277,7 +288,7 @@ Built-in commands in `kernel/core/tools/`: `appendb64`, `bootlog`, `browser`, `c
 |----------|-------------|--------|
 | QEMU x86_64 (BIOS + UEFI) | x86_64 | All subsystems |
 | QEMU virt | ARM64 | Boots, all subsystems |
-| AMD Ryzen 9 HX 370 (Framework Laptop 16) | x86_64 | Boots, USB ISO, framebuffer, NVMe, e1000, WiFi. USB and I2C input are written and pass in QEMU; neither has run on this machine yet |
+| AMD Ryzen 9 HX 370 (Framework Laptop 16) | x86_64 | Boots from the installed EFI image. Framebuffer, NVMe, MT7925 Wi-Fi, DHCP, NTP, and SSH are hardware-verified. USB and I2C input are not revalidated for this release. |
 | Framework Desktop | x86_64 | Brought up via GLI KVM, in active testing |
 | Apple Silicon (M1/M2/M3) | ARM64 | Build only; native boot in progress (AGX driver, RFC-0022) |
 

@@ -32,7 +32,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.9.18-3
+ANX_VERSION := 2026.9.18
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and

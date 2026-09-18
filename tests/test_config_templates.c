@@ -106,7 +106,8 @@ int test_config_templates(void)
 	t = anx_theme_get();
 	CHECK(!anx_wm_tiling.enabled && anx_wm_tiling.gaps_out == 12);
 	CHECK(t->deco.corner_radius == 16 && !t->deco.signature_corners);
-	CHECK(t->deco.bar_opacity == 225 && t->deco.window_opacity == 255);
+	CHECK(t->deco.bar_opacity == 225 && t->deco.window_opacity == 204);
+	CHECK(t->deco.transparency_enabled);
 	CHECK(t->palette.btn_close == 0xFF5F57 && t->palette.btn_max == 0x28C840);
 	CHECK(t->palette.surface == 0xECECEC);
 	CHECK(t->font.family == ANX_FONT_CASCADIA && t->font.antialiased);
@@ -115,6 +116,7 @@ int test_config_templates(void)
 	CHECK(!anx_wm_tiling.enabled && anx_wm_tiling.gaps_in == 0);
 	CHECK(anx_wm_tiling.gaps_out == 0 && t->deco.corner_radius == 0);
 	CHECK(t->deco.bar_opacity == 255 && t->palette.accent == 0x0078D4);
+	CHECK(t->deco.window_opacity == 204 && t->deco.transparency_enabled);
 	CHECK(t->deco.controls == ANX_CONTROLS_WINDOWS);
 	CHECK(t->palette.surface == 0xFFFFFF && t->palette.text_primary == 0x191919);
 	CHECK(t->palette.title_from == t->palette.title_to);
@@ -128,6 +130,7 @@ int test_config_templates(void)
 	CHECK(t->deco.wallpaper == ANX_WALLPAPER_IMAGE);
 	CHECK(t->palette.wallpaper_from != t->palette.wallpaper_to);
 	CHECK(t->deco.bar_opacity == 245);
+	CHECK(t->deco.window_opacity == 204 && t->deco.transparency_enabled);
 	CHECK(t->font.family == ANX_FONT_JETBRAINS && t->font.antialiased);
 	anx_wm_tile_init(&tree);
 	CHECK(anx_wm_tile_insert(&tree, &one, NULL) == ANX_OK);

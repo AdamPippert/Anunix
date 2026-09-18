@@ -55,11 +55,11 @@ mkdir -p "${ISO_DIR}/EFI/BOOT"
 mkdir -p "${ISO_DIR}/boot/grub/x86_64-efi"
 
 cp "${KERNEL}" "${ISO_DIR}/boot/anunix.elf"
-echo "  kernel (ELF64): $(ls -lh "${ISO_DIR}/boot/anunix.elf" | awk {print })"
+echo "  kernel (ELF64): $(ls -lh "${ISO_DIR}/boot/anunix.elf" | awk '{print $5}')"
 
 if [ -f "${KERNEL_MB1}" ]; then
 	cp "${KERNEL_MB1}" "${ISO_DIR}/boot/anunix-mb1.elf"
-	echo "  kernel (MB1):   $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk {print })"
+	echo "  kernel (MB1):   $(ls -lh "${ISO_DIR}/boot/anunix-mb1.elf" | awk '{print $5}')"
 fi
 
 # ISOLINUX files — all must be same syslinux version
@@ -84,7 +84,7 @@ LABEL anunix
     APPEND /boot/anunix-mb1.elf
 ISOCFG
 
-echo "  ISOLINUX: $(ls "${ISO_DIR}/isolinux/" | tr n  )"
+echo "  ISOLINUX: $(ls "${ISO_DIR}/isolinux/" | tr '\n' ' ')"
 
 # GRUB config + EFI modules
 cp "${GRUB_CFG}" "${ISO_DIR}/boot/grub/grub.cfg"
@@ -143,7 +143,7 @@ if [ -f "${GRUB_EFI_BIN}" ]; then
 		fi
 		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
 	elif command -v hdiutil >/dev/null 2>&1; then
-		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null | head -1 | awk {print })
+		EFI_DEV=$(hdiutil attach -nomount "${EFI_IMG}" 2>/dev/null | head -1 | awk '{print $1}')
 		newfs_msdos -F 12 "${EFI_DEV}" >/dev/null 2>&1
 		EFI_MNT="/tmp/efi_mnt_$$"; mkdir -p "${EFI_MNT}"
 		mount -t msdos "${EFI_DEV}" "${EFI_MNT}" 2>/dev/null
@@ -153,7 +153,7 @@ if [ -f "${GRUB_EFI_BIN}" ]; then
 			cp "${ANX_EFI_BIN}" "${EFI_MNT}/EFI/BOOT/ANUNIX.EFI"
 		umount "${EFI_MNT}" 2>/dev/null; hdiutil detach "${EFI_DEV}" >/dev/null 2>&1
 		rmdir "${EFI_MNT}" 2>/dev/null || true
-		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk {print })"
+		echo "  ESP: $(ls -lh "${EFI_IMG}" | awk '{print $5}')"
 	else
 		echo "  WARNING: no mtools/hdiutil — UEFI boot skipped (BIOS works)"
 		EFI_IMG=""
