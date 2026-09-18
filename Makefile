@@ -32,7 +32,7 @@ else
 endif
 
 ARCH ?= $(HOST_ARCH)
-ANX_VERSION := 2026.9.15
+ANX_VERSION := 2026.9.18-2
 
 # --- Toolchain ---
 # Apple's Xcode/CLT clang supports both targets but lacks ld.lld and
@@ -269,6 +269,13 @@ $(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Decode the checked-in PNG once; both kernel and host tests embed these bytes.
+build/wallpaper-default.anwp: assets/wallpaper-default.png tools/embed_wallpaper.py
+	@mkdir -p build
+	python3 tools/embed_wallpaper.py $< $@
+
+$(BUILD_DIR)/drivers/fb/wallpaper_img.o: build/wallpaper-default.anwp
+
 # Assemble .S files from drivers/ (for embedded assets)
 $(BUILD_DIR)/drivers/%.o: $(DRIVER_DIR)/%.S
 	@mkdir -p $(dir $@)
@@ -476,6 +483,8 @@ TEST_CC     := clang
 TEST_CFLAGS := -std=c11 -Wall -Wextra -Werror -g -O0 -I kernel/include -DANX_HOST_TEST=1
 TEST_CORE   := $(filter-out $(CORE_DIR)/main.c, \
 		  $(filter-out $(CORE_DIR)/agent/%, $(CORE_C)))
+# Exercise real endpoint configuration/persistence; HTTP remains mocked.
+TEST_CORE += $(CORE_DIR)/agent/model_client.c
 # Exclude hardware-dependent drivers from host-native test builds.
 # PCI, virtio, and net drivers use I/O ports and DMA — not testable on host.
 # Exclude hardware-dependent drivers from host-native test builds.
@@ -573,10 +582,24 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_bootlog_ring.c \
                tests/test_blk_probe.c \
                tests/test_mt7925.c \
-               tests/test_mt7925_sta.c
+               tests/test_mt7925_sta.c \
+               tests/test_shell_tools.c \
+               tests/test_shell_history.c \
+               tests/test_shell_ui.c \
+               tests/test_native_terminal.c \
+               tests/test_font_families.c \
+               tests/test_menubar_scale.c \
+               tests/test_window_chrome.c \
+               tests/test_wallpaper.c \
+               kernel/drivers/fb/wallpaper_img.S \
+               tests/test_world_model.c \
+               tests/test_object_edit.c \
+               tests/test_color_editor.c \
+               tests/test_config_templates.c \
+               tests/test_config.c
 TEST_BIN    := build/test/anunix_test
 
-test:
+test: build/wallpaper-default.anwp
 	@echo "  Building host-native test binary..."
 	@mkdir -p build/test
 	$(TEST_CC) $(TEST_CFLAGS) $(TEST_SRCS) $(TEST_CORE) $(DRIVER_C_ALL) $(LIB_C) -o $(TEST_BIN)
@@ -587,6 +610,7 @@ test:
 	@build/test/page_span
 	@python3 tests/test_kernel_profile.py
 	@python3 tests/test_candidate_gate.py
+	@python3 tests/test_embed_wallpaper.py
 	@python3 tools/source_identity.py --label ANUNIX_HOST_SOURCE_V1
 
 conformance:

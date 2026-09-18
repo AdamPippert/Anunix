@@ -6,6 +6,7 @@
  */
 
 #include <anx/interface_plane.h>
+#include <anx/wm.h>
 #include <anx/clipboard.h>
 #include <anx/input.h>
 #include <anx/cell.h>
@@ -266,7 +267,17 @@ anx_iface_surface_damage_query(struct anx_surface *surf,
  * the renderer draws up to this far beyond it. Overlap tests use it so a
  * repaint never misses a neighbour's title bar.
  */
-#define DECOR_REACH	40
+/*
+ * How far a window's paint can fall outside its rectangle: decorations
+ * plus the theme's shadow. Two windows this close share pixels, so a
+ * commit to one has to re-commit the other.
+ */
+static int32_t decor_reach(void)
+{
+	return 40 + (int32_t)anx_wm_shadow_reach();
+}
+
+#define DECOR_REACH	decor_reach()
 
 static bool surf_near(const struct anx_surface *a, const struct anx_surface *b)
 {

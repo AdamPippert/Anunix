@@ -18,6 +18,8 @@
 #include <anx/io.h>
 #include <anx/arch.h>
 #include <anx/string.h>
+#include <anx/civil.h>
+#include <anx/net.h>
 
 static bool gui_ready;
 static uint32_t screen_w, screen_h;
@@ -50,35 +52,19 @@ static uint32_t topbar_h;	/* pill height, computed at init */
 void anx_gui_draw_char_scaled(uint32_t px, uint32_t py, char c,
 			       uint32_t fg, uint32_t bg, uint32_t scale)
 {
-	const uint16_t *glyph = anx_font_glyph(c);
-	uint32_t row, col, sy, sx;
-
-	for (row = 0; row < ANX_FONT_HEIGHT; row++) {
-		uint16_t bits = glyph[row];
-
-		for (sy = 0; sy < scale; sy++) {
-			uint32_t scan = py + row * scale + sy;
-			uint32_t *dst;
-
-			if (scan >= screen_h)
-				continue;
-			dst = anx_fb_row_ptr(scan);
-			for (col = 0; col < ANX_FONT_WIDTH; col++) {
-				uint32_t color = (bits & (0x800u >> col)) ? fg : bg;
-				uint32_t bx = px + col * scale;
-
-				for (sx = 0; sx < scale; sx++) {
-					if (bx + sx < screen_w)
-						dst[bx + sx] = color;
-				}
-			}
-		}
-	}
+	anx_font_draw_char_scaled(px, py, c, fg, bg, scale);
 }
 
 void anx_gui_draw_string_scaled(uint32_t x, uint32_t y, const char *s,
 				 uint32_t fg, uint32_t bg, uint32_t scale)
 {
+	uint32_t n = 0;
+
+	for (n = 0; s[n]; n++)
+		;
+	anx_fb_mark_dirty(x, y, n * ANX_FONT_WIDTH * scale,
+			  ANX_FONT_HEIGHT * scale);
+
 	while (*s) {
 		anx_gui_draw_char_scaled(x, y, *s, fg, bg, scale);
 		x += ANX_FONT_WIDTH * scale;
@@ -133,10 +119,19 @@ static uint8_t last_drawn_min = 0xFF;
 void anx_gui_get_time(char *buf, uint32_t buflen)
 {
 	uint8_t hrs, mins, secs, status_b;
+	uint32_t now = anx_ntp_unix_time();
 	int32_t h;
 
 	if (buflen < 6)
 		return;
+
+	if (now) {
+		struct anx_civil c;
+
+		anx_civil_from_unix(now, utc_offset_hours, &c);
+		anx_snprintf(buf, buflen, "%02u:%02u", c.hour, c.min);
+		return;
+	}
 
 	secs     = rtc_read(0x00);
 	mins     = rtc_read(0x02);
@@ -172,6 +167,15 @@ void anx_gui_get_date(char *buf, uint32_t buflen)
 
 	if (buflen < 8)
 		return;
+
+	if (anx_ntp_unix_time()) {
+		struct anx_civil c;
+
+		anx_civil_from_unix(anx_ntp_unix_time(), utc_offset_hours, &c);
+		anx_snprintf(buf, buflen, "%s %02u", anx_civil_day_name(c.wday),
+			     c.day);
+		return;
+	}
 
 	dow      = rtc_read(0x06);   /* CMOS weekday: 1=Sunday..7=Saturday */
 	day      = rtc_read(0x07);   /* day of month (BCD or binary) */

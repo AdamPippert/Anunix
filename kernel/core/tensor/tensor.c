@@ -266,11 +266,70 @@ int anx_tensor_meta_get(const anx_oid_t *oid,
 	return ret;
 }
 
+/*
+ * IEEE 754 bits for a small non-negative integer, built without the FPU:
+ * the kernel is compiled without floating point.
+ */
+static uint64_t int_to_float_bits(uint32_t v, uint32_t mant_bits,
+				  uint32_t exp_bias)
+{
+	uint64_t mant;
+	uint32_t e = 0;
+
+	if (v == 0)
+		return 0;
+	while ((v >> e) > 1)
+		e++;
+	mant = e <= mant_bits ? (uint64_t)v << (mant_bits - e)
+			      : (uint64_t)v >> (e - mant_bits);
+	return ((uint64_t)(e + exp_bias) << mant_bits) |
+	       (mant & ((1ULL << mant_bits) - 1));
+}
+
+/* Store the integer v into element i of a tensor payload. */
+static bool tensor_put_int(void *payload, enum anx_tensor_dtype dtype,
+			   uint64_t i, uint32_t v)
+{
+	switch (dtype) {
+	case ANX_DTYPE_INT8:
+		((int8_t *)payload)[i] = (int8_t)(v & 0x7F);
+		return true;
+	case ANX_DTYPE_UINT8:
+		((uint8_t *)payload)[i] = (uint8_t)v;
+		return true;
+	case ANX_DTYPE_INT32:
+		((int32_t *)payload)[i] = (int32_t)v;
+		return true;
+	case ANX_DTYPE_FLOAT32:
+		((uint32_t *)payload)[i] = (uint32_t)int_to_float_bits(v, 23, 127);
+		return true;
+	case ANX_DTYPE_FLOAT64:
+		((uint64_t *)payload)[i] = int_to_float_bits(v, 52, 1023);
+		return true;
+	case ANX_DTYPE_FLOAT16:
+		((uint16_t *)payload)[i] =
+			(uint16_t)int_to_float_bits(v > 65504 ? 65504 : v, 10, 15);
+		return true;
+	case ANX_DTYPE_BFLOAT16:
+		((uint16_t *)payload)[i] = (uint16_t)int_to_float_bits(v, 8, 127);
+		return true;
+	default:
+		return false;
+	}
+}
+
 int anx_tensor_fill(const anx_oid_t *oid, const char *pattern)
 {
 	struct anx_state_object *obj;
 	struct anx_tensor_meta meta;
+	bool range;
+	uint64_t i;
 	int ret;
+
+	range = anx_strcmp(pattern, "range") == 0;
+	if (anx_strcmp(pattern, "zeros") != 0 &&
+	    anx_strcmp(pattern, "ones") != 0 && !range)
+		return ANX_EINVAL;
 
 	obj = anx_objstore_lookup(oid);
 	if (!obj)
@@ -288,34 +347,16 @@ int anx_tensor_fill(const anx_oid_t *oid, const char *pattern)
 
 	if (anx_strcmp(pattern, "zeros") == 0) {
 		anx_memset(obj->payload, 0, (uint32_t)obj->payload_size);
-	} else if (anx_strcmp(pattern, "ones") == 0) {
-		if (meta.dtype == ANX_DTYPE_INT8 ||
-		    meta.dtype == ANX_DTYPE_UINT8) {
-			anx_memset(obj->payload, 1,
-				   (uint32_t)obj->payload_size);
-		} else if (meta.dtype == ANX_DTYPE_INT32) {
-			int32_t *p = (int32_t *)obj->payload;
-			uint64_t i;
-
-			for (i = 0; i < meta.elem_count; i++)
-				p[i] = 1;
-		}
-	} else if (anx_strcmp(pattern, "range") == 0) {
-		if (meta.dtype == ANX_DTYPE_INT8) {
-			int8_t *p = (int8_t *)obj->payload;
-			uint64_t i;
-
-			for (i = 0; i < meta.elem_count; i++)
-				p[i] = (int8_t)(i & 0x7F);
-		} else if (meta.dtype == ANX_DTYPE_INT32) {
-			int32_t *p = (int32_t *)obj->payload;
-			uint64_t i;
-
-			for (i = 0; i < meta.elem_count; i++)
-				p[i] = (int32_t)i;
+	} else {
+		for (i = 0; i < meta.elem_count; i++) {
+			if (!tensor_put_int(obj->payload, meta.dtype, i,
+					    range ? (uint32_t)i : 1)) {
+				ret = ANX_ENOTSUP;
+				break;
+			}
 		}
 	}
 
 	anx_objstore_release(obj);
-	return ANX_OK;
+	return ret;
 }

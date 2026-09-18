@@ -9,6 +9,7 @@
 #include <anx/vm_backend.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
+#include <anx/uuid.h>
 /* errno codes in anx/types.h */
 
 static void vm_usage(void)
@@ -16,16 +17,14 @@ static void vm_usage(void)
 	kprintf("usage: vm <subcommand> [args]\n");
 	kprintf("  create <name> [--cpu N] [--mem MB] [--cmdline STR]\n");
 	kprintf("  list\n");
+	kprintf("  info   <name>\n");
 	kprintf("  start  <name>\n");
 	kprintf("  stop   <name> [--force]\n");
 	kprintf("  pause  <name>\n");
 	kprintf("  resume <name>\n");
-	kprintf("  snapshot <name> [--tag TAG]\n");
-	kprintf("  clone  <snap-name> <new-name>\n");
 	kprintf("  config get <name> <field>\n");
 	kprintf("  config set <name> <field> <value>\n");
 	kprintf("  config dump <name>\n");
-	kprintf("  disk create <name> <size-mb>\n");
 	kprintf("  destroy <name>\n");
 	kprintf("  exec   <name> <command>\n");
 }
@@ -279,6 +278,36 @@ static int cmd_vm_exec(const char *name, const char *command)
 	return ANX_OK;
 }
 
+static int cmd_vm_info(const char *name)
+{
+	struct anx_vm_config cfg;
+	enum anx_vm_state state;
+	char oid_str[37];
+	anx_oid_t oid;
+
+	if (vm_find_by_name(name, &oid) != ANX_OK) {
+		kprintf("vm info: '%s' not found\n", name);
+		return ANX_ENOENT;
+	}
+	if (anx_vm_config_dump(&oid, &cfg) != ANX_OK)
+		return ANX_EINVAL;
+	if (anx_vm_state_get(&oid, &state) != ANX_OK)
+		state = ANX_VM_DEFINED;
+	anx_uuid_to_string(&oid, oid_str, sizeof(oid_str));
+
+	kprintf("name:    %s\n", cfg.name);
+	kprintf("oid:     %s\n", oid_str);
+	kprintf("state:   %s\n", vm_state_name(state));
+	kprintf("cpus:    %u (%s)\n", cfg.cpu.count,
+		cfg.cpu.model[0] ? cfg.cpu.model : "default");
+	kprintf("memory:  %u MB\n", (uint32_t)cfg.memory.size_mb);
+	kprintf("disks:   %u\n", cfg.disk_count);
+	kprintf("nics:    %u\n", cfg.net_count);
+	if (cfg.boot.cmdline[0])
+		kprintf("cmdline: %s\n", cfg.boot.cmdline);
+	return ANX_OK;
+}
+
 int cmd_vm(int argc, char **argv)
 {
 	if (argc < 2) {
@@ -291,6 +320,9 @@ int cmd_vm(int argc, char **argv)
 
 	if (anx_strcmp(argv[1], "list") == 0)
 		return cmd_vm_list();
+
+	if (anx_strcmp(argv[1], "info") == 0 && argc >= 3)
+		return cmd_vm_info(argv[2]);
 
 	if (anx_strcmp(argv[1], "start") == 0 && argc >= 3)
 		return cmd_vm_lifecycle("start", argv[2], false);

@@ -17,10 +17,10 @@
 #include <anx/hwprobe.h>
 
 /* Build-time sanity: obs constants must match subsystem enums. */
-_Static_assert(ANX_JEPA_OBS_SCHED_CLASSES == ANX_QUEUE_CLASS_COUNT,
-	"ANX_JEPA_OBS_SCHED_CLASSES must equal ANX_QUEUE_CLASS_COUNT");
-_Static_assert(ANX_JEPA_OBS_MEM_TIERS == ANX_MEM_TIER_COUNT,
-	"ANX_JEPA_OBS_MEM_TIERS must equal ANX_MEM_TIER_COUNT");
+_Static_assert(ANX_WORLD_OBS_SCHED_CLASSES == ANX_QUEUE_CLASS_COUNT,
+	"ANX_WORLD_OBS_SCHED_CLASSES must equal ANX_QUEUE_CLASS_COUNT");
+_Static_assert(ANX_WORLD_OBS_MEM_TIERS == ANX_MEM_TIER_COUNT,
+	"ANX_WORLD_OBS_MEM_TIERS must equal ANX_MEM_TIER_COUNT");
 
 /* ------------------------------------------------------------------ */
 /* Global state                                                        */
@@ -67,15 +67,15 @@ static uint32_t jepa_best_caps(void)
 	return 0;
 }
 
-static enum anx_jepa_status jepa_status_from_caps(uint32_t caps)
+static enum anx_world_status jepa_status_from_caps(uint32_t caps)
 {
 	if (caps & ANX_CAP_TENSOR_GPU)
-		return ANX_JEPA_READY;
+		return ANX_WORLD_READY;
 	if (caps & ANX_CAP_TENSOR_NPU)
-		return ANX_JEPA_READY;
+		return ANX_WORLD_READY;
 	if (caps & ANX_CAP_TENSOR_INT8)
-		return ANX_JEPA_DEGRADED;	/* CPU only */
-	return ANX_JEPA_UNAVAILABLE;
+		return ANX_WORLD_DEGRADED;	/* CPU only */
+	return ANX_WORLD_UNAVAILABLE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -89,14 +89,21 @@ int anx_jepa_init(void)
 	int rc;
 
 	anx_spin_init(&g_ctx.lock);
-	g_ctx.status = ANX_JEPA_INITIALIZING;
+	g_ctx.status = ANX_WORLD_INITIALIZING;
+
+	/*
+	 * Register before probing: without compute the backend still
+	 * observes the system and reports itself unavailable, as the
+	 * direct calls it replaces did.
+	 */
+	anx_jepa_world_model_register();
 	g_ctx.mode   = ANX_JEPA_MODE_ONLINE;
 
 	/* Probe compute availability */
 	compute_caps = jepa_best_caps();
 	g_ctx.status = jepa_status_from_caps(compute_caps);
 
-	if (g_ctx.status == ANX_JEPA_UNAVAILABLE) {
+	if (g_ctx.status == ANX_WORLD_UNAVAILABLE) {
 		kprintf("[jepa] no tensor engine available — world model disabled\n");
 		return ANX_OK;	/* non-fatal */
 	}
@@ -109,7 +116,7 @@ int anx_jepa_init(void)
 				 &g_ctx.engine);
 	if (rc != ANX_OK) {
 		kprintf("[jepa] engine registration failed (%d)\n", rc);
-		g_ctx.status = ANX_JEPA_UNAVAILABLE;
+		g_ctx.status = ANX_WORLD_UNAVAILABLE;
 		return ANX_OK;	/* non-fatal */
 	}
 
@@ -120,7 +127,7 @@ int anx_jepa_init(void)
 	if (rc != ANX_OK) {
 		kprintf("[jepa] failed to register built-in worlds (%d)\n", rc);
 		anx_engine_unregister(g_ctx.engine);
-		g_ctx.status = ANX_JEPA_UNAVAILABLE;
+		g_ctx.status = ANX_WORLD_UNAVAILABLE;
 		return ANX_OK;
 	}
 
@@ -153,7 +160,7 @@ int anx_jepa_init(void)
 			kprintf("[jepa] failed to activate world %s (%d)\n",
 				world_uri, rc);
 			anx_engine_unregister(g_ctx.engine);
-			g_ctx.status = ANX_JEPA_UNAVAILABLE;
+			g_ctx.status = ANX_WORLD_UNAVAILABLE;
 			return ANX_OK;
 		}
 	}
@@ -184,7 +191,7 @@ void anx_jepa_shutdown(void)
 		g_ctx.engine = NULL;
 	}
 
-	g_ctx.status       = ANX_JEPA_UNINITIALIZED;
+	g_ctx.status       = ANX_WORLD_UNINITIALIZED;
 	g_ctx.active_world = NULL;
 
 	anx_spin_unlock(&g_ctx.lock);
@@ -192,12 +199,12 @@ void anx_jepa_shutdown(void)
 
 bool anx_jepa_available(void)
 {
-	return g_ctx.status == ANX_JEPA_READY ||
-	       g_ctx.status == ANX_JEPA_DEGRADED ||
-	       g_ctx.status == ANX_JEPA_TRAINING;
+	return g_ctx.status == ANX_WORLD_READY ||
+	       g_ctx.status == ANX_WORLD_DEGRADED ||
+	       g_ctx.status == ANX_WORLD_TRAINING;
 }
 
-enum anx_jepa_status anx_jepa_status_get(void)
+enum anx_world_status anx_jepa_status_get(void)
 {
 	return g_ctx.status;
 }

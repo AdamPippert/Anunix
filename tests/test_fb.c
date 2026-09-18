@@ -9,6 +9,7 @@
 #include <anx/kprintf.h>
 #include <anx/fb.h>
 #include <anx/font.h>
+#include <anx/theme.h>
 #include <anx/fbcon.h>
 
 /* 80x25 character cells at 8x16 = 640x400 pixels */
@@ -32,6 +33,105 @@ static uint32_t read_pixel(uint32_t x, uint32_t y)
 {
 	uint32_t *row = (uint32_t *)(test_fb_mem + y * TEST_FB_PITCH);
 	return row[x];
+}
+
+/* --- Shape, blend and shadow tests --- */
+
+/*
+ * The signature shape rounds the upper-left and lower-right corners and
+ * mitres the other two, so a corner pixel is inside on the mitred
+ * diagonal but outside the rounded arc at the same offset.
+ */
+static int test_fb_shape_signature_corners(void)
+{
+	struct anx_shape sh = anx_fb_shape_signature(10);
+
+	anx_fb_fill_rect(0, 0, 100, 60, 0x000000);
+	anx_fb_fill_shape(10, 10, 60, 40, &sh, 0xFF0000);
+
+	ASSERT(sh.corner[0] == ANX_CORNER_ROUND &&
+	       sh.corner[2] == ANX_CORNER_ROUND, "UL and LR rounded");
+	ASSERT(sh.corner[1] == ANX_CORNER_MITRE &&
+	       sh.corner[3] == ANX_CORNER_MITRE, "UR and LL mitred");
+
+	/* Outermost corner pixels are cut on every corner */
+	ASSERT(read_pixel(10, 10) == 0x000000, "UL corner cut");
+	ASSERT(read_pixel(69, 10) == 0x000000, "UR corner cut");
+	ASSERT(read_pixel(10, 49) == 0x000000, "LL corner cut");
+	ASSERT(read_pixel(69, 49) == 0x000000, "LR corner cut");
+
+	/* Edge midpoints and the interior are filled */
+	ASSERT(read_pixel(40, 10) == 0xFF0000, "top edge filled");
+	ASSERT(read_pixel(40, 49) == 0xFF0000, "bottom edge filled");
+	ASSERT(read_pixel(10, 30) == 0xFF0000, "left edge filled");
+	ASSERT(read_pixel(69, 30) == 0xFF0000, "right edge filled");
+
+	/*
+	 * One row down from the top the mitre has eaten 9 columns and the
+	 * round corner only 6: the chamfer cuts deeper near the corner.
+	 */
+	ASSERT(read_pixel(60, 11) == 0xFF0000 &&
+	       read_pixel(61, 11) == 0x000000, "mitre cuts 9 columns");
+	ASSERT(read_pixel(16, 11) == 0xFF0000 &&
+	       read_pixel(15, 11) == 0x000000, "round corner cuts 6");
+	return 0;
+}
+
+static int test_fb_shape_square_is_a_rect(void)
+{
+	struct anx_shape sq = anx_fb_shape_uniform(8, ANX_CORNER_SQUARE);
+
+	anx_fb_fill_rect(0, 0, 100, 60, 0x000000);
+	anx_fb_fill_shape(10, 10, 40, 30, &sq, 0x00FF00);
+	ASSERT(read_pixel(10, 10) == 0x00FF00, "square keeps its corner");
+	ASSERT(read_pixel(49, 39) == 0x00FF00, "square keeps all corners");
+	ASSERT(read_pixel(50, 40) == 0x000000, "nothing outside");
+	return 0;
+}
+
+static int test_fb_shape_gradient_runs_top_to_bottom(void)
+{
+	struct anx_shape sq = anx_fb_shape_uniform(0, ANX_CORNER_SQUARE);
+	uint32_t top, bottom;
+
+	anx_fb_fill_shape_gradient(0, 0, 40, 40, &sq, 0x000000, 0xFFFFFF,
+				   true);
+	top = read_pixel(20, 0);
+	bottom = read_pixel(20, 39);
+	ASSERT(top == 0x000000, "starts at the first color");
+	ASSERT(bottom == 0xFFFFFF, "ends at the second");
+	ASSERT(read_pixel(20, 20) > top && read_pixel(20, 20) < bottom,
+	       "midpoint between the two");
+	return 0;
+}
+
+static int test_fb_blend_is_alpha_correct(void)
+{
+	anx_fb_fill_rect(0, 0, 40, 40, 0x000000);
+	anx_fb_blend_rect(0, 0, 20, 20, 0xFFFFFF, 128);
+	ASSERT(read_pixel(5, 5) == 0x808080, "half blend of white on black");
+	anx_fb_blend_rect(0, 0, 20, 20, 0xFFFFFF, 0);
+	ASSERT(read_pixel(5, 5) == 0x808080, "alpha 0 changes nothing");
+	anx_fb_blend_rect(0, 0, 20, 20, 0x102030, 255);
+	ASSERT(read_pixel(5, 5) == 0x102030, "alpha 255 replaces");
+	ASSERT(read_pixel(25, 25) == 0x000000, "outside untouched");
+	return 0;
+}
+
+/* The shadow darkens outside the frame and never paints over it. */
+static int test_fb_shadow_stays_outside(void)
+{
+	struct anx_shape sh = anx_fb_shape_signature(6);
+
+	anx_fb_fill_rect(0, 0, 200, 120, 0xFFFFFF);
+	anx_fb_shadow_shape(60, 40, 60, 40, &sh, 2, 4, 8, 0x000000, 200);
+
+	ASSERT(read_pixel(90, 60) == 0xFFFFFF, "inside the frame is clean");
+	ASSERT(read_pixel(90, 86) < 0xFFFFFF, "shadow below the frame");
+	ASSERT(read_pixel(90, 84) < read_pixel(90, 90),
+	       "shadow fades with distance");
+	ASSERT(read_pixel(5, 5) == 0xFFFFFF, "far away is untouched");
+	return 0;
 }
 
 /* --- Framebuffer core tests --- */
@@ -203,13 +303,19 @@ static int test_font_glyph_unprintable_returns_default(void)
 
 static int test_font_draw_char_pixels(void)
 {
+	struct anx_theme saved_theme = *anx_theme_get();
+	struct anx_theme bitmap_theme = saved_theme;
 	uint32_t fg = 0x00FFFFFF;
 	uint32_t bg = 0x00000000;
 	const uint16_t *glyph;
 	uint32_t y;
 
+	/* This legacy assertion checks the binary glyph contract, not coverage. */
+	bitmap_theme.font.antialiased = false;
+	anx_theme_restore(&bitmap_theme);
 	anx_fb_clear(bg);
 	anx_font_draw_char(0, 0, 'A', fg, bg);
+	anx_theme_restore(&saved_theme);
 
 	/* Verify that drawn pixels match the glyph bitmap.
 	 * Each row is 12 bits; bit 11 (0x800) is the leftmost pixel. */
@@ -408,6 +514,11 @@ static struct fb_test fb_tests[] = {
 	{ "fbcon_carriage_return",		test_fbcon_carriage_return },
 	{ "fbcon_backspace",			test_fbcon_backspace },
 	{ "fbcon_tab",				test_fbcon_tab },
+	{ "fb_shape_signature_corners",		test_fb_shape_signature_corners },
+	{ "fb_shape_square_is_a_rect",		test_fb_shape_square_is_a_rect },
+	{ "fb_shape_gradient",			test_fb_shape_gradient_runs_top_to_bottom },
+	{ "fb_blend_alpha",			test_fb_blend_is_alpha_correct },
+	{ "fb_shadow_outside",			test_fb_shadow_stays_outside },
 };
 
 #define NUM_FB_TESTS (sizeof(fb_tests) / sizeof(fb_tests[0]))

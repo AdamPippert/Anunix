@@ -42,6 +42,22 @@ static void meta_free_value(struct anx_meta_value *val)
 		anx_free(val->v.bytes.data);
 }
 
+void anx_meta_iterate(struct anx_meta_store *store,
+		      void (*cb)(const struct anx_meta_entry *e, void *arg),
+		      void *arg)
+{
+	struct anx_list_head *pos;
+	uint32_t b;
+
+	if (!store)
+		return;
+	for (b = 0; b < (1U << store->ht.bits); b++) {
+		ANX_LIST_FOR_EACH(pos, &store->ht.buckets[b])
+			cb(ANX_LIST_ENTRY(pos, struct anx_meta_entry, link),
+			   arg);
+	}
+}
+
 struct anx_meta_store *anx_meta_create(void)
 {
 	struct anx_meta_store *store = anx_zalloc(sizeof(*store));

@@ -71,6 +71,82 @@ void anx_fb_fill_gradient3(uint32_t x, uint32_t y,
 			    uint32_t c0, uint32_t c1, uint32_t c2,
 			    bool diagonal);
 
+/*
+ * Draw into RAM instead of straight into video memory.
+ *
+ * Reads from the framebuffer are slow: it is mapped write-combining, so
+ * every blend, shadow and transparent window would stall on video memory.
+ * With a back buffer every primitive works on RAM, and anx_fb_flush()
+ * copies what changed to the screen in one pass.
+ *
+ * Returns ANX_OK, or ANX_ENOMEM when the buffer will not fit.
+ */
+int  anx_fb_enable_backbuffer(void);
+bool anx_fb_has_backbuffer(void);
+
+/* Copy the accumulated dirty region to video memory. */
+void anx_fb_flush(void);
+
+/* Mark a region as needing a flush (the primitives do this themselves). */
+void anx_fb_mark_dirty(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+
+/*
+ * Corner treatments. The Anunix signature shape rounds the upper-left
+ * and lower-right corners and mitres (45-degree chamfer) the other two.
+ */
+enum anx_corner_style {
+	ANX_CORNER_SQUARE = 0,
+	ANX_CORNER_ROUND,
+	ANX_CORNER_MITRE,
+};
+
+/* Corner order: top-left, top-right, bottom-right, bottom-left. */
+struct anx_shape {
+	uint32_t radius;
+	uint8_t  corner[4];
+};
+
+/* The signature shape at the given corner size. */
+struct anx_shape anx_fb_shape_signature(uint32_t radius);
+
+/* A shape with all four corners the same. */
+struct anx_shape anx_fb_shape_uniform(uint32_t radius,
+				      enum anx_corner_style style);
+
+/* Fill a shape with one color. */
+void anx_fb_fill_shape(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+		       const struct anx_shape *shape, uint32_t color);
+
+/* Fill a shape with a two-stop gradient (vertical: top to bottom). */
+void anx_fb_fill_shape_gradient(uint32_t x, uint32_t y,
+				uint32_t w, uint32_t h,
+				const struct anx_shape *shape,
+				uint32_t color_start, uint32_t color_end,
+				bool vertical);
+
+/* Blend one color over a rectangle; alpha 0 = invisible, 255 = opaque. */
+void anx_fb_blend_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+		       uint32_t color, uint8_t alpha);
+
+/* Blend one color over a shape. */
+void anx_fb_blend_shape(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+			const struct anx_shape *shape, uint32_t color,
+			uint8_t alpha);
+
+/*
+ * Blend a soft drop shadow for the shape at (x, y, w, h), offset by
+ * (dx, dy) and spreading `blur` pixels outward. Draw it before the
+ * shape itself: the area the shape covers is left alone.
+ */
+void anx_fb_shadow_shape(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+			 const struct anx_shape *shape,
+			 int32_t dx, int32_t dy, uint32_t blur,
+			 uint32_t color, uint8_t alpha);
+
+/* Blend an image over a shape's area, one row at a time (RGB source). */
+void anx_fb_blend_row(uint32_t x, uint32_t y, uint32_t w,
+		      const uint32_t *src, uint8_t alpha);
+
 /* Scroll the framebuffer up by n pixel rows, fill gap with color */
 void anx_fb_scroll(uint32_t rows, uint32_t fill_color);
 

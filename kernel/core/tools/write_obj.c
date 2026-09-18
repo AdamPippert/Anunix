@@ -49,7 +49,7 @@ static struct uobj_disk *g_uobj_table;
 static struct uobj_disk *uobj_table(void)
 {
 	if (!g_uobj_table) {
-		g_uobj_table = anx_alloc(sizeof(struct uobj_disk));
+		g_uobj_table = anx_zalloc(sizeof(struct uobj_disk));
 		if (g_uobj_table) {
 			g_uobj_table->magic  = UOBJ_DISK_MAGIC;
 			g_uobj_table->count  = 0;
@@ -60,57 +60,73 @@ static struct uobj_disk *uobj_table(void)
 	return g_uobj_table;
 }
 
-static void uobj_save(void)
+static int uobj_save(void)
 {
-	anx_oid_t oid;
+	anx_oid_t oid = { UOBJ_DISK_OID_HI, UOBJ_DISK_OID_LO };
 	struct uobj_disk *t = uobj_table();
 
 	if (!t)
-		return;
+		return ANX_ENOMEM;
+	/* The disk writer replaces an existing OID; do not delete it first. */
+	return anx_disk_write_obj(&oid, UOBJ_DISK_TYPE, t, sizeof(*t));
+}
 
-	oid.hi = UOBJ_DISK_OID_HI;
-	oid.lo = UOBJ_DISK_OID_LO;
-	anx_disk_delete_obj(&oid);
-	anx_disk_write_obj(&oid, UOBJ_DISK_TYPE, t, sizeof(*t));
+int anx_uobj_record_checked(const char *ns, const char *path,
+			    const void *payload, uint32_t payload_len)
+{
+	struct uobj_disk *t;
+	struct uobj_entry previous, *e;
+	uint32_t i, old_count;
+	int rc;
+
+	if (!ns || !path || (!payload && payload_len) || !*ns || !*path ||
+	    anx_strlen(ns) >= sizeof(previous.ns) ||
+	    anx_strlen(path) >= sizeof(previous.path) ||
+	    payload_len > UOBJ_MAX_PAYLOAD)
+		return ANX_EINVAL;
+	/* Namespace resolution treats leading '/' as optional. */
+	if (*path == '/') path++;
+	if (!*path) return ANX_EINVAL;
+	t = uobj_table();
+	if (!t) return ANX_ENOMEM;
+	old_count = t->count;
+	for (i = 0; i < t->count; i++)
+		if (!anx_strcmp(t->entries[i].ns, ns) &&
+		    !anx_strcmp(t->entries[i].path, path))
+			break;
+	if (i == UOBJ_MAX_ENTRIES) return ANX_ENOMEM;
+	e = &t->entries[i];
+	previous = *e;
+	anx_memset(e, 0, sizeof(*e));
+	anx_strlcpy(e->ns, ns, sizeof(e->ns));
+	anx_strlcpy(e->path, path, sizeof(e->path));
+	e->payload_len = payload_len;
+	if (payload_len) anx_memcpy(e->payload, payload, payload_len);
+	if (i == t->count) t->count++;
+	rc = uobj_save();
+	if (rc != ANX_OK) {
+		*e = previous;
+		t->count = old_count;
+	}
+	return rc;
 }
 
 void uobj_record(const char *ns, const char *path,
 		 const void *payload, uint32_t payload_len)
 {
-	struct uobj_disk *t = uobj_table();
-	struct uobj_entry *e;
-	uint32_t i;
+	int rc = anx_uobj_record_checked(ns, path, payload, payload_len);
 
-	if (!t)
-		return;
-
-	/* Replace existing entry for the same path */
-	for (i = 0; i < t->count; i++) {
-		if (anx_strcmp(t->entries[i].ns, ns) == 0 &&
-		    anx_strcmp(t->entries[i].path, path) == 0) {
-			e = &t->entries[i];
-			goto fill;
-		}
-	}
-
-	/* New entry */
-	if (t->count >= UOBJ_MAX_ENTRIES)
-		return;
-	e = &t->entries[t->count++];
-
-fill:
-	anx_strlcpy(e->ns, ns, sizeof(e->ns));
-	anx_strlcpy(e->path, path, sizeof(e->path));
-	e->payload_len = payload_len < UOBJ_MAX_PAYLOAD
-			 ? payload_len : UOBJ_MAX_PAYLOAD;
-	anx_memcpy(e->payload, payload, e->payload_len);
-	uobj_save();
+	if (rc != ANX_OK)
+		kprintf("write: object is live but was not saved (%d)\n", rc);
 }
 
 void uobj_remove(const char *ns, const char *path)
 {
 	struct uobj_disk *t = uobj_table();
 	uint32_t i;
+
+	if (!ns || !path) return;
+	if (*path == '/') path++;
 
 	if (!t)
 		return;
@@ -140,8 +156,25 @@ void anx_uobj_load(void)
 	oid.hi = UOBJ_DISK_OID_HI;
 	oid.lo = UOBJ_DISK_OID_LO;
 	rc = anx_disk_read_obj(&oid, t, sizeof(*t), &actual, &obj_type);
-	if (rc != ANX_OK || t->magic != UOBJ_DISK_MAGIC)
+	if (rc != ANX_OK || actual != sizeof(*t) ||
+	    obj_type != UOBJ_DISK_TYPE || t->magic != UOBJ_DISK_MAGIC ||
+	    t->count > UOBJ_MAX_ENTRIES) {
+		anx_memset(t, 0, sizeof(*t));
+		t->magic = UOBJ_DISK_MAGIC;
 		return;
+	}
+	/* Validate the entire journal before publishing any entry. */
+	for (i = 0; i < t->count; i++) {
+		struct uobj_entry *e = &t->entries[i];
+		if (e->ns[sizeof(e->ns) - 1] != 0 ||
+		    e->path[sizeof(e->path) - 1] != 0 ||
+		    !e->ns[0] || !e->path[0] || e->payload_len > UOBJ_MAX_PAYLOAD) {
+			anx_memset(t, 0, sizeof(*t));
+			t->magic = UOBJ_DISK_MAGIC;
+			kprintf("write: invalid object journal ignored\n");
+			return;
+		}
+	}
 
 	for (i = 0; i < t->count; i++) {
 		struct uobj_entry *e = &t->entries[i];
@@ -162,19 +195,104 @@ void anx_uobj_load(void)
 	kprintf("write: restored %u object(s) from disk\n", t->count);
 }
 
+int anx_uobj_write_at(const char *name, uint32_t offset,
+		      const void *data, uint32_t len)
+{
+	char ns[64] = "default", path[192];
+	const char *sep;
+	anx_oid_t oid;
+	struct anx_object_handle h;
+	uint32_t n;
+	int rc;
+
+	if (!name || !data || !len) return ANX_EINVAL;
+	sep = name;
+	while (*sep && *sep != ':') sep++;
+	if (!*sep) sep = NULL;
+	if (sep) {
+		n = (uint32_t)(sep - name);
+		if (!n || n >= sizeof(ns)) return ANX_EINVAL;
+		anx_memcpy(ns, name, n);
+		ns[n] = 0;
+		name = sep + 1;
+	}
+	if (*name == '/') name++;
+	if (!*name || anx_strlen(name) >= sizeof(path)) return ANX_EINVAL;
+	anx_strlcpy(path, name, sizeof(path));
+	rc = anx_ns_resolve(ns, path, &oid);
+	if (rc != ANX_OK) return rc;
+	rc = anx_so_open(&oid, ANX_OPEN_READWRITE, &h);
+	if (rc != ANX_OK) return rc;
+	if (h.obj->staged) { rc = ANX_EBUSY; goto out; }
+	/* Bounded overwrite preserves object length and identity. */
+	if (h.obj->payload_size > UOBJ_MAX_PAYLOAD ||
+	    offset > h.obj->payload_size || len > h.obj->payload_size - offset) {
+		rc = ANX_EINVAL;
+		goto out;
+	}
+	rc = anx_so_write_payload(&h, offset, data, len);
+	if (rc >= 0) {
+		rc = anx_uobj_record_checked(ns, path, h.obj->payload,
+					     (uint32_t)h.obj->payload_size);
+		if (rc != ANX_OK)
+			kprintf("write: bytes changed in memory, save failed (%d)\n", rc);
+	}
+out:
+	anx_so_close(&h);
+	return rc;
+}
+
+static void write_at_command(int argc, char **argv)
+{
+	char content[1024];
+	const char *p;
+	uint32_t offset = 0, len = 0, n;
+	int i, rc;
+
+	if (argc < 5) goto usage;
+	p = argv[2];
+	if (!*p) goto usage;
+	for (; *p; p++) {
+		if (*p < '0' || *p > '9' || offset > (0xffffffffu - (*p - '0')) / 10)
+			goto usage;
+		offset = offset * 10 + (*p - '0');
+	}
+	for (i = 4; i < argc; i++) {
+		n = (uint32_t)anx_strlen(argv[i]);
+		if (len + n + 1 >= sizeof(content)) goto usage;
+		if (i > 4) content[len++] = ' ';
+		anx_memcpy(content + len, argv[i], n);
+		len += n;
+	}
+	rc = anx_uobj_write_at(argv[3], offset, content, len);
+	if (rc != ANX_OK)
+		kprintf("write --at: failed (%d)\n", rc);
+	else
+		kprintf("write: updated %u bytes at %u in %s\n", len, offset, argv[3]);
+	return;
+usage:
+	kprintf("usage: write --at <offset> <ns:path> <content...>\n");
+}
+
 void cmd_write_obj(int argc, char **argv)
 {
 	const char *ns_name = "default";
 	const char *path = NULL;
-	const char *content = NULL;
+	static char content[1024];
 	enum anx_object_type obj_type = ANX_OBJ_BYTE_DATA;
 	struct anx_so_create_params params;
 	struct anx_state_object *obj;
 	char oid_str[37];
-	uint32_t content_len;
+	uint32_t content_len = 0;
 	int i, ret;
 
-	/* Parse arguments */
+	if (argc > 1 && !anx_strcmp(argv[1], "--at")) {
+		write_at_command(argc, argv);
+		return;
+	}
+
+	/* Parse arguments; everything after the path is the content */
+	content[0] = '\0';
 	for (i = 1; i < argc; i++) {
 		if (anx_strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
 			i++;
@@ -202,18 +320,25 @@ void cmd_write_obj(int argc, char **argv)
 				path = argv[i];
 			}
 		} else {
-			content = argv[i];
+			uint32_t n = (uint32_t)anx_strlen(argv[i]);
+
+			if (content_len + n + 2 > sizeof(content)) {
+				kprintf("write: content longer than %u bytes\n",
+					(uint32_t)sizeof(content) - 1);
+				return;
+			}
+			if (content_len)
+				content[content_len++] = ' ';
+			anx_memcpy(content + content_len, argv[i], n);
+			content_len += n;
+			content[content_len] = '\0';
 		}
 	}
 
-	if (!path || !content) {
-		kprintf("usage: write [-t type] <ns:path> <content>\n");
+	if (!path || content_len == 0) {
+		kprintf("usage: write [-t type] <ns:path> <content...>\n");
 		return;
 	}
-
-	/* Build content from remaining args (join with spaces) */
-	/* For simplicity, use the single content arg */
-	content_len = (uint32_t)anx_strlen(content);
 
 	/* Create the State Object */
 	anx_memset(&params, 0, sizeof(params));
@@ -232,6 +357,8 @@ void cmd_write_obj(int argc, char **argv)
 	if (ret != ANX_OK) {
 		kprintf("write: bind to %s:%s failed (%d)\n",
 			ns_name, path, ret);
+		anx_objstore_release(obj);
+		return;
 	}
 
 	uobj_record(ns_name, path, content, content_len);

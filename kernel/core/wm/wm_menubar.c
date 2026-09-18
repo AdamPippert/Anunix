@@ -31,12 +31,99 @@
 extern struct anx_surface *g_menubar;
 extern uint32_t           *g_menubar_pixels;
 
-/* ------------------------------------------------------------------ */
-/* Pixel drawing helpers (direct into menubar pixel buffer)            */
-/* ------------------------------------------------------------------ */
-
 static uint32_t mb_width;
 static uint32_t mb_height;
+
+#define MB_SCALE 150u
+#define MB_FONT_W (ANX_FONT_WIDTH * MB_SCALE / 100)
+#define MB_FONT_H (ANX_FONT_HEIGHT * MB_SCALE / 100)
+#define MB_LOGO_X 21u
+#define MB_LOGO_END 39u
+#define MB_DOT_X 51u
+#define MB_DOT_STEP 27u
+#define MB_DOT_R 6u
+#define MB_DOT_HIT 10u
+#define MB_GAP 12u
+
+struct mb_layout {
+	uint32_t first_ws, ws_count;
+	uint32_t clock_x, clock_chars;
+	uint32_t title_x, title_chars;
+	uint32_t net_x;
+	bool logo, power, network, net_label;
+};
+
+/* Keep the clock centred. Narrow bars sacrifice labels, then workspace dots. */
+static struct mb_layout mb_layout(void)
+{
+	struct mb_layout l = {0};
+	uint32_t left_limit, right_limit, active = anx_wm_workspace_active();
+	uint32_t dots_end = MB_DOT_X + (ANX_WM_WORKSPACES - 1) * MB_DOT_STEP + MB_DOT_R;
+
+	l.logo = mb_width >= 48;
+	l.power = mb_width >= 84;
+	right_limit = l.power ? mb_width - 36 : mb_width;
+	if (mb_width >= 2 * (dots_end + MB_GAP) + 13 * MB_FONT_W)
+		l.clock_chars = 13; /* "Mon 26  14:30" */
+	else if (mb_width >= 2 * (MB_LOGO_END + MB_GAP) + 5 * MB_FONT_W)
+		l.clock_chars = 5;
+	if (l.clock_chars)
+		l.clock_x = (mb_width - l.clock_chars * MB_FONT_W) / 2;
+
+	l.net_label = mb_width >= 480;
+	l.net_x = mb_width >= 160 ? mb_width - (l.net_label ? 120 : 72) : 0;
+	l.network = l.net_x >= MB_LOGO_END + MB_GAP + 8;
+	if (l.clock_chars && l.net_x < l.clock_x + l.clock_chars * MB_FONT_W + MB_GAP + 8)
+		l.network = false;
+	if (l.network)
+		right_limit = l.net_x - 8;
+	left_limit = l.clock_chars ? l.clock_x : right_limit;
+	while (l.ws_count < ANX_WM_WORKSPACES &&
+	       MB_DOT_X + l.ws_count * MB_DOT_STEP + MB_DOT_HIT + MB_GAP <= left_limit)
+		l.ws_count++;
+	l.first_ws = 1;
+	if (l.ws_count && l.ws_count < ANX_WM_WORKSPACES) {
+		if (active > l.ws_count / 2)
+			l.first_ws = active - l.ws_count / 2;
+		if (l.first_ws > ANX_WM_WORKSPACES - l.ws_count + 1)
+			l.first_ws = ANX_WM_WORKSPACES - l.ws_count + 1;
+	}
+	l.title_x = MB_DOT_X + l.ws_count * MB_DOT_STEP + 24;
+	if (l.clock_chars && l.clock_x > l.title_x + MB_GAP)
+		l.title_chars = (l.clock_x - l.title_x - MB_GAP) / MB_FONT_W;
+	return l;
+}
+
+int anx_wm_menubar_hit(int32_t x, int32_t y)
+{
+	struct mb_layout l;
+	uint32_t i;
+	int32_t cy;
+
+	if (!g_menubar)
+		return 0;
+	mb_width = g_menubar->width;
+	mb_height = g_menubar->height;
+	l = mb_layout();
+	cy = (int32_t)mb_height / 2;
+
+	if (x < 0 || y < 0 || (uint32_t)x >= mb_width || (uint32_t)y >= mb_height)
+		return 0;
+	if (l.logo && x < (int32_t)MB_LOGO_END)
+		return -1;
+	if (l.power && x >= (int32_t)mb_width - 36)
+		return -2;
+	for (i = 0; i < l.ws_count; i++) {
+		int32_t cx = (int32_t)(MB_DOT_X + i * MB_DOT_STEP);
+		if (x >= cx - (int32_t)MB_DOT_HIT && x <= cx + (int32_t)MB_DOT_HIT &&
+		    y >= cy - (int32_t)MB_DOT_HIT && y <= cy + (int32_t)MB_DOT_HIT)
+			return (int)(l.first_ws + i);
+	}
+	return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pixel drawing helpers (direct into menubar pixel buffer)            */
 
 static void mb_fill_rect(uint32_t x, uint32_t y,
 			  uint32_t w, uint32_t h, uint32_t color)
@@ -48,64 +135,6 @@ static void mb_fill_rect(uint32_t x, uint32_t y,
 	for (row = y; row < y + h && row < mb_height; row++) {
 		for (col = x; col < x + w && col < mb_width; col++)
 			g_menubar_pixels[row * mb_width + col] = color;
-	}
-}
-
-static void mb_fill_rounded_rect(uint32_t x, uint32_t y,
-				  uint32_t w, uint32_t h,
-				  uint32_t radius, uint32_t color)
-{
-	uint32_t r, row_y, col_x, dx, dy;
-
-	if (w == 0 || h == 0 || !g_menubar_pixels)
-		return;
-	r = radius;
-	if (r > w / 2) r = w / 2;
-	if (r > h / 2) r = h / 2;
-
-	for (row_y = y; row_y < y + h && row_y < mb_height; row_y++) {
-		uint32_t row_off = row_y - y;
-		uint32_t x_start = x;
-		uint32_t x_end   = x + w;
-
-		if (row_off < r) {
-			dy = r - row_off;
-			for (col_x = x; col_x < x + r; col_x++) {
-				dx = r - (col_x - x);
-				if (dx * dx + dy * dy > r * r)
-					x_start = col_x + 1;
-				else
-					break;
-			}
-			for (col_x = x + w - 1; col_x >= x + w - r && col_x >= x; col_x--) {
-				dx = r - (x + w - 1 - col_x);
-				if (dx * dx + dy * dy > r * r)
-					x_end = col_x;
-				else
-					break;
-			}
-		} else if (row_off >= h - r) {
-			dy = r - (h - 1 - row_off);
-			for (col_x = x; col_x < x + r; col_x++) {
-				dx = r - (col_x - x);
-				if (dx * dx + dy * dy > r * r)
-					x_start = col_x + 1;
-				else
-					break;
-			}
-			for (col_x = x + w - 1; col_x >= x + w - r && col_x >= x; col_x--) {
-				dx = r - (x + w - 1 - col_x);
-				if (dx * dx + dy * dy > r * r)
-					x_end = col_x;
-				else
-					break;
-			}
-		}
-
-		if (x_start < x_end) {
-			for (col_x = x_start; col_x < x_end && col_x < mb_width; col_x++)
-				g_menubar_pixels[row_y * mb_width + col_x] = color;
-		}
 	}
 }
 
@@ -132,11 +161,11 @@ static void mb_fill_circle(uint32_t cx, uint32_t cy, uint32_t r, uint32_t color)
 }
 
 static void mb_draw_str(uint32_t x, uint32_t y, const char *s,
-			uint32_t fg, uint32_t bg)
+			uint32_t fg)
 {
 	if (g_menubar_pixels)
-		anx_font_blit_str(g_menubar_pixels, mb_width, mb_height,
-				  x, y, s, fg, bg);
+		anx_font_blit_str_scaled(g_menubar_pixels, mb_width, mb_height,
+					 x, y, s, fg, ANX_FONT_TRANSPARENT, MB_SCALE);
 }
 
 /* Scan-line fill for a general triangle given three vertices. */
@@ -206,8 +235,8 @@ static void mb_draw_logo(uint32_t x, uint32_t cy, uint32_t color, uint32_t bg)
 {
 	int32_t ix  = (int32_t)x;
 	int32_t icy = (int32_t)cy;
-	int32_t h   = 12;  /* total logo height */
-	int32_t hw  = 6;   /* half-width at base */
+	int32_t h   = 18;  /* total logo height */
+	int32_t hw  = 9;   /* half-width at base */
 
 	/* Outer upward-pointing triangle */
 	mb_fill_triangle(ix + hw, icy - h / 2,          /* apex */
@@ -216,15 +245,15 @@ static void mb_draw_logo(uint32_t x, uint32_t cy, uint32_t color, uint32_t bg)
 			 color);
 
 	/* Inner V-cutout: makes the hollow 'A' interior */
-	mb_fill_triangle(ix + hw,     icy - h / 2 + 4,  /* V apex */
-			 ix + 2,      icy + h / 2,       /* cut left */
-			 ix + hw * 2 - 2, icy + h / 2,  /* cut right */
+	mb_fill_triangle(ix + hw,     icy - h / 2 + 6,  /* V apex */
+			 ix + 3,      icy + h / 2,       /* cut left */
+			 ix + hw * 2 - 3, icy + h / 2,  /* cut right */
 			 bg);
 
 	/* Eye dot above the V apex */
 	mb_fill_circle((uint32_t)(ix + hw),
-		       (uint32_t)(icy - h / 2 + 4),
-		       2u, color);
+		       (uint32_t)(icy - h / 2 + 6),
+		       3u, color);
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,11 +316,15 @@ void anx_wm_menubar_refresh(void)
 	uint32_t bg, accent, dim, success, err_col;
 	uint32_t ws, cy, dot_r, dot_x;
 	char clock_str[8];
-	uint32_t clock_x, text_y;
+	uint32_t text_y;
+	struct mb_layout layout;
 
 	if (!g_menubar || !g_menubar_pixels)
 		return;
 
+	mb_width = g_menubar->width;
+	mb_height = g_menubar->height;
+	layout = mb_layout();
 	theme   = anx_theme_get();
 	bg      = theme->palette.surface;
 	accent  = theme->palette.accent;
@@ -299,38 +332,52 @@ void anx_wm_menubar_refresh(void)
 	success = theme->palette.success;
 	err_col = theme->palette.error;
 
-	/* Floating pill with 1px teal border.
-	 * 1. Desktop background fill.
-	 * 2. Pill border (1px larger on each side) in muted teal.
-	 * 3. Pill fill (bg color) on top. */
+	/*
+	 * A floating pill: the desktop shows around it, the border picks
+	 * up the theme, and the fill is the same gradient the title bars
+	 * use, with a bevel along the top edge.
+	 */
 	{
-		uint32_t pill_margin_x = 6;
-		uint32_t pill_margin_y = 4;
+		uint32_t pill_margin_x = mb_width >= 20 ? 9 : 0;
+		uint32_t pill_margin_y = 6;
 		uint32_t pill_w = mb_width - pill_margin_x * 2;
 		uint32_t pill_h = mb_height - pill_margin_y * 2;
+		struct anx_shape pill = anx_theme_window_shape(15);
+		struct anx_shape edge = anx_theme_window_shape(16);
 
 		mb_fill_rect(0, 0, mb_width, mb_height,
 			     theme->palette.background);
-		mb_fill_rounded_rect(pill_margin_x - 1, pill_margin_y - 1,
-				     pill_w + 2, pill_h + 2, 11,
-				     0x00294F6Bu);	/* teal border */
-		mb_fill_rounded_rect(pill_margin_x, pill_margin_y,
-				     pill_w, pill_h, 10, bg);
+		anx_wm_buf_gradient(g_menubar_pixels, mb_width, mb_height,
+				    pill_margin_x ? pill_margin_x - 1 : 0, pill_margin_y - 1,
+				    pill_w + 2, pill_h + 2, &edge,
+				    theme->palette.border,
+				    theme->palette.border);
+		anx_wm_buf_gradient(g_menubar_pixels, mb_width, mb_height,
+				    pill_margin_x, pill_margin_y,
+				    pill_w, pill_h, &pill,
+				    theme->palette.bar_from,
+				    theme->palette.bar_to);
+		if (pill_w > 30)
+			anx_wm_buf_blend(g_menubar_pixels, mb_width, mb_height,
+					 pill_margin_x + 15, pill_margin_y,
+					 pill_w - 30, 1, 0x00FFFFFF, 40);
+		(void)bg;
 	}
 
 	/* Vertical centre for dots and icons (within pill) */
 	cy    = mb_height / 2;
-	dot_r = 4;
-	text_y = (mb_height > ANX_FONT_HEIGHT)
-		 ? (mb_height - ANX_FONT_HEIGHT) / 2
+	dot_r = MB_DOT_R;
+	text_y = (mb_height > MB_FONT_H)
+		 ? (mb_height - MB_FONT_H) / 2
 		 : 0;
 
 	/* ---- Anunix logo (A-triangle) -------------------------------- */
-	mb_draw_logo(14, cy, accent, bg);
+	if (layout.logo)
+		mb_draw_logo(MB_LOGO_X, cy, accent, bg);
 
 	/* ---- Workspace dots (start after logo) ----------------------- */
-	dot_x = 34;
-	for (ws = 1; ws <= ANX_WM_WORKSPACES; ws++) {
+	dot_x = MB_DOT_X;
+	for (ws = layout.first_ws; ws < layout.first_ws + layout.ws_count; ws++) {
 		bool is_active   = (ws == anx_wm_workspace_active());
 		bool is_occupied = anx_wm_workspace_occupied(ws);
 		uint32_t color;
@@ -346,68 +393,45 @@ void anx_wm_menubar_refresh(void)
 
 		/* Hollow ring for occupied-but-inactive: paint centre with bg */
 		if (is_occupied && !is_active)
-			mb_fill_circle(dot_x, cy, dot_r - 2, bg);
+			mb_fill_circle(dot_x, cy, dot_r - 3, bg);
 
-		dot_x += 18;
+		dot_x += MB_DOT_STEP;
 	}
 
-	/* ---- Clock + date (centred) — compute position first ---------- */
-	{
-		char date_str[8];
-		char combined[16];
-		uint32_t tw;
-
+	/* Clock stays centred; omit the date when the full clock would crowd dots. */
+	if (layout.clock_chars) {
+		char date_str[8], combined[16];
 		anx_gui_get_time(clock_str, sizeof(clock_str));
-		anx_gui_get_date(date_str,  sizeof(date_str));
-
-		/* "Mon 26  14:30" — date + two spaces + time */
-		anx_snprintf(combined, sizeof(combined), "%s  %s",
-			     date_str, clock_str);
-
-		tw      = (uint32_t)anx_strlen(combined) * ANX_FONT_WIDTH;
-		clock_x = (mb_width > tw) ? (mb_width - tw) / 2 : 0;
-		mb_draw_str(clock_x, text_y, combined,
-			    theme->palette.text_primary, bg);
+		if (layout.clock_chars == 13) {
+			anx_gui_get_date(date_str, sizeof(date_str));
+			anx_snprintf(combined, sizeof(combined), "%s  %s", date_str, clock_str);
+		} else {
+			anx_strlcpy(combined, clock_str, sizeof(combined));
+		}
+		mb_draw_str(layout.clock_x, text_y, combined, theme->palette.text_primary);
 	}
 
-	/* ---- Focused window title — clipped to stay left of clock ---- */
-	{
-		anx_oid_t         foc = anx_input_focus_get();
+	/* The focused title never runs into the central clock or status area. */
+	if (layout.title_chars >= 4) {
+		anx_oid_t foc = anx_input_focus_get();
 		struct anx_surface *s = NULL;
-
-		if ((foc.hi || foc.lo) &&
-		    anx_iface_surface_lookup(foc, &s) == ANX_OK &&
+		if ((foc.hi || foc.lo) && anx_iface_surface_lookup(foc, &s) == ANX_OK &&
 		    s && s->title[0]) {
-			uint32_t tx        = dot_x + 16;
-			uint32_t max_w     = (clock_x > tx + 8) ? clock_x - tx - 8 : 0;
-			uint32_t max_chars = max_w / ANX_FONT_WIDTH;
-			char     clipped[64];
-			uint32_t tlen      = (uint32_t)anx_strlen(s->title);
-
-			if (max_chars < 4)
-				goto skip_title;
-
-			if (tlen > max_chars) {
-				/* Truncate with ellipsis */
-				uint32_t copy = (max_chars > 2) ? max_chars - 1 : max_chars;
-				uint32_t i;
-				for (i = 0; i < copy && i < 63; i++)
-					clipped[i] = s->title[i];
-				if (copy < 63) clipped[copy++] = '~';
-				clipped[copy] = '\0';
-				mb_draw_str(tx, text_y, clipped,
-					    theme->palette.text_dim, bg);
-			} else {
-				mb_draw_str(tx, text_y, s->title,
-					    theme->palette.text_primary, bg);
-			}
-		skip_title:;
+			char clipped[64];
+			uint32_t len = (uint32_t)anx_strlen(s->title);
+			uint32_t count = layout.title_chars;
+			if (count >= sizeof(clipped)) count = sizeof(clipped) - 1;
+			if (count > len) count = len;
+			anx_memcpy(clipped, s->title, count);
+			if (len > count) clipped[count - 1] = '~';
+			clipped[count] = 0;
+			mb_draw_str(layout.title_x, text_y, clipped, theme->palette.text_primary);
 		}
 	}
 
-	/* ---- Network status: 6px glow dot + label -------------------- */
-	{
-		uint32_t net_x = mb_width - 80;
+	/* ---- Network status: scaled glow dot and optional label ------ */
+	if (layout.network) {
+		uint32_t net_x = layout.net_x;
 		uint32_t dot_color, glow_color;
 		uint32_t local_ip = anx_ipv4_local_ip();
 		const char *net_label;
@@ -429,21 +453,22 @@ void anx_wm_menubar_refresh(void)
 		}
 
 		/* Outer glow ring then bright dot */
-		mb_fill_circle(net_x, cy, 5u, glow_color);
-		mb_fill_circle(net_x, cy, 3u, dot_color);
-		mb_draw_str(net_x + 10, text_y, net_label, dim, bg);
+		mb_fill_circle(net_x, cy, 8u, glow_color);
+		mb_fill_circle(net_x, cy, 5u, dot_color);
+		if (layout.net_label)
+			mb_draw_str(net_x + 15, text_y, net_label, dim);
 	}
 
-	/* ---- Power icon: proper power-button outline (circle + stem) -- */
-	{
-		uint32_t pw_cx = mb_width - 16;
+	/* ---- Power icon: scaled outline and stem --------------------- */
+	if (layout.power) {
+		uint32_t pw_cx = mb_width - 24;
 
 		/* Circle ring */
-		mb_fill_circle(pw_cx, cy, 5u, dim);
-		mb_fill_circle(pw_cx, cy, 3u, bg);
+		mb_fill_circle(pw_cx, cy, 8u, dim);
+		mb_fill_circle(pw_cx, cy, 5u, bg);
 		/* Stem: two pixels breaking the top of the ring */
-		mb_fill_rect(pw_cx - 1, cy - 7, 3, 4, bg);
-		mb_fill_rect(pw_cx - 1, cy - 7, 3, 3, dim);
+		mb_fill_rect(pw_cx - 2, cy - 10, 5, 6, bg);
+		mb_fill_rect(pw_cx - 2, cy - 10, 5, 5, dim);
 	}
 
 	/* Commit the updated canvas to the framebuffer */

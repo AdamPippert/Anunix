@@ -62,7 +62,7 @@ void anx_jepa_traj_record(const float *obs_vec, uint32_t obs_dim,
 /* Public: ingest (called from modules outside core/jepa/)            */
 /* ------------------------------------------------------------------ */
 
-int anx_jepa_traj_ingest(const struct anx_jepa_obs *obs, uint32_t action_id,
+int anx_jepa_traj_ingest(const struct anx_world_obs *obs, uint32_t action_id,
 			  const char *world_uri)
 {
 	const struct anx_jepa_world_profile *world;

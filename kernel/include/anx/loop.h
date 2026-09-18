@@ -3,7 +3,7 @@
  *
  * Defines the loop session object and public API for the kernel loop
  * subsystem.  Phase 1: session CRUD, iteration advance, halt.
- * EBM and JEPA integration wired in Phase 2+.
+ * EBM and world model (anx/world_model.h) integration wired in Phase 2+.
  */
 
 #ifndef ANX_LOOP_H
@@ -20,7 +20,7 @@
 #define ANX_LOOP_MAX_CANDIDATES    16
 #define ANX_LOOP_MAX_SCORE_HIST    64
 #define ANX_LOOP_MAX_BRANCHES       8   /* max parallel branch sessions */
-#define ANX_MEMORY_ACT_COUNT     12   /* one entry per ANX_JEPA_ACT_* */
+#define ANX_MEMORY_ACT_COUNT     12   /* one entry per ANX_WORLD_ACT_* */
 #define ANX_MEMORY_WAYPOINTS      8   /* trajectory shape sample count */
 
 /* ------------------------------------------------------------------ */
@@ -122,7 +122,7 @@ struct anx_loop_session {
 
 /* Source of a world proposal */
 enum anx_loop_proposal_source {
-	ANX_LOOP_PROPOSAL_JEPA,		/* anx_jepa_predict() */
+	ANX_LOOP_PROPOSAL_WORLD,	/* anx_world_predict() */
 	ANX_LOOP_PROPOSAL_LLM,		/* LLM inference (Phase 3) */
 	ANX_LOOP_PROPOSAL_RETRIEVAL,	/* semantic search (Phase 3) */
 	ANX_LOOP_PROPOSAL_SYMBOLIC,	/* graph/rule transition (Phase 3) */
@@ -153,8 +153,8 @@ enum anx_loop_score_class {
 struct anx_loop_belief_payload {
 	anx_oid_t  session_oid;
 	uint32_t   iteration;
-	anx_oid_t  latent_oid;		/* ANX_OBJ_JEPA_LATENT encoded this iter */
-	anx_oid_t  obs_oid;		/* ANX_OBJ_JEPA_OBS observation used */
+	anx_oid_t  latent_oid;		/* world-model latent encoded this iter */
+	anx_oid_t  obs_oid;		/* stored observation used */
 	anx_oid_t  parent_belief_oid;	/* prior iter's belief (null if iter 0) */
 	float      uncertainty;		/* [0,1] epistemic uncertainty estimate */
 	anx_oid_t  context_oids[ANX_LOOP_BELIEF_MAX_CONTEXT];
@@ -169,8 +169,8 @@ struct anx_loop_proposal_payload {
 	anx_oid_t                      session_oid;
 	uint32_t                       iteration;
 	enum anx_loop_proposal_source  source;
-	anx_oid_t                      latent_oid;	/* predicted ANX_OBJ_JEPA_LATENT */
-	uint32_t                       action_id;	/* JEPA action (if source==JEPA) */
+	anx_oid_t                      latent_oid;	/* predicted world-model latent */
+	uint32_t                       action_id;	/* world action (source==WORLD) */
 	float                          aggregate_score;	/* filled after EBM scoring */
 	enum anx_loop_proposal_status  status;
 	anx_oid_t                      score_oids[ANX_LOOP_PROPOSAL_MAX_SCORES];
@@ -217,7 +217,7 @@ struct anx_loop_counterexample_payload {
 /* ------------------------------------------------------------------ */
 
 /*
- * Collect current system state, encode via JEPA, and store as a new
+ * Collect current system state, encode it with the world model, and store as a new
  * ANX_OBJ_BELIEF_STATE object linked to the session.  On success,
  * updates session->active_belief and writes *belief_oid_out.
  */
@@ -225,7 +225,7 @@ int anx_loop_belief_create(anx_oid_t session_oid, uint32_t iteration,
 			   anx_oid_t parent_belief_oid,
 			   anx_oid_t *belief_oid_out);
 
-/* Read the JEPA latent OID from a stored belief state. */
+/* Read the world-model latent OID from a stored belief state. */
 int anx_loop_belief_get_latent(anx_oid_t belief_oid,
 			       anx_oid_t *latent_oid_out);
 
@@ -238,15 +238,15 @@ int anx_loop_belief_get_uncertainty(anx_oid_t belief_oid,
 /* ------------------------------------------------------------------ */
 
 /*
- * Store a JEPA-predicted latent as an ANX_OBJ_WORLD_PROPOSAL and add
- * it to the session's candidate list.
+ * Store a world-model-predicted latent as an ANX_OBJ_WORLD_PROPOSAL and
+ * add it to the session's candidate list.
  */
-int anx_loop_proposal_create_jepa(anx_oid_t session_oid, uint32_t iteration,
-				  anx_oid_t predicted_latent_oid,
-				  uint32_t action_id,
-				  anx_oid_t *proposal_oid_out);
+int anx_loop_proposal_create_world(anx_oid_t session_oid, uint32_t iteration,
+				   anx_oid_t predicted_latent_oid,
+				   uint32_t action_id,
+				   anx_oid_t *proposal_oid_out);
 
-/* Read the JEPA latent OID from a stored proposal. */
+/* Read the predicted latent OID from a stored proposal. */
 int anx_loop_proposal_get_latent(anx_oid_t proposal_oid,
 				 anx_oid_t *latent_oid_out);
 
@@ -374,7 +374,7 @@ float anx_loop_goal_alignment_energy(const char *goal_text, uint32_t action_id);
 /*
  * Return the action_id in [0, action_count) with the lowest PAL-learned
  * prior for world_uri.  Falls back to 0 when PAL has no data (cold-start).
- * Used to bias JEPA proposal generation toward historically low-cost actions.
+ * Used to bias world-model proposal generation toward low-cost actions.
  */
 uint32_t anx_loop_select_action_by_prior(const char *world_uri,
 					  uint32_t action_count);
@@ -450,16 +450,16 @@ int anx_loop_branch_list(anx_oid_t parent_oid,
 			 uint32_t *count_out);
 
 /* ------------------------------------------------------------------ */
-/* JEPA online training pipeline (Phase 17: loop_jepa_train.c)        */
+/* World model online learning (Phase 17: loop_world_train.c)         */
 /* ------------------------------------------------------------------ */
 
 /*
- * Ingest a completed session's best action into the JEPA online training
- * pipeline.  Collects a fresh system observation, stores it as
- * ANX_OBJ_JEPA_OBS, and calls anx_jepa_record_winner() so the training
- * step counter advances.  Non-fatal if JEPA is unavailable.
+ * Feed a completed session's best action to the world model: collect
+ * and store a fresh system observation, report the winning action
+ * (anx_world_record_winner()) and pair the two in the trajectory buffer.
+ * Non-fatal without a model.
  * Returns ANX_ENOENT if session_oid is not found, ANX_EINVAL on bad args.
  */
-int anx_loop_jepa_ingest(anx_oid_t session_oid, const char *world_uri);
+int anx_loop_world_ingest(anx_oid_t session_oid, const char *world_uri);
 
 #endif /* ANX_LOOP_H */

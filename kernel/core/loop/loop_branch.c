@@ -3,7 +3,7 @@
  *
  * When the belief-action loop plateaus (no energy improvement for N
  * iterations), the supervisor spawns ANX_LOOP_MAX_BRANCHES child sessions
- * that each explore a different JEPA action seed.  After their budget runs
+ * that each explore a different world-model action seed.  After their budget runs
  * out, the child with the lowest final energy is merged back into the
  * parent session.
  *

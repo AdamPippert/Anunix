@@ -2,7 +2,7 @@
  * jepa_obs.c — JEPA system observation collector.
  *
  * anx_jepa_observe() samples Anunix kernel subsystems and fills an
- * anx_jepa_obs snapshot.  The active world profile's collect_obs hook
+ * anx_world_obs snapshot.  The active world profile's collect_obs hook
  * is called for the raw collection; for os-default this file provides
  * the implementation directly.
  *
@@ -61,17 +61,17 @@ static int count_active_cell(struct anx_cell *cell, void *arg)
 
 int anx_jepa_obs_collect_os_default(void *obs_buf, uint32_t obs_buf_size)
 {
-	struct anx_jepa_obs *obs = (struct anx_jepa_obs *)obs_buf;
+	struct anx_world_obs *obs = (struct anx_world_obs *)obs_buf;
 	struct cell_count_arg ca;
 	uint32_t i;
 
-	if (!obs_buf || obs_buf_size < sizeof(struct anx_jepa_obs))
+	if (!obs_buf || obs_buf_size < sizeof(struct anx_world_obs))
 		return ANX_EINVAL;
 
 	anx_memset(obs, 0, sizeof(*obs));
 
 	/* Scheduler queue depths */
-	for (i = 0; i < ANX_JEPA_OBS_SCHED_CLASSES; i++)
+	for (i = 0; i < ANX_WORLD_OBS_SCHED_CLASSES; i++)
 		obs->sched_queue_depths[i] =
 			anx_sched_queue_depth((enum anx_queue_class)i);
 
@@ -87,7 +87,7 @@ int anx_jepa_obs_collect_os_default(void *obs_buf, uint32_t obs_buf_size)
 	 * The obs struct is still useful: the scheduler and cell counts
 	 * alone carry meaningful signal for routing and scheduling decisions.
 	 */
-	for (i = 0; i < ANX_JEPA_OBS_MEM_TIERS; i++) {
+	for (i = 0; i < ANX_WORLD_OBS_MEM_TIERS; i++) {
 		obs->mem_decay_score_avg[i] = 0;
 		obs->mem_entry_counts[i]    = 0;
 	}
@@ -115,7 +115,7 @@ int anx_jepa_obs_collect_os_default(void *obs_buf, uint32_t obs_buf_size)
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
-int anx_jepa_observe(struct anx_jepa_obs *obs_out)
+int anx_jepa_observe(struct anx_world_obs *obs_out)
 {
 	const struct anx_jepa_world_profile *world;
 	int rc;
@@ -130,11 +130,11 @@ int anx_jepa_observe(struct anx_jepa_obs *obs_out)
 	if (!world || !world->collect_obs)
 		return ANX_ENOENT;
 
-	rc = world->collect_obs((void *)obs_out, sizeof(struct anx_jepa_obs));
+	rc = world->collect_obs((void *)obs_out, sizeof(struct anx_world_obs));
 	return rc;
 }
 
-int anx_jepa_observe_store(const struct anx_jepa_obs *obs,
+int anx_jepa_observe_store(const struct anx_world_obs *obs,
 			   anx_oid_t *oid_out)
 {
 	struct anx_so_create_params params;
@@ -148,7 +148,7 @@ int anx_jepa_observe_store(const struct anx_jepa_obs *obs,
 	params.object_type  = ANX_OBJ_JEPA_OBS;
 	params.schema_uri   = "anx:schema/jepa-obs/v1";
 	params.payload      = obs;
-	params.payload_size = sizeof(struct anx_jepa_obs);
+	params.payload_size = sizeof(struct anx_world_obs);
 
 	rc = anx_so_create(&params, &so);
 	if (rc != ANX_OK)

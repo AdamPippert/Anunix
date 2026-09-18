@@ -10,7 +10,7 @@
 
 #include <anx/ibal.h>
 #include <anx/ebm.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/cexl.h>
 #include <anx/diag.h>
 #include <anx/state_object.h>
@@ -117,7 +117,7 @@ int anx_ibal_run(const struct anx_loop_create_params *params,
 {
 	anx_oid_t sid;
 	struct anx_loop_session_info info;
-	struct anx_loop_session_action_stats act_stats[ANX_JEPA_ACT_COUNT];
+	struct anx_loop_session_action_stats act_stats[ANX_WORLD_ACT_COUNT];
 	int rc;
 
 	if (!params || !session_oid_out)
@@ -140,7 +140,7 @@ int anx_ibal_run(const struct anx_loop_create_params *params,
 
 		/* Run EBM scoring pipeline: believe → propose → score → arbitrate */
 		(void)anx_ebm_run_iteration(sid, act_stats,
-					    (uint32_t)ANX_JEPA_ACT_COUNT);
+					    (uint32_t)ANX_WORLD_ACT_COUNT);
 
 		rc = anx_loop_session_status_get(sid, &info);
 		if (rc != ANX_OK)
@@ -156,16 +156,16 @@ int anx_ibal_run(const struct anx_loop_create_params *params,
 
 	*session_oid_out = sid;
 
-	/* Post-session pipeline: counterexample signal + JEPA observation */
+	/* Post-session pipeline: counterexample signal + world model learning */
 	{
 		const char *world = params->world_uri[0]
 			? params->world_uri : "anx:world/os-default";
 		anx_loop_cexl_process(sid, world);
-		anx_loop_jepa_ingest(sid, world);
+		anx_loop_world_ingest(sid, world);
 
 		/* Phase 5: consolidate session stats into PAL cross-session memory */
 		(void)anx_loop_consolidate(sid, act_stats,
-					   (uint32_t)ANX_JEPA_ACT_COUNT);
+					   (uint32_t)ANX_WORLD_ACT_COUNT);
 	}
 
 	(void)anx_trace_end("ibal.session");

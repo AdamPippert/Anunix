@@ -2,18 +2,18 @@
  * loop_llm_propose.c — LLM world proposal cell (RFC-0020 Phase 3).
  *
  * anx_loop_llm_propose() runs one RLM rollout for the session's goal,
- * maps the response to a JEPA action via keyword matching, and creates
+ * maps the response to a world action via keyword matching, and creates
  * an ANX_OBJ_WORLD_PROPOSAL with source=ANX_LOOP_PROPOSAL_LLM.
  *
  * Non-fatal: if the RLM harness or inference adapter is unavailable,
  * the function still creates a proposal using the PAL-preferred action
  * as a fallback, so the EBM always has at least one LLM-labelled
- * candidate to score alongside the JEPA-generated proposals.
+ * candidate to score alongside the world-model proposals.
  */
 
 #include <anx/loop.h>
 #include <anx/rlm.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -53,17 +53,17 @@ static int make_prompt_obj(const char *text, anx_oid_t *oid_out)
 
 static void build_action_list(char *buf, uint32_t buf_size)
 {
-	const struct anx_jepa_world_profile *world = anx_jepa_world_get_active();
+	const char *name;
 	uint32_t i, pos = 0, len;
 
-	if (world && world->action_count > 0) {
-		for (i = 0; i < world->action_count; i++) {
+	if (anx_world_action_name(0)) {
+		for (i = 0; (name = anx_world_action_name(i)) != NULL; i++) {
 			if (i > 0 && pos + 1 < buf_size)
 				buf[pos++] = ',';
-			len = (uint32_t)anx_strlen(world->action_names[i]);
+			len = (uint32_t)anx_strlen(name);
 			if (pos + len >= buf_size)
 				break;
-			anx_memcpy(buf + pos, world->action_names[i], len);
+			anx_memcpy(buf + pos, name, len);
 			pos += len;
 		}
 		buf[pos] = '\0';
@@ -87,9 +87,7 @@ static void build_action_list(char *buf, uint32_t buf_size)
  */
 static uint32_t response_to_action(const char *resp)
 {
-	const struct anx_jepa_world_profile *world = anx_jepa_world_get_active();
-	uint32_t act_count = world ? world->action_count
-				   : (uint32_t)ANX_JEPA_ACT_COUNT;
+	uint32_t act_count = anx_world_action_count();
 	uint32_t best_id = 0;
 	float    best_e  = 1.0f;
 	uint32_t i;
@@ -215,10 +213,7 @@ int anx_loop_llm_propose(anx_oid_t session_oid, uint32_t iteration,
 fallback:
 	/* RLM unavailable: use PAL-preferred action as implicit LLM suggestion */
 	{
-		const struct anx_jepa_world_profile *world =
-			anx_jepa_world_get_active();
-		uint32_t act_count = world ? world->action_count
-					   : (uint32_t)ANX_JEPA_ACT_COUNT;
+		uint32_t act_count = anx_world_action_count();
 
 		action_id = anx_loop_select_action_by_prior(s->world_uri,
 							     act_count);
@@ -227,7 +222,7 @@ fallback:
 build_proposal:
 	/* Obtain a predicted latent for the suggested action */
 	anx_memset(&pred_latent, 0, sizeof(pred_latent));
-	(void)anx_jepa_predict(&s->active_belief, action_id, &pred_latent);
+	(void)anx_world_predict(&s->active_belief, action_id, &pred_latent);
 
 	/* Create the LLM proposal */
 	anx_memset(&payload, 0, sizeof(payload));

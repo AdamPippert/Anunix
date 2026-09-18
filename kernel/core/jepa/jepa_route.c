@@ -41,9 +41,9 @@ int32_t anx_jepa_route_score_delta(const struct anx_route_candidate *candidate)
 	/*
 	 * Map the route candidate's engine selection to an action_id.
 	 * If the candidate is the selected (primary) engine, use
-	 * ANX_JEPA_ACT_ROUTE_LOCAL for local engines and
-	 * ANX_JEPA_ACT_ROUTE_REMOTE otherwise.  For fallback engines
-	 * use ANX_JEPA_ACT_ROUTE_FALLBACK.
+	 * ANX_WORLD_ACT_ROUTE_LOCAL for local engines and
+	 * ANX_WORLD_ACT_ROUTE_REMOTE otherwise.  For fallback engines
+	 * use ANX_WORLD_ACT_ROUTE_FALLBACK.
 	 */
 	{
 		struct anx_engine *eng = anx_engine_lookup(&candidate->engine_id);
@@ -55,10 +55,10 @@ int32_t anx_jepa_route_score_delta(const struct anx_route_candidate *candidate)
 		    candidate->fallback_engine_id.lo != candidate->engine_id.lo) {
 			/* This candidate has a fallback set — treat as primary */
 			action_id = eng->is_local ?
-				    ANX_JEPA_ACT_ROUTE_LOCAL :
-				    ANX_JEPA_ACT_ROUTE_REMOTE;
+				    ANX_WORLD_ACT_ROUTE_LOCAL :
+				    ANX_WORLD_ACT_ROUTE_REMOTE;
 		} else {
-			action_id = ANX_JEPA_ACT_ROUTE_FALLBACK;
+			action_id = ANX_WORLD_ACT_ROUTE_FALLBACK;
 		}
 	}
 

@@ -31,7 +31,7 @@
 /* Observation linearization                                           */
 /* ------------------------------------------------------------------ */
 
-int anx_jepa_obs_linearize(const struct anx_jepa_obs *obs,
+int anx_jepa_obs_linearize(const struct anx_world_obs *obs,
 			   float *out_vec, uint32_t max_dim)
 {
 	uint32_t i, idx = 0;
@@ -42,13 +42,13 @@ int anx_jepa_obs_linearize(const struct anx_jepa_obs *obs,
 #define EMIT(v) do { if (idx < max_dim) out_vec[idx++] = (float)(v); } while (0)
 
 	/* Scheduler queue depths — normalised by a soft cap of 64 */
-	for (i = 0; i < ANX_JEPA_OBS_SCHED_CLASSES; i++)
+	for (i = 0; i < ANX_WORLD_OBS_SCHED_CLASSES; i++)
 		EMIT(obs->sched_queue_depths[i] / 64.0f);
 
 	EMIT(obs->active_cell_count / 256.0f);
 
 	/* Memory tier stats — decay score (0-1000 range) and entry count */
-	for (i = 0; i < ANX_JEPA_OBS_MEM_TIERS; i++) {
+	for (i = 0; i < ANX_WORLD_OBS_MEM_TIERS; i++) {
 		EMIT(obs->mem_decay_score_avg[i] / 1000.0f);
 		EMIT(obs->mem_entry_counts[i]    / 4096.0f);
 	}
@@ -245,7 +245,7 @@ int anx_jepa_encode(const anx_oid_t *obs_oid, anx_oid_t *latent_oid_out)
 		return rc;
 
 	{
-		struct anx_jepa_obs obs_snap;
+		struct anx_world_obs obs_snap;
 
 		rc = anx_so_read_payload(&obs_handle, 0,
 					 &obs_snap, sizeof(obs_snap));
@@ -336,7 +336,7 @@ int anx_jepa_encode(const anx_oid_t *obs_oid, anx_oid_t *latent_oid_out)
 	return ANX_OK;
 }
 
-int anx_jepa_encode_obs(const struct anx_jepa_obs *obs,
+int anx_jepa_encode_obs(const struct anx_world_obs *obs,
 			anx_oid_t *latent_oid_out)
 {
 	anx_oid_t obs_oid;

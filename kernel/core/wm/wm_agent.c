@@ -37,9 +37,7 @@
 #define FONT_H		ANX_FONT_HEIGHT
 #define LINE_H		(FONT_H + 4)
 
-#define INPUT_H		34
 #define MARGIN		12
-#define LABEL_W		(FONT_W * 5)	/* "anx> " or "you> " */
 
 #define HIST_LINES	300
 #define HIST_COLS	140
@@ -76,12 +74,13 @@ static struct {
 	/* Scrollback */
 	char     hist[HIST_LINES][HIST_COLS];
 	uint8_t  hist_role[HIST_LINES];
-	uint32_t hist_count;
+	uint32_t hist_count, hist_head;
 	int32_t  scroll_off;
 
 	/* Input */
-	char     input[HIST_COLS];
+	char     input[256];
 	uint32_t input_len;
+	struct anx_shell_history_cursor recall;
 
 	/* Conversation context passed to the model */
 	char    *conv;		/* heap-allocated, CONV_HIST_SZ bytes */
@@ -114,55 +113,27 @@ static void agent_draw_str(uint32_t x, uint32_t y,
 
 static void hist_append_role(const char *s, uint32_t len, uint8_t role)
 {
-	uint32_t slot = g_agent.hist_count % HIST_LINES;
-	uint32_t copy = len < HIST_COLS - 1 ? len : HIST_COLS - 1;
+	uint32_t slot = (g_agent.hist_head + g_agent.hist_count) % HIST_LINES;
 
-	anx_memcpy(g_agent.hist[slot], s, copy);
-	g_agent.hist[slot][copy] = '\0';
+	anx_memcpy(g_agent.hist[slot], s, len);
+	g_agent.hist[slot][len] = '\0';
 	g_agent.hist_role[slot] = role;
-	g_agent.hist_count++;
+	if (g_agent.hist_count < HIST_LINES)
+		g_agent.hist_count++;
+	else
+		g_agent.hist_head = (g_agent.hist_head + 1) % HIST_LINES;
 }
 
 static void hist_append_str_role(const char *s, uint8_t role)
 {
-	uint32_t max_cols;
-
-	max_cols = g_agent.w > (uint32_t)(MARGIN * 2 + LABEL_W + 4)
-		? (g_agent.w - MARGIN * 2 - LABEL_W) / FONT_W
-		: HIST_COLS - 1;
-	if (max_cols < 1) max_cols = 1;
-	if (max_cols >= HIST_COLS) max_cols = HIST_COLS - 1;
-
 	while (*s) {
-		const char *start = s;
-		uint32_t col = 0;
+		uint32_t len = 0;
 
-		while (*s && *s != '\n') {
-			if (col >= max_cols) {
-				/* Word-wrap: back up to last space */
-				const char *w = s;
-				uint32_t wc = col;
-
-				while (w > start + 1 && w[-1] != ' ')
-					w--, wc--;
-
-				if (w > start + max_cols / 2) {
-					hist_append_role(start,
-						(uint32_t)(w - start), role);
-					s = w;
-				} else {
-					hist_append_role(start, col, role);
-					s = start + col;
-				}
-				start = s;
-				col = 0;
-				continue;
-			}
-			s++; col++;
-		}
-		hist_append_role(start, (uint32_t)(s - start), role);
-		if (*s == '\n')
-			s++;
+		while (s[len] && s[len] != '\n' && len < HIST_COLS - 1)
+			len++;
+		hist_append_role(s, len, role);
+		s += len;
+		if (*s == '\n') s++;
 	}
 }
 
@@ -196,92 +167,86 @@ static void conv_append(const char *s)
 /* Rendering                                                           */
 /* ------------------------------------------------------------------ */
 
+static const char *agent_label(uint8_t role)
+{
+	switch (role) {
+	case ROLE_USER: return anx_model_client_ready() ? "you> " : "> ";
+	case ROLE_AGENT: return "anx> ";
+	case ROLE_CMD: return "cmd> ";
+	default: return "";
+	}
+}
+
+static uint32_t agent_columns(void)
+{
+	return g_agent.w > MARGIN * 2 + FONT_W
+		? (g_agent.w - MARGIN * 2) / FONT_W : 1;
+}
+
+static void agent_draw_rows(const char *text, uint32_t cols, uint32_t first,
+			    uint32_t *row, uint32_t fg, uint32_t bg)
+{
+	uint32_t len = (uint32_t)anx_strlen(text), pos = 0;
+
+	do {
+		uint32_t n = len - pos;
+		char line[264];
+
+		if (n > cols) n = cols;
+		if (*row >= first && *row - first < g_agent.vis_lines) {
+			anx_memcpy(line, text + pos, n);
+			line[n] = '\0';
+			agent_draw_str(MARGIN, MARGIN + (*row - first) * LINE_H,
+				       line, fg, bg);
+		}
+		(*row)++;
+		pos += n;
+	} while (pos < len);
+}
+
 static void agent_redraw(void)
 {
 	const struct anx_theme *t = anx_theme_get();
-	uint32_t bg    = t->palette.background;
-	uint32_t input_bar_bg = t->palette.surface;
-	uint32_t input_border = t->palette.accent;
+	uint32_t bg = t->palette.background;
+	uint32_t cols, output = 0, i, row = 0, first, cursor_row, prompt_len;
+	char text[264];
+	const char *prompt = anx_model_client_ready() ? "you> " : "> ";
 
-	/* Background */
+	if (!g_agent.surf || !g_agent.pixels)
+		return;
 	agent_fill(0, 0, g_agent.w, g_agent.h, bg);
+	cols = agent_columns();
+	for (i = 0; i < g_agent.hist_count; i++) {
+		uint32_t slot = (g_agent.hist_head + i) % HIST_LINES;
+		uint32_t len = (uint32_t)anx_strlen(g_agent.hist[slot]) +
+			(uint32_t)anx_strlen(agent_label(g_agent.hist_role[slot]));
 
-	/* History area */
-	{
-		uint32_t total = g_agent.hist_count;
-		uint32_t vis   = g_agent.vis_lines;
-		int32_t  start;
-		uint32_t i;
-
-		/* start = first line index to display */
-		if (total > vis)
-			start = (int32_t)(total - vis) + g_agent.scroll_off;
-		else
-			start = g_agent.scroll_off;
-		if (start < 0) start = 0;
-
-		for (i = 0; i < vis && (uint32_t)(start + (int32_t)i) < total; i++) {
-			uint32_t idx  = (uint32_t)(start + (int32_t)i) % HIST_LINES;
-			uint32_t y    = MARGIN + i * LINE_H;
-			uint8_t  role = g_agent.hist_role[idx];
-			uint32_t fg;
-			const char *label;
-
-			switch (role) {
-			case ROLE_USER:
-				fg    = t->palette.accent;
-				label = "you> ";
-				break;
-			case ROLE_AGENT:
-				fg    = t->palette.text_primary;
-				label = "anx> ";
-				break;
-			case ROLE_CMD:
-				fg    = 0xFF888888u;
-				label = "cmd> ";
-				break;
-			case ROLE_OUTPUT:
-				fg    = 0xFFAAAAAAu;
-				label = "     ";
-				break;
-			default: /* ROLE_SYSTEM */
-				fg    = 0xFF666666u;
-				label = "     ";
-				break;
-			}
-
-			agent_draw_str(MARGIN, y, label, fg, bg);
-			agent_draw_str(MARGIN + LABEL_W, y,
-				       g_agent.hist[idx], fg, bg);
-		}
+		output += len ? (len + cols - 1) / cols : 1;
 	}
+	prompt_len = (uint32_t)anx_strlen(prompt) + g_agent.input_len;
+	cursor_row = output + prompt_len / cols;
+	first = cursor_row + 1 > g_agent.vis_lines
+		? cursor_row + 1 - g_agent.vis_lines : 0;
+	if ((uint32_t)g_agent.scroll_off > first)
+		g_agent.scroll_off = (int32_t)first;
+	first -= (uint32_t)g_agent.scroll_off;
+	for (i = 0; i < g_agent.hist_count; i++) {
+		uint32_t slot = (g_agent.hist_head + i) % HIST_LINES;
+		uint8_t role = g_agent.hist_role[slot];
+		uint32_t fg = role == ROLE_SYSTEM ? t->palette.text_dim :
+			role == ROLE_USER ? t->palette.accent : t->palette.text_primary;
 
-	/* Input bar */
-	{
-		uint32_t iy = g_agent.h - INPUT_H;
-
-		agent_fill(0, iy - 2, g_agent.w, 2, input_border);
-		agent_fill(0, iy, g_agent.w, INPUT_H, input_bar_bg);
-
-		agent_draw_str(MARGIN, iy + (INPUT_H - FONT_H) / 2,
-			       "  >  ", t->palette.accent, input_bar_bg);
-		agent_draw_str(MARGIN + LABEL_W,
-			       iy + (INPUT_H - FONT_H) / 2,
-			       g_agent.input, t->palette.text_primary, input_bar_bg);
-
-		/* Cursor */
-		{
-			uint32_t cx = MARGIN + LABEL_W +
-				      g_agent.input_len * FONT_W;
-			uint32_t cy = iy + (INPUT_H - FONT_H) / 2;
-
-			agent_fill(cx, cy, 2, FONT_H, t->palette.accent);
-		}
+		anx_snprintf(text, sizeof(text), "%s%s",
+			     agent_label(role), g_agent.hist[slot]);
+		agent_draw_rows(text, cols, first, &row, fg, bg);
 	}
-
-	/* Commit to framebuffer */
-	if (g_agent.surf)
-		anx_iface_surface_commit(g_agent.surf);
+	anx_snprintf(text, sizeof(text), "%s%s", prompt, g_agent.input);
+	agent_draw_rows(text, cols, first, &row, t->palette.text_primary, bg);
+	if (cursor_row >= first && cursor_row - first < g_agent.vis_lines)
+		agent_fill(MARGIN + (prompt_len % cols) * FONT_W,
+			   MARGIN + (cursor_row - first) * LINE_H,
+			   2, FONT_H, t->palette.accent);
+	anx_iface_surface_commit(g_agent.surf);
 }
 
 static void mark_dirty(void)
@@ -342,36 +307,42 @@ static const char AGENT_SYS[] =
 	"Shell commands: ls, cat, write, sysinfo, netinfo, tensor, cells, "
 	"loop, state, disk, model-init, theme, date";
 
-static void run_agent_loop(void)
+static void run_agent_loop(const char *input)
 {
-	char  *cap;
-	int    iter;
+	char *cap;
+	int iter;
 
 	if (!anx_model_client_ready()) {
-		/* No model — route as shell command */
-		char  cmdout[512];
-
-		hist_append_str_role(g_agent.input, ROLE_USER);
-		hist_append_str_role(
-			"(model not configured — running as shell command; "
-			"open a terminal with Meta+Enter or type 'model-init' here)",
-			ROLE_SYSTEM);
-
-		exec_cmd_capture(g_agent.input, cmdout, sizeof(cmdout));
-
-		if (cmdout[0])
-			hist_append_str_role(cmdout, ROLE_OUTPUT);
-
+		anx_shell_history_record(input);
+		if (!anx_strcmp(input, "clear")) {
+			g_agent.hist_count = 0;
+			g_agent.hist_head = 0;
+			mark_dirty();
+			return;
+		}
+		if (!anx_strcmp(input, "exit") || !anx_strcmp(input, "quit")) {
+			anx_wm_window_close(g_agent.surf);
+			return;
+		}
+		hist_append_str_role(input, ROLE_USER);
+		cap = anx_alloc(HIST_COLS * 80);
+		if (!cap) {
+			hist_append_str_role("(out of memory)", ROLE_SYSTEM);
+		} else {
+			exec_cmd_capture(input, cap, HIST_COLS * 80);
+			if (cap[0]) hist_append_str_role(cap, ROLE_OUTPUT);
+			anx_free(cap);
+		}
 		mark_dirty();
 		return;
 	}
 
 	/* Append user turn to conversation */
 	conv_append("User: ");
-	conv_append(g_agent.input);
+	conv_append(input);
 	conv_append("\n");
 
-	hist_append_str_role(g_agent.input, ROLE_USER);
+	hist_append_str_role(input, ROLE_USER);
 	mark_dirty();
 
 	cap = anx_alloc(CMD_CAP_SZ);
@@ -469,60 +440,70 @@ static void run_agent_loop(void)
 void anx_wm_agent_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 {
 	(void)mods;
-
-	switch (key) {
-	case ANX_KEY_ENTER:
-		if (g_agent.input_len == 0)
-			break;
-		g_agent.input[g_agent.input_len] = '\0';
-		run_agent_loop();
-		g_agent.input_len  = 0;
-		g_agent.input[0]   = '\0';
+	if (!g_agent.surf)
+		return;
+	if (key != ANX_KEY_PAGEUP && key != ANX_KEY_PAGEDOWN)
 		g_agent.scroll_off = 0;
-		mark_dirty();
-		break;
+	switch (key) {
+	case ANX_KEY_ENTER: {
+		char input[sizeof(g_agent.input)];
 
-	case ANX_KEY_BACKSPACE:
-		if (g_agent.input_len > 0) {
-			g_agent.input_len--;
-			g_agent.input[g_agent.input_len] = '\0';
-			mark_dirty();
-		}
-		break;
-
-	case ANX_KEY_ESC:
-		/* Clear input */
+		anx_strlcpy(input, g_agent.input, sizeof(input));
 		g_agent.input_len = 0;
-		g_agent.input[0]  = '\0';
-		mark_dirty();
+		g_agent.input[0] = '\0';
+		anx_shell_history_reset(&g_agent.recall);
+		if (input[0])
+			run_agent_loop(input);
+		else
+			hist_append_role("", 0, ROLE_USER);
 		break;
-
+	}
+	case ANX_KEY_BACKSPACE:
+		if (g_agent.input_len > 0)
+			g_agent.input[--g_agent.input_len] = '\0';
+		anx_shell_history_reset(&g_agent.recall);
+		break;
+	case ANX_KEY_ESC:
+		g_agent.input_len = 0;
+		g_agent.input[0] = '\0';
+		anx_shell_history_reset(&g_agent.recall);
+		break;
 	case ANX_KEY_UP:
-		g_agent.scroll_off--;
-		mark_dirty();
-		break;
+	case ANX_KEY_DOWN: {
+		int n = anx_shell_history_move(&g_agent.recall,
+			key == ANX_KEY_UP ? -1 : 1, g_agent.input, sizeof(g_agent.input));
 
-	case ANX_KEY_DOWN:
-		if (g_agent.scroll_off < 0) {
-			g_agent.scroll_off++;
-			mark_dirty();
-		}
+		if (n >= 0) g_agent.input_len = (uint32_t)n;
 		break;
-
+	}
+	case ANX_KEY_PAGEUP:
+		g_agent.scroll_off += (int32_t)g_agent.vis_lines;
+		break;
+	case ANX_KEY_PAGEDOWN:
+		g_agent.scroll_off -= (int32_t)g_agent.vis_lines;
+		if (g_agent.scroll_off < 0) g_agent.scroll_off = 0;
+		break;
 	default:
 		if (unicode >= 0x20 && unicode < 0x7F &&
-		    g_agent.input_len < HIST_COLS - 1) {
+		    g_agent.input_len < sizeof(g_agent.input) - 1) {
 			g_agent.input[g_agent.input_len++] = (char)unicode;
-			g_agent.input[g_agent.input_len]   = '\0';
-			mark_dirty();
+			g_agent.input[g_agent.input_len] = '\0';
+			anx_shell_history_reset(&g_agent.recall);
 		}
 		break;
 	}
+	mark_dirty();
 }
 
 /* ------------------------------------------------------------------ */
 /* Flush                                                               */
 /* ------------------------------------------------------------------ */
+
+void anx_wm_agent_redraw(void)
+{
+	if (g_agent.surf)
+		agent_redraw();
+}
 
 void anx_wm_agent_flush_if_dirty(void)
 {
@@ -543,6 +524,12 @@ static void agent_on_destroy(struct anx_surface *surf)
 	g_agent.surf   = NULL;
 	g_agent.cn     = NULL;
 	g_agent.pixels = NULL;
+	anx_free(g_agent.conv);
+	g_agent.conv = NULL;
+	g_agent.conv_len = 0;
+	g_agent.input_len = 0;
+	g_agent.input[0] = '\0';
+	anx_shell_history_reset(&g_agent.recall);
 }
 
 /* Tiling gave the window a new size: reallocate and redraw. */
@@ -550,15 +537,14 @@ static void agent_on_resize(struct anx_surface *surf)
 {
 	uint32_t *px;
 
-	if (surf->height <= INPUT_H + MARGIN * 2 + LINE_H)
-		return;
 	px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
 	if (!px)
 		return;	/* old buffer stays, shown unscaled */
 	g_agent.pixels    = px;
 	g_agent.w         = surf->width;
 	g_agent.h         = surf->height;
-	g_agent.vis_lines = (g_agent.h - INPUT_H - MARGIN * 2) / LINE_H;
+	g_agent.vis_lines = g_agent.h >= LINE_H + MARGIN * 2
+		? (g_agent.h - MARGIN * 2) / LINE_H : 1;
 	agent_redraw();
 }
 
@@ -581,11 +567,12 @@ void anx_wm_agent_open(void)
 	 * failed to allocate on a 2560x1600 panel, so no window appeared.
 	 */
 	g_agent.w         = fb->width;
-	g_agent.h         = fb->height - ANX_WM_MENUBAR_H - ANX_WM_DECOR_H -
-			    ANX_WM_TASKBAR_H;
+	g_agent.h = fb->height;
+	if (g_agent.h > ANX_WM_MENUBAR_H + ANX_WM_DECOR_H + ANX_WM_TASKBAR_H)
+		g_agent.h -= ANX_WM_MENUBAR_H + ANX_WM_DECOR_H + ANX_WM_TASKBAR_H;
 	anx_wm_window_fit(&g_agent.w, &g_agent.h);
-	g_agent.vis_lines = (g_agent.h > INPUT_H + MARGIN * 2)
-		? (g_agent.h - INPUT_H - MARGIN * 2) / LINE_H
+	g_agent.vis_lines = (g_agent.h >= LINE_H + MARGIN * 2)
+		? (g_agent.h - MARGIN * 2) / LINE_H
 		: 1;
 
 	buf_size      = g_agent.w * g_agent.h * 4;
@@ -627,16 +614,18 @@ void anx_wm_agent_open(void)
 		return;
 	}
 
-	/* Welcome messages */
-	hist_append_str_role("Anunix — AI-Native Operating System", ROLE_SYSTEM);
-	hist_append_str_role("Type anything to talk to the agent.  "
-			     "Meta+Enter opens a terminal.", ROLE_SYSTEM);
-	if (!anx_model_client_ready())
-		hist_append_str_role(
-			"No model configured.  "
-			"Type 'model-init' here or open a terminal (Meta+Enter).",
-			ROLE_SYSTEM);
-	hist_append_str_role("", ROLE_SYSTEM);
+	anx_shell_history_reset(&g_agent.recall);
+	g_agent.scroll_off = 0;
+	/* Keep scrollback across reopen without duplicating the greeting. */
+	if (!g_agent.hist_count) {
+		hist_append_str_role("Anunix - AI-Native Operating System", ROLE_SYSTEM);
+		if (anx_model_client_ready())
+			hist_append_str_role("Type anything to talk to the agent.", ROLE_SYSTEM);
+		else
+			hist_append_str_role("Shell mode: type commands here. Up/Down recalls history; "
+				"PgUp/PgDn scrolls. Configure AI with model-init.", ROLE_SYSTEM);
+		hist_append_role("", 0, ROLE_SYSTEM);
+	}
 
 	g_agent.surf->on_destroy = agent_on_destroy;
 	g_agent.surf->on_resize  = agent_on_resize;

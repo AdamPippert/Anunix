@@ -10,7 +10,7 @@
 
 #include <anx/ebm.h>
 #include <anx/loop.h>
-#include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/state_object.h>
 #include <anx/string.h>
 #include <anx/kprintf.h>
@@ -109,7 +109,7 @@ int anx_ebm_run_iteration(anx_oid_t session_oid,
 	struct anx_loop_session *s;
 	anx_oid_t  belief_oid;
 	anx_oid_t  pred_oid;
-	/* +1 for the LLM proposal added after the JEPA candidates */
+	/* +1 for the LLM proposal added after the world-model candidates */
 	anx_oid_t  prop_oids[ANX_EBM_PROPOSALS_PER_ITER + 1];
 	uint32_t   act_ids[ANX_EBM_PROPOSALS_PER_ITER + 1];
 	float      energies[ANX_EBM_PROPOSALS_PER_ITER + 1];
@@ -135,11 +135,11 @@ int anx_ebm_run_iteration(anx_oid_t session_oid,
 	if (rc == ANX_OK)
 		(void)anx_loop_session_set_belief(session_oid, belief_oid);
 
-	/* Step 2: generate ANX_EBM_PROPOSALS_PER_ITER JEPA proposals,
+	/* Step 2: generate ANX_EBM_PROPOSALS_PER_ITER world-model proposals,
 	 * using PAL-biased action ordering so the best prior comes first */
 	{
 		uint32_t preferred = anx_loop_select_action_by_prior(
-			s->world_uri, (uint32_t)ANX_JEPA_ACT_COUNT);
+			s->world_uri, (uint32_t)ANX_WORLD_ACT_COUNT);
 		uint32_t offset = 0;
 
 		for (i = 0; i < ANX_EBM_PROPOSALS_PER_ITER; i++) {
@@ -149,18 +149,18 @@ int anx_ebm_run_iteration(anx_oid_t session_oid,
 			if (i == 0)
 				action = preferred;
 			else {
-				action = offset % (uint32_t)ANX_JEPA_ACT_COUNT;
+				action = offset % (uint32_t)ANX_WORLD_ACT_COUNT;
 				if (action == preferred)
 					action = (action + 1) %
-						 (uint32_t)ANX_JEPA_ACT_COUNT;
+						 (uint32_t)ANX_WORLD_ACT_COUNT;
 				offset++;
 			}
 
 			anx_memset(&pred_oid, 0, sizeof(pred_oid));
-			(void)anx_jepa_predict(&s->active_belief, action,
-					       &pred_oid);
+			(void)anx_world_predict(&s->active_belief, action,
+					&pred_oid);
 
-			rc = anx_loop_proposal_create_jepa(
+			rc = anx_loop_proposal_create_world(
 				session_oid, s->iteration,
 				pred_oid, action,
 				&prop_oids[n_props]);
@@ -171,7 +171,7 @@ int anx_ebm_run_iteration(anx_oid_t session_oid,
 		}
 	}
 
-	/* Step 2b: add one LLM proposal alongside the JEPA candidates */
+	/* Step 2b: add one LLM proposal alongside the world-model candidates */
 	if (n_props < ANX_EBM_PROPOSALS_PER_ITER + 1) {
 		anx_oid_t llm_prop = {0};
 		uint32_t  llm_act  = 0;

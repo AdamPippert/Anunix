@@ -11,6 +11,7 @@
 
 #include <anx/types.h>
 #include <anx/model_client.h>
+#include <anx/config.h>
 #include <anx/http.h>
 #include <anx/json.h>
 #include <anx/credential.h>
@@ -240,53 +241,98 @@ struct ep_disk {
 	char     cred[128];
 };
 
-static void ep_persist(void)
+static bool endpoint_name_valid(const char *s)
 {
-	struct ep_disk d;
-	anx_oid_t oid;
+	uint32_t n = 0;
+	if (!s || !*s)
+		return false;
+	for (; *s; s++, n++) {
+		if (n >= 127 || !((*s >= 'a' && *s <= 'z') ||
+		    (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') ||
+		    *s == '.' || *s == '-' || *s == '_'))
+			return false;
+	}
+	return true;
+}
 
-	d.magic  = EP_DISK_MAGIC;
-	d.port   = ep_port;
-	d._pad   = 0;
-	anx_strlcpy(d.host, ep_host, sizeof(d.host));
-	anx_strlcpy(d.cred, ep_cred, sizeof(d.cred));
+int anx_model_endpoint_validate(const struct anx_model_endpoint *ep)
+{
+	return ep && ep->port && endpoint_name_valid(ep->host) &&
+		endpoint_name_valid(ep->cred_name) ? ANX_OK : ANX_EINVAL;
+}
 
-	oid.hi = EP_DISK_OID_HI;
-	oid.lo = EP_DISK_OID_LO;
-	anx_disk_delete_obj(&oid);
-	anx_disk_write_obj(&oid, EP_DISK_TYPE, &d, sizeof(d));
+int anx_model_client_configure(const struct anx_model_endpoint *ep)
+{
+	if (ep && anx_model_endpoint_validate(ep))
+		return ANX_EINVAL;
+	if (ep) {
+		anx_strlcpy(ep_host, ep->host, sizeof(ep_host));
+		anx_strlcpy(ep_cred, ep->cred_name, sizeof(ep_cred));
+		ep_port = ep->port;
+	} else {
+		ep_host[0] = ep_cred[0] = 0;
+		ep_port = 0;
+	}
+	configured = ep != NULL;
+	return ANX_OK;
+}
+
+void anx_model_client_get_endpoint(struct anx_model_endpoint *out)
+{
+	if (!out)
+		return;
+	out->host = ep_host;
+	out->port = ep_port;
+	out->cred_name = ep_cred;
 }
 
 void anx_model_client_load(void)
 {
 	struct ep_disk d;
-	anx_oid_t oid;
+	struct anx_model_endpoint ep;
+	anx_oid_t oid = { .hi = EP_DISK_OID_HI, .lo = EP_DISK_OID_LO };
 	uint32_t actual, obj_type;
-	int rc;
-
-	oid.hi = EP_DISK_OID_HI;
-	oid.lo = EP_DISK_OID_LO;
-	rc = anx_disk_read_obj(&oid, &d, sizeof(d), &actual, &obj_type);
-	if (rc != ANX_OK || d.magic != EP_DISK_MAGIC)
+	int rc = anx_config_load("model");
+	if (rc != ANX_ENOENT) {
+		if (rc) kprintf("model: invalid saved endpoint (%d)\n", rc);
 		return;
-
-	anx_strlcpy(ep_host, d.host, sizeof(ep_host));
-	anx_strlcpy(ep_cred, d.cred, sizeof(ep_cred));
-	ep_port = d.port;
-	configured = true;
-	kprintf("model: restored endpoint %s:%u (credential: %s)\n",
-		ep_host, (uint32_t)ep_port, ep_cred);
+	}
+	/* One-time migration of the legacy hidden record. A named disabled
+	 * endpoint is a tombstone and always takes priority over this record. */
+	rc = anx_disk_read_obj(&oid, &d, sizeof(d), &actual, &obj_type);
+	if (rc || actual != sizeof(d) || obj_type != EP_DISK_TYPE ||
+	    d.magic != EP_DISK_MAGIC || d.host[127] || d.cred[127])
+		return;
+	ep.host = d.host; ep.port = d.port; ep.cred_name = d.cred;
+	if (anx_model_client_configure(&ep))
+		return;
+	rc = anx_config_save("model");
+	if (rc) kprintf("model: endpoint migration not saved (%d)\n", rc);
 }
 
-void anx_model_client_init(const struct anx_model_endpoint *ep)
+int anx_model_client_init(const struct anx_model_endpoint *ep)
 {
-	anx_strlcpy(ep_host, ep->host, sizeof(ep_host));
-	anx_strlcpy(ep_cred, ep->cred_name, sizeof(ep_cred));
-	ep_port = ep->port;
-	configured = true;
-	kprintf("model: endpoint %s:%u (credential: %s)\n",
-		ep_host, (uint32_t)ep_port, ep_cred);
-	ep_persist();
+	char old_host[128], old_cred[128];
+	struct anx_model_endpoint old;
+	bool was_configured = configured;
+	int rc;
+	anx_strlcpy(old_host, ep_host, sizeof(old_host));
+	anx_strlcpy(old_cred, ep_cred, sizeof(old_cred));
+	old.host = old_host; old.cred_name = old_cred; old.port = ep_port;
+	rc = anx_model_client_configure(ep);
+	if (rc) return rc;
+	rc = anx_config_save("model");
+	if (rc) {
+		anx_model_client_configure(was_configured ? &old : NULL);
+		return rc;
+	}
+	kprintf("model: %s\n", configured ? "endpoint saved" : "endpoint cleared");
+	return ANX_OK;
+}
+
+int anx_model_client_clear(void)
+{
+	return anx_model_client_init(NULL);
 }
 
 bool anx_model_client_ready(void)

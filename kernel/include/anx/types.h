@@ -90,6 +90,6 @@ typedef uint64_t anx_time_t;
 #define ANX_ERANGE	-18   /* request outside device bounds */
 
 /* Kernel version string — YYYY.M.D */
-#define ANX_VERSION	"2026.9.15"
+#define ANX_VERSION	"2026.9.18-2"
 
 #endif /* ANX_TYPES_H */

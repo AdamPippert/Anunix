@@ -11,6 +11,12 @@
 #include <anx/kprintf.h>
 
 static struct anx_net_config net_cfg;
+
+void anx_ipv4_get_config(struct anx_net_config *out)
+{
+	if (out)
+		*out = net_cfg;
+}
 static uint16_t ip_id_counter;
 
 void anx_ipv4_init(const struct anx_net_config *cfg)

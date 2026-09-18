@@ -16,6 +16,7 @@
 #include <anx/types.h>
 #include <anx/kprintf.h>
 #include <anx/string.h>
+#include <anx/world_model.h>
 #include "loop_internal.h"
 
 /* Integer/fractional parts for fixed-point display of floats */
@@ -62,7 +63,7 @@ static void loop_usage(void)
 	kprintf("  merge    <session-id> <child-id>\n");
 	kprintf("  branches <session-id>\n");
 	kprintf("  cexl     <session-id> [world-uri]\n");
-	kprintf("  jepa     <session-id> [world-uri]\n");
+	kprintf("  world    <session-id> [world-uri]  Feed the session to the world model\n");
 	kprintf("  ebm      <session-id>              Run EBM iteration and show scores\n");
 	kprintf("  diag                               Show diag trace timeline\n");
 	kprintf("  pal      [world-uri]\n");
@@ -439,18 +440,18 @@ int anx_loop_shell_dispatch(int argc, const char *const *argv)
 		return ANX_OK;
 	}
 
-	/* ---- loop jepa ---- */
-	if (anx_strcmp(argv[1], "jepa") == 0) {
+	/* ---- loop world ---- */
+	if (anx_strcmp(argv[1], "world") == 0) {
 		const char *world = (argc > 3) ? argv[3]
 					       : "anx:world/os-default";
 
-		rc = anx_loop_jepa_ingest(session_oid, world);
+		rc = anx_loop_world_ingest(session_oid, world);
 		if (rc != ANX_OK) {
-			kprintf("loop: jepa ingest failed (%d)\n", rc);
+			kprintf("loop: world ingest failed (%d)\n", rc);
 			return rc;
 		}
-		kprintf("loop: jepa ingested session %s world=%s\n",
-			argv[2], world);
+		kprintf("loop: session %s fed to world model %s (world=%s)\n",
+			argv[2], anx_world_model_name(), world);
 		return ANX_OK;
 	}
 

@@ -26,6 +26,7 @@
 #include <anx/string.h>
 #include <anx/alloc.h>
 #include <anx/list.h>
+#include <anx/driver_table.h>
 
 /* ------------------------------------------------------------------ */
 /* JSON builder                                                         */
@@ -108,20 +109,26 @@ struct pci_class_driver {
 	const char *driver;
 };
 
+/* Devices served outside the PCI driver table */
 static const struct pci_class_driver known_drivers[] = {
-	{ 0x01, 0x01, "virtio_blk" },   /* IDE storage (virtio compat) */
-	{ 0x01, 0x06, "virtio_blk" },   /* SATA/AHCI */
-	{ 0x02, 0x00, "virtio_net" },   /* Ethernet */
-	{ 0x03, 0x00, "fb" },           /* VGA / display */
-	{ 0x0C, 0x03, "usb_mouse" },    /* USB HCI */
+	{ 0x03, 0x00, "fb (GOP)" },     /* VGA / display */
+	{ 0x03, 0x80, "fb (GOP)" },     /* other display */
+	{ 0x04, 0x03, "hda" },          /* HD audio */
 	{ 0x00, 0x00, NULL }            /* sentinel */
 };
 
-static const char *driver_for(uint8_t class_code, uint8_t subclass)
+static const char *driver_for(const struct anx_pci_device *dev)
 {
 	const struct pci_class_driver *d;
+	const char *name = anx_driver_for_pci(dev);
+
+	if (name)
+		return name;
+	if (dev->vendor_id == 0x1022 && dev->device_id == 0x17f0)
+		return "xdna";
 	for (d = known_drivers; d->driver; d++) {
-		if (d->class_code == class_code && d->subclass == subclass)
+		if (d->class_code == dev->class_code &&
+		    d->subclass == dev->subclass)
 			return d->driver;
 	}
 	return NULL;
@@ -140,8 +147,12 @@ static void hwd_scan(void)
 
 	kprintf("=== Hardware Discovery Scan ===\n\n");
 
-	/* CPU / RAM from hwprobe */
-	kprintf("CPU cores : %u\n", (unsigned)inv->cpu_count);
+	/* CPUs: ACPI knows them all; the kernel runs on the boot CPU */
+	if (acpi && acpi->valid && acpi->cpu_count)
+		kprintf("CPU cores : %u (%u in use)\n",
+			(unsigned)acpi->cpu_count, (unsigned)inv->cpu_count);
+	else
+		kprintf("CPU cores : %u\n", (unsigned)inv->cpu_count);
 	kprintf("RAM       : %llu MiB\n",
 	        (unsigned long long)(inv->ram_bytes >> 20));
 
@@ -168,14 +179,14 @@ static void hwd_scan(void)
 
 	/* PCI devices */
 	kprintf("\nPCI devices:\n");
-	kprintf("  %-6s  %-6s  %-4s  %-4s  %-30s  %s\n",
-	        "Bus", "Slot", "VID", "DID", "Class", "Driver");
+	kprintf("  %-7s  %-4s  %-4s  %-30s  %s\n",
+	        "BDF", "VID", "DID", "Class", "Driver");
 
 	list = anx_pci_device_list();
 	ANX_LIST_FOR_EACH(pos, list) {
 		struct anx_pci_device *dev =
 			ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
-		const char *drv = driver_for(dev->class_code, dev->subclass);
+		const char *drv = driver_for(dev);
 		const char *cls = anx_pci_class_name(dev->class_code,
 		                                      dev->subclass);
 
@@ -205,7 +216,7 @@ static void hwd_stubs(void)
 	ANX_LIST_FOR_EACH(pos, list) {
 		struct anx_pci_device *dev =
 			ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
-		if (driver_for(dev->class_code, dev->subclass))
+		if (driver_for(dev))
 			continue;
 		kprintf("  %02x:%02x.%x  %04x  %04x  %s\n",
 		        dev->bus, dev->slot, dev->func,
@@ -296,7 +307,7 @@ static void hwd_profile(void)
 	ANX_LIST_FOR_EACH(pos, list) {
 		struct anx_pci_device *dev =
 			ANX_LIST_ENTRY(pos, struct anx_pci_device, link);
-		const char *drv = driver_for(dev->class_code, dev->subclass);
+		const char *drv = driver_for(dev);
 		const char *cls = anx_pci_class_name(dev->class_code,
 		                                      dev->subclass);
 		if (i++) jb_str(&jb, ",");

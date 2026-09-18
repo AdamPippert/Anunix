@@ -16,6 +16,12 @@ def source_fingerprint(root):
     paths += [p for p in (root / "kernel").rglob("*") if p.suffix in (".c", ".h", ".S", ".ld", ".inc")]
     if len(paths) <= 2:
         raise ValueError("kernel source set is empty")
+    # Embedded artwork and template includes affect the shipped kernel too.
+    paths += [p for p in (root / "assets").glob("*") if p.suffix in (".png", ".jpg")]
+    paths += list((root / "config/templates").glob("*.inc"))
+    for generator in ("embed_wallpaper.py", "gen_theme_fonts.py"):
+        if (root / "tools" / generator).is_file():
+            paths.append(root / "tools" / generator)
     result = hashlib.sha256(b"Anunix kernel source fingerprint v1\x00")
     for path in sorted(paths, key=lambda p: p.relative_to(root).as_posix()):
         if path.is_symlink() or not path.is_file():

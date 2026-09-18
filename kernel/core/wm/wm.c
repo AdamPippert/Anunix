@@ -19,6 +19,9 @@
 #include <anx/gui.h>
 #include <anx/font.h>
 #include <anx/theme.h>
+#include <anx/window_chrome.h>
+#include <anx/color_editor.h>
+#include <anx/tools.h>
 #include <anx/alloc.h>
 #include <anx/page.h>
 #include <anx/string.h>
@@ -292,6 +295,9 @@ static void cursor_erase(void)
 		return;
 
 	shape = cursor_shapes[g_cursor_type];
+	if (g_cur_x >= 0 && g_cur_y >= 0)
+		anx_fb_mark_dirty((uint32_t)g_cur_x, (uint32_t)g_cur_y,
+				  CURSOR_W, CURSOR_H);
 	for (r = 0; r < CURSOR_H; r++) {
 		int32_t py = g_cur_y + (int32_t)r;
 		if (py < 0 || (uint32_t)py >= fb->height)
@@ -425,6 +431,9 @@ static void cursor_draw(int32_t x, int32_t y)
 	g_cur_x = x;
 	g_cur_y = y;
 	shape   = cursor_shapes[g_cursor_type];
+	if (x >= 0 && y >= 0)
+		anx_fb_mark_dirty((uint32_t)x, (uint32_t)y,
+				  CURSOR_W, CURSOR_H);
 
 	for (r = 0; r < CURSOR_H; r++) {
 		int32_t py = y + (int32_t)r;
@@ -489,7 +498,6 @@ static void snap_preview_draw(int snap)
 static void snap_preview_erase(void)
 {
 	const struct anx_fb_info *fb = anx_fb_get_info();
-	uint32_t bg = 0x000B1A2Bu; /* ANX_COLOR_AX_BG */
 	uint32_t x0, y0, w, h;
 
 	if (!fb || !fb->available || g_snap_preview == 0)
@@ -506,11 +514,11 @@ static void snap_preview_erase(void)
 		w  = fb->width - x0;
 	}
 
-	/* Repaint just the border strips with desktop background */
-	anx_fb_fill_rect(x0, y0, w, SNAP_BORDER, bg);
-	anx_fb_fill_rect(x0, y0 + h - SNAP_BORDER, w, SNAP_BORDER, bg);
-	anx_fb_fill_rect(x0, y0, SNAP_BORDER, h, bg);
-	anx_fb_fill_rect(x0 + w - SNAP_BORDER, y0, SNAP_BORDER, h, bg);
+	/* Repaint just the border strips with the desktop behind them */
+	anx_wm_desktop_paint(x0, y0, w, SNAP_BORDER);
+	anx_wm_desktop_paint(x0, y0 + h - SNAP_BORDER, w, SNAP_BORDER);
+	anx_wm_desktop_paint(x0, y0, SNAP_BORDER, h);
+	anx_wm_desktop_paint(x0 + w - SNAP_BORDER, y0, SNAP_BORDER, h);
 
 	g_snap_preview = 0;
 }
@@ -536,37 +544,19 @@ static bool oid_eq(const anx_oid_t *a, const anx_oid_t *b)
 	return a->hi == b->hi && a->lo == b->lo;
 }
 
-enum wm_decor_btn { DECOR_BTN_NONE, DECOR_BTN_CLOSE, DECOR_BTN_MINIMIZE,
-		    DECOR_BTN_MAXIMIZE };
-
-/*
- * Which titlebar button (x,y) is on. The buttons are drawn from the left
- * edge (renderer_gpu.c); this used to test boxes at the right edge, so the
- * visible dots did nothing and minimize had no hit box at all. The box is
- * the full titlebar height so a click just above or below a dot counts.
- */
-static enum wm_decor_btn wm_decor_button_at(struct anx_surface *surf,
-					     int32_t x, int32_t y)
+/* Renderer and pointer routing share the exact titlebar layout. */
+static enum anx_window_button wm_decor_button_at(struct anx_surface *surf,
+					       int32_t x, int32_t y)
 {
-	int32_t left, top, step, i;
+	struct anx_window_chrome chrome;
+	int32_t top;
 
 	if (!surf || !surf->title[0] || surf->y < (int32_t)ANX_WM_DECOR_H)
-		return DECOR_BTN_NONE;
+		return ANX_WINDOW_BUTTON_NONE;
 	top = surf->y - (int32_t)ANX_WM_DECOR_H;
-	if (y < top || y >= surf->y)
-		return DECOR_BTN_NONE;
-
-	left = surf->x + (int32_t)ANX_WM_BTN_LEFT;
-	step = (int32_t)(ANX_WM_BTN_D + ANX_WM_BTN_GAP);
-	for (i = 0; i < 3; i++) {
-		int32_t bx = left + i * step;
-
-		/* Split each gap between neighbours so no pixel is dead. */
-		if (x >= bx - (int32_t)ANX_WM_BTN_GAP / 2 - 1 &&
-		    x < bx + (int32_t)ANX_WM_BTN_D + (int32_t)ANX_WM_BTN_GAP / 2)
-			return (enum wm_decor_btn)(DECOR_BTN_CLOSE + i);
-	}
-	return DECOR_BTN_NONE;
+	anx_window_chrome_layout(anx_theme_get()->deco.controls,
+				surf->width, ANX_WM_DECOR_H, &chrome);
+	return anx_window_chrome_hit(&chrome, x - surf->x, y - top);
 }
 
 /* Find the surface whose decoration area (above canvas) contains (x, y). */
@@ -760,11 +750,17 @@ uint32_t *anx_wm_canvas_realloc(struct anx_surface *surf, uint32_t w,
 	return nb;
 }
 
-/* A window's rectangle including its title bar and border, when it has them. */
+/*
+ * A window's painted extent: canvas, title bar, border and the shadow
+ * around them. Repaints work from this rectangle, so leaving the shadow
+ * out of it would smear the shadow across the desktop when a window
+ * moves or closes.
+ */
 static void surf_outer_rect(const struct anx_surface *s, int32_t *x,
 			    int32_t *y, uint32_t *w, uint32_t *h)
 {
 	uint32_t bw = s->title[0] ? anx_wm_tiling.border_w : 0;
+	uint32_t reach = s->title[0] ? anx_wm_shadow_reach() : 0;
 
 	*x = s->x;
 	*y = s->y;
@@ -774,10 +770,10 @@ static void surf_outer_rect(const struct anx_surface *s, int32_t *x,
 		*y -= (int32_t)ANX_WM_DECOR_H;
 		*h += ANX_WM_DECOR_H;
 	}
-	*x -= (int32_t)bw;
-	*y -= (int32_t)bw;
-	*w += 2 * bw;
-	*h += 2 * bw;
+	*x -= (int32_t)(bw + reach);
+	*y -= (int32_t)(bw + reach);
+	*w += 2 * (bw + reach);
+	*h += 2 * (bw + reach);
 }
 
 /* Move and resize without repainting; the caller exposes afterwards. */
@@ -811,6 +807,8 @@ static bool rect_overlaps(const struct anx_wm_rect *r, int32_t x, int32_t y,
  * and every window repainted adds its own rectangle, so anything above
  * that it overlaps is repainted after it.
  */
+static bool g_in_repaint;
+
 void anx_wm_expose(int32_t x, int32_t y, uint32_t w, uint32_t h)
 {
 	const struct anx_fb_info *fb = anx_fb_get_info();
@@ -833,8 +831,9 @@ void anx_wm_expose(int32_t x, int32_t y, uint32_t w, uint32_t h)
 		return;
 
 	anx_wm_cursor_hide_rect(x, y, (uint32_t)(x2 - x), (uint32_t)(y2 - y));
-	anx_fb_fill_rect((uint32_t)x, (uint32_t)y, (uint32_t)(x2 - x),
-			 (uint32_t)(y2 - y), ANX_COLOR_AX_BG);
+	g_in_repaint = true;
+	anx_wm_desktop_paint((uint32_t)x, (uint32_t)y, (uint32_t)(x2 - x),
+			     (uint32_t)(y2 - y));
 
 	g_expose_dirty[0].x = x;
 	g_expose_dirty[0].y = y;
@@ -871,6 +870,38 @@ void anx_wm_expose(int32_t x, int32_t y, uint32_t w, uint32_t h)
 			ndirty++;
 		}
 	}
+	g_in_repaint = false;
+}
+
+void anx_wm_repaint_all(void)
+{
+	const struct anx_fb_info *fb = anx_fb_get_info();
+	const struct anx_theme *theme = anx_theme_get();
+	static enum anx_font_family painted_family = ANX_FONT_FAMILY_COUNT;
+	static bool painted_antialiased;
+
+	if (painted_family != theme->font.family ||
+	    painted_antialiased != theme->font.antialiased) {
+		/* Canvas pixels cache glyphs; repaint them before composing windows. */
+		painted_family = theme->font.family;
+		painted_antialiased = theme->font.antialiased;
+		anx_wm_native_terminals_redraw();
+		anx_wm_terminal_redraw();
+		anx_wm_agent_redraw();
+	}
+	anx_wm_color_editor_redraw();
+
+	if (!fb || !fb->available)
+		return;
+	anx_wm_menubar_refresh();
+	anx_wm_taskbar_refresh();
+	anx_wm_cursor_invalidate();
+	anx_wm_expose(0, 0, fb->width, fb->height);
+}
+
+bool anx_wm_in_repaint(void)
+{
+	return g_in_repaint;
 }
 
 int anx_wm_window_set_geometry(struct anx_surface *surf, int32_t x,
@@ -1862,27 +1893,16 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 	    x < g_menubar->x + (int32_t)g_menubar->width &&
 	    y < g_menubar->y + (int32_t)g_menubar->height) {
 		if (left_down && !move_only) {
-			uint32_t ws;
-			int32_t  dot_y = ANX_WM_MENUBAR_H / 2;
-
-			/* Workspace dots: centers at x = 16 + (ws-1)*20 */
-			for (ws = 1; ws <= ANX_WM_WORKSPACES; ws++) {
-				int32_t dot_x = (int32_t)(16 + (ws - 1) * 20);
-
-				if (x >= dot_x - 7 && x <= dot_x + 7 &&
-				    y >= dot_y - 7 && y <= dot_y + 7) {
-					anx_wm_workspace_switch(ws);
-					anx_wm_menubar_refresh();
-					cursor_draw(x, y);
-					return;
-				}
-			}
-
-			/* Power button: rightmost 24px of menubar → halt */
-			if (x >= (int32_t)g_menubar->width - 24) {
+			int hit = anx_wm_menubar_hit(x - g_menubar->x, y - g_menubar->y);
+			if (hit == -1) {
+				struct anx_surface *focused = anx_wm_focused_window();
+				anx_oid_t invocation = focused ? focused->oid : (anx_oid_t){0, 0};
+				anx_wm_app_menu_open(2, invocation);
+			} else if (hit == -2) {
 				anx_wm_power_open();
-				cursor_draw(x, y);
-				return;
+			} else if (hit > 0) {
+				anx_wm_workspace_switch((uint32_t)hit);
+				anx_wm_menubar_refresh();
 			}
 		}
 		cursor_draw(x, y);
@@ -1925,13 +1945,13 @@ static void wm_handle_pointer(int32_t x, int32_t y,
 		struct anx_surface *decor = wm_surface_at_decor(x, y);
 
 		if (decor) {
-			enum wm_decor_btn btn = wm_decor_button_at(decor, x, y);
+			enum anx_window_button btn = wm_decor_button_at(decor, x, y);
 
-			if (btn == DECOR_BTN_CLOSE) {
+			if (btn == ANX_WINDOW_BUTTON_CLOSE) {
 				anx_wm_window_close(decor);
-			} else if (btn == DECOR_BTN_MINIMIZE) {
+			} else if (btn == ANX_WINDOW_BUTTON_MINIMIZE) {
 				anx_wm_window_minimize(decor);
-			} else if (btn == DECOR_BTN_MAXIMIZE) {
+			} else if (btn == ANX_WINDOW_BUTTON_MAXIMIZE) {
 				anx_wm_window_focus(decor);
 				anx_wm_window_fullscreen_toggle(decor);
 			} else {
@@ -1979,13 +1999,21 @@ void anx_wm_run(void)
 
 	g_wm_running = true;
 
+
 	/* Take framebuffer ownership: disable text console and clear screen */
 	anx_fbcon_disable();
 
+	/*
+	 * Draw into RAM from here on. Shadows, transparency and the
+	 * wallpaper all read back what is underneath, and reading the
+	 * write-combining framebuffer for that would crawl.
+	 */
+	if (anx_fb_enable_backbuffer() != ANX_OK)
+		kprintf("[wm] no back buffer: drawing straight to video memory\n");
+
 	/* Paint desktop background */
 	if (fb && fb->available) {
-		anx_fb_fill_rect(0, 0, fb->width, fb->height,
-				 0x000B1A2B /* ANX_COLOR_AX_BG */);
+		anx_wm_desktop_paint(0, 0, fb->width, fb->height);
 		cursor_draw((int32_t)(fb->width  / 2),
 			    (int32_t)(fb->height / 2));
 	}
@@ -2018,6 +2046,9 @@ void anx_wm_run(void)
 
 		/* Put the cursor back if a commit painted over it. */
 		cursor_refresh();
+
+		/* One copy to video memory for everything drawn since. */
+		anx_fb_flush();
 
 		/* Poll WM-targeted events (null target_surf) from the event ring */
 		if (anx_iface_event_poll_wm(&ev) == ANX_OK) {

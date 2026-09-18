@@ -236,6 +236,14 @@ void anx_objstore_release(struct anx_state_object *obj);
 typedef int (*anx_objstore_iter_fn)(struct anx_state_object *obj, void *arg);
 int anx_objstore_iterate(anx_objstore_iter_fn cb, void *arg);
 
+/*
+ * Resolve a shell argument: "ns:path", a path in the default or posix
+ * namespace, or an OID or unique OID prefix (at least 4 characters).
+ * Returns ANX_ENOENT when nothing matches, ANX_EEXIST when a prefix is
+ * ambiguous.
+ */
+int anx_so_resolve(const char *arg, anx_oid_t *oid);
+
 /* --- Staged mutation API --- */
 
 /* Internal shadow-write ownership gate; the caller holds the object lock. */

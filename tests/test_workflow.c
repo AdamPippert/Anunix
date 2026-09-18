@@ -223,7 +223,7 @@ int test_workflow(void)
 
 		/* Test 23: traj_ingest with JEPA available records an entry. */
 		{
-			struct anx_jepa_obs obs;
+			struct anx_world_obs obs;
 
 			anx_memset(&obs, 0, sizeof(obs));
 			obs.active_cell_count = 3;

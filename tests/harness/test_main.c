@@ -48,6 +48,10 @@ int test_route_planner(void);
 int test_vm_object(void);
 int test_workflow(void);
 int test_theme(void);
+int test_object_edit(void);
+int test_color_editor(void);
+int test_config_templates(void);
+int test_config(void);
 int test_event_qos(void);
 int test_compositor_dirty_rect(void);
 int test_multi_surface(void);
@@ -95,6 +99,15 @@ int test_blk_probe(void);
 int test_blk_select(void);
 int test_mt7925(void);
 int test_mt7925_sta(void);
+int test_shell_tools(void);
+int test_shell_history(void);
+int test_shell_ui(void);
+int test_native_terminal(void);
+int test_font_families(void);
+int test_menubar_scale(void);
+int test_window_chrome(void);
+int test_wallpaper(void);
+int test_world_model(void);
 
 static struct test_case tests[] = {
 	{ "state_object",	test_state_object },
@@ -127,6 +140,7 @@ static struct test_case tests[] = {
 	{ "vm_object",		test_vm_object },
 	{ "workflow",		test_workflow },
 	{ "theme",		test_theme },
+	{ "object_edit",		test_object_edit },
 	{ "event_qos",		test_event_qos },
 	{ "compositor_dirty_rect", test_compositor_dirty_rect },
 	{ "multi_surface",	test_multi_surface },
@@ -169,11 +183,23 @@ static struct test_case tests[] = {
 	{ "wm_tile",		test_wm_tile },
 	{ "wm_focus",		test_wm_focus },
 	{ "wm_restack",		test_wm_restack },
+	{ "wallpaper",		test_wallpaper },
+	{ "window_chrome",	test_window_chrome },
+	{ "color_editor",		test_color_editor },
+	{ "shell_ui",		test_shell_ui },
+	{ "native_terminal",	test_native_terminal },
+	{ "font_families",	test_font_families },
+	{ "menubar_scale",	test_menubar_scale },
+	{ "config_templates",	test_config_templates },
+	{ "config",		test_config },
 	{ "bootlog_ring",	test_bootlog_ring },
 	{ "blk_probe",		test_blk_probe },
 	{ "blk_select",		test_blk_select },
 	{ "mt7925",		test_mt7925 },
 	{ "mt7925_sta",		test_mt7925_sta },
+	{ "shell_tools",	test_shell_tools },
+	{ "shell_history",	test_shell_history },
+	{ "world_model",	test_world_model },
 };
 
 #define NUM_TESTS (sizeof(tests) / sizeof(tests[0]))

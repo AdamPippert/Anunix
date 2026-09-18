@@ -28,14 +28,10 @@
 #define FONT_H		ANX_FONT_HEIGHT
 #define LINE_H		(FONT_H + 4)
 
-#define INPUT_H		28
-
 #define HIST_LINES	200
 #define HIST_COLS	120
 
 #define CAPTURE_SZ	(HIST_COLS * 80)
-
-#define CMD_HIST_COUNT	50
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -48,23 +44,19 @@ static struct {
 	/* Display geometry — computed from framebuffer at open time */
 	uint32_t w, h;		/* terminal pixel dimensions */
 	uint32_t x, y;		/* surface position on screen */
-	uint32_t input_y;	/* y offset of input bar within terminal */
-	uint32_t vis_lines;	/* number of history lines visible */
+	uint32_t vis_lines;	/* number of text rows visible */
 
 	/* Dirty flag: set when pixels are updated, cleared after commit */
 	bool dirty;
 
 	char     hist[HIST_LINES][HIST_COLS];
-	uint32_t hist_count;
+	uint32_t hist_count, hist_head;
 	int32_t  scroll_off;
 
-	char     input[HIST_COLS];
+	char     input[256];
 	uint32_t input_len;
 
-	char     cmd_hist[CMD_HIST_COUNT][HIST_COLS];
-	uint32_t cmd_hist_count;
-	int32_t  cmd_hist_pos;		/* -1 = live input */
-	char     input_saved[HIST_COLS];
+	struct anx_shell_history_cursor recall;
 } g_term;
 
 /* ------------------------------------------------------------------ */
@@ -112,54 +104,66 @@ static void term_draw_str(uint32_t x, uint32_t y, const char *s,
 
 static void hist_append(const char *s, uint32_t len)
 {
-	uint32_t slot = g_term.hist_count % HIST_LINES;
-	uint32_t copy = len < HIST_COLS - 1 ? len : HIST_COLS - 1;
+	uint32_t slot = (g_term.hist_head + g_term.hist_count) % HIST_LINES;
 
-	anx_memcpy(g_term.hist[slot], s, copy);
-	g_term.hist[slot][copy] = '\0';
-	g_term.hist_count++;
+	anx_memcpy(g_term.hist[slot], s, len);
+	g_term.hist[slot][len] = '\0';
+	if (g_term.hist_count < HIST_LINES)
+		g_term.hist_count++;
+	else
+		g_term.hist_head = (g_term.hist_head + 1) % HIST_LINES;
 }
 
 static void hist_append_str(const char *s)
 {
-	/* Visible columns (subtract 4px left margin) */
-	uint32_t max_cols = g_term.w > (FONT_W + 4)
-		? (g_term.w - 4) / FONT_W : HIST_COLS - 1;
-	if (max_cols < 1) max_cols = 1;
-	if (max_cols > HIST_COLS - 1) max_cols = HIST_COLS - 1;
-
+	/* Store logical lines, not viewport-width lines, so resize can reflow. */
 	while (*s) {
-		const char *line_start = s;
-		uint32_t col = 0;
+		uint32_t len = 0;
 
-		/* Scan to next newline or visible-column boundary */
-		while (*s && *s != '\n') {
-			if (col >= max_cols) {
-				/* Wrap: try to break at last space */
-				const char *wrap = s;
-				uint32_t wc = col;
-				while (wrap > line_start + 1 && wrap[-1] != ' ')
-					wrap--, wc--;
-				if (wrap > line_start + max_cols / 2) {
-					/* Clean word-break found */
-					hist_append(line_start, (uint32_t)(wrap - line_start));
-					s = wrap;
-				} else {
-					/* No good break point; hard wrap */
-					hist_append(line_start, col);
-					s = line_start + col;
-				}
-				line_start = s;
-				col = 0;
-				continue;
-			}
-			s++;
-			col++;
-		}
-		hist_append(line_start, (uint32_t)(s - line_start));
-		if (*s == '\n')
-			s++;
+		while (s[len] && s[len] != '\n' && len < HIST_COLS - 1)
+			len++;
+		hist_append(s, len);
+		s += len;
+		if (*s == '\n') s++;
 	}
+}
+
+static uint32_t term_columns(void)
+{
+	return g_term.w > FONT_W + 8 ? (g_term.w - 8) / FONT_W : 1;
+}
+
+static uint32_t term_output_rows(uint32_t cols)
+{
+	uint32_t i, rows = 0;
+
+	for (i = 0; i < g_term.hist_count; i++) {
+		uint32_t slot = (g_term.hist_head + i) % HIST_LINES;
+		uint32_t len = (uint32_t)anx_strlen(g_term.hist[slot]);
+
+		rows += len ? (len + cols - 1) / cols : 1;
+	}
+	return rows;
+}
+
+static void term_draw_rows(const char *text, uint32_t cols, uint32_t first,
+			   uint32_t *row, uint32_t fg, uint32_t bg)
+{
+	uint32_t len = (uint32_t)anx_strlen(text), pos = 0;
+
+	do {
+		uint32_t n = len - pos;
+		char line[260];
+
+		if (n > cols) n = cols;
+		if (*row >= first && *row - first < g_term.vis_lines) {
+			anx_memcpy(line, text + pos, n);
+			line[n] = '\0';
+			term_draw_str(4, 8 + (*row - first) * LINE_H, line, fg, bg);
+		}
+		(*row)++;
+		pos += n;
+	} while (pos < len);
 }
 
 /* ------------------------------------------------------------------ */
@@ -169,64 +173,40 @@ static void hist_append_str(const char *s)
 static void term_render(void)
 {
 	const struct anx_theme *theme = anx_theme_get();
-	uint32_t bg     = 0x00050A10;
-	uint32_t fg     = theme->palette.text_primary;
-	uint32_t accent = theme->palette.accent;
-	uint32_t i;
-	uint32_t count, scroll, vis, first_line;
+	uint32_t bg = theme->palette.background;
+	uint32_t fg = theme->palette.text_primary;
+	uint32_t cols, output, total, first, row = 0, i, cursor_row;
+	char prompt[sizeof(g_term.input) + 2];
 
 	if (!g_term.surf || !g_term.pixels)
 		return;
-
-	/* Amacs takeover: it owns the whole surface. */
 	if (anx_ed_active()) {
 		term_fill(0, 0, g_term.w, g_term.h, 0x00181818u);
 		anx_ed_paint(g_term.pixels, g_term.w, g_term.h);
 		g_term.dirty = true;
 		return;
 	}
-
-	/* Background */
 	term_fill(0, 0, g_term.w, g_term.h, bg);
+	cols = term_columns();
+	output = term_output_rows(cols);
+	anx_snprintf(prompt, sizeof(prompt), "> %s", g_term.input);
+	cursor_row = output + (g_term.input_len + 2) / cols;
+	total = cursor_row + 1;
+	first = total > g_term.vis_lines ? total - g_term.vis_lines : 0;
+	if ((uint32_t)g_term.scroll_off > first)
+		g_term.scroll_off = (int32_t)first;
+	first -= (uint32_t)g_term.scroll_off;
+	for (i = 0; i < g_term.hist_count; i++) {
+		uint32_t slot = (g_term.hist_head + i) % HIST_LINES;
 
-	/* Separator line */
-	term_fill(0, g_term.input_y - 1, g_term.w, 1, accent);
-
-	/* Output history — bottom-anchored */
-	count       = g_term.hist_count;
-	scroll      = (uint32_t)g_term.scroll_off;
-	vis         = g_term.vis_lines;
-	first_line  = (count > vis + scroll) ? count - vis - scroll : 0;
-
-	for (i = 0; i < vis; i++) {
-		uint32_t idx  = first_line + i;
-		uint32_t slot = idx % HIST_LINES;
-		uint32_t row_y = 8 + i * LINE_H;
-
-		if (idx >= count)
-			break;
-		term_draw_str(4, row_y, g_term.hist[slot], fg, bg);
+		term_draw_rows(g_term.hist[slot], cols, first, &row, fg, bg);
 	}
-
-	/* Input area */
-	term_fill(0, g_term.input_y, g_term.w, INPUT_H, 0x00111111);
-
-	{
-		char prompt[HIST_COLS + 4];
-		uint32_t pl;
-
-		anx_snprintf(prompt, sizeof(prompt), "> %s", g_term.input);
-		pl = (uint32_t)anx_strlen(prompt);
-
-		term_draw_str(4, g_term.input_y + 4, prompt, fg, 0x00111111);
-
-		/* Teal cursor block */
-		term_fill(4 + pl * FONT_W, g_term.input_y + 4, 2, FONT_H, accent);
-	}
-
-	/* Mark dirty — actual commit deferred to main WM loop via
-	 * anx_wm_terminal_flush_if_dirty() to avoid slow PCI MMIO
-	 * writes in IRQ handler context. */
+	term_draw_rows(prompt, cols, first, &row, fg, bg);
+	if (cursor_row >= first && cursor_row - first < g_term.vis_lines)
+		term_fill(4 + ((g_term.input_len + 2) % cols) * FONT_W,
+			  8 + (cursor_row - first) * LINE_H, 2, FONT_H,
+			  theme->palette.accent);
+	/* The WM loop commits once; key handlers only update RAM pixels. */
 	g_term.dirty = true;
 }
 
@@ -238,8 +218,10 @@ static void term_run_command(const char *cmd)
 {
 	char *capture;
 	uint32_t captured;
-	char echo[HIST_COLS + 4];
+	char echo[sizeof(g_term.input) + 4];
+	struct anx_capture_state saved;
 
+	anx_shell_history_record(cmd);
 	/* "exit" / "quit" closes the terminal window */
 	if (anx_strcmp(cmd, "exit") == 0 || anx_strcmp(cmd, "quit") == 0) {
 		if (g_term.surf) {
@@ -252,6 +234,7 @@ static void term_run_command(const char *cmd)
 	/* "clear" resets scroll history without going through the shell */
 	if (anx_strcmp(cmd, "clear") == 0) {
 		g_term.hist_count = 0;
+		g_term.hist_head = 0;
 		g_term.scroll_off = 0;
 		term_render();
 		return;
@@ -266,9 +249,11 @@ static void term_run_command(const char *cmd)
 		return;
 	}
 
+	anx_kprintf_capture_save(&saved);
 	anx_kprintf_capture_start(capture, CAPTURE_SZ);
 	anx_shell_execute(cmd);
 	captured = anx_kprintf_capture_stop();
+	anx_kprintf_capture_restore(&saved);
 
 	if (captured > 0) {
 		if (captured < CAPTURE_SZ)
@@ -676,85 +661,42 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 	}
 
 	(void)mods;
-
+	if (!g_term.surf)
+		return;
+	if (key != ANX_KEY_PAGEUP && key != ANX_KEY_PAGEDOWN)
+		g_term.scroll_off = 0;
 	switch (key) {
 	case ANX_KEY_ESC:
 		anx_wm_window_close(g_term.surf);
-		g_term.surf = NULL;
 		return;
-
 	case ANX_KEY_ENTER:
 		if (g_term.input_len > 0) {
-			char cmd[HIST_COLS];
+			char cmd[sizeof(g_term.input)];
 
 			anx_strlcpy(cmd, g_term.input, sizeof(cmd));
-			g_term.input[0]  = '\0';
+			g_term.input[0] = '\0';
 			g_term.input_len = 0;
-			/* Push to command history */
-			{
-				uint32_t slot = g_term.cmd_hist_count % CMD_HIST_COUNT;
-
-				anx_strlcpy(g_term.cmd_hist[slot], cmd, HIST_COLS);
-				g_term.cmd_hist_count++;
-			}
-			g_term.cmd_hist_pos = -1;
+			anx_shell_history_reset(&g_term.recall);
 			term_run_command(cmd);
 		} else {
 			hist_append_str("> ");
 		}
 		break;
-
 	case ANX_KEY_BACKSPACE:
-		if (g_term.input_len > 0) {
-			g_term.input_len--;
-			g_term.input[g_term.input_len] = '\0';
-		}
-		g_term.cmd_hist_pos = -1;
+		if (g_term.input_len > 0)
+			g_term.input[--g_term.input_len] = '\0';
+		anx_shell_history_reset(&g_term.recall);
 		break;
-
 	case ANX_KEY_UP:
-		{
-			uint32_t hist_len = g_term.cmd_hist_count > CMD_HIST_COUNT
-					    ? CMD_HIST_COUNT : g_term.cmd_hist_count;
-			if (hist_len == 0) break;
-			if (g_term.cmd_hist_pos == -1) {
-				anx_strlcpy(g_term.input_saved, g_term.input,
-					    sizeof(g_term.input_saved));
-				g_term.cmd_hist_pos = 0;
-			} else if ((uint32_t)(g_term.cmd_hist_pos + 1) < hist_len) {
-				g_term.cmd_hist_pos++;
-			} else {
-				break;
-			}
-			{
-				uint32_t idx = (g_term.cmd_hist_count - 1
-						- (uint32_t)g_term.cmd_hist_pos)
-					       % CMD_HIST_COUNT;
-				anx_strlcpy(g_term.input, g_term.cmd_hist[idx],
-					    sizeof(g_term.input));
-				g_term.input_len = (uint32_t)anx_strlen(g_term.input);
-			}
-		}
-		break;
+	case ANX_KEY_DOWN: {
+		int n = anx_shell_history_move(&g_term.recall,
+			key == ANX_KEY_UP ? -1 : 1, g_term.input, sizeof(g_term.input));
 
-	case ANX_KEY_DOWN:
-		if (g_term.cmd_hist_pos < 0) break;
-		g_term.cmd_hist_pos--;
-		if (g_term.cmd_hist_pos < 0) {
-			anx_strlcpy(g_term.input, g_term.input_saved,
-				    sizeof(g_term.input));
-			g_term.input_len = (uint32_t)anx_strlen(g_term.input);
-		} else {
-			uint32_t idx = (g_term.cmd_hist_count - 1
-					- (uint32_t)g_term.cmd_hist_pos)
-				       % CMD_HIST_COUNT;
-			anx_strlcpy(g_term.input, g_term.cmd_hist[idx],
-				    sizeof(g_term.input));
-			g_term.input_len = (uint32_t)anx_strlen(g_term.input);
-		}
+		if (n >= 0) g_term.input_len = (uint32_t)n;
 		break;
-
+	}
 	case ANX_KEY_TAB:
+		anx_shell_history_reset(&g_term.recall);
 		{
 			/* Command name table */
 			static const char *const cmds[] = {
@@ -824,8 +766,8 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 
 			if (has_space) {
 				/* --- argument completion --- */
-				char cmd_word[HIST_COLS];
-				char arg_partial[HIST_COLS];
+				char cmd_word[sizeof(g_term.input)];
+				char arg_partial[sizeof(g_term.input)];
 
 				anx_strlcpy(cmd_word, g_term.input, space_pos + 1);
 				anx_strlcpy(arg_partial,
@@ -963,6 +905,8 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 							char ent_list[HIST_COLS];
 							uint32_t el_pos = 0;
 
+							if (colon_pos >= sizeof(ns_name))
+								goto tab_done;
 							anx_strlcpy(ns_name,
 								    arg_partial,
 								    colon_pos + 1);
@@ -1172,29 +1116,17 @@ void anx_wm_terminal_key_event(uint32_t key, uint32_t mods, uint32_t unicode)
 		break;
 
 	case ANX_KEY_PAGEUP:
-		{
-			uint32_t vl = g_term.vis_lines;
-			uint32_t max_scroll = g_term.hist_count > vl
-					      ? g_term.hist_count - vl : 0;
-			uint32_t step = vl / 2;
-
-			if ((uint32_t)g_term.scroll_off + step <= max_scroll)
-				g_term.scroll_off += (int32_t)step;
-			else
-				g_term.scroll_off = (int32_t)max_scroll;
-		}
+		g_term.scroll_off += (int32_t)g_term.vis_lines;
 		break;
-
 	case ANX_KEY_PAGEDOWN:
-		g_term.scroll_off -= (int32_t)(g_term.vis_lines / 2);
-		if (g_term.scroll_off < 0)
-			g_term.scroll_off = 0;
+		g_term.scroll_off -= (int32_t)g_term.vis_lines;
+		if (g_term.scroll_off < 0) g_term.scroll_off = 0;
 		break;
 
 	default:
 		if (unicode >= 0x20 && unicode < 0x7F &&
-		    g_term.input_len < HIST_COLS - 1) {
-			g_term.cmd_hist_pos = -1;
+		    g_term.input_len < sizeof(g_term.input) - 1) {
+			anx_shell_history_reset(&g_term.recall);
 			g_term.input[g_term.input_len++] = (char)unicode;
 			g_term.input[g_term.input_len]   = '\0';
 		}
@@ -1222,16 +1154,13 @@ static void term_on_resize(struct anx_surface *surf)
 {
 	uint32_t *px;
 
-	if (surf->height <= INPUT_H + 8 + LINE_H)
-		return;
 	px = anx_wm_canvas_realloc(surf, surf->width, surf->height);
 	if (!px)
 		return;	/* old buffer stays, shown unscaled */
 	g_term.pixels    = px;
 	g_term.w         = surf->width;
 	g_term.h         = surf->height;
-	g_term.input_y   = g_term.h - INPUT_H;
-	g_term.vis_lines = (g_term.input_y - 8) / LINE_H;
+	g_term.vis_lines = g_term.h >= LINE_H + 16 ? (g_term.h - 16) / LINE_H : 1;
 	if (g_editor.active)
 		editor_render();
 	else
@@ -1275,8 +1204,7 @@ void anx_wm_terminal_open(void)
 		g_term.x = 0;
 		g_term.y = ANX_WM_MENUBAR_H;
 	}
-	g_term.input_y   = g_term.h - INPUT_H;
-	g_term.vis_lines = (g_term.input_y > 8) ? (g_term.input_y - 8) / LINE_H : 1;
+	g_term.vis_lines = g_term.h >= LINE_H + 16 ? (g_term.h - 16) / LINE_H : 1;
 
 	buf_size      = g_term.w * g_term.h * 4;
 	g_term.pixels = anx_alloc(buf_size);
@@ -1310,7 +1238,7 @@ void anx_wm_terminal_open(void)
 	g_term.input[0]     = '\0';
 	g_term.input_len    = 0;
 	g_term.scroll_off   = 0;
-	g_term.cmd_hist_pos = -1;
+	anx_shell_history_reset(&g_term.recall);
 	g_term.dirty        = false;
 
 	if (g_term.hist_count == 0)
@@ -1348,7 +1276,9 @@ void anx_wm_terminal_paste(const char *text, uint32_t len)
 	if (!text || !g_term.surf)
 		return;
 
-	for (i = 0; i < len && g_term.input_len < HIST_COLS - 1; i++) {
+	anx_shell_history_reset(&g_term.recall);
+	g_term.scroll_off = 0;
+	for (i = 0; i < len && g_term.input_len < sizeof(g_term.input) - 1; i++) {
 		char c = text[i];
 
 		if (c < 0x20 || c >= 0x7F)
@@ -1375,7 +1305,8 @@ void anx_wm_terminal_clear_input(void)
 		return;
 	g_term.input[0]  = '\0';
 	g_term.input_len = 0;
-	g_term.cmd_hist_pos = -1;
+	g_term.scroll_off = 0;
+	anx_shell_history_reset(&g_term.recall);
 	term_render();
 }
 

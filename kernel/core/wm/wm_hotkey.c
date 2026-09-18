@@ -26,6 +26,8 @@
  */
 
 #include <anx/wm.h>
+#include <anx/config.h>
+#include <anx/color_editor.h>
 #include <anx/fb.h>
 #include <anx/input.h>
 #include <anx/interface_plane.h>
@@ -44,6 +46,8 @@
 
 static struct anx_hotkey  g_hotkeys[ANX_WM_HOTKEYS];
 static uint32_t           g_hotkey_count;
+static uint32_t g_action_key[ANX_WM_HOTKEYS];
+static char g_action_name[ANX_WM_HOTKEYS][32];
 static struct anx_spinlock g_hk_lock;
 
 int anx_wm_hotkey_register(uint32_t mods, uint32_t key,
@@ -59,6 +63,8 @@ int anx_wm_hotkey_register(uint32_t mods, uint32_t key,
 		anx_spin_unlock_irqrestore(&g_hk_lock, flags);
 		return ANX_ENOMEM;
 	}
+	g_action_key[g_hotkey_count] = key;
+	anx_snprintf(g_action_name[g_hotkey_count], 32, "binding_%u", g_hotkey_count);
 	g_hotkeys[g_hotkey_count].modifiers = mods;
 	g_hotkeys[g_hotkey_count].keycode   = key;
 	g_hotkeys[g_hotkey_count].fn        = fn;
@@ -81,6 +87,7 @@ bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key)
 	bool flags;
 	anx_hotkey_fn fn = NULL;
 	void *arg = NULL;
+	uint32_t action_key = key;
 	/*
 	 * Held modifiers must match exactly, so Meta+Shift+W is not Meta+W.
 	 * Lock states must not take part: with CapsLock on, an exact match
@@ -94,13 +101,14 @@ bool anx_wm_hotkey_dispatch(uint32_t mods, uint32_t key)
 		    g_hotkeys[i].keycode   == key) {
 			fn  = g_hotkeys[i].fn;
 			arg = g_hotkeys[i].arg;
+			action_key = g_action_key[i];
 			break;
 		}
 	}
 	anx_spin_unlock_irqrestore(&g_hk_lock, flags);
 
 	if (fn) {
-		fn(mods, key, arg);
+		fn(mods, action_key, arg);
 		return true;
 	}
 	return false;
@@ -141,6 +149,12 @@ bool anx_wm_app_key_route(uint32_t key, uint32_t mods, uint32_t unicode)
 	/* Priority 3: app menu */
 	if (anx_wm_app_menu_active()) {
 		anx_wm_app_menu_key_event(&kev);
+		return true;
+	}
+
+	s = anx_wm_color_editor_surface();
+	if (s && s->oid.hi == focused.hi && s->oid.lo == focused.lo) {
+		anx_wm_color_editor_key(key, mods, unicode);
 		return true;
 	}
 
@@ -435,6 +449,92 @@ static void hk_power(uint32_t mods, uint32_t key, void *arg)
 	anx_wm_power_open();
 }
 
+static void hk_colors(uint32_t mods, uint32_t key, void *arg)
+{
+	(void)mods; (void)key; (void)arg;
+	anx_wm_launch_color_editor();
+}
+
+int anx_wm_hotkeys_snapshot(struct anx_config_hotkey *out, uint32_t capacity)
+{
+	uint32_t i, count;
+	bool flags;
+	if (!out) return ANX_EINVAL;
+	anx_spin_lock_irqsave(&g_hk_lock, &flags);
+	count = g_hotkey_count;
+	if (!count || capacity < count) {
+		anx_spin_unlock_irqrestore(&g_hk_lock, flags);
+		return ANX_EINVAL;
+	}
+	for (i = 0; i < count; i++) {
+		out[i].modifiers = g_hotkeys[i].modifiers;
+		out[i].keycode = g_hotkeys[i].keycode;
+	}
+	anx_spin_unlock_irqrestore(&g_hk_lock, flags);
+	return (int)count;
+}
+
+const char *anx_wm_hotkey_name(uint32_t index)
+{
+	return index < g_hotkey_count ? g_action_name[index] : NULL;
+}
+
+int anx_wm_hotkeys_apply(const struct anx_config_hotkey *keys, uint32_t count)
+{
+	uint32_t i, j;
+	bool flags;
+	if (!keys || !count || count > ANX_WM_HOTKEYS) return ANX_EINVAL;
+	for (i = 0; i < count; i++) {
+		if (keys[i].modifiers > 15 || keys[i].keycode < 4 || keys[i].keycode > 0xDF)
+			return ANX_EINVAL;
+		for (j = 0; j < i; j++)
+			if (keys[j].modifiers == keys[i].modifiers &&
+			    keys[j].keycode == keys[i].keycode) return ANX_EEXIST;
+	}
+	anx_spin_lock_irqsave(&g_hk_lock, &flags);
+	if (count != g_hotkey_count) {
+		anx_spin_unlock_irqrestore(&g_hk_lock, flags);
+		return ANX_EBUSY;
+	}
+	for (i = 0; i < count; i++) {
+		g_hotkeys[i].modifiers = keys[i].modifiers;
+		g_hotkeys[i].keycode = keys[i].keycode;
+	}
+	anx_spin_unlock_irqrestore(&g_hk_lock, flags);
+	return ANX_OK;
+}
+
+static void name_actions(void)
+{
+	static const struct { anx_hotkey_fn fn; const char *name; } actions[] = {
+		{hk_close, "close"}, {hk_fullscreen, "fullscreen"},
+		{hk_shell, "shell"}, {hk_search, "search"}, {hk_colors, "colors"},
+		{hk_switcher, "switcher"}, {hk_workflow_designer, "workflow"},
+		{hk_tile_toggle, "tile_toggle"}, {hk_object_viewer, "objects"},
+		{hk_copy, "copy"}, {hk_paste, "paste"}, {hk_undo, "undo"},
+		{hk_cut, "cut"}, {hk_tile_left, "tile_left"}, {hk_tile_right, "tile_right"},
+		{hk_float, "float"}, {hk_power, "power"}, {hk_minimize, "minimize"},
+		{hk_focus_dir, "focus"}, {hk_win_move, "move"}, {hk_win_resize, "resize"}
+	};
+	uint32_t i, j, k;
+	for (i = 0; i < g_hotkey_count; i++) {
+		if (g_hotkeys[i].fn == hk_workspace || g_hotkeys[i].fn == hk_send_to_workspace) {
+			anx_snprintf(g_action_name[i], 32, "%s_%u",
+				g_hotkeys[i].fn == hk_workspace ? "workspace" : "send_workspace",
+				(uint32_t)(uintptr_t)g_hotkeys[i].arg);
+			continue;
+		}
+		for (j = 0; j < sizeof(actions) / sizeof(actions[0]); j++) {
+			if (g_hotkeys[i].fn != actions[j].fn) continue;
+			for (k = 0; k < i; k++)
+				if (g_hotkeys[k].fn == actions[j].fn) break;
+			if (k == i) anx_strlcpy(g_action_name[i], actions[j].name, 32);
+			else anx_snprintf(g_action_name[i], 32, "%s_%u", actions[j].name, g_action_key[i]);
+			break;
+		}
+	}
+}
+
 /* ------------------------------------------------------------------ */
 /* Register Omarchy defaults                                           */
 /* ------------------------------------------------------------------ */
@@ -498,6 +598,9 @@ void anx_wm_hotkeys_init(void)
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_RIGHT, hk_win_resize, NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_UP,    hk_win_resize, NULL);
 	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_CTRL, ANX_KEY_DOWN,  hk_win_resize, NULL);
+
+	anx_wm_hotkey_register(ANX_MOD_META | ANX_MOD_SHIFT, ANX_KEY_C, hk_colors, NULL);
+	name_actions();
 
 	kprintf("[wm] hotkeys registered (%u bindings)\n", g_hotkey_count);
 }

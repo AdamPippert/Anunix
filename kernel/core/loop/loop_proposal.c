@@ -2,7 +2,7 @@
  * loop_proposal.c — ANX_OBJ_WORLD_PROPOSAL and ANX_OBJ_COUNTEREXAMPLE
  *                   management (RFC-0020 Phase 2).
  *
- * A world proposal wraps a JEPA-predicted latent (or LLM/retrieval
+ * A world proposal wraps a world-model-predicted latent (or LLM/retrieval
  * content) as a candidate world hypothesis for one loop iteration.
  * After EBM scoring, proposals are either selected, rejected, or
  * committed.  Rejected proposals become counterexamples.
@@ -19,10 +19,10 @@
 /* World proposal creation                                             */
 /* ------------------------------------------------------------------ */
 
-int anx_loop_proposal_create_jepa(anx_oid_t session_oid, uint32_t iteration,
-				  anx_oid_t predicted_latent_oid,
-				  uint32_t action_id,
-				  anx_oid_t *proposal_oid_out)
+int anx_loop_proposal_create_world(anx_oid_t session_oid, uint32_t iteration,
+				   anx_oid_t predicted_latent_oid,
+				   uint32_t action_id,
+				   anx_oid_t *proposal_oid_out)
 {
 	struct anx_loop_proposal_payload payload;
 	struct anx_so_create_params      cp;
@@ -35,7 +35,7 @@ int anx_loop_proposal_create_jepa(anx_oid_t session_oid, uint32_t iteration,
 	anx_memset(&payload, 0, sizeof(payload));
 	payload.session_oid  = session_oid;
 	payload.iteration    = iteration;
-	payload.source       = ANX_LOOP_PROPOSAL_JEPA;
+	payload.source       = ANX_LOOP_PROPOSAL_WORLD;
 	payload.latent_oid   = predicted_latent_oid;
 	payload.action_id    = action_id;
 	payload.status       = ANX_LOOP_PROPOSAL_CANDIDATE;

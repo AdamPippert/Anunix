@@ -14,6 +14,7 @@
 #include <anx/loop.h>
 #include <anx/ibal.h>
 #include <anx/jepa.h>
+#include <anx/world_model.h>
 #include <anx/memory.h>
 #include <anx/cexl.h>
 #include <anx/workflow_library.h>
@@ -135,9 +136,9 @@ int test_ibal(void)
 	if (belief_oid.lo == 0 && belief_oid.hi == 0) return -11;
 
 	/* Test 12: proposal create from a null latent */
-	rc = anx_loop_proposal_create_jepa(sid, 1, null_oid,
-					   ANX_JEPA_ACT_ROUTE_LOCAL,
-					   &proposal_oid);
+	rc = anx_loop_proposal_create_world(sid, 1, null_oid,
+					    ANX_WORLD_ACT_ROUTE_LOCAL,
+					    &proposal_oid);
 	if (rc != ANX_OK) return -12;
 
 	/* Test 13: score object creation */
@@ -152,7 +153,7 @@ int test_ibal(void)
 
 	/* Test 14: empty goal gives neutral energy (0.5) */
 	{
-		float e = anx_loop_goal_alignment_energy("", ANX_JEPA_ACT_IDLE);
+		float e = anx_loop_goal_alignment_energy("", ANX_WORLD_ACT_IDLE);
 
 		if (e < 0.49f || e > 0.51f) return -14;
 	}
@@ -161,10 +162,10 @@ int test_ibal(void)
 	{
 		float e_route = anx_loop_goal_alignment_energy(
 			"route local traffic fast",
-			ANX_JEPA_ACT_ROUTE_LOCAL);
+			ANX_WORLD_ACT_ROUTE_LOCAL);
 		float e_other = anx_loop_goal_alignment_energy(
 			"route local traffic fast",
-			ANX_JEPA_ACT_IDLE);
+			ANX_WORLD_ACT_IDLE);
 
 		if (e_route > e_other) return -15;
 	}
@@ -214,13 +215,13 @@ int test_ibal(void)
 
 	/* Test 20: returns the expected action count */
 	{
-		float divs[ANX_JEPA_ACT_COUNT];
+		float divs[ANX_WORLD_ACT_COUNT];
 		uint32_t n;
 
 		anx_memset(divs, 0xff, sizeof(divs));
-		n = anx_jepa_get_action_divergences(divs, ANX_JEPA_ACT_COUNT);
+		n = anx_jepa_get_action_divergences(divs, ANX_WORLD_ACT_COUNT);
 
-		if (n != (uint32_t)ANX_JEPA_ACT_COUNT) return -20;
+		if (n != (uint32_t)ANX_WORLD_ACT_COUNT) return -20;
 		/* When JEPA unavailable, all divergences must be 0 */
 		if (!anx_jepa_available()) {
 			uint32_t k;
@@ -234,7 +235,7 @@ int test_ibal(void)
 	{
 		uint32_t before = anx_jepa_get_train_step_count();
 
-		anx_jepa_record_winner(ANX_JEPA_ACT_ROUTE_LOCAL);
+		anx_jepa_record_winner(ANX_WORLD_ACT_ROUTE_LOCAL);
 		if (anx_jepa_get_train_step_count() != before + 1) return -21;
 	}
 
@@ -435,9 +436,9 @@ int test_ibal(void)
 		if (act != 0) return -32;
 	}
 
-	/* Phase 17: IBAL → JEPA online training pipeline                     */
+	/* Phase 17: IBAL → world model online learning                     */
 
-	/* Test 33: anx_loop_jepa_ingest on a completed session advances
+	/* Test 33: anx_loop_world_ingest on a completed session advances
 	 * the train-step counter by 1. */
 	{
 		struct anx_loop_create_params p;
@@ -464,16 +465,16 @@ int test_ibal(void)
 		rc = anx_loop_session_advance(sid);
 		(void)rc;
 
-		steps_before = anx_jepa_get_train_step_count();
+		steps_before = anx_world_train_steps();
 
-		rc = anx_loop_jepa_ingest(sid, "anx:world/test-jepa-ingest");
+		rc = anx_loop_world_ingest(sid, "anx:world/test-jepa-ingest");
 		if (rc != ANX_OK) return -33;
 
-		steps_after = anx_jepa_get_train_step_count();
+		steps_after = anx_world_train_steps();
 		if (steps_after != steps_before + 1) return -33;
 	}
 
-	/* Test 34: anx_loop_jepa_ingest with a nil best_candidate still
+	/* Test 34: anx_loop_world_ingest with a nil best_candidate still
 	 * advances the step counter (falls back to action_id=0). */
 	{
 		struct anx_loop_create_params p;
@@ -491,11 +492,11 @@ int test_ibal(void)
 		if (rc != ANX_OK) return -34;
 
 		/* Don't advance — best_candidate remains nil */
-		steps_before = anx_jepa_get_train_step_count();
-		rc = anx_loop_jepa_ingest(sid, "anx:world/test-jepa-nil");
+		steps_before = anx_world_train_steps();
+		rc = anx_loop_world_ingest(sid, "anx:world/test-jepa-nil");
 		if (rc != ANX_OK) return -34;
 
-		steps_after = anx_jepa_get_train_step_count();
+		steps_after = anx_world_train_steps();
 		if (steps_after != steps_before + 1) return -34;
 	}
 
@@ -504,7 +505,7 @@ int test_ibal(void)
 		anx_oid_t nil_sid = ANX_UUID_NIL;
 		int rc;
 
-		rc = anx_loop_jepa_ingest(nil_sid, "anx:world/os-default");
+		rc = anx_loop_world_ingest(nil_sid, "anx:world/os-default");
 		if (rc == ANX_OK) return -35;
 	}
 
@@ -610,7 +611,7 @@ int test_ibal(void)
 
 	/* Test 41: traj_ingest when JEPA unavailable is ANX_OK (non-fatal). */
 	{
-		struct anx_jepa_obs obs;
+		struct anx_world_obs obs;
 
 		anx_memset(&obs, 0, sizeof(obs));
 		rc = anx_jepa_traj_ingest(&obs, 0, "anx:world/os-default");

@@ -37,7 +37,15 @@ struct anx_model_endpoint {
 };
 
 /* Initialize the model client with an endpoint config (also persists to disk) */
-void anx_model_client_init(const struct anx_model_endpoint *ep);
+int anx_model_client_init(const struct anx_model_endpoint *ep);
+/* Validate a hostname, port, and credential reference without mutation. */
+int anx_model_endpoint_validate(const struct anx_model_endpoint *ep);
+/* Apply an endpoint live, or NULL to disable, without saving. */
+int anx_model_client_configure(const struct anx_model_endpoint *ep);
+/* Get borrowed endpoint strings; they remain owned by the client. */
+void anx_model_client_get_endpoint(struct anx_model_endpoint *out);
+/* Persist a disabled endpoint so legacy records cannot restore it. */
+int anx_model_client_clear(void);
 /* Restore endpoint config from disk (called at boot after disk init) */
 void anx_model_client_load(void);
 

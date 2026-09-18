@@ -17,27 +17,29 @@
 #include <anx/string.h>
 #include <anx/uuid.h>
 
-static int resolve_arg(const char *arg, anx_oid_t *oid)
+static void show_entry(const struct anx_meta_entry *e, void *arg)
 {
-	const char *colon = arg;
-	int ret;
+	uint32_t *n = arg;
 
-	while (*colon && *colon != ':')
-		colon++;
-	if (*colon == ':') {
-		char ns_buf[64];
-		uint32_t ns_len = (uint32_t)(colon - arg);
-
-		if (ns_len < sizeof(ns_buf)) {
-			anx_memcpy(ns_buf, arg, ns_len);
-			ns_buf[ns_len] = '\0';
-			return anx_ns_resolve(ns_buf, colon + 1, oid);
-		}
+	(*n)++;
+	switch (e->value.type) {
+	case ANX_META_STRING:
+		kprintf("  %s = %s\n", e->key, e->value.v.str.data);
+		break;
+	case ANX_META_INT64:
+		kprintf("  %s = %lld\n", e->key, (long long)e->value.v.i64);
+		break;
+	case ANX_META_BOOL:
+		kprintf("  %s = %s\n", e->key,
+			e->value.v.boolean ? "true" : "false");
+		break;
+	case ANX_META_BYTES:
+		kprintf("  %s = <%u bytes>\n", e->key, e->value.v.bytes.len);
+		break;
+	default:
+		kprintf("  %s = <float>\n", e->key);
+		break;
 	}
-	ret = anx_ns_resolve("default", arg, oid);
-	if (ret == ANX_OK)
-		return ANX_OK;
-	return anx_ns_resolve("posix", arg, oid);
 }
 
 void cmd_meta(int argc, char **argv)
@@ -47,11 +49,11 @@ void cmd_meta(int argc, char **argv)
 	int ret;
 
 	if (argc < 3) {
-		kprintf("usage: meta <set|get> <path> [key] [value]\n");
+		kprintf("usage: meta <show|set|get> <path> [key] [value]\n");
 		return;
 	}
 
-	ret = resolve_arg(argv[2], &oid);
+	ret = anx_so_resolve(argv[2], &oid);
 	if (ret != ANX_OK) {
 		kprintf("meta: '%s' not found\n", argv[2]);
 		return;
@@ -63,7 +65,13 @@ void cmd_meta(int argc, char **argv)
 		return;
 	}
 
-	if (anx_strcmp(argv[1], "set") == 0) {
+	if (anx_strcmp(argv[1], "show") == 0) {
+		uint32_t n = 0;
+
+		anx_meta_iterate(obj->user_meta, show_entry, &n);
+		if (n == 0)
+			kprintf("(no metadata)\n");
+	} else if (anx_strcmp(argv[1], "set") == 0) {
 		if (argc < 5) {
 			kprintf("usage: meta set <path> <key> <value>\n");
 			anx_objstore_release(obj);
@@ -97,7 +105,7 @@ void cmd_meta(int argc, char **argv)
 			kprintf("(no metadata)\n");
 		}
 	} else {
-		kprintf("usage: meta <set|get> <path> [key] [value]\n");
+		kprintf("usage: meta <show|set|get> <path> [key] [value]\n");
 	}
 
 	anx_objstore_release(obj);
