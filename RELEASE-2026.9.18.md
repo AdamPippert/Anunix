@@ -118,8 +118,11 @@ SSH share the same bounded editor. Left, Right, Home, End, insertion,
 Backspace, Delete, history recall, and draft restoration follow one contract.
 SSH also accepts escape sequences split across network packets.
 
-Plain `help` indexes all 89 release commands. Eight help topics cover the
-same dispatcher, and a source-level test detects missing entries.
+Plain `help` now provides a compact orientation instead of printing the full
+command catalog. `cmdlist` groups every release command by subsystem, and
+`man <command>` provides its synopsis and description. A source-level test
+compares both documentation paths with the compiled dispatcher, including the
+conditional research build, so missing or invented entries fail validation.
 
 The color editor shows live hex changes, original and draft swatches, save
 feedback, and real close behavior. Object and workflow windows share the
@@ -190,7 +193,8 @@ checks use the release image before publication.
 
 ## Release statistics
 
-- 33 commits since `2026.9.15` before the final release commit.
+- 37 commits since `2026.9.15`, including the final notes and remote-history
+  reconciliation commits.
 - 90 host-native suites, up from 64 in `2026.9.15`.
 - 33 RFC documents in the repository.
 - Three shipped configuration templates.
