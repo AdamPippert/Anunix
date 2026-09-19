@@ -1,0 +1,104 @@
+name: Promote Anunix 2026.9.18 release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/promote-release.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-anunix-2026.9.18
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.repository == 'AdamPippert/Anunix'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: 2026.9.18
+
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake build-essential clang curl file libacl1-dev \
+            libtool lld llvm make pkg-config xz-utils zlib1g-dev
+
+      - name: Revalidate release source
+        run: |
+          set -o pipefail
+          make test 2>&1 | tee test-output.txt
+          summary=$(grep -oE '=== Results: [0-9]+ passed, [0-9]+ failed ===' test-output.txt | tail -1)
+          test -n "$summary"
+          test "$(printf '%s' "$summary" | sed -E 's/.*, ([0-9]+) failed.*/\1/')" = 0
+
+      - name: Build release artifacts
+        run: |
+          make iso-deps
+          make iso ARCH=x86_64
+          mkdir -p release-artifacts
+          cp build/x86_64/anunix.elf \
+            "release-artifacts/anunix-${RELEASE_TAG}-x86_64.elf"
+          cp build/anunix-x86_64.iso \
+            "release-artifacts/anunix-${RELEASE_TAG}-x86_64.iso"
+          test -s "release-artifacts/anunix-${RELEASE_TAG}-x86_64.elf"
+          test -s "release-artifacts/anunix-${RELEASE_TAG}-x86_64.iso"
+
+      - name: Create public GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "Anunix $RELEASE_TAG" \
+              --notes-file "RELEASE-$RELEASE_TAG.md" \
+              --draft=false \
+              --prerelease=false
+            gh release upload "$RELEASE_TAG" --clobber release-artifacts/*
+          else
+            gh release create "$RELEASE_TAG" \
+              --verify-tag \
+              --title "Anunix $RELEASE_TAG" \
+              --notes-file "RELEASE-$RELEASE_TAG.md" \
+              release-artifacts/*
+          fi
+
+      - name: Verify public release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          release = json.loads(subprocess.check_output([
+              "gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/{tag}"
+          ]))
+          expected = Path(f"RELEASE-{tag}.md").read_text(encoding="utf-8").strip()
+          names = {asset["name"] for asset in release.get("assets", [])}
+          required = {
+              f"anunix-{tag}-x86_64.elf",
+              f"anunix-{tag}-x86_64.iso",
+          }
+          assert not release.get("draft"), "release is still a draft"
+          assert release.get("body", "").strip() == expected, "release notes differ"
+          assert required <= names, "required release assets are missing"
+          print(release["html_url"])
+          print("Verified assets:", ", ".join(sorted(names)))
+          PY
