@@ -35,7 +35,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             autoconf automake build-essential clang curl file libacl1-dev \
-            libtool lld llvm make pkg-config xz-utils zlib1g-dev
+            libtool lld llvm make mtools pkg-config xz-utils zlib1g-dev
 
       - name: Revalidate release source
         run: |
@@ -56,6 +56,9 @@ jobs:
             "release-artifacts/anunix-${RELEASE_TAG}-x86_64.iso"
           test -s "release-artifacts/anunix-${RELEASE_TAG}-x86_64.elf"
           test -s "release-artifacts/anunix-${RELEASE_TAG}-x86_64.iso"
+          tools/grub/bin/xorriso \
+            -indev "release-artifacts/anunix-${RELEASE_TAG}-x86_64.iso" \
+            -report_el_torito plain 2>&1 | grep -q UEFI
 
       - name: Create public GitHub release
         env:
