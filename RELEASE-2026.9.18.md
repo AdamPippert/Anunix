@@ -164,9 +164,10 @@ The final source passes:
 - embedded-kernel comparison between the EFI image and raw kernel;
 - a no-secrets release-artifact inspection.
 
-Hardware evidence on Jekyll covers the installed EFI boot, framebuffer,
-NVMe, MT7925 association, DHCP, NTP, and SSH. Final workflow and transparency
-checks use the release image before publication.
+Hardware evidence on Jekyll covers EFI boot, framebuffer, NVMe, MT7925
+association, DHCP, NTP, and SSH. The exact final private image is installed
+on Jekyll and has passed the release VM checks; booting that installed image
+on the physical laptop remains a post-release hardware confirmation.
 
 ## Compatibility
 
