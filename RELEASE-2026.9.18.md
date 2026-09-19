@@ -193,8 +193,8 @@ checks use the release image before publication.
 
 ## Release statistics
 
-- 37 commits since `2026.9.15`, including the final notes and remote-history
-  reconciliation commits.
+- More than 30 commits since `2026.9.15`, including the final release notes
+  and reconciliation of the Jekyll deployment history.
 - 90 host-native suites, up from 64 in `2026.9.15`.
 - 33 RFC documents in the repository.
 - Three shipped configuration templates.
