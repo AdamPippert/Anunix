@@ -434,7 +434,7 @@ void kernel_main(void)
 	/* 12. Network bring-up (drivers already probed above) */
 	{
 		/*
-		 * Apply locally-embedded Wi-Fi credentials, if this kernel
+		 * Apply locally-embedded bootstrap credentials, if this kernel
 		 * was built with config/boot-secrets.conf present. Existing
 		 * stored credentials win, so a machine that has been
 		 * configured properly is never silently overridden by a
@@ -444,7 +444,7 @@ void kernel_main(void)
 			uint32_t bi;
 
 			kprintf("\n");
-			kprintf("*** This kernel carries embedded Wi-Fi "
+			kprintf("*** This kernel carries embedded bootstrap "
 				"credentials in plaintext.\n");
 			kprintf("*** Do not publish this image. Rebuild "
 				"without config/boot-secrets.conf.\n\n");
@@ -461,7 +461,7 @@ void kernel_main(void)
 						"stored; keeping it\n", n);
 					continue;
 				}
-				if (anx_credential_create(n, ANX_CRED_OPAQUE,
+				if (anx_credential_create(n, anx_boot_secrets[bi].type,
 							   v, vlen) == ANX_OK)
 					kprintf("boot-secrets: %s applied\n", n);
 				else

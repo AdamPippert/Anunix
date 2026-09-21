@@ -172,10 +172,10 @@ source-identity-force:
 $(SOURCE_HEADER): source-identity-force
 	@python3 tools/source_identity.py --header $@
 
-# Optional local Wi-Fi credentials for bringing a machine onto a network
-# before it can be configured any other way. config/boot-secrets.conf is
-# gitignored; when it is absent the generated header is empty and the kernel
-# embeds nothing. Regenerated every build so removing the file takes effect.
+# Optional local bootstrap credentials for network and provider bring-up.
+# config/boot-secrets.conf is gitignored and must be mode 0600; when it is
+# absent the generated header is empty and the kernel embeds nothing.
+# Regenerated every build so removing the file takes effect.
 BOOT_SECRETS_CONF   := config/boot-secrets.conf
 BOOT_SECRETS_HEADER := $(BUILD_DIR)/generated/anx_boot_secrets.h
 .PHONY: boot-secrets-force
@@ -523,6 +523,7 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_engine_lifecycle.c \
                tests/test_resource_lease.c \
                tests/test_model_server.c \
+               tests/test_model_client.c \
                tests/test_posix.c \
                tests/test_tensor.c \
                tests/test_model.c \
@@ -610,6 +611,7 @@ test: build/wallpaper-default.anwp
 	@build/test/page_span
 	@python3 tests/test_kernel_profile.py
 	@python3 tests/test_candidate_gate.py
+	@python3 tests/test_boot_secrets.py
 	@python3 tests/test_embed_wallpaper.py
 	@CC="$(TEST_CC)" python3 tests/test_shell_help.py
 	@python3 tools/source_identity.py --label ANUNIX_HOST_SOURCE_V1

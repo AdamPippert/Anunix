@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/version-2026.9.18-blue" alt="Version">
   <img src="https://img.shields.io/badge/arch-x86__64%20%7C%20ARM64-green" alt="Architecture">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="License">
-  <img src="https://img.shields.io/badge/tests-90%20suites-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-91%20suites-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/RFCs-33-blueviolet" alt="RFCs">
 </p>
 
@@ -68,10 +68,11 @@ It adds persistent configuration templates, tiled and floating layouts,
 real font families, a photographic wallpaper, complete line editing, and
 adjustable window transparency. Pretty windows default to 20% transparent.
 
-A shell-created workflow can now bind a State Object and pass it through a
-local `anxml` cell. The regression runs a prompt through
-`state_ref -> cell_call -> output` and checks for a nonempty Model Output.
-The generic model-server inference path remains a stub.
+A shell-created workflow can bind a State Object and pass it through either a
+local `anxml` cell or a hosted-model call. Hosted routes use provider-prefixed
+model IDs and sealed Jev, OpenAI, or Anthropic Credential Objects through the
+separate `Anunix-apps` TLS companion. The generic model-server lifecycle path
+remains a stub.
 
 **What is new in 2026.9.18**
 
@@ -100,7 +101,7 @@ The generic model-server inference path remains a stub.
 - **Local object-bound model workflows execute.** Shell-created nodes receive
   usable ports, State Object references resolve by path or OID, and
   `anxml-generate` produces a Model Output object.
-- **90 host-native suites pass, 0 fail.** The page-span test and Python
+- **91 host-native suites pass, 0 fail.** The page-span test and Python
   validation suites also pass.
 
 See [`RELEASE-2026.9.18.md`](RELEASE-2026.9.18.md) for validation evidence,
@@ -352,17 +353,24 @@ ssh -p 12222 anunix@localhost -- sysinfo
 ssh -i ~/.ssh/id_ed25519 -p 12222 anunix@localhost   # interactive shell
 ```
 
-### Talking to Claude
+### Talking to hosted models
 
 ```sh
-# Terminal 1: TLS proxy on the host
-socat TCP-LISTEN:8080,fork,reuseaddr OPENSSL:api.anthropic.com:443,verify=1 &
+# On a trusted companion host, from the separate Anunix-apps repository
+python3 -m anunix_apps.model_gateway --host 0.0.0.0 --port 8090
 
-# Terminal 2: in the Anunix shell
-anx> secret set anthropic-api-key sk-ant-api03-YOUR-KEY
-anx> model-init anthropic-api-key 10.0.2.2 8080
-anx> ask What is the meaning of life?
+# In the Anunix shell (PROXY_HOST must be reachable from Anunix)
+anx> model-init anthropic-api-key PROXY_HOST 8090
+anx> ask -m anthropic/claude-haiku-4-5-20251001 Say hello
+anx> ask -m openai/gpt-5.6-luna Say hello
+anx> ask -m jev/jev-latest The sky is blue
 ```
+
+Provider-prefixed model IDs select the sealed `anthropic-api-key`,
+`openai-api-key`, or `jev-api-key` Credential Object. The companion performs
+verified outbound TLS and normalizes provider responses. Its inbound HTTP leg
+contains the selected key, so bind it only to a trusted test network until
+Anunix has a native TLS client.
 
 ---
 

@@ -22,7 +22,7 @@ static void wf_usage(void)
 	kprintf("  list\n");
 	kprintf("  run      <name>\n");
 	kprintf("  status   <name>\n");
-	kprintf("  add-node <wf-name> <kind> <label> [parameter]\n");
+	kprintf("  add-node <wf-name> <kind> <label> [parameters...]\n");
 	kprintf("  add-edge <wf-name> <from-node-id> <to-node-id>\n");
 	kprintf("  show     <name>   — serialize to DSL text\n");
 	kprintf("  graph    <name>   — ASCII DAG diagram\n");
@@ -46,6 +46,7 @@ static const char *wf_run_state_name(enum anx_wf_run_state s)
 	case ANX_WF_RUN_IDLE:          return "idle";
 	case ANX_WF_RUN_RUNNING:       return "running";
 	case ANX_WF_RUN_WAITING_HUMAN: return "waiting_human";
+	case ANX_WF_RUN_SUSPENDED:     return "suspended";
 	case ANX_WF_RUN_COMPLETED:     return "completed";
 	case ANX_WF_RUN_FAILED:        return "failed";
 	default:                        return "unknown";
@@ -513,6 +514,28 @@ static int cmd_workflow_add_node(int argc, char **argv)
 		if (argc == 4)
 			anx_strlcpy(spec.params.cell_call.intent, argv[3],
 				    sizeof(spec.params.cell_call.intent));
+	} else if (kind == ANX_WF_NODE_MODEL_CALL) {
+		uint32_t off = 0;
+		int i;
+
+		if (argc < 5) {
+			kprintf("workflow add-node: model_call needs <model-id> <prompt...>\n");
+			return ANX_EINVAL;
+		}
+		anx_strlcpy(spec.params.model_call.model_id, argv[3],
+			    sizeof(spec.params.model_call.model_id));
+		for (i = 4; i < argc && off < ANX_WF_EXPR_MAX - 1; i++) {
+			uint32_t len = (uint32_t)anx_strlen(argv[i]);
+
+			if (i > 4 && off < ANX_WF_EXPR_MAX - 1)
+				spec.params.model_call.prompt_template[off++] = ' ';
+			if (len > ANX_WF_EXPR_MAX - 1 - off)
+				len = ANX_WF_EXPR_MAX - 1 - off;
+			anx_memcpy(spec.params.model_call.prompt_template + off,
+				   argv[i], len);
+			off += len;
+		}
+		spec.params.model_call.prompt_template[off] = '\0';
 	}
 
 	/*
