@@ -1,16 +1,17 @@
 # Anunix 2026.9.18 Release Notes
 
 Milestone: **Anunix is a networked, configurable workstation on its target
-laptop, with an object-bound local model workflow.**
+laptop, with object-bound local and hosted model workflows.**
 
 This release moves the Framework Laptop 16 from basic boot support to a
 usable Anunix system. Its MT7925 adapter joins the local network, the desktop
 has persistent themes and layouts, and the shell is practical over both the
 display and SSH.
 
-The workflow shell can also bind a State Object to a native cell call. A
-small local `anxml` workflow now crosses the full
-`state_ref -> cell_call -> output` path and returns a Model Output object.
+The workflow shell can bind a State Object to a native cell or a hosted model
+call. Local `anxml` and provider-backed workflows cross the full graph and
+return Model Output objects. Optional local bootstrap credentials support Jev,
+OpenAI, and Anthropic without placing keys in source control or public images.
 
 ## Highlights
 
@@ -29,7 +30,9 @@ small local `anxml` workflow now crosses the full
   history behavior.
 - Shell-created workflow nodes receive valid ports and can bind State Objects
   and local cell intents.
-- 90 host-native suites pass with zero failures.
+- Provider-prefixed model calls select sealed Jev, OpenAI, or Anthropic
+  Credential Objects and run through the separate `Anunix-apps` TLS gateway.
+- 91 host-native suites pass with zero failures.
 
 ## MT7925 Wi-Fi and the network path
 
@@ -128,7 +131,7 @@ The color editor shows live hex changes, original and draft swatches, save
 feedback, and real close behavior. Object and workflow windows share the
 updated controls and focus rules.
 
-## Local model workflow
+## Local and hosted model workflows
 
 The workflow shell previously created nodes with no port metadata. A
 `cell_call` therefore received zero inputs, and the local `anxml-generate`
@@ -145,9 +148,16 @@ runs it, and verifies a nonempty `ANX_OBJ_MODEL_OUTPUT`. This is a small,
 deterministic local character model. It demonstrates model execution inside
 Anunix without an external API.
 
-The generic model-server interface still returns placeholder output. This
-release does not claim arbitrary hosted-model inference, accelerator-backed
-serving, or an OpenAI-compatible endpoint.
+Hosted `model_call` nodes now dispatch through the configured model client and
+write normalized responses to `ANX_OBJ_MODEL_OUTPUT` objects. Model prefixes
+select `jev-api-key`, `openai-api-key`, or `anthropic-api-key`; the keys remain
+sealed kernel Credential Objects. The external gateway performs verified TLS
+and provider translation from the separate `Anunix-apps` repository. Its
+plain-HTTP inbound leg is intended only for a trusted test network.
+
+The generic model-server lifecycle interface still returns placeholder output.
+This release does not claim accelerator-backed serving or a native
+OpenAI-compatible endpoint.
 
 The graphical Workflow Atlas and showcase runner live in the separate
 `Anunix-apps` repository. Application code is not bundled into the OS source.
@@ -156,7 +166,7 @@ The graphical Workflow Atlas and showcase runner live in the separate
 
 The final source passes:
 
-- 90 of 90 host-native C suites;
+- 91 of 91 host-native C suites;
 - the page-span allocator test;
 - the Python wallpaper, shell-help, font-generation, and profile suites;
 - warnings-as-errors x86_64 kernel and ISO builds;
@@ -165,9 +175,9 @@ The final source passes:
 - a no-secrets release-artifact inspection.
 
 Hardware evidence on Jekyll covers EFI boot, framebuffer, NVMe, MT7925
-association, DHCP, NTP, and SSH. The exact final private image is installed
-on Jekyll and has passed the release VM checks; booting that installed image
-on the physical laptop remains a post-release hardware confirmation.
+association, DHCP, NTP, and SSH. The final private image has passed the release
+VM checks. Installing and booting that exact image on the physical laptop
+remains a post-release hardware confirmation.
 
 ## Compatibility
 
@@ -178,6 +188,8 @@ on the physical laptop remains a post-release hardware confirmation.
 - The `aether` theme name continues to select the default palette.
 - Boot credentials stay optional and local. Public artifacts build with an
   empty boot-secrets configuration.
+- Existing unprefixed model calls continue to use the configured legacy
+  credential name.
 
 ## Known limitations
 
@@ -196,7 +208,7 @@ on the physical laptop remains a post-release hardware confirmation.
 
 - More than 30 commits since `2026.9.15`, including the final release notes
   and reconciliation of the Jekyll deployment history.
-- 90 host-native suites, up from 64 in `2026.9.15`.
+- 91 host-native suites, up from 64 in `2026.9.15`.
 - 33 RFC documents in the repository.
 - Three shipped configuration templates.
 - Three reproducible theme font families, plus the existing Spleen font.

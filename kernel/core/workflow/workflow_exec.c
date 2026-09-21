@@ -37,6 +37,7 @@
 #include <anx/audio.h>
 #include <anx/video.h>
 #include <anx/promotion_evidence.h>
+#include <anx/model_client.h>
 
 /*
  * Inline prefix matcher for specialized cell intents.  Returns true and
@@ -186,6 +187,83 @@ wf_collect_outputs(const struct anx_wf_object *wf, const struct anx_cell *cell,
 			break;
 		port_oid[slot][p] = cell->output_refs[out_idx++];
 	}
+}
+
+/* Execute a remote model node and materialize its text as a State Object. */
+static int
+wf_dispatch_model_node(struct anx_wf_object *wf, uint32_t slot,
+		       const uint32_t *slot_by_id,
+		       anx_oid_t (*port_oid)[ANX_WF_MAX_PORTS])
+{
+	struct anx_wf_node *node = &wf->nodes[slot];
+	struct anx_model_request req;
+	struct anx_model_response resp;
+	struct anx_so_create_params params;
+	struct anx_state_object *input = NULL, *output;
+	anx_oid_t input_oid;
+	char input_prompt[3073];
+	const char *prompt = node->params.model_call.prompt_template;
+	uint8_t p;
+	int ret;
+
+	if (!node->params.model_call.model_id[0] || !anx_model_client_ready())
+		return ANX_EINVAL;
+	input_oid = wf_get_input_oid(wf, node->id, 0, slot_by_id, port_oid);
+	if (!oid_is_null(&input_oid)) {
+		input = anx_objstore_lookup(&input_oid);
+		if (!input || !input->payload || !input->payload_size ||
+		    input->payload_size > 3072) {
+			if (input)
+				anx_objstore_release(input);
+			return ANX_EINVAL;
+		}
+		anx_memcpy(input_prompt, input->payload, input->payload_size);
+		input_prompt[input->payload_size] = '\0';
+		prompt = input_prompt;
+	}
+	if (!prompt || !*prompt) {
+		if (input)
+			anx_objstore_release(input);
+		return ANX_EINVAL;
+	}
+
+	anx_memset(&req, 0, sizeof(req));
+	req.model = node->params.model_call.model_id;
+	req.system = "You are a model called by an Anunix workflow. Be concise.";
+	req.user_message = prompt;
+	req.max_tokens = 512;
+	ret = anx_model_call(&req, &resp);
+	if (ret != ANX_OK) {
+		if (input)
+			anx_objstore_release(input);
+		return ret;
+	}
+	if (!resp.content || !resp.content_len) {
+		anx_model_response_free(&resp);
+		if (input)
+			anx_objstore_release(input);
+		return ANX_EIO;
+	}
+
+	anx_memset(&params, 0, sizeof(params));
+	params.object_type = ANX_OBJ_MODEL_OUTPUT;
+	params.payload = resp.content;
+	params.payload_size = resp.content_len;
+	params.parent_oids = input ? &input_oid : NULL;
+	params.parent_count = input ? 1 : 0;
+	ret = anx_so_create(&params, &output);
+	if (ret == ANX_OK) {
+		for (p = 0; p < node->port_count; p++)
+			if (node->ports[p].dir == ANX_WF_PORT_OUT) {
+				port_oid[slot][p] = output->oid;
+				break;
+			}
+		anx_objstore_release(output);
+	}
+	anx_model_response_free(&resp);
+	if (input)
+		anx_objstore_release(input);
+	return ret;
 }
 
 /* ------------------------------------------------------------------ */
@@ -471,10 +549,13 @@ wf_dispatch_node(struct anx_wf_object *wf, uint32_t slot,
 		break;
 
 	case ANX_WF_NODE_CELL_CALL:
-	case ANX_WF_NODE_MODEL_CALL:
 	case ANX_WF_NODE_RETRIEVAL:
 		ret = wf_dispatch_cell_node(wf, slot, slot_by_id, port_oid,
 					    &entry->cell_cid, &entry->trace_oid);
+		break;
+
+	case ANX_WF_NODE_MODEL_CALL:
+		ret = wf_dispatch_model_node(wf, slot, slot_by_id, port_oid);
 		break;
 
 	case ANX_WF_NODE_AGENT_CALL:

@@ -29,6 +29,7 @@ int test_fb(void);
 int test_engine_lifecycle(void);
 int test_resource_lease(void);
 int test_model_server(void);
+int test_model_client(void);
 int test_posix(void);
 int test_tensor(void);
 int test_tensor_codec(void);
@@ -121,6 +122,7 @@ static struct test_case tests[] = {
 	{ "engine_lifecycle",	test_engine_lifecycle },
 	{ "resource_lease",	test_resource_lease },
 	{ "model_server",	test_model_server },
+	{ "model_client",	test_model_client },
 	{ "posix",		test_posix },
 	{ "tensor",		test_tensor },
 	{ "tensor_codec",	test_tensor_codec },

@@ -6,6 +6,7 @@
  */
 
 #include <anx/types.h>
+#include <anx/string.h>
 #include <anx/mmio.h>
 #include <anx/arch.h>
 #include <anx/irq.h>
@@ -446,11 +447,29 @@ int anx_http_post(const char *h, uint16_t p, const char *pa, const char *ct,
 		   const void *b, uint32_t bl, struct anx_http_response *r)
 { (void)h; (void)p; (void)pa; (void)ct; (void)b; (void)bl;
   r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
+static bool mock_model_http_enabled;
+
+void test_mock_model_http_enable(bool enabled)
+{
+	mock_model_http_enabled = enabled;
+}
+
 int anx_http_post_authed(const char *h, uint16_t p, const char *pa,
 			  const char *eh, const char *ct,
 			  const void *b, uint32_t bl, struct anx_http_response *r)
-{ (void)h; (void)p; (void)pa; (void)eh; (void)ct; (void)b; (void)bl;
-  r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO; }
+{
+	static char fixture[] = "{\"content\":[{\"type\":\"text\",\"text\":\"fixture response\"}],"
+		"\"usage\":{\"input_tokens\":3,\"output_tokens\":2},"
+		"\"stop_reason\":\"end_turn\"}";
+	(void)h; (void)p; (void)eh; (void)ct; (void)b; (void)bl;
+	if (mock_model_http_enabled && !anx_strcmp(pa, "/v1/messages")) {
+		r->status_code = 200;
+		r->body = fixture;
+		r->body_len = (uint32_t)anx_strlen(fixture);
+		return ANX_OK;
+	}
+	r->status_code=0; r->body=NULL; r->body_len=0; return ANX_EIO;
+}
 void anx_http_response_free(struct anx_http_response *r)
 { if(r) { r->body=NULL; r->body_len=0; } }
 int anx_ntp_sync(uint32_t ip) { (void)ip; return ANX_ETIMEDOUT; }

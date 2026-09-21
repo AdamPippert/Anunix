@@ -23,6 +23,11 @@
 #include <anx/tools.h>
 #include <anx/uuid.h>
 #include <anx/anxml.h>
+#include <anx/model_client.h>
+#include <anx/credential.h>
+#include <anx/kprintf.h>
+
+void test_mock_model_http_enable(bool enabled);
 
 int test_workflow(void)
 {
@@ -132,6 +137,16 @@ int test_workflow(void)
 	 * identifies the MODEL_CALL node as the failure site.
 	 */
 	if (state == ANX_WF_RUN_SUSPENDED) {
+		char status_text[512];
+		char *status_argv[] = { "workflow", "status", "test-flow" };
+
+		anx_kprintf_capture_start(status_text, sizeof(status_text));
+		ret = cmd_workflow(3, status_argv);
+		anx_kprintf_capture_stop();
+		if (ret != ANX_OK || !anx_strstr(status_text,
+						  "run_state:   suspended"))
+			return -139;
+
 		cont = anx_wf_continuation_get(&wf_oid);
 		if (!cont) return -17;
 		if (cont->failed_node_id != model_id) return -18;
@@ -208,6 +223,9 @@ int test_workflow(void)
 			"cell_call", "compute" };
 		char *cell_argv[] = { "workflow", "add-node", "native-bind",
 			"cell_call", "sum", "pluralea-sum" };
+		char *model_argv[] = { "workflow", "add-node", "native-bind",
+			"model_call", "judge", "jev/jev-latest",
+			"The", "claim", "is", "supported" };
 		anx_oid_t workflows[ANX_WF_MAX_WFS];
 		uint32_t workflow_count, workflow_i;
 		uint16_t before;
@@ -276,8 +294,79 @@ int test_workflow(void)
 		if (anx_wf_serialize(&wf2_oid, serialized, sizeof(serialized)) != ANX_OK ||
 		    !anx_strstr(serialized, "intent pluralea-sum"))
 			return -118;
+		if (cmd_workflow(10, model_argv) != ANX_OK ||
+		    wf->node_count != before + 4 ||
+		    anx_strcmp(wf->nodes[5].params.model_call.model_id,
+			       "jev/jev-latest") != 0 ||
+		    anx_strcmp(wf->nodes[5].params.model_call.prompt_template,
+			       "The claim is supported") != 0)
+			return -130;
 
 		if (anx_wf_destroy(&wf2_oid) != ANX_OK) return -119;
+
+		/* A hosted model node consumes a State Object and materializes the
+		 * normalized provider response as ANX_OBJ_MODEL_OUTPUT. */
+		{
+			struct anx_model_endpoint ep = {
+				.host = "127.0.0.1", .port = 8090,
+				.cred_name = "missing-legacy-key",
+			};
+			struct anx_state_object *hosted_input, *hosted_output;
+			anx_oid_t hosted_wf_oid;
+			char *hosted_create[] = { "workflow", "create", "hosted-model" };
+			char *hosted_state[] = { "workflow", "add-node", "hosted-model",
+				"state_ref", "prompt", "default:hosted/prompt" };
+			char *hosted_model[] = { "workflow", "add-node", "hosted-model",
+				"model_call", "openai", "openai/test-model", "fallback" };
+			char *hosted_output_argv[] = { "workflow", "add-node", "hosted-model",
+				"output", "result" };
+			char *hosted_edge_a[] = { "workflow", "add-edge", "hosted-model", "1", "2" };
+			char *hosted_edge_b[] = { "workflow", "add-edge", "hosted-model", "2", "3" };
+			char *hosted_run[] = { "workflow", "run", "hosted-model" };
+
+			anx_memset(&params, 0, sizeof(params));
+			params.object_type = ANX_OBJ_BYTE_DATA;
+			params.payload = "Is this connected?";
+			params.payload_size = 18;
+			if (anx_so_create(&params, &hosted_input) != ANX_OK) return -131;
+			if (anx_ns_bind("default", "hosted/prompt", &hosted_input->oid) != ANX_OK)
+				return -132;
+			anx_credstore_init();
+			if (anx_credential_create("openai-api-key", ANX_CRED_API_KEY,
+						  "test-key", 8) != ANX_OK ||
+			    anx_model_client_configure(&ep) != ANX_OK)
+				return -133;
+			test_mock_model_http_enable(true);
+			if (cmd_workflow(3, hosted_create) != ANX_OK ||
+			    cmd_workflow(6, hosted_state) != ANX_OK ||
+			    cmd_workflow(7, hosted_model) != ANX_OK ||
+			    cmd_workflow(5, hosted_output_argv) != ANX_OK ||
+			    cmd_workflow(6, hosted_edge_a) != ANX_OK ||
+			    cmd_workflow(6, hosted_edge_b) != ANX_OK ||
+			    cmd_workflow(4, hosted_run) != ANX_OK)
+				return -134;
+			test_mock_model_http_enable(false);
+			anx_model_client_configure(NULL);
+			if (anx_wf_list(workflows, ANX_WF_MAX_WFS, &workflow_count) != ANX_OK)
+				return -135;
+			for (workflow_i = 0; workflow_i < workflow_count; workflow_i++) {
+				wf = anx_wf_object_get(&workflows[workflow_i]);
+				if (wf && anx_strcmp(wf->name, "hosted-model") == 0) {
+					hosted_wf_oid = workflows[workflow_i];
+					break;
+				}
+			}
+			if (workflow_i == workflow_count || wf->output_count != 1)
+				return -136;
+			hosted_output = anx_objstore_lookup(&wf->output_oids[0]);
+			if (!hosted_output || hosted_output->object_type != ANX_OBJ_MODEL_OUTPUT ||
+			    hosted_output->payload_size != 16 ||
+			    anx_memcmp(hosted_output->payload, "fixture response", 16) != 0)
+				return -137;
+			anx_objstore_release(hosted_output);
+			anx_objstore_release(hosted_input);
+			if (anx_wf_destroy(&hosted_wf_oid) != ANX_OK) return -138;
+		}
 
 		/* The live showcase shape must deliver one input to local anxml. */
 		{

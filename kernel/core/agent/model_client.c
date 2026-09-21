@@ -343,6 +343,7 @@ bool anx_model_client_ready(void)
 int anx_model_call(const struct anx_model_request *req,
 		    struct anx_model_response *resp)
 {
+	const char *cred_name;
 	char *body_buf;
 	int body_len;
 	char key_buf[256];
@@ -354,6 +355,19 @@ int anx_model_call(const struct anx_model_request *req,
 
 	if (!configured)
 		return ANX_EINVAL;
+	if (!req || !req->model || !resp)
+		return ANX_EINVAL;
+
+	/* Provider-prefixed models use stable named Credential Objects. The
+	 * configured credential remains the compatibility path for unprefixed
+	 * Claude model IDs and direct Anthropic TLS proxies. */
+	cred_name = ep_cred;
+	if (anx_strncmp(req->model, "anthropic/", 10) == 0)
+		cred_name = "anthropic-api-key";
+	else if (anx_strncmp(req->model, "openai/", 7) == 0)
+		cred_name = "openai-api-key";
+	else if (anx_strncmp(req->model, "jev/", 4) == 0)
+		cred_name = "jev-api-key";
 
 	anx_memset(resp, 0, sizeof(*resp));
 
@@ -369,13 +383,20 @@ int anx_model_call(const struct anx_model_request *req,
 	}
 
 	/* Read API key from credential store */
-	ret = anx_credential_read(ep_cred, key_buf,
+	ret = anx_credential_read(cred_name, key_buf,
 				   sizeof(key_buf) - 1, &key_len);
 	if (ret != ANX_OK) {
 		anx_free(body_buf);
 		kprintf("model: credential '%s' not found\n",
-			ep_cred);
+			cred_name);
 		return ret;
+	}
+	if (key_len >= sizeof(key_buf)) {
+		anx_memset(key_buf, 0, sizeof(key_buf));
+		anx_free(body_buf);
+		kprintf("model: credential '%s' exceeds supported length\n",
+			cred_name);
+		return ANX_ERANGE;
 	}
 	key_buf[key_len] = '\0';
 
