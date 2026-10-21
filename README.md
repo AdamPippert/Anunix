@@ -18,8 +18,6 @@
 
 ---
 
-## NOTICE:  Anunix development is on pause for awhile pending legal review.
-
 ## Try It Now
 
 ```sh
