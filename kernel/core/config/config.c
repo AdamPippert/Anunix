@@ -253,7 +253,7 @@ static int config_set(const char *name, const char *text, bool reuse_lease)
 			if (!p.net.ip || !p.net.netmask || (inverse & (inverse + 1)) ||
 			    (p.net.gateway && (p.net.gateway & p.net.netmask) !=
 			     (p.net.ip & p.net.netmask))) return ANX_EINVAL;
-			anx_net_configure(&p.net);
+			anx_net_configure(&p.net, ANX_NET_SRC_STATIC);
 		} else if (!reuse_lease) {
 			rc = anx_net_dhcp();
 			if (rc) return rc;

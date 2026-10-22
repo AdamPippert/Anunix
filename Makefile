@@ -597,7 +597,8 @@ TEST_SRCS   := tests/harness/test_main.c \
                tests/test_object_edit.c \
                tests/test_color_editor.c \
                tests/test_config_templates.c \
-               tests/test_config.c
+               tests/test_config.c \
+               tests/test_netinfo.c
 TEST_BIN    := build/test/anunix_test
 
 test: build/wallpaper-default.anwp

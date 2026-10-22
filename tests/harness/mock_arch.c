@@ -271,19 +271,50 @@ void anx_virtio_net_mac(uint8_t m[6]) { int i; for(i=0;i<6;i++) m[i]=0; }
 bool anx_virtio_net_ready(void) { return false; }
 
 /* Mock network stack — excluded from test build */
-void anx_net_stack_init(const struct anx_net_config *c) { (void)c; }
+void anx_net_stack_init(const struct anx_net_config *c, enum anx_net_source s)
+{ (void)c; (void)s; }
 void anx_net_poll(void) {}
 int anx_httpd_init(uint16_t p) { (void)p; return 0; }
 void anx_httpd_poll(void) {}
 int anx_sshd_init(uint16_t p) { (void)p; return 0; }
 void anx_sshd_poll(void) {}
 static struct anx_net_config mock_net_config;
-void anx_net_configure(const struct anx_net_config *c) { mock_net_config = *c; }
+static enum anx_net_source mock_net_src;
+void anx_net_configure(const struct anx_net_config *c, enum anx_net_source s)
+{ mock_net_config = *c; mock_net_src = c->ip ? s : ANX_NET_SRC_NONE; }
+enum anx_net_source anx_net_source(void) { return mock_net_src; }
+const char *anx_net_source_name(enum anx_net_source s)
+{
+	switch (s) {
+	case ANX_NET_SRC_DHCP: return "DHCP lease";
+	case ANX_NET_SRC_STATIC: return "static (config)";
+	case ANX_NET_SRC_FALLBACK: return "QEMU user-net fallback";
+	default: return "none";
+	}
+}
 void anx_ipv4_get_config(struct anx_net_config *out) { if (out) *out = mock_net_config; }
 int anx_net_dhcp(void) { return ANX_EIO; }
-bool anx_eth_ready(void) { return false; }
-const char *anx_eth_name(void) { return "none"; }
-int anx_eth_mac(uint8_t m[6]) { int i; for (i = 0; i < 6; i++) m[i] = 0; return ANX_EIO; }
+/* Tests select a link with mock_eth_set_link(); NULL means no link. */
+static const char *mock_eth_link;
+static uint8_t mock_eth_hw[6];
+void mock_eth_set_link(const char *name, const uint8_t mac[6])
+{
+	int i;
+
+	mock_eth_link = name;
+	for (i = 0; i < 6; i++)
+		mock_eth_hw[i] = mac ? mac[i] : 0;
+}
+bool anx_eth_ready(void) { return mock_eth_link != NULL; }
+const char *anx_eth_name(void) { return mock_eth_link ? mock_eth_link : "none"; }
+int anx_eth_mac(uint8_t m[6])
+{
+	int i;
+
+	for (i = 0; i < 6; i++)
+		m[i] = mock_eth_hw[i];
+	return mock_eth_link ? ANX_OK : ANX_EIO;
+}
 void anx_eth_recv(const void *f, uint32_t l) { (void)f; (void)l; }
 int anx_eth_send(const uint8_t d[6], uint16_t e, const void *p, uint32_t l)
 { (void)d; (void)e; (void)p; (void)l; return ANX_EIO; }

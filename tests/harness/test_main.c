@@ -53,6 +53,7 @@ int test_object_edit(void);
 int test_color_editor(void);
 int test_config_templates(void);
 int test_config(void);
+int test_netinfo(void);
 int test_event_qos(void);
 int test_compositor_dirty_rect(void);
 int test_multi_surface(void);
@@ -194,6 +195,7 @@ static struct test_case tests[] = {
 	{ "menubar_scale",	test_menubar_scale },
 	{ "config_templates",	test_config_templates },
 	{ "config",		test_config },
+	{ "netinfo",		test_netinfo },
 	{ "bootlog_ring",	test_bootlog_ring },
 	{ "blk_probe",		test_blk_probe },
 	{ "blk_select",		test_blk_select },

@@ -146,11 +146,25 @@ struct anx_net_config {
 
 /* --- Stack-wide API --- */
 
+/* Where the active IPv4 address came from. */
+enum anx_net_source {
+	ANX_NET_SRC_NONE = 0,		/* no address */
+	ANX_NET_SRC_DHCP,		/* lease from a DHCP server */
+	ANX_NET_SRC_STATIC,		/* set through the network config */
+	ANX_NET_SRC_FALLBACK,		/* QEMU user-net 10.0.2.15 at boot */
+};
+
 /* Initialize the full network stack with the given config */
-void anx_net_stack_init(const struct anx_net_config *cfg);
+void anx_net_stack_init(const struct anx_net_config *cfg,
+			enum anx_net_source src);
 
 /* Change addresses on a running stack; sockets and listeners survive. */
-void anx_net_configure(const struct anx_net_config *cfg);
+void anx_net_configure(const struct anx_net_config *cfg,
+		       enum anx_net_source src);
+
+/* Report where the active address came from. */
+enum anx_net_source anx_net_source(void);
+const char *anx_net_source_name(enum anx_net_source src);
 
 /* Copy the active IPv4 address configuration. */
 void anx_ipv4_get_config(struct anx_net_config *out);

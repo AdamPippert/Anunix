@@ -496,10 +496,12 @@ void kernel_main(void)
 			anx_udp_init();
 
 			bool leased;
+			enum anx_net_source src;
 
 			PERF_BEGIN("dhcp_discover");
 			kprintf("dhcp: discovering...\n");
 			leased = anx_dhcp_discover(&net_cfg) == ANX_OK;
+			src = leased ? ANX_NET_SRC_DHCP : ANX_NET_SRC_NONE;
 			if (!leased && (anx_virtio_net_ready() ||
 					anx_e1000_ready())) {
 				/* QEMU user networking's fixed addresses */
@@ -508,6 +510,7 @@ void kernel_main(void)
 				net_cfg.gateway = ANX_IP4(10, 0, 2, 2);
 				net_cfg.dns     = ANX_IP4(10, 0, 2, 3);
 				kprintf("dhcp: timeout, using static 10.0.2.15\n");
+				src = ANX_NET_SRC_FALLBACK;
 			} else if (!leased) {
 				/*
 				 * On Wi-Fi an invented address only hides the
@@ -521,7 +524,7 @@ void kernel_main(void)
 			}
 			PERF_END();
 			PERF_BEGIN("net_stack_init");
-			anx_net_stack_init(&net_cfg);
+			anx_net_stack_init(&net_cfg, src);
 			PERF_END();
 
 			/*

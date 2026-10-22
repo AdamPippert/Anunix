@@ -11,8 +11,12 @@
 #include <anx/kprintf.h>
 #include <anx/mt7925.h>
 
-void anx_net_stack_init(const struct anx_net_config *cfg)
+static enum anx_net_source net_source;
+
+void anx_net_stack_init(const struct anx_net_config *cfg,
+			enum anx_net_source src)
 {
+	net_source = cfg->ip ? src : ANX_NET_SRC_NONE;
 	anx_arp_init();
 	anx_arp_set_ip(cfg->ip);
 	anx_ipv4_init(cfg);
@@ -29,8 +33,10 @@ void anx_net_stack_init(const struct anx_net_config *cfg)
 		(cfg->dns >> 8) & 0xFF, cfg->dns & 0xFF);
 }
 
-void anx_net_configure(const struct anx_net_config *cfg)
+void anx_net_configure(const struct anx_net_config *cfg,
+		       enum anx_net_source src)
 {
+	net_source = cfg->ip ? src : ANX_NET_SRC_NONE;
 	anx_arp_set_ip(cfg->ip);
 	anx_ipv4_init(cfg);
 }
@@ -52,6 +58,25 @@ int anx_net_dhcp(void)
 			anx_mt7925_info();
 		return ret;
 	}
-	anx_net_configure(&cfg);
+	anx_net_configure(&cfg, ANX_NET_SRC_DHCP);
 	return ANX_OK;
+}
+
+enum anx_net_source anx_net_source(void)
+{
+	return net_source;
+}
+
+const char *anx_net_source_name(enum anx_net_source src)
+{
+	switch (src) {
+	case ANX_NET_SRC_DHCP:
+		return "DHCP lease";
+	case ANX_NET_SRC_STATIC:
+		return "static (config)";
+	case ANX_NET_SRC_FALLBACK:
+		return "QEMU user-net fallback";
+	default:
+		return "none";
+	}
 }
